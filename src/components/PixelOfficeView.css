@@ -1,0 +1,52 @@
+.pixel-office-viewport {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--bg-surface);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 맵 캔버스 프레임 (aspect-ratio 고정 및 넘침 차단) */
+.office-map-frame {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 2048 / 1012;
+  max-height: 430px; /* B2B 관제 패널 크기 한계치 설정 */
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--line-subtle);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+  background-color: var(--bg-app);
+}
+
+/* 맵 이미지 딱 맞춤 */
+.office-map-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 네온 테마 가림막 */
+.pixel-office-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(5, 8, 9, 0.32);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 반응형 높이 축소 대응 */
+@media (max-height: 768px) {
+  .office-map-frame {
+    max-height: 380px;
+  }
+}

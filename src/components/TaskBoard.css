@@ -1,0 +1,606 @@
+.task-board-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.task-board {
+  background: var(--bg-panel-strong);
+  border: 1px solid var(--line-subtle);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.board-header {
+  border-bottom: 1px solid var(--line-subtle);
+  padding-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.board-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.board-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.board-subtitle {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin: 4px 0 0 0;
+}
+
+.simulate-btn {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-primary);
+  padding: 6px 14px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 0.72rem;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.simulate-btn:hover:not(:disabled) {
+  background: var(--accent-primary);
+  color: var(--bg-app);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 14px var(--accent-glow);
+  transform: translateY(-1px);
+}
+
+.simulate-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.simulate-btn.running {
+  background: rgba(255, 207, 90, 0.06);
+  border-color: rgba(255, 207, 90, 0.2);
+  color: var(--warning);
+  cursor: not-allowed;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+/* 스크롤바 */
+.tasks-list::-webkit-scrollbar,
+.approval-list::-webkit-scrollbar {
+  width: 4px;
+}
+.tasks-list::-webkit-scrollbar-track,
+.approval-list::-webkit-scrollbar-track {
+  background: rgba(5, 10, 12, 0.4);
+}
+.tasks-list::-webkit-scrollbar-thumb,
+.approval-list::-webkit-scrollbar-thumb {
+  background: var(--line-subtle);
+  border-radius: 2px;
+}
+.tasks-list::-webkit-scrollbar-thumb:hover,
+.approval-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-border);
+}
+
+.empty-tasks, .empty-approvals {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  height: 100%;
+  text-align: center;
+  padding: 20px;
+}
+
+.task-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-subtle);
+  padding: 10px 12px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.task-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
+  transform: translateX(2px);
+}
+
+.task-item.running {
+  border-color: rgba(45, 245, 162, 0.28);
+  background: rgba(45, 245, 162, 0.02);
+}
+
+.task-item.completed {
+  border-color: rgba(99, 199, 255, 0.25);
+  background: rgba(99, 199, 255, 0.02);
+}
+
+.task-item.needs_approval {
+  border-color: rgba(255, 207, 90, 0.25);
+  background: rgba(255, 207, 90, 0.02);
+}
+
+.task-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.task-emoji {
+  font-size: 1.1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-subtle);
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.task-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.task-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.task-title {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-badges-row {
+  display: flex;
+  gap: 4px;
+}
+
+.badge-type {
+  font-size: 0.6rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+/* route 뱃지 */
+.badge-type.route.local {
+  background: rgba(45, 245, 162, 0.08);
+  border: 1px solid rgba(45, 245, 162, 0.2);
+  color: var(--accent-primary);
+}
+.badge-type.route.cloud {
+  background: rgba(99, 199, 255, 0.08);
+  border: 1px solid rgba(99, 199, 255, 0.2);
+  color: var(--info);
+}
+.badge-type.route.hybrid {
+  background: rgba(255, 207, 90, 0.08);
+  border: 1px solid rgba(255, 207, 90, 0.2);
+  color: var(--warning);
+}
+.badge-type.route.human {
+  background: rgba(255, 95, 122, 0.08);
+  border: 1px solid rgba(255, 95, 122, 0.2);
+  color: var(--danger);
+}
+
+/* permission 뱃지 */
+.badge-type.perm.auto {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+.badge-type.perm.draft_only {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+}
+.badge-type.perm.approval_required {
+  background: rgba(255, 207, 90, 0.06);
+  border: 1px solid rgba(255, 207, 90, 0.15);
+  color: var(--warning);
+}
+.badge-type.perm.manual_only {
+  background: rgba(255, 95, 122, 0.06);
+  border: 1px solid rgba(255, 95, 122, 0.15);
+  color: var(--danger);
+}
+
+.task-agent-name {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+}
+
+.task-result-summary {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 6px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-status-area {
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.task-badge {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.65rem;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.task-badge.pending {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-muted);
+}
+
+.task-badge.assigned {
+  background: rgba(99, 199, 255, 0.06);
+  border: 1px solid rgba(99, 199, 255, 0.2);
+  color: var(--text-secondary);
+}
+
+.task-badge.running {
+  background: rgba(45, 245, 162, 0.12);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  animation: pulse-glow 1.2s infinite alternate;
+}
+
+.task-badge.completed {
+  background: rgba(99, 199, 255, 0.12);
+  border: 1px solid var(--info);
+  color: var(--info);
+}
+
+.task-badge.needs_approval {
+  background: rgba(255, 207, 90, 0.12);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  animation: pulse-warn 1.2s infinite alternate;
+}
+
+.task-badge.failed {
+  background: rgba(255, 95, 122, 0.12);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+/* 추가 영역 */
+.add-task-box {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--line-subtle);
+  padding: 12px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.add-task-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-primary);
+}
+
+.add-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.add-task-input {
+  background: rgba(7, 14, 16, 0.85);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-primary);
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  outline: none;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.add-task-input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-task-input:focus {
+  border-color: rgba(45, 245, 162, 0.42);
+  box-shadow: 0 0 0 3px rgba(45, 245, 162, 0.08);
+}
+
+.add-task-meta {
+  display: flex;
+  gap: 6px;
+}
+
+.agent-select {
+  flex: 1;
+  background: rgba(7, 14, 16, 0.85);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.agent-select:focus {
+  border-color: rgba(45, 245, 162, 0.42);
+}
+
+.agent-select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.add-task-submit {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-primary);
+  padding: 0 14px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 0.72rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.add-task-submit:hover {
+  background: var(--accent-primary);
+  color: var(--bg-app);
+  border-color: var(--accent-primary);
+}
+
+/* Approval Queue 패널 스타일 */
+.approval-queue-board {
+  background: var(--bg-panel-strong);
+  border: 1px solid var(--line-subtle);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 0 0 min(300px, 34dvh);
+  min-height: 190px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.approval-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+.approval-item-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.approval-item-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.approval-item-card.status-approved {
+  border-color: rgba(99, 199, 255, 0.35);
+  background: rgba(99, 199, 255, 0.02);
+}
+
+.approval-item-card.status-rejected {
+  border-color: rgba(255, 95, 122, 0.35);
+  background: rgba(255, 95, 122, 0.02);
+}
+
+.approval-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.approval-agent {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.risk-badge {
+  font-size: 0.58rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+}
+
+.risk-badge.low {
+  background: rgba(45, 245, 162, 0.08);
+  color: var(--accent-primary);
+  border: 1px solid rgba(45, 245, 162, 0.2);
+}
+
+.risk-badge.medium {
+  background: rgba(255, 207, 90, 0.08);
+  color: var(--warning);
+  border: 1px solid rgba(255, 207, 90, 0.2);
+}
+
+.risk-badge.high,
+.risk-badge.critical {
+  background: rgba(255, 95, 122, 0.08);
+  color: var(--danger);
+  border: 1px solid rgba(255, 95, 122, 0.2);
+}
+
+.approval-card-title {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.approval-card-reason,
+.approval-card-proposal {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.approval-card-reason strong,
+.approval-card-proposal strong {
+  color: var(--text-muted);
+}
+
+.approval-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.appr-btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.appr-btn.approve {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary);
+}
+
+.appr-btn.approve:hover {
+  background: var(--accent-primary);
+  color: var(--bg-app);
+  border-color: var(--accent-primary);
+}
+
+.appr-btn.reject {
+  background: rgba(255, 95, 122, 0.08);
+  border-color: rgba(255, 95, 122, 0.2);
+  color: var(--danger);
+}
+
+.appr-btn.reject:hover {
+  background: var(--danger);
+  color: var(--text-primary);
+  border-color: var(--danger);
+}
+
+.approval-result-status {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.approval-result-status.approved {
+  background: rgba(99, 199, 255, 0.1);
+  color: var(--info);
+}
+
+.approval-result-status.rejected {
+  background: rgba(255, 95, 122, 0.1);
+  color: var(--danger);
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 2px rgba(45, 245, 162, 0.2); }
+  100% { box-shadow: 0 0 8px rgba(45, 245, 162, 0.5); }
+}
+
+@keyframes pulse-warn {
+  0% { box-shadow: 0 0 2px rgba(255, 207, 90, 0.2); }
+  100% { box-shadow: 0 0 8px rgba(255, 207, 90, 0.5); }
+}

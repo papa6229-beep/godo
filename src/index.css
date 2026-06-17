@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* 1. 디자인 토큰 정의 (SF 운영 콘솔 / 프리미엄 다크) */
+  --bg-app: #050809;
+  --bg-surface: #091012;
+  --bg-panel: rgba(10, 18, 20, 0.82);
+  --bg-panel-strong: rgba(8, 15, 17, 0.94);
+  --bg-elevated: rgba(14, 24, 27, 0.96);
+
+  --text-primary: #eefaf5;
+  --text-secondary: #a9c2b8;
+  --text-muted: #6f8d83;
+
+  --accent-primary: #2df5a2;       /* 민트/청록 네온 */
+  --accent-primary-2: #14c97e;
+  --accent-soft: rgba(45, 245, 162, 0.08);
+  --accent-border: rgba(45, 245, 162, 0.18);
+  --accent-glow: rgba(45, 245, 162, 0.12);
+
+  --line-subtle: rgba(120, 160, 145, 0.12);
+  --line-strong: rgba(45, 245, 162, 0.18);
+
+  --danger: #ff5f7a;
+  --warning: #ffcf5a;
+  --info: #63c7ff;
+  --success: #2df5a2;
+
+  /* 레거시 클래스 호환성 변수 매핑 */
+  --bg-color: var(--bg-app);
+  --panel-bg: var(--bg-panel);
+  --neon-green: var(--accent-primary);
+  --neon-green-dim: var(--line-strong);
+  --neon-green-dark: var(--bg-surface);
+
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: 
+    radial-gradient(circle at top center, rgba(25, 120, 90, 0.12), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(45, 245, 162, 0.05), transparent 25%),
+    linear-gradient(180deg, #050809 0%, #030506 100%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  overflow: hidden;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 글로벌 스크롤바 커스텀 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(5, 10, 12, 0.4);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-subtle);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-border);
+}

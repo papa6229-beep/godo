@@ -1,0 +1,706 @@
+.brain-panel-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 1. 헤더 영역 */
+.brain-header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  background: var(--bg-panel-strong);
+  border: 1px solid var(--line-subtle);
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+
+.brain-title-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.brain-main-title {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.brain-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* 요약 메트릭 */
+.brain-metrics-row {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.metric-box {
+  background: rgba(5, 8, 9, 0.55);
+  border: 1px solid var(--line-subtle);
+  border-radius: 10px;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 90px;
+  transition: all 0.2s ease;
+}
+
+.metric-box:hover {
+  border-color: var(--accent-border);
+  background: rgba(45, 245, 162, 0.02);
+}
+
+.metric-lbl {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+}
+
+.metric-val {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+}
+
+.metric-box.warning .metric-val {
+  color: var(--warning);
+}
+
+.metric-box.danger .metric-val {
+  color: var(--danger);
+}
+
+/* 2. 컨트롤 바 (검색/필터) */
+.brain-control-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 10px 16px;
+  flex-shrink: 0;
+}
+
+.search-input-wrapper {
+  position: relative;
+  flex: 1;
+  max-width: 450px;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.brain-search-input {
+  width: 100%;
+  background: rgba(7, 14, 16, 0.85);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-primary);
+  padding: 8px 12px 8px 32px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  outline: none;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.brain-search-input:focus {
+  border-color: rgba(45, 245, 162, 0.42);
+  box-shadow: 0 0 0 3px rgba(45, 245, 162, 0.08);
+}
+
+.clear-search {
+  position: absolute;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.clear-search:hover {
+  color: var(--danger);
+}
+
+.filters-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.filter-select-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+}
+
+.brain-filter-select {
+  background: rgba(7, 14, 16, 0.85);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  outline: none;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.brain-filter-select:focus {
+  border-color: rgba(45, 245, 162, 0.42);
+}
+
+.brain-filter-select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* 3. 메인 레이아웃 */
+.brain-content-layout {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.brain-sidebar {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 카테고리 탭 (세로) */
+.category-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.category-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 10px 8px;
+  text-align: left;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.category-tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--line-subtle);
+}
+
+.category-tab-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+  border-color: var(--accent-border);
+}
+
+/* 지식 카드 리스트 */
+.knowledge-list-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.empty-results {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 40px 10px;
+  border: 1px dashed var(--line-subtle);
+  border-radius: 12px;
+}
+
+.knowledge-item-card {
+  background: var(--bg-panel-strong);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.knowledge-item-card:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.02);
+  transform: translateX(2px);
+}
+
+.knowledge-item-card.active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-filename {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.importance-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+
+.importance-badge.low {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  border: 1px solid var(--line-subtle);
+}
+
+.importance-badge.medium {
+  background: rgba(99, 199, 255, 0.08);
+  color: var(--info);
+  border: 1px solid rgba(99, 199, 255, 0.2);
+}
+
+.importance-badge.high {
+  background: rgba(255, 207, 90, 0.08);
+  color: var(--warning);
+  border: 1px solid rgba(255, 207, 90, 0.2);
+}
+
+.importance-badge.critical {
+  background: rgba(255, 95, 122, 0.08);
+  color: var(--danger);
+  border: 1px solid rgba(255, 95, 122, 0.2);
+}
+
+.card-title-text {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.card-summary-text {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-footer-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(120, 160, 145, 0.08);
+  padding-top: 8px;
+}
+
+.linked-agents-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.agent-tag-chip {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.card-usage {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* 우측 상세 패널 */
+.brain-detail-view {
+  background: var(--bg-panel-strong);
+  border: 1px solid var(--line-subtle);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.no-active-detail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.detail-view-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detail-header-card {
+  background: rgba(5, 8, 9, 0.4);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.detail-title {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.importance-badge.large {
+  font-size: 0.65rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.detail-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  border-top: 1px solid rgba(120, 160, 145, 0.1);
+  padding-top: 12px;
+}
+
+.meta-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-lbl {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+}
+
+.meta-val {
+  font-size: 0.74rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.meta-val-badge {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-primary);
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.meta-val-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.meta-val-highlight {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.meta-val-highlight.green {
+  color: var(--accent-primary);
+}
+
+/* 섹션 스타일 */
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-section-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent-primary);
+  letter-spacing: 0.5px;
+}
+
+.detail-summary-text-large {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.content-preview-box {
+  background: rgba(5, 8, 9, 0.65);
+  border: 1px solid var(--line-subtle);
+  padding: 12px;
+  margin: 0;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.55;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.content-preview-box::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.detail-agents-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detail-agent-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ag-emoji {
+  font-size: 0.9rem;
+}
+
+.ag-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.scenario-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scenario-item {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.scenario-item .bullet {
+  color: var(--accent-primary);
+}
+
+/* 액션 버튼 */
+.detail-action-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 10px;
+  border-top: 1px solid rgba(120, 160, 145, 0.1);
+  padding-top: 16px;
+}
+
+.brain-action-btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.brain-action-btn.secondary {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--line-subtle);
+  color: var(--text-secondary);
+}
+
+.brain-action-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
+  color: var(--text-primary);
+}
+
+.brain-action-btn.primary {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary);
+}
+
+.brain-action-btn.primary:hover {
+  background: var(--accent-primary);
+  color: var(--bg-app);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.brain-action-btn.studio-edit-btn {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.brain-action-btn.studio-edit-btn:hover {
+  background: #f59e0b;
+  color: #050809;
+  border-color: #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
+}
+
+/* 스크롤바 커스텀 */
+.category-tabs::-webkit-scrollbar,
+.knowledge-list-wrapper::-webkit-scrollbar,
+.brain-detail-view::-webkit-scrollbar,
+.content-preview-box::-webkit-scrollbar {
+  width: 4px;
+}
+
+.category-tabs::-webkit-scrollbar-track,
+.knowledge-list-wrapper::-webkit-scrollbar-track,
+.brain-detail-view::-webkit-scrollbar-track {
+  background: rgba(5, 10, 12, 0.2);
+}
+
+.category-tabs::-webkit-scrollbar-thumb,
+.knowledge-list-wrapper::-webkit-scrollbar-thumb,
+.brain-detail-view::-webkit-scrollbar-thumb {
+  background: var(--line-subtle);
+  border-radius: 2px;
+}
+
+/* 반응형 모바일 대응 */
+@media (max-width: 1024px) {
+  .brain-content-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    overflow-y: auto;
+  }
+  
+  .brain-detail-view {
+    height: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .brain-sidebar {
+    grid-template-columns: 1fr;
+  }
+  
+  .category-tabs {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  
+  .category-tab-btn {
+    white-space: nowrap;
+  }
+  
+  .detail-meta-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

@@ -1,0 +1,134 @@
+.activity-log {
+  background: var(--bg-panel-strong);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.log-header {
+  background: rgba(14, 24, 27, 0.45);
+  padding: 10px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.log-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.log-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.log-dot.red { background-color: var(--danger); }
+.log-dot.yellow { background-color: var(--warning); }
+.log-dot.green { background-color: var(--accent-primary); }
+
+.log-title {
+  margin: 0 0 0 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.clear-log-btn {
+  background: transparent;
+  border: 1px solid var(--line-subtle);
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.clear-log-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+
+.log-terminal {
+  flex: 1;
+  padding: 14px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.74rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: rgba(5, 8, 9, 0.3);
+}
+
+.log-terminal::-webkit-scrollbar {
+  width: 4px;
+}
+.log-terminal::-webkit-scrollbar-track {
+  background: rgba(5, 10, 12, 0.4);
+}
+.log-terminal::-webkit-scrollbar-thumb {
+  background: var(--line-subtle);
+  border-radius: 2px;
+}
+.log-terminal::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-border);
+}
+
+.log-line {
+  line-height: 1.45;
+  word-break: break-all;
+  animation: line-fade-in 0.15s ease-out;
+}
+
+.log-time {
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+
+.log-agent {
+  color: var(--info);
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+/* 로그 타입별 컬러링 */
+.log-line.info-type {
+  color: var(--text-secondary);
+}
+
+.log-line.success-type {
+  color: var(--accent-primary);
+  text-shadow: 0 0 6px var(--accent-glow);
+}
+
+.log-line.warning-type {
+  color: var(--warning);
+}
+
+.log-line.error-type {
+  color: var(--danger);
+}
+
+.log-line.agent-type {
+  color: var(--text-primary);
+}
+
+@keyframes line-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}

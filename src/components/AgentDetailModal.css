@@ -1,0 +1,643 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+}
+
+.modal-content {
+  background: rgba(9, 17, 19, 0.96);
+  border: 1px solid rgba(45, 245, 162, 0.22);
+  box-shadow: 
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 0 32px rgba(45, 245, 162, 0.08);
+  width: 90%;
+  max-width: 820px; /* 2컬럼이므로 폭을 약간 넓힘 */
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-primary);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line-subtle);
+  background: rgba(14, 24, 27, 0.45);
+  position: relative;
+}
+
+.modal-header-glow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 2px;
+  background: var(--accent-primary);
+  box-shadow: 0 0 10px var(--accent-primary);
+}
+
+.modal-header-subtitle {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 1.5px;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.18s ease;
+}
+
+.modal-close-btn:hover {
+  color: var(--danger);
+}
+
+/* 2컬럼 레이아웃 바디 */
+.modal-body-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  flex: 1;
+  overflow: hidden;
+  max-height: calc(85vh - 54px);
+}
+
+/* 좌측 컬럼 */
+.modal-left-column {
+  border-right: 1px solid var(--line-subtle);
+  background: rgba(5, 8, 9, 0.3);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+
+.agent-profile-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-subtle);
+  border-radius: 16px;
+  padding: 20px 16px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.agent-banner-pattern {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 60px;
+  background: linear-gradient(135deg, rgba(45, 245, 162, 0.08), rgba(99, 199, 255, 0.05));
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.agent-avatar-outer {
+  position: relative;
+  z-index: 2;
+  font-size: 2.2rem;
+  margin: 15px auto 12px auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--accent-border);
+  width: 68px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  box-shadow: 
+    0 8px 20px rgba(0, 0, 0, 0.4),
+    0 0 12px var(--accent-glow);
+}
+
+.agent-modal-emoji {
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+.agent-modal-name {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.agent-modal-eng-role {
+  margin: 4px 0 8px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--accent-primary);
+  opacity: 0.85;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.agent-modal-role {
+  margin: 0 0 16px 0;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.agent-status-container {
+  display: flex;
+  justify-content: center;
+}
+
+.agent-status-badge {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.68rem;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.agent-status-badge.idle {
+  background: rgba(99, 199, 255, 0.12);
+  border: 1px solid var(--info);
+  color: var(--info);
+}
+
+.agent-status-badge.working {
+  background: rgba(45, 245, 162, 0.12);
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  animation: pulse-badge 1.5s infinite alternate;
+}
+
+.agent-status-badge.completed {
+  background: rgba(99, 199, 255, 0.1);
+  border: 1px solid var(--info);
+  color: var(--info);
+}
+
+.agent-status-badge.offline {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-muted);
+}
+
+.modal-left-tags-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-tags-container {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tag-badge {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-primary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 20px;
+  transition: all 0.2s ease;
+}
+
+.tag-badge:hover {
+  background: var(--accent-primary);
+  color: var(--bg-app);
+}
+
+/* 우측 컬럼 */
+.modal-right-column {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-section.sub-panel {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--line-subtle);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 800;
+  font-family: 'Inter', sans-serif;
+  color: var(--accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+/* 지표 Stats Grid */
+.agent-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.stats-card {
+  background: rgba(5, 8, 9, 0.4);
+  border: 1px solid var(--line-subtle);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.stats-card:hover {
+  border-color: var(--accent-border);
+  background: rgba(45, 245, 162, 0.02);
+}
+
+.stats-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+}
+
+.stats-value {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* 기능 리스트 */
+.capabilities-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.capability-item {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.capability-item .bullet {
+  color: var(--accent-primary);
+  font-weight: 800;
+}
+
+/* 현재 작업 */
+.current-task-box {
+  background: rgba(5, 8, 9, 0.55);
+  border: 1px solid var(--line-subtle);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.45;
+}
+
+/* 토글 버튼 */
+.toggle-prompt-btn {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  text-align: left;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.toggle-prompt-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
+  color: var(--text-primary);
+}
+
+/* 시스템 프롬프트 박스 */
+.system-prompt-box {
+  background: rgba(5, 8, 9, 0.65);
+  border: 1px solid var(--line-subtle);
+  padding: 12px 14px;
+  margin: 0;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1.5;
+}
+
+/* 지시 내리기 */
+.instruction-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.instruction-form {
+  display: flex;
+  gap: 8px;
+}
+
+.instruction-input {
+  flex: 1;
+  background: rgba(7, 14, 16, 0.85);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  outline: none;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s ease;
+}
+
+.instruction-input:focus {
+  border-color: rgba(45, 245, 162, 0.42);
+  box-shadow: 0 0 0 3px rgba(45, 245, 162, 0.08);
+}
+
+.instruction-submit-btn {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-primary);
+  padding: 0 16px;
+  font-size: 0.76rem;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.instruction-submit-btn:hover {
+  background: var(--accent-primary);
+  color: var(--bg-app);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+@keyframes pulse-badge {
+  0% { box-shadow: 0 0 2px rgba(45, 245, 162, 0.2); }
+  100% { box-shadow: 0 0 8px rgba(45, 245, 162, 0.4); }
+}
+
+/* 스크롤바 커스텀 */
+.modal-left-column::-webkit-scrollbar,
+.modal-right-column::-webkit-scrollbar {
+  width: 4px;
+}
+.modal-left-column::-webkit-scrollbar-track,
+.modal-right-column::-webkit-scrollbar-track {
+  background: rgba(5, 10, 12, 0.2);
+}
+.modal-left-column::-webkit-scrollbar-thumb,
+.modal-right-column::-webkit-scrollbar-thumb {
+  background: var(--line-subtle);
+  border-radius: 2px;
+}
+
+/* 1024px 미만 대응 반응형 모달 */
+@media (max-width: 768px) {
+  .modal-body-layout {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+    max-height: calc(85vh - 54px);
+  }
+  .modal-left-column {
+    border-right: none;
+    border-bottom: 1px solid var(--line-subtle);
+  }
+  .agent-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Agent Skill System MVP 스타일 */
+.architecture-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.arch-card {
+  background: rgba(5, 8, 9, 0.45);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.arch-card:hover {
+  border-color: rgba(45, 245, 162, 0.25);
+  background: rgba(45, 245, 162, 0.02);
+}
+
+.arch-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid rgba(120, 160, 145, 0.15);
+  padding-bottom: 6px;
+}
+
+.arch-icon {
+  font-size: 0.9rem;
+}
+
+.arch-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.arch-list {
+  margin: 0;
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.arch-item {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.arch-memory-section {
+  margin-top: 14px;
+  border-top: 1px solid var(--line-subtle);
+  padding-top: 14px;
+}
+
+.memory-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.memory-item {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-left: 2px solid var(--info);
+}
+
+.memory-bullet {
+  color: var(--info);
+  font-size: 0.6rem;
+  margin-top: 2px;
+}
+
+.memory-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .architecture-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* KB 링크 및 최근 지식 스타일 */
+.arch-kb-link-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.7rem;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.arch-kb-link-btn:hover {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.recent-knowledge-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.recent-kb-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.recent-kb-item-btn {
+  background: rgba(5, 8, 9, 0.45);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.recent-kb-item-btn:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.no-kb-text {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.agent-modal-studio-btn {
+  margin-top: 14px;
+  width: 100%;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.agent-modal-studio-btn:hover {
+  background: #f59e0b;
+  color: #050809;
+  border-color: #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
+}
