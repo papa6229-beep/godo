@@ -1,4 +1,10 @@
-import type { ProxySafetyStatus } from '../../src/types/proxy';
+export interface ProxySafetyStatus {
+  hasApiKey: boolean;
+  hasApiSecret: boolean;
+  hasBaseUrl: boolean;
+  productionLocked: boolean;
+  message: string;
+}
 
 // 환경변수 존재 여부를 체크하여 보안 상태를 반환 (실제 키 값은 노출하지 않음)
 export const getSecretGuardStatus = (): ProxySafetyStatus => {

@@ -1,8 +1,8 @@
 import type { IncomingMessage } from 'http';
-import type { VercelResponse } from '../_shared/proxyResponse';
-import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse';
-import { getProxyMockSales } from '../_shared/mockProxyData';
-import { maskRecordsList } from '../_shared/piiMaskGuard';
+import type { VercelResponse } from '../_shared/proxyResponse.js';
+import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
+import { getProxyMockSales } from '../_shared/mockProxyData.js';
+import { maskRecordsList } from '../_shared/piiMaskGuard.js';
 
 // GET /api/godomall/sales
 export default function handler(req: IncomingMessage, res: VercelResponse) {

@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
-import type { VercelResponse } from '../_shared/proxyResponse';
-import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse';
-import { getSecretGuardStatus } from '../_shared/secretGuard';
+import type { VercelResponse } from '../_shared/proxyResponse.js';
+import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
+import { getSecretGuardStatus } from '../_shared/secretGuard.js';
 
 // GET /api/godomall/health
 export default function handler(req: IncomingMessage, res: VercelResponse) {

@@ -1,14 +1,14 @@
 import type { IncomingMessage } from 'http';
-import type { VercelResponse } from '../_shared/proxyResponse';
-import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse';
+import type { VercelResponse } from '../_shared/proxyResponse.js';
+import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 import {
   getProxyMockOrders,
   getProxyMockInquiries,
   getProxyMockReviews,
   getProxyMockInventory,
   getProxyMockSales
-} from '../_shared/mockProxyData';
-import { maskRecordsList } from '../_shared/piiMaskGuard';
+} from '../_shared/mockProxyData.js';
+import { maskRecordsList } from '../_shared/piiMaskGuard.js';
 
 // Vercel Request Body 호환 확장 인터페이스
 interface ExtendedRequest extends IncomingMessage {
