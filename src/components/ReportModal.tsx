@@ -1,13 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import type { OperationReport } from '../types/operation';
+import type { OperationsDataSnapshot } from '../types/dataConnector';
 import './ReportModal.css';
 
 interface ReportModalProps {
   report: OperationReport;
   onClose: () => void;
+  activeOperationsData?: OperationsDataSnapshot;
 }
 
-export const ReportModal: React.FC<ReportModalProps> = ({ report, onClose }) => {
+export const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, activeOperationsData }) => {
   useEffect(() => {
     // 이전 overflow 상태 기록
     const prevBodyOverflow = document.body.style.overflow;
@@ -26,6 +28,46 @@ export const ReportModal: React.FC<ReportModalProps> = ({ report, onClose }) => 
     };
   }, []);
 
+  const stats = useMemo(() => {
+    if (!activeOperationsData) {
+      return {
+        sourceType: 'Demo Data',
+        importedAt: new Date().toLocaleDateString(),
+        qualityScore: 100,
+        ordersCount: 5,
+        inquiriesCount: 3,
+        reviewsCount: 3,
+        inventoryCount: 5,
+        salesPeriod: '2026-06-16 ~ 2026-06-18'
+      };
+    }
+
+    let salesPeriod = '데이터 없음';
+    if (activeOperationsData.sales.length > 0) {
+      const dates = activeOperationsData.sales.map(s => s.date).sort();
+      salesPeriod = `${dates[0]} ~ ${dates[dates.length - 1]}`;
+    }
+
+    const typeMapping: Record<string, string> = {
+      demo: 'Demo Data',
+      csv: 'CSV Import',
+      json: 'JSON Import',
+      manual: 'Manual Input',
+      api_mock: 'Mock API'
+    };
+
+    return {
+      sourceType: typeMapping[activeOperationsData.sourceType] || activeOperationsData.sourceType.toUpperCase(),
+      importedAt: activeOperationsData.importedAt ? new Date(activeOperationsData.importedAt).toLocaleString() : '미정',
+      qualityScore: activeOperationsData.qualityReport?.qualityScore ?? 100,
+      ordersCount: activeOperationsData.orders.length,
+      inquiriesCount: activeOperationsData.inquiries.length,
+      reviewsCount: activeOperationsData.reviews.length,
+      inventoryCount: activeOperationsData.inventory.length,
+      salesPeriod
+    };
+  }, [activeOperationsData]);
+
   return (
     <div className="report-modal-overlay" onClick={onClose}>
       <div className="report-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -37,6 +79,38 @@ export const ReportModal: React.FC<ReportModalProps> = ({ report, onClose }) => 
         </div>
         
         <div className="report-modal-body">
+          {/* 데이터 커넥터 소스 통계 카드 */}
+          <div className="report-section data-source-card">
+            <h3 className="report-section-title">📡 DATA CONNECTOR SOURCE INFO</h3>
+            <div className="source-info-grid">
+              <div className="info-item">
+                <span className="info-lbl">데이터 소스</span>
+                <span className="info-val">{stats.sourceType}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-lbl">마지막 업데이트</span>
+                <span className="info-val" style={{ fontSize: '0.62rem' }}>{stats.importedAt}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-lbl">데이터 품질 점수</span>
+                <span className={`info-val ${stats.qualityScore >= 90 ? 'score-good' : 'score-warn'}`}>
+                  {stats.qualityScore}점
+                </span>
+              </div>
+              <div className="info-item">
+                <span className="info-lbl">매출 데이터 기간</span>
+                <span className="info-val" style={{ fontSize: '0.62rem' }}>{stats.salesPeriod}</span>
+              </div>
+            </div>
+
+            <div className="source-detail-counts">
+              <span className="count-badge">📦 주문 {stats.ordersCount}건</span>
+              <span className="count-badge">💬 CS {stats.inquiriesCount}건</span>
+              <span className="count-badge">⭐ 리뷰 {stats.reviewsCount}건</span>
+              <span className="count-badge">📊 재고 {stats.inventoryCount}옵션</span>
+            </div>
+          </div>
+
           <div className="report-section summary-card">
             <h3 className="report-section-title">📝 오늘의 핵심 요약</h3>
             <p className="report-summary-text">{report.summary}</p>

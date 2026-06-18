@@ -79,7 +79,33 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
                           </span>
                         </div>
                       </div>
-                      <div className="task-agent-name">담당: {agentInfo.name.split(' ')[0]}</div>
+                      <div className="task-agent-name" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+                        <span>담당: {agentInfo.name.split(' ')[0]}</span>
+                        {task.inputCount !== undefined && (
+                          <span className="task-data-badge" style={{
+                            fontSize: '0.6rem',
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: 'rgba(45, 245, 162, 0.08)',
+                            border: '1px solid rgba(45, 245, 162, 0.2)',
+                            color: 'var(--accent-primary)'
+                          }}>
+                            DATA: {task.relatedDataType} {task.inputCount}건
+                          </span>
+                        )}
+                        {task.dataSourceType && (
+                          <span className="task-source-badge" style={{
+                            fontSize: '0.6rem',
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            color: 'var(--text-secondary)'
+                          }}>
+                            SOURCE: {task.dataSourceType.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
                       {task.resultSummary && (
                         <div className="task-result-summary">📄 {task.resultSummary}</div>
                       )}

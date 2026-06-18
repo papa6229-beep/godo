@@ -237,3 +237,65 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* GODO DATA CONNECTOR SOURCE INFO CARD */
+.data-source-card {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.source-info-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-lbl {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.info-val {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.info-val.score-good {
+  color: var(--accent-primary);
+}
+
+.info-val.score-warn {
+  color: var(--warning);
+}
+
+.source-detail-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px dashed var(--line-subtle);
+  padding-top: 8px;
+}
+
+.count-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(45, 245, 162, 0.05);
+  border: 1px solid rgba(45, 245, 162, 0.15);
+  color: var(--accent-primary);
+  padding: 4px 8px;
+  border-radius: 6px;
+}

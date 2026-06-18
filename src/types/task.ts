@@ -21,4 +21,6 @@ export interface OperationTask {
   requiredSkills?: string[];
   createdAt: string;
   completedAt?: string;
+  inputCount?: number;
+  dataSourceType?: string;
 }

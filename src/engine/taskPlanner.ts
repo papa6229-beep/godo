@@ -1,23 +1,44 @@
 import type { OperationTask } from '../types/task';
+import type { OperationsDataSnapshot } from '../types/dataConnector';
 import { taskTemplates } from '../data/taskTemplates';
 
 /**
  * 일일 정기 쇼핑몰 운영 작업을 초기화하여 생성합니다.
  */
-export const createDailyOperationTasks = (): OperationTask[] => {
-  return taskTemplates.map((template, idx) => ({
-    id: `opt-task-${idx + 1}-${Date.now()}`,
-    title: template.title,
-    description: template.description,
-    assignedAgentId: template.assignedAgentId,
-    status: 'pending',
-    riskLevel: template.riskLevel,
-    permission: template.permission,
-    routeType: template.routeType,
-    relatedDataType: template.relatedDataType,
-    requiredSkills: template.requiredSkills || [],
-    createdAt: new Date().toISOString()
-  }));
+export const createDailyOperationTasks = (activeOperationsData?: OperationsDataSnapshot): OperationTask[] => {
+  return taskTemplates.map((template, idx) => {
+    let inputCount: number | undefined;
+
+    if (activeOperationsData) {
+      if (template.relatedDataType === 'orders') {
+        inputCount = activeOperationsData.orders.length;
+      } else if (template.relatedDataType === 'inquiries') {
+        inputCount = activeOperationsData.inquiries.length;
+      } else if (template.relatedDataType === 'reviews') {
+        inputCount = activeOperationsData.reviews.length;
+      } else if (template.relatedDataType === 'inventory') {
+        inputCount = activeOperationsData.inventory.length;
+      } else if (template.relatedDataType === 'sales') {
+        inputCount = activeOperationsData.sales.length;
+      }
+    }
+
+    return {
+      id: `opt-task-${idx + 1}-${Date.now()}`,
+      title: template.title,
+      description: template.description,
+      assignedAgentId: template.assignedAgentId,
+      status: 'pending',
+      riskLevel: template.riskLevel,
+      permission: template.permission,
+      routeType: template.routeType,
+      relatedDataType: template.relatedDataType,
+      requiredSkills: template.requiredSkills || [],
+      createdAt: new Date().toISOString(),
+      inputCount,
+      dataSourceType: activeOperationsData?.sourceType
+    };
+  });
 };
 
 /**

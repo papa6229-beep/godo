@@ -451,19 +451,19 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                 <div className="workflow-status-indicator">
                   <div className="wf-row">
                     <span>Workflow Engine 연결 상태</span>
-                    <span className="wf-val ready">준비됨</span>
+                    <span className="wf-val ready">연결됨</span>
                   </div>
                   <div className="wf-row">
                     <span>데이터 소스 주입 상태</span>
-                    <span className="wf-val">대기 중 (Phase 2 가동 대기)</span>
+                    <span className="wf-val ready">실시간 반영 중</span>
                   </div>
                   <div className="wf-row" style={{ border: 'none' }}>
                     <span>일일 요약 확장 모듈</span>
-                    <span className="wf-val">연결 대기 (Calendar 호환성 구축 완료)</span>
+                    <span className="wf-val ready">호환성 가동 중 (Calendar 연동 준비 완료)</span>
                   </div>
                 </div>
                 <p className="status-desc" style={{ fontStyle: 'italic', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-                  * Info: 이번 버전에서는 읽기 전용 입력 및 자동 검증 레이어까지만 제공되며, 실제 AI 에이전트 액션 바인딩은 차기 Phase 2에서 활성화될 예정입니다.
+                  * Info: 현재 activeOperationsData가 START OPERATION에 반영되어 일일 에이전트 자동화 실행 및 요약 리포트 작성 시 실시간 활용됩니다.
                 </p>
               </div>
             </div>

@@ -259,8 +259,17 @@ function App() {
     setReport(null);
     setApprovalQueue([]);
     
+    // 0. 데이터 소스 정보 로깅
+    if (activeOperationsData && activeOperationsData.sourceType !== 'demo') {
+      addLog(`[Data] 현재 ${activeOperationsData.sourceType.toUpperCase()} 업로드 데이터 스냅샷을 기준으로 운영을 시작합니다.`, 'info', 'SYSTEM');
+      const lastUpdate = activeOperationsData.importedAt ? new Date(activeOperationsData.importedAt).toLocaleString() : '미정';
+      addLog(`[Data] 데이터 소스: ${activeOperationsData.sourceType}, 마지막 업데이트: ${lastUpdate}`, 'info', 'SYSTEM');
+    } else {
+      addLog('[Data] 업로드된 운영 데이터가 없어 Demo 데이터로 운영을 시작합니다.', 'info', 'SYSTEM');
+    }
+
     // 1. 작업 플래닝
-    const dailyTasks = createDailyOperationTasks();
+    const dailyTasks = createDailyOperationTasks(activeOperationsData);
     setTasks(dailyTasks);
     
     // 매니저가 업무 분석 시작
@@ -310,11 +319,16 @@ function App() {
       // Engine 상세 로그 출력
       addLog(`[Engine] ${routedTask.title}은 ${routedTask.routeType.toUpperCase()} 규칙에 따라 ${modelConfig.modelName}으로 라우팅되었습니다.`, 'info', 'Engine');
       
-      // 민감 정보 보호 차단 로그 모의
-      const isSensitive = routedTask.title.includes('고객') || routedTask.title.includes('inquiry') || routedTask.title.includes('CS') || routedTask.title.includes('주문');
+      // 민감 정보 보호 차단 로그 모의 (Engine / Safety Guard 연동)
+      const isSensitive = routedTask.title.includes('고객') || routedTask.title.includes('inquiry') || routedTask.title.includes('CS') || routedTask.title.includes('주문') || routedTask.relatedDataType === 'orders' || routedTask.relatedDataType === 'inquiries';
       const isSafetyRuleEnabled = (id: string) => engineSafetyRules.find(r => r.id === id)?.isEnabled ?? false;
-      if (isSensitive && isSafetyRuleEnabled('safety_1') && routedTask.routeType === 'local') {
-        addLog(`[Engine] 고객 민감정보 보호를 위해 Cloud 전송을 차단하고 Local Engine으로 우회시켰습니다.`, 'warning', 'Engine');
+      if (isSensitive && isSafetyRuleEnabled('safety_1')) {
+        addLog(`[Safety] 고객 민감정보가 포함된 ${routedTask.relatedDataType === 'orders' ? '주문' : '문의'} 데이터는 Cloud Engine으로 전송하지 않습니다.`, 'warning', 'Engine');
+        if (routedTask.assignedAgentId === 'cs') {
+          addLog(`[Engine] CS 문의 분석 작업을 Local 또는 Hybrid 보호 경로로 라우팅했습니다.`, 'info', 'Engine');
+        } else if (routedTask.routeType === 'local') {
+          addLog(`[Engine] 고객 민감정보 보호를 위해 Cloud 전송을 차단하고 Local Engine으로 우회시켰습니다.`, 'warning', 'Engine');
+        }
       }
 
       // 3. 작업 진행 상태로 갱신 (running)
@@ -340,7 +354,7 @@ function App() {
       await sleep(1200 + Math.random() * 600);
       
       // 4. 실행 결과 산정
-      const executedTask = await executeTask(routedTask, mockGodoData);
+      const executedTask = await executeTask(routedTask, mockGodoData, activeOperationsData);
       currentTasks[i] = executedTask;
       setTasks([...currentTasks]);
 
@@ -372,7 +386,11 @@ function App() {
           return k;
         }));
         referencedFiles.forEach(file => {
-          addLog(`[Brain] RAG 시스템이 지식 저장소에서 "${file}"을(를) 참조했습니다.`, 'info', 'Brain');
+          if (file === 'inventory_snapshot.json' && activeOperationsData) {
+            addLog(`[Brain] inventory_snapshot.json이 현재 운영 데이터 스냅샷 기준으로 참조되었습니다.`, 'info', 'Brain');
+          } else {
+            addLog(`[Brain] RAG 시스템이 지식 저장소에서 "${file}"을(를) 참조했습니다.`, 'info', 'Brain');
+          }
         });
       }
       
@@ -416,7 +434,7 @@ function App() {
     }
     
     // 5. 종합 운영 리포트 작성
-    const finalReport = composeOperationReport(currentTasks);
+    const finalReport = composeOperationReport(currentTasks, activeOperationsData);
     setReport(finalReport);
     
     setAgents(prev => prev.map(a => 
@@ -659,6 +677,7 @@ function App() {
         <ReportModal
           report={report}
           onClose={handleCloseReport}
+          activeOperationsData={activeOperationsData}
         />
       )}
     </>
