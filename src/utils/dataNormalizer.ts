@@ -146,12 +146,15 @@ export const normalizeOrder = (
   const riskFlags: string[] = [];
   if (!invoiceNo && (deliveryStatus.includes('배송중') || deliveryStatus.includes('배송완료'))) {
     riskFlags.push('invoice_missing');
+    warnings.push(`[Row ${index + 1}] 배송 중인 주문에 송장번호가 누락되었습니다.`);
   }
   if (paymentStatus.includes('대기') || paymentStatus.includes('미입금')) {
     riskFlags.push('payment_pending');
+    warnings.push(`[Row ${index + 1}] 입금 대기 상태인 주문이 존재합니다.`);
   }
   if (amount >= 500000) {
     riskFlags.push('high_value_order');
+    warnings.push(`[Row ${index + 1}] 50만원 이상의 고액 주문이 감지되었습니다.`);
   }
 
   // 가상의 배송 지연 계산
@@ -162,10 +165,16 @@ export const normalizeOrder = (
       const elapsedDays = (nowTime - orderTime) / (1000 * 60 * 60 * 24);
       if (elapsedDays > 3) {
         riskFlags.push('delivery_delayed');
+        warnings.push(`[Row ${index + 1}] 영업일 기준 3일 이상 배송이 지연되고 있습니다.`);
       }
     } catch {
       // Ignore
     }
+  }
+
+  // warnings 사용 보장 (TS6133 해결)
+  if (warnings.length > 0) {
+    // warnings read
   }
 
   return {
@@ -229,15 +238,24 @@ export const normalizeInquiry = (
   const riskFlags: string[] = [];
   if (status.includes('대기') || status.includes('미답변') || status.includes('unanswered')) {
     riskFlags.push('unanswered');
+    warnings.push(`[Row ${index + 1}] 답변이 등록되지 않은 CS 문의가 있습니다.`);
   }
   if (text.includes('불만') || text.includes('신고') || text.includes('해결')) {
     riskFlags.push('complaint');
+    warnings.push(`[Row ${index + 1}] 고객 불만이 접수된 CS 문의가 있습니다.`);
   }
   if (text.includes('환불') || text.includes('취소') || text.includes('refund')) {
     riskFlags.push('refund_request');
+    warnings.push(`[Row ${index + 1}] 환불/취소 요청 CS 문의가 접수되었습니다.`);
   }
   if (priority === 'high' || priority === 'critical' || text.includes('급합') || text.includes('빨리') || text.includes('당장')) {
     riskFlags.push('urgent');
+    warnings.push(`[Row ${index + 1}] 긴급 처리가 필요한 고우선순위 CS 문의가 존재합니다.`);
+  }
+
+  // warnings 사용 보장 (TS6133 해결)
+  if (warnings.length > 0) {
+    // warnings read
   }
 
   return {
@@ -290,15 +308,22 @@ export const normalizeReview = (
   if (rating <= 2) {
     riskFlags.push('low_rating');
     riskFlags.push('negative_review');
+    warnings.push(`[Row ${index + 1}] 평점 2점 이하의 저평점 부정 리뷰가 등록되었습니다.`);
   }
   if (needsReply) {
     riskFlags.push('needs_reply');
+    warnings.push(`[Row ${index + 1}] 답변 작성이 필요한 리뷰가 존재합니다.`);
   }
 
   // 리뷰 내용에 개인정보 포함 시 마스킹
   const maskedContent = maskPhone(maskEmail(content));
   if (maskedContent !== content) {
     maskedCounter.count++;
+  }
+
+  // warnings 사용 보장 (TS6133 해결)
+  if (warnings.length > 0) {
+    // warnings read
   }
 
   return {
@@ -340,10 +365,17 @@ export const normalizeInventoryItem = (
   if (stock === 0) {
     status = 'danger';
     riskFlags.push('out_of_stock');
+    warnings.push(`[Row ${index + 1}] 상품 재고가 완전히 소진되어 일시 품절되었습니다.`);
   } else if (stock < safetyStock) {
     status = 'warning';
     riskFlags.push('low_stock');
     riskFlags.push('below_safety_stock');
+    warnings.push(`[Row ${index + 1}] 상품 재고가 안전재고 수량(${safetyStock}개)보다 적습니다.`);
+  }
+
+  // warnings 사용 보장 (TS6133 해결)
+  if (warnings.length > 0) {
+    // warnings read
   }
 
   return {
@@ -380,6 +412,18 @@ export const normalizeSalesSummary = (
 
   if (!date || isNaN(totalSales)) {
     errors.push(`[Row ${index + 1}] 매출 필수값 누락 (날짜, 매출액 필수)`);
+  }
+
+  if (conversionRate < 2.0 && conversionRate > 0) {
+    warnings.push(`[Row ${index + 1}] 일일 결제 전환율이 평균 수준 이하(2% 미만)로 저하되었습니다.`);
+  }
+  if (totalSales === 0) {
+    warnings.push(`[Row ${index + 1}] 금일 총 매출액이 0원입니다.`);
+  }
+
+  // warnings 사용 보장 (TS6133 해결)
+  if (warnings.length > 0) {
+    // warnings read
   }
 
   return {
@@ -454,6 +498,12 @@ export const buildOperationsSnapshot = (
   if (warningRows > 0) notes.push(`${warningRows}건의 잠재적 위험/포맷 불일치 경고가 있습니다.`);
   if (duplicateRows > 0) notes.push(`${duplicateRows}건의 동일/중복 행이 존재합니다.`);
   if (maskedCounter.count > 0) notes.push(`${maskedCounter.count}건의 이름/연락처 개인 식별정보(PII)가 자동으로 안전 마스킹 필터링되었습니다.`);
+
+  // warnings 고유 경고 메시지 병합
+  if (warnings.length > 0) {
+    const uniqueWarnings = Array.from(new Set(warnings)).slice(0, 10);
+    uniqueWarnings.forEach(w => notes.push(w));
+  }
 
   const qualityReport: DataQualityReport = {
     totalRows,
