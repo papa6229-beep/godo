@@ -10,6 +10,7 @@ import {
   resetApiBridgeState
 } from '../utils/apiBridgeStorage';
 import { buildOperationsSnapshot } from '../utils/dataNormalizer';
+import { checkProxyHealth, syncProxyResource } from '../services/secureProxyClient';
 import './ApiBridgePanel.css';
 
 interface ApiBridgePanelProps {
@@ -37,21 +38,53 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
   const [apiState, setApiState] = useState(() => loadApiBridgeState());
   const [syncingResource, setSyncingResource] = useState<ApiResourceType | 'all' | null>(null);
 
+  // 동기화 소스 및 프록시 상태 관리 추가
+  const [syncSource, setSyncSource] = useState<'local_mock' | 'secure_proxy'>('secure_proxy');
+  const [proxyHealth, setProxyHealth] = useState<{
+    status: string;
+    hasApiKey: boolean;
+    hasApiSecret: boolean;
+    hasBaseUrl: boolean;
+    productionLocked: boolean;
+  } | null>(null);
+
   // 컴포넌트 마운트 시 또는 상태 업데이트 시 동기화
   const syncStateFromStorage = () => {
     setApiState(loadApiBridgeState());
   };
 
-  // 1. 커넥터 연결 상태 테스트 핸들러
+  // 1. 커넥터 연결 상태 테스트 및 Secure Proxy 헬스 핸들러
   const handleTestConnection = async () => {
     appendApiBridgeLog('Testing connection to Mock Godomall server...', 'info');
     onAddLog('[API Bridge] Mock Godomall connector health check started.', 'info');
 
     // 모의 딜레이
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     appendApiBridgeLog('Test connection to Mock Godomall server succeeded. Status: 200 OK', 'info');
     appendApiBridgeLog('API key safety verification check: PASSED. No keys stored in browser.', 'safety');
+    
+    // Secure Proxy 연결 확인
+    appendApiBridgeLog('Connecting to Serverless Secure Proxy Boundary...', 'info');
+    const health = await checkProxyHealth();
+    setProxyHealth({
+      status: health.status,
+      hasApiKey: health.secrets.hasApiKey,
+      hasApiSecret: health.secrets.hasApiSecret,
+      hasBaseUrl: health.secrets.hasBaseUrl,
+      productionLocked: health.secrets.productionLocked
+    });
+
+    if (health.ok) {
+      appendApiBridgeLog(`[Secure Proxy] Health check completed. Status: ${health.status.toUpperCase()}`, 'info');
+      appendApiBridgeLog('[Secure Proxy] Production mode is locked. (보안 가드 적용)', 'safety');
+      appendApiBridgeLog('[Secure Proxy] API credentials were not exposed to browser.', 'safety');
+      onAddLog('[API Bridge] Secure Proxy Health Check completed successfully.', 'success');
+    } else {
+      appendApiBridgeLog('[Fallback] Secure Proxy boundary offline. Fallback to Local Mock Adapter is enabled.', 'warning');
+      onAddLog('[API Bridge] Secure Proxy is offline. Local Fallback enabled.', 'warning');
+    }
+
     onAddLog('[API Bridge] Mock Godomall connector health check completed.', 'success');
     onAddLog('[Safety] API credentials verify: SECURE (Not stored in client localStorage).', 'success');
 
@@ -68,31 +101,53 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     }
   };
 
-  // 3. 개별 리소스 Mock 동기화 핸들러
+  // 3. 개별 리소스 Mock 동기화 핸들러 (Secure Proxy 분기 지원)
   const handleSyncResource = async (resourceType: ApiResourceType) => {
     if (syncingResource) return;
     setSyncingResource(resourceType);
-    appendApiBridgeLog(`Starting sync for resource [${resourceType}]...`, 'info', resourceType);
-    onAddLog(`[API Bridge] [${resourceType.toUpperCase()}] 동기화 연동이 시작되었습니다.`, 'info');
+
+    const sourceLabel = syncSource === 'secure_proxy' ? 'secure_proxy_mock' : 'local_mock_adapter';
+    const sourceDesc = syncSource === 'secure_proxy' ? 'Secure Proxy Server' : 'Local Mock Adapter';
+
+    appendApiBridgeLog(`Starting sync for resource [${resourceType}] via [${sourceDesc}]...`, 'info', resourceType);
+    onAddLog(`[API Bridge] [${resourceType.toUpperCase()}] 동기화 연동이 시작되었습니다. (${sourceDesc})`, 'info');
 
     try {
-      // API에서 Mock 데이터 가져오기
-      const result = await runMockSync(resourceType);
+      let result;
+      if (syncSource === 'secure_proxy') {
+        result = await syncProxyResource(resourceType);
+        if (result.isFallback) {
+          appendApiBridgeLog('[Fallback] Secure Proxy unavailable. Local Mock Adapter used.', 'warning', resourceType);
+          onAddLog(`[API Bridge] [${resourceType.toUpperCase()}] Secure Proxy 서버 연동 실패로 Local Mock 데이터로 자동 대체되었습니다.`, 'warning');
+        } else {
+          appendApiBridgeLog(`[Secure Proxy] [${resourceType}] sync completed through server boundary.`, 'safety', resourceType);
+        }
+      } else {
+        const localRes = await runMockSync(resourceType);
+        result = {
+          rawItems: localRes.rawItems,
+          importedCount: localRes.importedCount,
+          maskedPiiCount: localRes.maskedPiiCount,
+          warningCount: localRes.warningCount,
+          isFallback: false,
+          sourceType: 'api_mock'
+        };
+      }
 
       // Data Connector의 Snapshot 업데이트 (Products는 이번 MVP에서 데이터 적재 제외 또는 Preview 전용)
       if (resourceType !== 'products') {
         const updatedSnapshot = buildOperationsSnapshot(resourceType, result.rawItems, activeOperationsData);
-        // 소스 타입을 api_mock으로 오버라이드
-        updatedSnapshot.sourceType = 'api_mock';
+        // 소스 타입 설정
+        updatedSnapshot.sourceType = (syncSource === 'secure_proxy' && !result.isFallback) ? 'api_proxy_mock' : 'api_mock';
         setActiveOperationsData(updatedSnapshot);
 
         // Import History에 데이터 추가
         const historyItem: ImportHistoryItem = {
           id: `import-api-${Date.now()}-${resourceType}`,
           timestamp: new Date().toISOString(),
-          fileName: `Godomall API (Mock Sync - ${resourceType.toUpperCase()})`,
+          fileName: `Godomall API (${(syncSource === 'secure_proxy' && !result.isFallback) ? 'Secure Proxy' : 'Mock Sync'} - ${resourceType.toUpperCase()})`,
           domain: resourceType as DataDomain,
-          sourceType: 'api_mock',
+          sourceType: updatedSnapshot.sourceType,
           rowCount: result.importedCount,
           status: 'success',
           qualityScore: updatedSnapshot.qualityReport?.qualityScore || 95
@@ -105,7 +160,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
         resourceType,
         status: 'success',
         completedAt: new Date().toISOString(),
-        source: 'Mock Godomall API',
+        source: sourceLabel,
         importedCount: result.importedCount,
         maskedPiiCount: result.maskedPiiCount,
         warningCount: result.warningCount
@@ -167,12 +222,16 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     }
   };
 
-  // 4. 모든 리소스 Mock 동기화 핸들러 (Products 제외 순차 동기화)
+  // 4. 모든 리소스 Mock 동기화 핸들러 (Secure Proxy 분기 지원)
   const handleSyncAllResources = async () => {
     if (syncingResource) return;
     setSyncingResource('all');
-    appendApiBridgeLog('Starting full mock resource sync...', 'info');
-    onAddLog('[API Bridge] 전역 Mock 리소스 연동이 개시되었습니다.', 'info');
+    
+    const sourceLabel = syncSource === 'secure_proxy' ? 'secure_proxy_mock' : 'local_mock_adapter';
+    const sourceDesc = syncSource === 'secure_proxy' ? 'Secure Proxy Server' : 'Local Mock Adapter';
+    
+    appendApiBridgeLog(`Starting full mock resource sync via [${sourceDesc}]...`, 'info');
+    onAddLog(`[API Bridge] 전역 Mock 리소스 연동이 개시되었습니다. (${sourceDesc})`, 'info');
 
     const resources: ApiResourceType[] = ['orders', 'inquiries', 'reviews', 'inventory', 'sales'];
     let totalImported = 0;
@@ -184,7 +243,26 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
 
       for (const res of resources) {
         appendApiBridgeLog(`Syncing [${res}]...`, 'info', res);
-        const result = await runMockSync(res);
+        
+        let result;
+        if (syncSource === 'secure_proxy') {
+          result = await syncProxyResource(res);
+          if (result.isFallback) {
+            appendApiBridgeLog('[Fallback] Secure Proxy unavailable. Local Mock Adapter used.', 'warning', res);
+          } else {
+            appendApiBridgeLog(`[Secure Proxy] [${res}] sync completed through server boundary.`, 'safety', res);
+          }
+        } else {
+          const localRes = await runMockSync(res);
+          result = {
+            rawItems: localRes.rawItems,
+            importedCount: localRes.importedCount,
+            maskedPiiCount: localRes.maskedPiiCount,
+            warningCount: localRes.warningCount,
+            isFallback: false,
+            sourceType: 'api_mock'
+          };
+        }
 
         currentSnapshot = buildOperationsSnapshot(res, result.rawItems, currentSnapshot);
         totalImported += result.importedCount;
@@ -195,7 +273,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
           resourceType: res,
           status: 'success',
           completedAt: new Date().toISOString(),
-          source: 'Mock Godomall API',
+          source: sourceLabel,
           importedCount: result.importedCount,
           maskedPiiCount: result.maskedPiiCount,
           warningCount: result.warningCount
@@ -205,9 +283,9 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
         newImportHistoryItems.push({
           id: `import-api-${Date.now()}-${res}`,
           timestamp: new Date().toISOString(),
-          fileName: `Godomall API (Mock Sync - ${res.toUpperCase()})`,
+          fileName: `Godomall API (${(syncSource === 'secure_proxy' && !result.isFallback) ? 'Secure Proxy' : 'Mock Sync'} - ${res.toUpperCase()})`,
           domain: res as DataDomain,
-          sourceType: 'api_mock',
+          sourceType: (syncSource === 'secure_proxy' && !result.isFallback) ? 'api_proxy_mock' : 'api_mock',
           rowCount: result.importedCount,
           status: 'success',
           qualityScore: currentSnapshot.qualityReport?.qualityScore || 95
@@ -225,8 +303,8 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
         await new Promise(resolve => setTimeout(resolve, 150));
       }
 
-      // Snapshot 적용 및 소스 타입 API로 변경
-      currentSnapshot.sourceType = 'api_mock';
+      // Snapshot 적용 및 소스 타입 변경
+      currentSnapshot.sourceType = (syncSource === 'secure_proxy') ? 'api_proxy_mock' : 'api_mock';
       setActiveOperationsData(currentSnapshot);
       setImportHistory(prev => [...newImportHistoryItems, ...prev]);
 
@@ -436,6 +514,22 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       <span className="field-val code locked">LOCKED (Server-Side Managed)</span>
                     </div>
                     <div className="field-item">
+                      <span className="field-lbl">Secure Proxy Server Boundary</span>
+                      <span className="field-val" style={{ color: proxyHealth ? (proxyHealth.status === 'ready' ? '#00ff88' : '#ff4d4d') : '#8892b0', fontWeight: 'bold' }}>
+                        {proxyHealth ? (proxyHealth.status === 'ready' ? 'Ready (Connected)' : 'Offline / Error') : 'Not Checked (체크 대기)'}
+                      </span>
+                    </div>
+                    <div className="field-item">
+                      <span className="field-lbl">Secrets Guard (API Key / Secret)</span>
+                      <span className="field-val" style={{ color: proxyHealth?.hasApiKey ? '#00ff88' : '#8892b0' }}>
+                        {proxyHealth ? (proxyHealth.hasApiKey ? 'Verified (Server-side)' : 'Missing (Using Server Mock)') : 'Hidden / Secure'}
+                      </span>
+                    </div>
+                    <div className="field-item">
+                      <span className="field-lbl">Production lock mode</span>
+                      <span className="field-val" style={{ color: '#fbbf24' }}>LOCKED (Sandbox Boundary)</span>
+                    </div>
+                    <div className="field-item">
                       <span className="field-lbl">커넥터 헬스 스코어</span>
                       <span className="field-val">
                         <span style={{ color: '#00ff88', fontWeight: 'bold' }}>{provider.healthScore}%</span>
@@ -456,7 +550,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       onClick={handleTestConnection}
                       disabled={syncingResource !== null}
                     >
-                      🔌 Test Mock Connection
+                      🛡️ Secure Proxy Health Check (Mock Test)
                     </button>
                     <button
                       className="api-action-btn danger"
@@ -474,18 +568,46 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
           {/* C. Resource Sync */}
           {subTab === 'sync' && (
             <div className="api-tab-pane">
-              <div className="sync-actions-header">
-                <p className="sync-info-text">
-                  API 커넥터를 연동하여 고도몰 몰스토어의 핵심 데이터를 수동 동기화(Sync)합니다. 
-                  동기화 완료 시 개인 식별 정보(PII)는 자동으로 안전 필터 마스킹을 통과하게 됩니다.
-                </p>
-                <button
-                  className="api-action-btn accent-btn"
-                  onClick={handleSyncAllResources}
-                  disabled={syncingResource !== null}
-                >
-                  {syncingResource === 'all' ? '🔄 Syncing All...' : '⚡ Sync All Mock Resources'}
-                </button>
+              <div className="sync-actions-header" style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <p className="sync-info-text" style={{ maxWidth: '60%' }}>
+                    API 커넥터를 연동하여 고도몰 몰스토어의 핵심 데이터를 수동 동기화(Sync)합니다. 
+                    동기화 완료 시 개인 식별 정보(PII)는 자동으로 안전 필터 마스킹을 통과하게 됩니다.
+                  </p>
+                  <button
+                    className="api-action-btn accent-btn"
+                    onClick={handleSyncAllResources}
+                    disabled={syncingResource !== null}
+                  >
+                    {syncingResource === 'all' ? '🔄 Syncing All...' : '⚡ Sync All Mock Resources'}
+                  </button>
+                </div>
+
+                <div className="sync-source-selector" style={{ display: 'flex', alignItems: 'center', gap: '15px', background: 'rgba(10, 15, 26, 0.4)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#8892b0', fontWeight: 'bold' }}>동기화 소스 (Sync Source):</span>
+                  <label style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#e0e6ed' }}>
+                    <input 
+                      type="radio" 
+                      name="syncSource" 
+                      value="secure_proxy" 
+                      checked={syncSource === 'secure_proxy'}
+                      onChange={() => setSyncSource('secure_proxy')}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>🛡️ Secure Proxy Server Mock (추천)</span>
+                  </label>
+                  <label style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#e0e6ed' }}>
+                    <input 
+                      type="radio" 
+                      name="syncSource" 
+                      value="local_mock" 
+                      checked={syncSource === 'local_mock'}
+                      onChange={() => setSyncSource('local_mock')}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>🔌 Local Mock Adapter</span>
+                  </label>
+                </div>
               </div>
 
               <div className="resources-sync-grid">

@@ -61,7 +61,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({
       csv: 'CSV Import',
       json: 'JSON Import',
       manual: 'Manual Input',
-      api_mock: 'Mock API'
+      api_mock: 'Mock API',
+      api_proxy_mock: 'Secure Proxy Mock'
     };
 
     return {

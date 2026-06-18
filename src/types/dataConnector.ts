@@ -1,6 +1,6 @@
 export type DataDomain = 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales';
 
-export type DataSourceType = 'demo' | 'csv' | 'json' | 'manual' | 'api_mock';
+export type DataSourceType = 'demo' | 'csv' | 'json' | 'manual' | 'api_mock' | 'api_proxy_mock';
 
 export type DataImportStatus = 'idle' | 'parsing' | 'success' | 'warning' | 'error';
 
