@@ -171,15 +171,15 @@ GODO AI OS에는 9명의 AI 에이전트가 사전 정의되어 있습니다.
     4.  `Hybrid Auto`: 에이전트 스킬의 요구 수준과 보안 등급을 실시간으로 분석해 최적의 모델로 동적 할당.
     5.  `Manual Control`: 사용자가 작업마다 사용할 인스턴스를 하나하나 수동 할당.
 *   **Provider 종류 (시뮬레이션)**:
-    *   **Local Engines**: `GodoSLM-8B-Instruct` (로컬 Gemma 8B 타겟), `Local Vision OCR` (로컬 이미지 분석용).
-    *   **Cloud Engines**: `Gemini Flash`, `Gemini Pro`, `Claude Creative`, `OpenAI Reasoning`.
+    *   **Local Engines**: `GodoSLM-8B-Instruct` (예시/경량 Gemma 모델 후보), `Local Vision OCR` (로컬 이미지 분석용 예시). 현재 설치 및 로드된 정확한 Gemma 모델 ID는 LM Studio의 `/v1/models` 호출로 **확인 필요**하며, 실제 구현 시에는 사용자의 LM Studio가 반환하는 model id를 기준으로 동적으로 설정해야 합니다.
+    *   **Cloud Engines**: `Gemini Flash`, `Gemini Pro`, `Claude Creative`, `OpenAI Reasoning` (시뮬레이션용 목록, 실제 호출 **미구현**).
     *   **Human Gate**: 시스템 수준이 아니라 운영자 자신이 추론의 종단 노드가 되는 승인 게이트.
 *   **localStorage key**:
     *   `godo.engine.mode`
     *   `godo.engine.providers`
     *   `godo.engine.routingRules`
     *   `godo.engine.safetyRules`
-*   **보안 규칙**: **클라이언트 브라우저 측 localStorage에는 클라우드 API Key를 절대 저장하지 않는 것을 원칙**으로 합니다. API Key가 필요한 동작은 반드시 Secure Proxy 서버를 통하도록 설계되었습니다.
+*   **보안 규칙**: **클라이언트 브라우저 측(localStorage, sessionStorage, indexedDB, 전역 상태 등)에는 어떠한 API Key도 입력받거나 저장하지 않는 것을 원칙**으로 합니다. 실제 인증 정보 및 API 키는 Vercel 환경변수와 Secure Proxy 서버 사이드에서만 안전하게 관리합니다. `/api/godomall/health` API 응답에서도 키 존재 여부(boolean)만 반환하고 원본 값은 노출하지 않습니다.
 
 ---
 
@@ -196,8 +196,10 @@ GODO AI OS에는 9명의 AI 에이전트가 사전 정의되어 있습니다.
     *   **Import History**: 파일명, row 수, 소스 타입, 가져온 시점이 누적 기록됨.
     *   **riskFlags 생성**: 정규화 과정에서 품절 위험, 배송 지연, 송장 누락, 미입금 장기화, 악성 리뷰 등 비즈니스 이슈를 탐지하여 위험 태그(`riskFlags`) 리스트를 부여합니다.
 *   **localStorage key**:
-    *   `godo.operationsData` (정규화가 완료된 activeOperationsData 스냅샷)
-    *   `godo.importHistory` (가져오기 이력 데이터)
+    *   `godo.data.activeSnapshot` (정규화가 완료된 Standard 데이터 스냅샷)
+    *   `godo.data.importHistory` (가져오기 이력 데이터)
+    *   `godo.data.lastSavedAt` (마지막 데이터 저장 타임스탬프)
+    *   *비고*: 과거 설계 문서 등에서 언급된 `godo.operationsData` 및 `godo.importHistory` 키는 현재 구현된 소스 코드에서는 사용되지 않는 **deprecated (과거 언급) 키**입니다. 실제 코드는 `godo.data.*` 네임스페이스를 준수합니다.
 *   **검증 상태**: `orders_sample_utf8.csv` 12건의 주문 샘플 업로드 및 마스킹, 데이터 품질 점수 95점 획득 등의 파일 업로드 테스트 및 워크플로우 정상 반영이 입증 완료되었습니다.
 
 ---
@@ -224,6 +226,8 @@ GODO AI OS에는 9명의 AI 에이전트가 사전 정의되어 있습니다.
 *   **DataPanel View**: 캘린더 지표 우측에서 당일 수집된 원본 데이터의 마스킹된 목록을 도메인별(주문/CS/리뷰 등) 탭으로 직접 조회할 수 있습니다.
 *   **localStorage key**:
     *   `godo.calendar.operationHistory` (일일 요약 지표 리스트가 배열로 저장)
+    *   `godo.calendar.lastSelectedDate` (마지막 선택 날짜 문자열)
+    *   `godo.calendar.lastViewedMonth` (마지막 조회 년-월 문자열)
 *   **보안 원칙**: 캘린더 히스토리에 기재되는 모든 지표 및 이벤트 하이라이트 요약에는 원본 PII가 포함되지 않고, 마스킹된 상태 또는 통계 수치만 저장됩니다.
 
 ---
@@ -239,7 +243,13 @@ GODO AI OS에는 9명의 AI 에이전트가 사전 정의되어 있습니다.
     *   **Safety Log**: API Key 검증 상태, 허가되지 않은 도메인 연결 시도 등 통신상의 위험 신호를 모니터링하여 로그를 생성합니다.
     *   **Permission Gate**: 동기화된 각 도메인 리소스에 대해 `read_only`, `draft_only`, `approval_required` 권한 설정을 제어합니다.
 *   **연동 영향**: 동기화에 성공하면 추출된 Mock 데이터가 즉시 `activeOperationsData`로 바인딩되어 OFFICE 대시보드 및 CALENDAR 패널의 데이터가 갱신됩니다.
-*   **중요 철학**: 브릿지 UI 내부에서 API Key 입력 테스트 창을 제공하지만, **이 키는 localStorage에 절대 보존하지 않고** 세션 내 메모리로만 유지되거나 백엔드로 토큰 유효성 검사만 수행합니다.
+*   **중요 철학 (API Key 미저장)**: API Bridge는 Mock Sync, Secure Proxy Health Check, Permission Gate, Sync History, Safety Log를 제공합니다. 실제 고도몰 API Key는 프론트엔드 입력 UI를 통해 받거나 노출하지 않으며, `localStorage`, `sessionStorage`, `indexedDB` 또는 브라우저의 전역 상태값에도 절대 저장하지 않습니다. 실제 인증 정보는 추후 Vercel 환경변수와 Secure Proxy 서버 사이드에서만 안전하게 관리합니다. 또한 API Key 값은 화면, 로그, 응답 JSON에 절대 노출하지 않으며, `/api/godomall/health` 응답에서도 실제 키 값이 아닌 존재 여부를 나타내는 boolean 값만 반환합니다.
+*   **localStorage key**:
+    *   `godo.apiBridge.mode` (브릿지 동작 모드)
+    *   `godo.apiBridge.providers` (동기화 공급자 목록)
+    *   `godo.apiBridge.syncJobs` (동기화 작업 이력 목록)
+    *   `godo.apiBridge.logs` (안전/보안 로그 목록)
+    *   `godo.apiBridge.lastSyncAt` (마지막 동기화 성공 타임스탬프)
 
 ---
 
@@ -318,16 +328,17 @@ GODO AI OS는 상시 클라우드 요금 폭탄과 프라이버시 침해를 방
     (CS 분류, 송장 누락 검출,             (시장 조사, 타겟 메일 기획,
      안전 재고 경보, 일일 리포팅)          경쟁사 분석, 마케팅 전략)
             |                                     |
-  [ 로컬 SLM (Gemma 8B) ]                [ 클라우드 LLM (Gemini/Claude) ]
+  [ 로컬 SLM (Gemma 모델, 확인 필요) ]       [ 클라우드 LLM (Gemini/Claude, 미구현) ]
   - 비용: 0원                             - 비용: 사용한 만큼 (토큰 기반)
   - 보안: 로컬망 외부 유출 없음            - 보안: 프록시 필터 및 PII 마스킹 적용
+                                            (실제 호출 및 프록시 연동 미구현)
 ```
 
 ### B. 로컬 LLM 환경 구현 모드
 운영 환경에 따라 아래 3가지 로컬 구동 방식을 선택적으로 사용합니다.
 
 1.  **개인용 로컬 모드 (Personal Local Mode)**:
-    *   운영자 개인이 사용하는 PC에 LM Studio 또는 Ollama를 켜고 백그라운드로 `Gemma-2-9b-it` 등 경량 모델을 구동합니다.
+    *   운영자 개인이 사용하는 PC에 LM Studio 또는 Ollama를 켜고 백그라운드로 로컬 경량 모델(예시: `Gemma-2-9b-it` 등, 실제 모델 ID는 **확인 필요**)을 구동합니다.
     *   프론트엔드 엔진 설정실에서 `http://localhost:1234/v1` 로 연결 타겟을 설정하여 독립 실행합니다.
 2.  **사무실 공용 서버 모드 (Office Local Server Mode)**:
     *   사무실 내부의 성능이 좋은 공용 PC 한 대에 LM Studio 서버를 열어놓고 모델을 상시 로드합니다.
@@ -342,17 +353,18 @@ GODO AI OS는 상시 클라우드 요금 폭탄과 프라이버시 침해를 방
 
 1.  **완전한 무료 인프라**: 수만 건의 반복 주문 수집 및 분류 태스크에 상용 API를 사용하면 막대한 토큰 과금이 발생하지만, 로컬 실행은 하드웨어 전력비 외에 추가 비용이 0원입니다.
 2.  **강력한 프라이버시(보안)**: 고객의 주문 내역 및 주소 등의 데이터가 로컬 네트워크 밖으로 절대 송출되지 않아 대외 정보 보안 심사를 통과하기에 매우 수월합니다.
-3.  **작은 크기 대비 높은 한글 성능**: Gemma-2 9B 및 2B 모델은 한국어 지시 이행 능력과 JSON 정규 포맷 출력력이 매우 뛰어나, CS 문의 분류나 재고 현황 요약과 같은 정형 태스크에 최적화되어 있습니다.
+3.  **작은 크기 대비 높은 한글 성능**: 로컬 Gemma 모델 군(예시: Gemma-2 9B, 2B 등, 실제 사용 모델은 **확인 필요**)은 한국어 지시 이행 능력과 JSON 정규 포맷 출력력이 매우 뛰어나, CS 문의 분류나 재고 현황 요약과 같은 정형 태스크에 적합한 것으로 평가됩니다.
 
 ---
 
 ## 21. Cloud AI 사용 기준
 
-### Cloud AI 전용 업무
-*   인터넷 실시간 검색 연동이 필요한 외부 시장 트렌드 분석.
+### Cloud AI 전용 업무 (미구현 / 예정)
+*   외부 시장 트렌드 분석 및 심층 비즈니스 전략 기획.
 *   자사 쇼핑몰 상품 카테고리와 경쟁사 가격 변동 추이의 장기적 매출 예측 분석.
 *   민감도가 높은 클레임(블랙컨슈머 대응, 법적 분쟁 등)에 대한 정교한 설득 문안 작성.
 *   분기별 마케팅 대책 수립 및 프로모션 헤드카피 추천 기획.
+*   *주의 (외부 검색 기능 격리)*: 외부 자료 검색/수집 및 실시간 시장조사는 Cloud AI 모델 자체 기능만으로 자동 보장되지 않습니다. 실제 웹 정보 수집을 위해서는 Web Search Tool, 검색 API, 브라우징 도구 또는 별도 수집 파이프라인(현재 **미구현**)이 필요할 수 있습니다. Cloud AI는 수집된 자료의 요약, 분석, 예측, 전략 제안에 주로 활용합니다.
 
 ### Cloud AI 기본 비채택 사유
 *   비용의 가성비 미달 (단순 주문 이상 감지는 굳이 수십억 매개변수의 클라우드 추론 능력을 요하지 않음).
@@ -361,19 +373,22 @@ GODO AI OS는 상시 클라우드 요금 폭탄과 프라이버시 침해를 방
 
 ---
 
-## 22. 다음 예정 작업: GODO LLM BRIDGE MVP
+## 22. 다음 예정 작업: GODO LLM BRIDGE MVP (미구현 / 예정)
 
-다음 개발 단계는 가상의 시뮬레이션 엔진을 넘어 실제 로컬 LM Studio와 통신을 개시하는 **GODO LLM BRIDGE** 구축입니다.
+다음 개발 단계는 가상의 시뮬레이션 엔진을 넘어 실제 로컬 LM Studio와 통신을 개시하는 **GODO LLM BRIDGE** 구축입니다. 이번 MVP 범위에서는 로컬 통신을 중심으로 설계하며, Cloud AI 직접 호출은 MVP 범위가 아니므로 추후 Secure Proxy 기반으로 별도 설계합니다.
 
 ### 세부 목표 및 단계
-1.  **LM Studio 연결 체크**: ENGINE 설정 탭에서 로컬 호스트(`http://localhost:1234`)에 REST 통신을 쏘아 `/v1/models` 목록을 읽고 Gemma 로드 상태를 녹색 활성 아이콘으로 표기합니다.
-2.  **채트 컴플리션 통신 구현**: `ChatConsole` 또는 오늘의 운영 태스크 수행 시 `axios`/`fetch`를 사용해 `/v1/chat/completions` API 규격(OpenAI 호환)으로 프롬프트를 전송하고 응답을 파싱합니다.
-3.  **CS 상담 AI 초기 연동**: 
-    *   운영 데이터 중 **미답변 상태의 문의 1~3건**을 초기 추출합니다.
-    *   CS 상담 AI의 시스템 프롬프트와 참조용 `cs_policy.md` 지식을 컨텍스트로 묶어 로컬 Gemma에 답변 생성을 요청합니다.
-    *   생성된 임시 답변 텍스트를 **Approval Queue**에 추가하여 운영자가 눈으로 확인하고 승인/반려할 수 있도록 카드로 제공합니다.
-    *   Activity Log 및 Engine Usage Log에 사용된 모델 인스턴스 정보와 토큰 소모 통계가 정상 기록되어야 합니다.
-    *   *Cloud Assist 모드* 선택 시에는 Secure Proxy 서버 엔드포인트(`/api/cloud-llm` 등 예정)를 거쳐 마스킹된 요청이 나가도록 설계하고, 현재 단계에서는 placeholder 처리해 둡니다.
+1.  **LM Studio 연결 체크 및 모델 조회**: ENGINE 설정 탭에서 로컬 호스트의 기본 endpoint 후보인 `http://localhost:1234/v1`로 REST 통신을 전송하여 `/v1/models` 목록을 동적으로 읽어옵니다. 로드된 Gemma 모델 목록 상태에 따라 연결 상태를 시각화합니다.
+2.  **채트 컴플리션 통신 구현**: `ChatConsole` 또는 오늘의 운영 태스크 수행 시 `/v1/chat/completions` API 규격(OpenAI 호환)으로 실제 응답 생성 테스트를 수행하고 결과를 파싱합니다.
+3.  **CS 상담 AI 초기 연동 (1차 대상 제한)**:
+    *   첫 구현 대상은 **CS 상담 AI**로 엄격히 제한하여 작업을 진행합니다.
+    *   운영 데이터([godo.data.activeSnapshot](file:///d:/godo/src/components/DataPanel.tsx)) 중 **미답변 상태의 문의 1~3건**을 초기 타겟으로 추출합니다.
+    *   고객 원본 개인정보(PII)는 프롬프트에 포함하지 않고 비식별 상태로 전송합니다.
+    *   CS 상담 AI의 시스템 프롬프트와 참조용 `cs_policy.md` 지식을 컨텍스트로 묶어 로컬 Gemma에 답변 작성을 요청합니다.
+    *   **Fallback 구조**: 만약 LM Studio 연결 실패 등의 사유로 LLM 통신이 불가능할 경우, 기존의 mock/template workflow 답변으로 안정적으로 fallback하게 설계합니다.
+    *   생성된 답변은 실제 쇼핑몰에 바로 등록하지 않고 **Approval Queue**에 초안(Draft) 카드로 올려 운영자가 검토 후 승인할 수 있도록 제어합니다.
+    *   **로깅**: `Activity Log` 및 `Engine Usage Log`에 사용 모델 ID, local mode 여부, 요청 성공/실패 상태를 명확히 기록합니다.
+    *   *Cloud Assist 모드*는 현재 구현 범위 외이므로 UI상에서 placeholder 처리하거나 disabled 상태로 유지합니다.
 
 ---
 
@@ -443,13 +458,14 @@ GODO AI OS는 상시 클라우드 요금 폭탄과 프라이버시 침해를 방
 
 ```markdown
 [GODO AI OS 프로젝트 1차 컨텍스트 인수인계 요약]
-1. 프로젝트 소개: 고도몰(GodoMall) 쇼핑몰 운영 업무를 보조하는 픽셀아트 기반 다중 AI 에이전트 대시보드(MVP 완료).
-2. 현재 완료된 컴포넌트: 
-   - '오늘의 운영'(Dashboard), '운영 데이터'(CSV 수집/마스킹), '운영 캘린더'(일별 성과 추적), 'API 연동 브릿지'(Mock 동기화)
-   - 'AI 직원 명부'(9인의 에이전트 명세), '운영 지식실'(RAG용 14개 문서), '에이전트 설정실'(Studio), 'AI 모델 라우터'(Engine)
-3. 서버 인프라: Vercel Serverless Function에 기반한 Secure Proxy(api/godomall/*) 구축 완료. ESM 상대경로 import 확장자(.js) 및 프론트 의존 격리 픽스 완료.
-4. 핵심 보안 원칙: API Key 평문 저장 금지(서버 환경변수화), 클라우드 요청 전 선제 PII 마스킹 필수.
-5. 당면 목표: 로컬 LM Studio와 통신을 시작하여 CS 에이전트가 미답변 문의에 대한 실제 답변 초안을 Gemma를 통해 생성하고 이를 Approval Queue로 전달하는 'GODO LLM BRIDGE MVP' 구현 준비 단계임.
+1. 프로젝트 소개: 고도몰(GodoMall) 쇼핑몰 운영 업무를 보조하는 픽셀아트 기반 다중 AI 에이전트 대시보드(MVP 완료, Vercel 배포 완료).
+2. 현재 완료 상태 (확인된 사실):
+   - '오늘의 운영'(Dashboard), '운영 데이터'(CSV 수집/마스킹), '운영 캘린더'(일별 성과 추적), 'API 연동 브릿지'(Mock 동기화) 컴포넌트 구현 완료.
+   - Vercel Production 배포 및 `/api/godomall/health` (200 OK), `/api/godomall/sync` (POST 통신) 정상 작동 확인 완료.
+   - API Key는 프론트엔드 UI나 localStorage에 절대 입력받거나 저장하지 않음.
+3. 미구현 및 예정 사항:
+   - 실제 LLM 연결, LM Studio 실 모델 ID 확인, 외부 검색 연동, 실제 고도몰 API 연결 및 승인 후 Write Action(실제 CS 답변 등록, 쿠폰 발급, 가격 수정 등)은 모두 미구현 상태임.
+4. 당면 목표: 다음 작업은 'GODO LLM BRIDGE MVP' 구현입니다. 기본 전략은 Local Gemma First, Cloud Assist Optional이며, 실제 LM Studio의 Gemma 모델 ID는 API 호출을 통해 확인해야 합니다. 실제 고도몰 API 연결은 LLM Bridge 구축 후 별도의 API Mapping Plan을 수립하여 read-only 어댑터부터 점진적으로 연동할 예정입니다.
 ```
 
 ---
@@ -461,12 +477,15 @@ GODO AI OS는 상시 클라우드 요금 폭탄과 프라이버시 침해를 방
 ```markdown
 "GODO AI OS 프로젝트의 마스터 컨텍스트(docs/PROJECT_STATE.md)를 확인했습니다.
 이제 다음 단계 작업인 [GODO LLM BRIDGE MVP]를 시작하고자 합니다.
-기본 스택인 React + TypeScript + Vite 구조를 유지하며, 다음 사항을 순차적으로 수행하는 구현 계획과 코드를 제안해주세요.
+기본 스택인 React + TypeScript + Vite 구조를 유지하며, 기존 Workflow, API Bridge, Secure Proxy, Data Connector 등의 핵심 컴포넌트 아키텍처를 훼손하지 않고 다음 사항을 순차적으로 구현해주세요.
 
-1. src/services/lmsConnector.ts(또는 적절한 명칭의 파일)를 생성하여, 로컬 LM Studio 서버(기본값 http://localhost:1234)의 헬스체크 및 모델 조회(/v1/models), 대화 생성(/v1/chat/completions) 통신 클라이언트를 작성합니다.
-2. EnginePanel.tsx의 로컬 엔진 테스트 버튼 및 연결 상태 표시등이 실제 이 클라이언트와 연동되어 연결 여부를 시각화(녹색/적색 표시)할 수 있도록 바인딩합니다.
-3. 오늘의 운영 화면에서 START OPERATION이 구동될 때, 'CS 상담 AI'가 데이터 소스(StandardInquiry)에 있는 미답변 문의 1~3건을 추출하여 lmsConnector를 통해 실제 로컬 Gemma 모델에 답변 작성을 요청하도록 taskExecutor.ts 및 관련 비즈니스 로직을 보완합니다.
-4. 로컬 LLM이 리턴한 답변 텍스트를 Mock 데이터 대신 실제 Approval Queue의 카드 상세 내용으로 바인딩하며, 사용된 모델명과 연동 타임라인을 Activity Log에 기록하도록 완성합니다.
-
-모든 작업은 비파괴적으로 수행하고, API Key가 노출되거나 기존의 데이터 마스킹 흐름이 훼손되지 않도록 주의해주세요. 작업 완료 후 lint 및 tsc 빌드 무오류를 확인해야 합니다."
+1. 먼저 LM Studio의 연결 상태 및 모델 목록 확인 기능부터 구현합니다. [lmsConnector.ts](file:///d:/godo/src/services/lmsConnector.ts)를 생성하고 기본 endpoint 후보인 `http://localhost:1234/v1`을 연동합니다.
+2. `/v1/models` API 호출을 통해 로컬에 로드된 모델 목록을 받아오며, 특정 모델 ID를 하드코딩하지 않고 사용자가 선택하거나 첫 번째 모델 ID를 기본값으로 동적 할당할 수 있게 구현합니다.
+3. [EnginePanel.tsx](file:///d:/godo/src/components/EnginePanel.tsx)의 로컬 엔진 연결 상태 테스트 버튼 및 연결 표시등을 이 커넥터와 연동하여 연결 여부를 녹색/적색 표시등으로 시각화합니다.
+4. `/v1/chat/completions` API를 호출하는 실제 대화 생성 기능을 구현하여 CS 상담 AI에만 1차적으로 한정 적용합니다.
+5. '오늘의 운영' 화면의 START OPERATION 중, CS 상담 AI가 데이터 소스의 미답변 문의 1~3건을 추출할 때 고객 개인정보는 제외하고 전달하여 답변 초안 생성을 요청합니다.
+6. 만약 LM Studio 서버가 꺼져 있거나 연결에 실패할 경우, 기존의 mock/template workflow 로직으로 안전하게 fallback 되도록 가드를 작성합니다.
+7. 생성된 답변 초안은 실제 CS 시스템에 즉시 등록하지 않고, [TaskBoard.tsx](file:///d:/godo/src/components/TaskBoard.tsx) 및 Approval Queue 카드 내역에 초안 상태로 적재합니다. Activity Log에는 사용된 모델 ID, local mode 활성화 여부, 요청 성공/실패 여부를 정확히 로깅합니다.
+8. Cloud AI 직접 호출은 MVP 범위가 아니므로 아직 연동하지 않습니다.
+9. 작업이 완료되면 lint 검사(`npm run lint`), TypeScript 컴파일 검사(`npx tsc --noEmit`), 배포 빌드 검사(`npm run build`)가 정상 통과됨을 명확히 검증해주세요."
 ```
