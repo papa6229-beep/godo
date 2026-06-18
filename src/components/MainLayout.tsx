@@ -12,6 +12,8 @@ import { ActivityLog } from './ActivityLog';
 import { BrainPanel } from './BrainPanel';
 import { StudioPanel } from './StudioPanel';
 import { EnginePanel } from './EnginePanel';
+import { DataPanel } from './DataPanel';
+import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
 import './MainLayout.css';
 
 interface MainLayoutProps {
@@ -19,9 +21,9 @@ interface MainLayoutProps {
   tasks: OperationTask[];
   logs: LogEntry[];
   isSimulating: boolean;
-  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine';
+  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data';
   approvalQueue: ApprovalItem[];
-  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine') => void;
+  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data') => void;
   onStartSimulation: () => void;
   onAddTask: (title: string, agentId: string) => void;
   onSelectAgent: (agent: Agent) => void;
@@ -62,6 +64,12 @@ interface MainLayoutProps {
   onUpdateEngineRoutingRules: (rules: EngineRoutingRule[]) => void;
   onUpdateEngineSafetyRules: (rules: EngineSafetyRule[]) => void;
   onUpdateEngineUsageLogs: (logs: EngineUsageLog[]) => void;
+
+  // Data Connector 관련 props
+  activeOperationsData: OperationsDataSnapshot;
+  setActiveOperationsData: React.Dispatch<React.SetStateAction<OperationsDataSnapshot>>;
+  importHistory: ImportHistoryItem[];
+  setImportHistory: React.Dispatch<React.SetStateAction<ImportHistoryItem[]>>;
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({
@@ -107,7 +115,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onUpdateEngineProviders,
   onUpdateEngineRoutingRules,
   onUpdateEngineSafetyRules,
-  onUpdateEngineUsageLogs
+  onUpdateEngineUsageLogs,
+  
+  activeOperationsData,
+  setActiveOperationsData,
+  importHistory,
+  setImportHistory
 }) => {
   return (
     <div className="main-layout">
@@ -172,6 +185,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               title="AI 모델 엔진 라우터 설정"
             >
               🚀 ENGINE
+            </button>
+            <button
+              className={`nav-tab-btn ${activeTab === 'data' ? 'active' : ''}`}
+              onClick={() => setActiveTab('data')}
+              title="쇼핑몰 데이터 적재 및 관리"
+            >
+              📡 DATA
             </button>
             <button
               className={`nav-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
@@ -285,6 +305,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             <div className="full-logs-panel">
               <ActivityLog logs={logs} onClearLogs={onClearLogs} />
             </div>
+          )}
+
+          {activeTab === 'data' && (
+            <DataPanel
+              activeOperationsData={activeOperationsData}
+              setActiveOperationsData={setActiveOperationsData}
+              importHistory={importHistory}
+              setImportHistory={setImportHistory}
+              onAddLog={onAddLog}
+            />
           )}
         </main>
       </div>

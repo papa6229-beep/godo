@@ -14,7 +14,7 @@ interface PixelAgentSpriteProps {
   onClick: () => void;
 }
 
-export const SPRITE_DEBUG = {
+const SPRITE_DEBUG = {
   frameWidth: 48,
   frameHeight: 96,
   frameCount: 6,

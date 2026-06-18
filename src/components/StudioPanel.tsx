@@ -1,5 +1,6 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useState, useEffect, useMemo } from 'react';
-import type { BrainKnowledgeItem, BrainCategory, ImportanceLevel } from '../types/brain';
+import type { BrainKnowledgeItem, BrainCategory, ImportanceLevel, SourceType } from '../types/brain';
 import type { Agent, LogEntry } from '../types';
 import type { SkillItem, ToolItem, PermissionMatrixItem } from '../types/studio';
 import type { TaskPermission, TaskRiskLevel } from '../types/task';
@@ -479,8 +480,9 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
       
       onAddLog('[Studio] Engine 설정을 포함한 전체 운영 설정을 불러왔습니다.', 'success', 'Studio');
       showToast('설정이 성공적으로 로드 및 복원되었습니다.', 'success');
-    } catch (err: any) {
-      setImportError(`JSON 파싱 오류: ${err.message}`);
+    } catch (err) {
+      const error = err as Error;
+      setImportError(`JSON 파싱 오류: ${error.message}`);
       onAddLog('[Studio] 백업 파일 로딩에 실패했습니다. (파싱 깨짐 경고)', 'error', 'Studio');
     }
   };
@@ -642,7 +644,7 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
                     <label>데이터 소스 타임</label>
                     <select
                       value={brainForm.sourceType || 'markdown'}
-                      onChange={e => setBrainForm({ ...brainForm, sourceType: e.target.value as any })}
+                      onChange={e => setBrainForm({ ...brainForm, sourceType: e.target.value as SourceType })}
                     >
                       <option value="demo">DEMO</option>
                       <option value="markdown">MARKDOWN</option>

@@ -1,0 +1,560 @@
+# GODO AI OS 프로젝트 인수인계 문서
+
+## 1. 프로젝트 목적
+
+GODO AI OS는 고도몰 기반 쇼핑몰 운영을 보조하는 AI 운영 시스템이다.
+
+목표는 단순 챗봇이 아니라, 쇼핑몰 운영팀처럼 움직이는 다중 AI 에이전트 운영 대시보드를 만드는 것이다.
+
+핵심 방향은 다음과 같다.
+
+* 주문 확인
+* CS 문의 분류 및 답변 초안
+* 배송/송장 상태 확인
+* 리뷰 답글 초안
+* 재고 위험 감지
+* 매출 요약
+* 마케팅 캠페인 제안
+* 정책/지식 기반 판단
+* 승인 필요한 작업은 사람이 최종 승인
+
+최종 철학은 “완전 자동화”가 아니라 “Human-approved AI Operations OS”이다.
+
+즉, AI가 초안 작성, 분석, 감지, 제안을 담당하고, 위험도가 높은 실행은 운영자가 승인하는 구조다.
+
+---
+
+## 2. 현재 프로젝트 기본 정보
+
+프로젝트명:
+GODO AI OS
+
+로컬 프로젝트 폴더:
+D:\godo
+
+기술 스택:
+
+* Vite
+* React
+* TypeScript
+* CSS
+* localStorage 기반 설정 저장
+* 현재 실제 API, 실제 LLM, 실제 RAG는 연결하지 않은 Mock MVP 단계
+
+GitHub 저장소:
+https://github.com/papa6229-beep/godo.git
+
+배포:
+Vercel 배포 성공
+배포 URL 확보 완료
+
+현재 상태:
+1차 MVP 구조가 GitHub와 Vercel에 저장 및 배포된 상태
+
+---
+
+## 3. 전체 시스템 개념
+
+GODO AI OS의 현재 구조는 다음과 같다.
+
+OFFICE:
+운영 현장 대시보드. 픽셀 오피스, 에이전트 작업 상태, Today’s Tasks, Approval Queue, Activity Log를 보여준다.
+
+AGENTS:
+AI 직원 명부. 각 에이전트의 역할, 지식, 스킬, 도구, 권한, 메모리를 확인한다.
+
+BRAIN:
+쇼핑몰 운영 AI들이 참조하는 공용 지식 저장소. 정책 문서, 템플릿, 리포트, 의사결정 로그, 재고 스냅샷 등을 관리한다.
+
+STUDIO:
+운영자가 앱 안에서 Brain 문서, Agent 설정, Skill, Tool, Permission Matrix를 직접 편집하는 관리자 편집실이다.
+
+ENGINE:
+작업을 Local, Cloud, Hybrid, Human Approval 중 어디로 보낼지 결정하는 AI 모델 라우터 설정 화면이다.
+
+WORKFLOW:
+START OPERATION 실행 시 각 AI 에이전트가 작업을 수행하는 Mock Workflow Engine이다.
+
+APPROVAL:
+고위험 작업은 자동 실행하지 않고 Approval Queue로 보내 사람이 승인/거절한다.
+
+REPORT:
+운영 종료 후 자동 처리 건수, 승인 대기 건수, 위험 신호, 권장 조치를 리포트 모달로 보여준다.
+
+---
+
+## 4. 구현 완료된 주요 기능
+
+### 4-1. 디자인 및 레이아웃
+
+초기 구식 UI를 premium dark console 스타일로 리디자인했다.
+
+디자인 방향:
+
+* 다크 SF 콘솔
+* 반투명 패널
+* 민트 포인트
+* 과한 네온 초록 사용 금지
+* 카드 기반 UI
+* 내부 스크롤 안정화
+* 100dvh 고정 레이아웃
+
+레이아웃 이슈도 해결했다.
+
+수정 내용:
+
+* 전체 앱 height 100dvh 기준 고정
+* main viewport에 min-height: 0 적용
+* System Activity Log 높이 고정
+* 우측 Today’s Tasks / Approval Queue 내부 스크롤 처리
+* ReportModal 닫은 뒤 body/html scroll lock cleanup 처리
+
+---
+
+### 4-2. 픽셀 오피스 / 캐릭터 모션
+
+Connect AI 스타일의 픽셀 오피스 화면을 구성했다.
+
+사용 에셋:
+
+* map.jpeg
+* pixel characters
+* Office_Design_2.gif
+* business, ceo, designer, developer, editor, instagram, researcher, secretary, writer, youtube 캐릭터
+
+스프라이트 관련 중요값:
+
+* 1프레임 48x96px
+* 걷기 모션과 idle 모션 구분
+* 후면 모션 Y index 관련 오류 수정 완료
+* 캐릭터 전신 표시 문제 해결
+* 회전, 점멸, 사라짐 문제 해결
+
+현재 동작:
+
+* START OPERATION 중 작업 에이전트가 활성 상태 표시
+* 말풍선 및 작업 상태 표시
+* 완료 후 idle 복귀
+
+---
+
+### 4-3. Mock Agent Workflow Engine
+
+START OPERATION 버튼을 누르면 7개 운영 작업이 순차 실행된다.
+
+구현된 흐름:
+
+* 작업 생성
+* 에이전트 배정
+* Skill 활성화 로그
+* Brain 지식 참조 로그
+* Engine 라우팅 로그
+* 작업 완료 또는 승인 대기
+* ReportModal 출력
+
+주요 파일:
+
+* src/types/task.ts
+* src/types/approval.ts
+* src/types/operation.ts
+* src/data/taskTemplates.ts
+* src/data/permissionMatrix.ts
+* src/engine/taskPlanner.ts
+* src/engine/taskRouter.ts
+* src/engine/modelRouter.ts
+* src/engine/taskExecutor.ts
+* src/engine/reportComposer.ts
+* src/components/TaskBoard.tsx
+* src/components/ReportModal.tsx
+* src/App.tsx
+
+---
+
+### 4-4. Approval Queue
+
+고위험 작업은 자동 실행하지 않고 Approval Queue로 이동한다.
+
+예:
+
+* 재구매 캠페인 제안
+* 쿠폰 생성
+* 캠페인 발행
+* 상품 수정
+* 가격 변경
+* 환불 실행
+
+승인 구조:
+
+* auto
+* draft_only
+* approval_required
+* manual_only
+
+초기 철학:
+AI는 위험한 작업을 직접 실행하지 않는다.
+초안 작성 또는 제안 후 사람이 승인한다.
+
+---
+
+### 4-5. Agent Skill System MVP
+
+각 에이전트가 단순 캐릭터가 아니라 인지 아키텍처를 갖게 되었다.
+
+공식:
+Agent = Role + Knowledge + Skills + Tools + Permission + Memory
+
+구현 내용:
+
+* Agent 인터페이스에 knowledge, skills, tools, permissions, memory 추가
+* taskTemplate에 requiredSkills 추가
+* 작업 실행 시 skill 활성화 로그 출력
+* Agent 카드에 스킬 칩 표시
+* AgentDetailModal에 2x2 아키텍처 그리드 표시
+* Knowledge / Skills / Tools / Permissions / Memory 표시
+
+---
+
+### 4-6. GODO BRAIN MVP
+
+BRAIN 메뉴가 추가되었다.
+
+역할:
+AI 에이전트들이 참고하는 공용 지식 저장소 UI
+
+주요 파일:
+
+* src/types/brain.ts
+* src/data/brainKnowledge.ts
+* src/components/BrainPanel.tsx
+* src/components/BrainPanel.css
+
+기본 지식 문서:
+
+* cs_policy.md
+* delivery_policy.md
+* refund_exchange_policy.md
+* product_expression_rules.md
+* inventory_snapshot.json
+* order_check_template.md
+* cs_auto_template.md
+* daily_operation_report.md
+* campaign_result_report.md
+* cs_decision_log.md
+* marketing_decision_log.md
+* review_reply_template.md
+* sales_report_template.md
+
+기능:
+
+* 검색
+* 카테고리 필터
+* 중요도 필터
+* 에이전트 연결
+* 지식 상세 보기
+* usageCount 증가
+* Agent Detail에서 Brain으로 이동
+
+현재 BRAIN은 실제 RAG가 아니라, RAG처럼 작동하는 지식 인덱스 UI이다.
+
+---
+
+### 4-7. GODO STUDIO MVP
+
+STUDIO 메뉴가 추가되었다.
+
+역할:
+운영자가 코드나 Antigravity를 열지 않고 앱 안에서 AI 에이전트와 운영 지식을 수정하는 관리자 편집실
+
+주요 파일:
+
+* src/types/studio.ts
+* src/data/defaultStudioData.ts
+* src/components/StudioPanel.tsx
+* src/components/StudioPanel.css
+
+내부 탭:
+
+* Brain Editor
+* Agent Editor
+* Skill Registry
+* Tool Registry
+* Permission Matrix
+* Import / Export
+
+기능:
+
+* Brain 문서 수정
+* Agent 이름, 역할, 지식, 스킬, 도구, 권한, 메모리 수정
+* Skill 추가/수정/삭제
+* Tool 권한 설정
+* Permission Matrix 수정
+* Export Config
+* Import Config
+* Reset to Default
+* localStorage 저장
+
+localStorage key:
+
+* godo.brainKnowledge
+* godo.agents
+* godo.skills
+* godo.tools
+* godo.permissionMatrix
+* godo.studio.lastSavedAt
+
+주의:
+Studio에서 수정한 내용은 브라우저 localStorage에 저장된다.
+GitHub/Vercel에 자동 저장되는 것은 아니다.
+중요한 설정은 Export Config로 JSON 백업해야 한다.
+
+---
+
+### 4-8. GODO ENGINE MVP
+
+ENGINE 메뉴가 추가되었다.
+
+역할:
+각 작업을 어떤 AI 처리 방식으로 보낼지 결정하는 모델 라우터 설정 화면
+
+주요 파일:
+
+* src/types/engine.ts
+* src/data/defaultEngineData.ts
+* src/components/EnginePanel.tsx
+* src/components/EnginePanel.css
+* src/engine/taskRouter.ts
+* src/engine/modelRouter.ts
+
+내부 탭:
+
+* Overview
+* Engine Mode
+* Local Engines
+* Cloud Engines
+* Routing Rules
+* Usage Log
+* Safety Guard
+
+전역 Engine Mode:
+
+* Demo
+* Local First
+* Cloud First
+* Hybrid Auto
+* Manual Control
+
+Provider 예시:
+
+* GodoSLM-8B-Instruct
+* Local Vision OCR
+* Gemini Flash
+* Gemini Pro
+* Claude Creative
+* OpenAI Reasoning
+* Human Approval Gate
+
+중요 원칙:
+
+* 실제 API 호출 없음
+* 실제 LM Studio / Ollama 연결 없음
+* API Key localStorage 저장 금지
+* Mock Connection Test만 구현
+
+Safety Guard:
+
+* 고객 개인정보 Cloud 전송 금지
+* 환불 실행 manual_only
+* 가격 변경 manual_only
+* 쿠폰 생성 approval_required
+* 게시판 실제 답글 등록 approval_required
+* API Key localStorage 저장 금지
+
+localStorage key:
+
+* godo.engine.mode
+* godo.engine.providers
+* godo.engine.routingRules
+* godo.engine.safetyRules
+* godo.engine.lastSavedAt
+
+---
+
+## 5. GitHub 및 Vercel 상태
+
+GitHub 저장 완료:
+
+* git init 완료
+* main branch 설정
+* commit 완료
+* remote origin 연결
+* GitHub push 완료
+
+커밋 메시지:
+feat: complete godo ai os mvp
+
+GitHub repo:
+https://github.com/papa6229-beep/godo.git
+
+Vercel:
+배포 성공
+URL 확보 완료
+
+배포 후 확인할 것:
+
+* OFFICE 화면 진입
+* START OPERATION 실행
+* ReportModal 정상
+* AGENTS / BRAIN / STUDIO / ENGINE 탭 정상
+* 새로고침 후 localStorage 유지
+* 이미지 에셋 깨짐 여부 확인
+
+---
+
+## 6. 아직 구현하지 않은 것
+
+다음 기능들은 아직 구현하지 않았다.
+
+* DATA CONNECTOR MVP
+* CSV / JSON 업로드
+* Excel 업로드
+* 고도몰 API 실제 연결
+* 실제 LLM 연결
+* 실제 LM Studio / Ollama 연결
+* 실제 Gemini / Claude / OpenAI API 연결
+* 실제 파일 기반 .md 저장
+* 실제 RAG / 벡터DB
+* GitHub Sync
+* DB 저장
+* 실제 게시판 답글 등록
+* 실제 상품 수정
+* 실제 쿠폰 생성
+* 실제 환불/가격 변경
+
+---
+
+## 7. 다음 작업 예정: GODO DATA CONNECTOR MVP
+
+다음 큰 작업은 DATA 메뉴 추가 및 Data Connector 구현이다.
+
+목적:
+mockGodoData.ts에 박혀 있는 더미 데이터를 앱 안에서 업로드하거나 교체 가능한 운영 데이터 소스로 바꾸는 것
+
+목표:
+
+* DATA 메뉴 추가
+* DataPanel 생성
+* CSV / JSON 업로드
+* 주문 / CS / 리뷰 / 재고 / 매출 데이터 정규화
+* 개인정보 마스킹
+* Data Preview
+* Quality Check
+* Import History
+* Workflow Engine이 activeOperationsData를 사용하도록 수정
+* ReportModal이 업로드 데이터 기준으로 수치 출력
+* Brain inventory_snapshot.json updatedAt 또는 usageCount 연동
+* Studio Import / Export에 Data 설정 포함
+
+주의:
+
+* 실제 고도몰 API 연결은 아직 금지
+* 외부 서버 연결 금지
+* 실제 LLM 연결 금지
+* localStorage 기반으로 구현
+* 개인정보는 UI와 Activity Log에서 반드시 마스킹
+
+---
+
+## 8. 향후 로드맵
+
+완료:
+
+1. OFFICE
+2. AGENTS
+3. WORKFLOW
+4. APPROVAL
+5. REPORT
+6. Agent Skill System
+7. BRAIN
+8. STUDIO
+9. ENGINE
+10. GitHub 저장
+11. Vercel 배포
+
+다음:
+12. DATA CONNECTOR MVP
+
+그다음:
+13. 고도몰 API Read-only 연결
+14. 미답변 문의 조회
+15. CS 답변 초안 생성
+16. Approval Queue에서 승인 후 답글 등록
+17. 실제 Local / Cloud LLM 연결
+18. 실제 파일 기반 Brain / RAG
+19. 승인 후 실행 자동화
+
+---
+
+## 9. 고도몰 API 연동 방향
+
+고도몰 API가 열려 있으면 가능할 것으로 예상되는 영역:
+
+* 주문 조회
+* 상품 조회
+* 재고 조회
+* 게시판 정보 조회
+* 일부 게시판 등록 또는 수정
+
+CS 에이전트가 직접 답글을 다는 구조는 기술적으로 가능할 가능성이 있다.
+
+하지만 초기에는 반드시 다음 구조로 가야 한다.
+
+1. 고도몰 API로 미답변 문의 조회
+2. CS AI가 문의 분류
+3. cs_policy.md, refund_exchange_policy.md, product_expression_rules.md 참조
+4. 답변 초안 생성
+5. 운영자가 Approval Queue에서 확인
+6. 승인 후 API로 답글 등록
+7. 결과 로그 저장
+
+처음부터 완전 자동 답글 등록은 금지한다.
+초기 권한은 draft_only 또는 approval_required가 맞다.
+
+위험 작업:
+
+* 환불 실행
+* 가격 변경
+* 고객 삭제
+* 쿠폰 즉시 발급
+* 대량 문자
+* 상품 대량 수정
+
+이런 작업은 manual_only 또는 approval_required로 유지해야 한다.
+
+---
+
+## 10. 중요한 보안 원칙
+
+프론트엔드 React 코드에 API Key를 넣으면 안 된다.
+
+실제 고도몰 API나 LLM API를 붙일 때는 다음 구조가 필요하다.
+
+React Frontend
+→ Vercel Function 또는 Node Backend
+→ 환경변수에서 API Key 사용
+→ 고도몰 API 호출
+→ 개인정보 마스킹
+→ 프론트로 필요한 데이터만 반환
+
+API Key는 GitHub에 올리면 안 된다.
+Vercel Environment Variables 또는 백엔드 환경변수로 관리해야 한다.
+
+---
+
+## 11. 현재 대화에서 이어갈 때 필요한 핵심 요청
+
+다음 작업을 이어갈 때는 이렇게 요청하면 된다.
+
+“GODO AI OS는 OFFICE / AGENTS / BRAIN / STUDIO / ENGINE까지 구현했고, GitHub 저장과 Vercel 배포까지 완료했습니다. 다음 단계로 DATA CONNECTOR MVP를 구현하려고 합니다. 실제 고도몰 API는 아직 연결하지 말고, CSV/JSON 업로드, 개인정보 마스킹, 데이터 정규화, Workflow Engine 연결, ReportModal 반영까지 하는 작업지시서를 주세요.”
+
+또는 Antigravity에 바로 넘길 경우:
+“GODO DATA CONNECTOR MVP 작업지시서”를 요청하면 된다.

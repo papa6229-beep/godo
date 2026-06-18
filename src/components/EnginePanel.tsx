@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useState, useEffect, useMemo } from 'react';
 import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule, EngineUsageLog } from '../types/engine';
 import type { PermissionMatrixItem } from '../types/studio';
@@ -36,7 +37,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'mode' | 'local' | 'cloud' | 'rules' | 'logs' | 'safety'>('overview');
   
   // TS6133 방지용 매개변수 사용성 부여
-  if (false && typeof onUpdateEngineUsageLogs === 'function') {
+  if (onUpdateEngineUsageLogs && typeof onUpdateEngineUsageLogs === 'function') {
     // No-op
   }
 
@@ -137,7 +138,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   const handleToggleLocal = (id: string, enable: boolean) => {
     const updated = engineProviders.map(p => {
       if (p.id === id) {
-        return { ...p, isEnabled: enable, status: enable ? 'mock' : 'disabled' as any };
+        return { ...p, isEnabled: enable, status: (enable ? 'mock' : 'disabled') as EngineProvider['status'] };
       }
       return p;
     });
@@ -174,7 +175,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   const handleToggleCloud = (id: string, enable: boolean) => {
     const updated = engineProviders.map(p => {
       if (p.id === id) {
-        return { ...p, isEnabled: enable, status: enable ? 'mock' : 'disabled' as any };
+        return { ...p, isEnabled: enable, status: (enable ? 'mock' : 'disabled') as EngineProvider['status'] };
       }
       return p;
     });
@@ -188,8 +189,8 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   const handleApiKeyChange = (id: string, val: string) => {
     setApiKeys(prev => ({ ...prev, [id]: val }));
   };
-  const handleApiKeySave = (_id: string) => {
-    onAddLog(`[Security] MVP 버전 제한: API Key는 브라우저 LocalStorage에 저장되지 않고 휘발성 메모리 내에 마스킹 처리됩니다.`, 'warning', 'Security');
+  const handleApiKeySave = (id: string) => {
+    onAddLog(`[Security] API Key(${id}) MVP 버전 제한: API Key는 브라우저 LocalStorage에 저장되지 않고 휘발성 메모리 내에 마스킹 처리됩니다.`, 'warning', 'Security');
     showToast('MVP 단계에서는 API Key를 디스크에 영구 저장하지 않습니다.', 'warning');
   };
 
@@ -771,7 +772,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                       <label>1차 권장 인프라 (Preferred Route)</label>
                       <select
                         value={ruleForm.preferredRoute || 'local'}
-                        onChange={e => setRuleForm({ ...ruleForm, preferredRoute: e.target.value as any })}
+                        onChange={e => setRuleForm({ ...ruleForm, preferredRoute: e.target.value as EngineRoutingRule['preferredRoute'] })}
                       >
                         <option value="local">LOCAL (온프레미스 로컬 최선)</option>
                         <option value="cloud">CLOUD (클라우드 초안 지능화)</option>
@@ -783,7 +784,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                       <label>우회 폴백 인프라 (Fallback Route)</label>
                       <select
                         value={ruleForm.fallbackRoute || 'human'}
-                        onChange={e => setRuleForm({ ...ruleForm, fallbackRoute: e.target.value as any })}
+                        onChange={e => setRuleForm({ ...ruleForm, fallbackRoute: e.target.value as EngineRoutingRule['fallbackRoute'] })}
                       >
                         <option value="local">LOCAL (로컬 엔진)</option>
                         <option value="cloud">CLOUD (클라우드 API)</option>
@@ -795,7 +796,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                       <label>보안 민감성 (Sensitivity)</label>
                       <select
                         value={ruleForm.sensitivity || 'low'}
-                        onChange={e => setRuleForm({ ...ruleForm, sensitivity: e.target.value as any })}
+                        onChange={e => setRuleForm({ ...ruleForm, sensitivity: e.target.value as EngineRoutingRule['sensitivity'] })}
                       >
                         <option value="low">LOW</option>
                         <option value="medium">MEDIUM</option>
@@ -807,7 +808,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                       <label>데이터 스코프 (Data Scope)</label>
                       <select
                         value={ruleForm.dataScope || 'public'}
-                        onChange={e => setRuleForm({ ...ruleForm, dataScope: e.target.value as any })}
+                        onChange={e => setRuleForm({ ...ruleForm, dataScope: e.target.value as EngineRoutingRule['dataScope'] })}
                       >
                         <option value="public">PUBLIC (공개용)</option>
                         <option value="internal">INTERNAL (사내 일반)</option>
@@ -819,7 +820,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                       <label>요구되는 권한 등급 (Required Permission)</label>
                       <select
                         value={ruleForm.requiredPermission || 'auto'}
-                        onChange={e => setRuleForm({ ...ruleForm, requiredPermission: e.target.value as any })}
+                        onChange={e => setRuleForm({ ...ruleForm, requiredPermission: e.target.value as EngineRoutingRule['requiredPermission'] })}
                       >
                         <option value="auto">AUTO (무승인 즉시 실행)</option>
                         <option value="draft_only">DRAFT ONLY (초안 등록)</option>

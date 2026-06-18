@@ -93,6 +93,7 @@ export const PixelOfficeView: React.FC<PixelOfficeViewProps> = ({ agents, onSele
         moveDuration: 1.1
       };
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRunStates(initialStates);
     runStatesRef.current = initialStates;
   }, []);

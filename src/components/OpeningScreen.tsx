@@ -5,24 +5,23 @@ interface OpeningScreenProps {
   onFinished: () => void;
 }
 
+const statusLogs = [
+  'CONNECTING TO GODO API GATEWAY...',
+  'INITIALIZING HQ-01 GENERAL MANAGER...',
+  'LOADING CUSTOMER SERVICE AGENTS (CS-02)...',
+  'SYNCHRONIZING ORDER TRACKING SYSTEM (ORD-03)...',
+  'SETTING UP LOGISTICS INTERFACES (DLV-04)...',
+  'BOOTING REVIEW AGENT BRAIN (REV-05)...',
+  'PARSING MARKETING CAMPAIGN RULES (MKT-06)...',
+  'INDEXING PRODUCT CATALOG (PDT-07)...',
+  'CALIBRATING INVENTORY MONITORS (STK-08)...',
+  'MOUNTING FINANCIAL REPORTING SYSTEM (FIN-09)...',
+  'ESTABLISHING AUTONOMOUS CHANNELS...',
+  'SYSTEM READY. STARTING AI OPERATING CENTER...'
+];
+
 export const OpeningScreen: React.FC<OpeningScreenProps> = ({ onFinished }) => {
   const [progress, setProgress] = useState(0);
-  const [statusText, setStatusText] = useState('CONNECTING TO GODO SERVER...');
-
-  const statusLogs = [
-    'CONNECTING TO GODO API GATEWAY...',
-    'INITIALIZING HQ-01 GENERAL MANAGER...',
-    'LOADING CUSTOMER SERVICE AGENTS (CS-02)...',
-    'SYNCHRONIZING ORDER TRACKING SYSTEM (ORD-03)...',
-    'SETTING UP LOGISTICS INTERFACES (DLV-04)...',
-    'BOOTING REVIEW AGENT BRAIN (REV-05)...',
-    'PARSING MARKETING CAMPAIGN RULES (MKT-06)...',
-    'INDEXING PRODUCT CATALOG (PDT-07)...',
-    'CALIBRATING INVENTORY MONITORS (STK-08)...',
-    'MOUNTING FINANCIAL REPORTING SYSTEM (FIN-09)...',
-    'ESTABLISHING AUTONOMOUS CHANNELS...',
-    'SYSTEM READY. STARTING AI OPERATING CENTER...'
-  ];
 
   useEffect(() => {
     // 프로그레스 바 업데이트
@@ -40,13 +39,6 @@ export const OpeningScreen: React.FC<OpeningScreenProps> = ({ onFinished }) => {
   }, []);
 
   useEffect(() => {
-    // 상태 텍스트 순차 변경
-    const statusIndex = Math.min(
-      Math.floor((progress / 100) * statusLogs.length),
-      statusLogs.length - 1
-    );
-    setStatusText(statusLogs[statusIndex]);
-
     if (progress === 100) {
       const timeout = setTimeout(() => {
         onFinished();
@@ -54,6 +46,12 @@ export const OpeningScreen: React.FC<OpeningScreenProps> = ({ onFinished }) => {
       return () => clearTimeout(timeout);
     }
   }, [progress, onFinished]);
+
+  const statusIndex = Math.min(
+    Math.floor((progress / 100) * statusLogs.length),
+    statusLogs.length - 1
+  );
+  const statusText = statusLogs[statusIndex];
 
   return (
     <div className="opening-container">

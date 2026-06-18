@@ -10,8 +10,8 @@ export const routeTask = (
   routingRules: EngineRoutingRule[],
   safetyRules: EngineSafetyRule[]
 ): OperationTask => {
-  let computedRoute: RouteType = 'local';
-  let reason = 'Default Routing (Local First)';
+  let computedRoute: RouteType;
+  let reason: string;
 
   // 1. 전역 모드: manual_control일 경우, 중요 업무는 강제 인간 개입(human)
   if (mode === 'manual_control') {
@@ -33,27 +33,21 @@ export const routeTask = (
   // 2-1) 가격 수정 강제 수동
   if (task.id.includes('price') || task.title.includes('가격') || task.title.includes('price')) {
     if (isSafetyRuleEnabled('safety_4')) {
-      computedRoute = 'human';
-      reason = 'Safety Guard: 가격 수정은 인간 전담 필수';
-      return { ...task, routeType: computedRoute, permission: 'manual_only', status: 'assigned' };
+      return { ...task, routeType: 'human', permission: 'manual_only', status: 'assigned' };
     }
   }
 
   // 2-2) 환불 실행 강제 수동
   if (task.title.includes('환불') || task.title.includes('refund')) {
     if (isSafetyRuleEnabled('safety_2')) {
-      computedRoute = 'human';
-      reason = 'Safety Guard: 환불 실행은 수동 전담 필수';
-      return { ...task, routeType: computedRoute, permission: 'manual_only', status: 'assigned' };
+      return { ...task, routeType: 'human', permission: 'manual_only', status: 'assigned' };
     }
   }
 
   // 2-3) 쿠폰 생성 검토 승인 강제
   if (task.title.includes('쿠폰') || task.title.includes('coupon')) {
     if (isSafetyRuleEnabled('safety_3')) {
-      computedRoute = 'human';
-      reason = 'Safety Guard: 쿠폰 발행은 관리자 승인 필수';
-      return { ...task, routeType: computedRoute, permission: 'approval_required', status: 'assigned' };
+      return { ...task, routeType: 'human', permission: 'approval_required', status: 'assigned' };
     }
   }
 

@@ -21,6 +21,8 @@ import { defaultSkills, defaultTools, defaultPermissionMatrix } from './data/def
 import type { SkillItem, ToolItem, PermissionMatrixItem } from './types/studio';
 import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule, EngineUsageLog } from './types/engine';
 import { defaultEngineProviders, defaultEngineRoutingRules, defaultEngineSafetyRules } from './data/defaultEngineData';
+import type { OperationsDataSnapshot, ImportHistoryItem } from './types/dataConnector';
+import { defaultOperationsData } from './data/defaultOperationsData';
 import './App.css';
 
 function App() {
@@ -28,7 +30,7 @@ function App() {
   const [tasks, setTasks] = useState<OperationTask[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine'>('office');
+  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data'>('office');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>([]);
   const [report, setReport] = useState<OperationReport | null>(null);
@@ -38,7 +40,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.brainKnowledge');
       return saved ? JSON.parse(saved) : initialBrainKnowledgeItems;
-    } catch (e) {
+    } catch {
       return initialBrainKnowledgeItems;
     }
   });
@@ -47,7 +49,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.agents');
       return saved ? JSON.parse(saved) : initialAgents;
-    } catch (e) {
+    } catch {
       return initialAgents;
     }
   });
@@ -56,7 +58,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.skills');
       return saved ? JSON.parse(saved) : defaultSkills;
-    } catch (e) {
+    } catch {
       return defaultSkills;
     }
   });
@@ -65,7 +67,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.tools');
       return saved ? JSON.parse(saved) : defaultTools;
-    } catch (e) {
+    } catch {
       return defaultTools;
     }
   });
@@ -74,7 +76,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.permissionMatrix');
       return saved ? JSON.parse(saved) : defaultPermissionMatrix;
-    } catch (e) {
+    } catch {
       return defaultPermissionMatrix;
     }
   });
@@ -84,7 +86,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.engine.mode');
       return saved ? (saved as EngineMode) : 'hybrid_auto';
-    } catch (e) {
+    } catch {
       return 'hybrid_auto';
     }
   });
@@ -93,7 +95,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.engine.providers');
       return saved ? JSON.parse(saved) : defaultEngineProviders;
-    } catch (e) {
+    } catch {
       return defaultEngineProviders;
     }
   });
@@ -102,7 +104,7 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.engine.routingRules');
       return saved ? JSON.parse(saved) : defaultEngineRoutingRules;
-    } catch (e) {
+    } catch {
       return defaultEngineRoutingRules;
     }
   });
@@ -111,12 +113,31 @@ function App() {
     try {
       const saved = localStorage.getItem('godo.engine.safetyRules');
       return saved ? JSON.parse(saved) : defaultEngineSafetyRules;
-    } catch (e) {
+    } catch {
       return defaultEngineSafetyRules;
     }
   });
 
   const [engineUsageLogs, setEngineUsageLogs] = useState<EngineUsageLog[]>([]);
+
+  // GODO DATA CONNECTOR MVP 상태 관리 (localStorage 우선)
+  const [activeOperationsData, setActiveOperationsData] = useState<OperationsDataSnapshot>(() => {
+    try {
+      const saved = localStorage.getItem('godo.data.activeSnapshot');
+      return saved ? JSON.parse(saved) : defaultOperationsData;
+    } catch {
+      return defaultOperationsData;
+    }
+  });
+
+  const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('godo.data.importHistory');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [selectedBrainItemId, setSelectedBrainItemId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -169,6 +190,17 @@ function App() {
     localStorage.setItem('godo.engine.lastSavedAt', new Date().toISOString());
   }, [engineSafetyRules]);
 
+  // GODO DATA CONNECTOR LocalStorage 자동 동기화 훅
+  useEffect(() => {
+    localStorage.setItem('godo.data.activeSnapshot', JSON.stringify(activeOperationsData));
+    localStorage.setItem('godo.data.lastSavedAt', new Date().toISOString());
+  }, [activeOperationsData]);
+
+  useEffect(() => {
+    localStorage.setItem('godo.data.importHistory', JSON.stringify(importHistory));
+    localStorage.setItem('godo.data.lastSavedAt', new Date().toISOString());
+  }, [importHistory]);
+
   const handleResetAllData = () => {
     setBrainKnowledge(initialBrainKnowledgeItems);
     setAgents(initialAgents);
@@ -180,6 +212,8 @@ function App() {
     setEngineRoutingRules(defaultEngineRoutingRules);
     setEngineSafetyRules(defaultEngineSafetyRules);
     setEngineUsageLogs([]);
+    setActiveOperationsData(defaultOperationsData);
+    setImportHistory([]);
 
     localStorage.removeItem('godo.brainKnowledge');
     localStorage.removeItem('godo.agents');
@@ -193,6 +227,10 @@ function App() {
     localStorage.removeItem('godo.engine.routingRules');
     localStorage.removeItem('godo.engine.safetyRules');
     localStorage.removeItem('godo.engine.lastSavedAt');
+
+    localStorage.removeItem('godo.data.activeSnapshot');
+    localStorage.removeItem('godo.data.importHistory');
+    localStorage.removeItem('godo.data.lastSavedAt');
   };
 
   // 현재 시간 포맷
@@ -234,7 +272,7 @@ function App() {
     
     addLog('오늘의 운영 작업을 생성했습니다.', 'info', 'CEO');
     
-    let currentTasks = [...dailyTasks];
+    const currentTasks = [...dailyTasks];
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     
     await sleep(1500);
@@ -259,7 +297,7 @@ function App() {
         taskId: routedTask.id,
         taskTitle: routedTask.title,
         agentId: routedTask.assignedAgentId,
-        routeType: routedTask.routeType as any,
+        routeType: routedTask.routeType,
         providerId: modelConfig.providerId || 'unknown',
         modelName: modelConfig.modelName,
         reason: routedTask.routeType === 'human' ? '민감 데이터/승인 필요로 휴먼 게이트 배정' : '인프라 및 규칙 기반 라우팅 완료',
@@ -589,6 +627,12 @@ function App() {
           onUpdateEngineRoutingRules={setEngineRoutingRules}
           onUpdateEngineSafetyRules={setEngineSafetyRules}
           onUpdateEngineUsageLogs={setEngineUsageLogs}
+
+          // Data Connector 추가 props
+          activeOperationsData={activeOperationsData}
+          setActiveOperationsData={setActiveOperationsData}
+          importHistory={importHistory}
+          setImportHistory={setImportHistory}
         />
       )}
 

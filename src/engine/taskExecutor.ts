@@ -12,7 +12,7 @@ export const executeTask = async (
 ): Promise<OperationTask> => {
   // 인위적 딜레이를 주거나, 호출한 측에서 순차 실행 주기를 조절하므로
   // 여기서는 순수 결과값 분석 텍스트와 로그 데이터만 채웁니다.
-  let resultSummary = '';
+  let resultSummary: string;
   const taskLogs: string[] = [];
 
   const timeString = new Date().toTimeString().split(' ')[0];

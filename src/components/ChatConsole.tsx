@@ -28,10 +28,12 @@ export const ChatConsole: React.FC = () => {
     if (!canvasEl) return;
 
     let animationId: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let renderer: any;
     let resizeHandler: () => void;
 
     const initThree = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const THREE = (window as any).THREE;
       if (!THREE) {
         // Three.js 라이브러리가 로드되기 전이면 100ms 대기 후 재시도
@@ -58,7 +60,13 @@ export const ChatConsole: React.FC = () => {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
       // 3. 사람 뇌(Brain) 모양의 입체 좌표 생성 (피보나치 분포 적용하여 뭉침 및 끊김 해결)
-      const points: any[] = [];
+      interface BrainPoint {
+        x: number;
+        y: number;
+        z: number;
+        distanceTo: (other: BrainPoint) => number;
+      }
+      const points: BrainPoint[] = [];
       const networkGroup = new THREE.Group();
 
       // 뇌 반구 피질부 점들 생성
@@ -84,7 +92,7 @@ export const ChatConsole: React.FC = () => {
 
         let x = rx * radiusAtY * Math.cos(theta);
         let y = ry * yCoord;
-        let z = rz * radiusAtY * Math.sin(theta);
+        const z = rz * radiusAtY * Math.sin(theta);
 
         // 상부는 둥글게, 하부는 약간 편평하게
         if (y < 0) {
@@ -188,7 +196,9 @@ export const ChatConsole: React.FC = () => {
 
       // 6. 내부 동적 브라운 파티클 (뇌 신경망 전령 신호) 관리 배열
       interface DynamicParticle {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mesh: any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         velocity: any;
         life: number;
         decay: number;
@@ -331,7 +341,7 @@ export const ChatConsole: React.FC = () => {
 
     // AI 답변 더미 응답 매칭
     setTimeout(() => {
-      let replyText = '';
+      let replyText: string;
       let senderName = '총괄 매니저 AI';
 
       if (text.includes('신규 주문') || text.includes('미답변 문의')) {
