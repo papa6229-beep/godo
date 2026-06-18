@@ -7,9 +7,17 @@ interface ReportModalProps {
   report: OperationReport;
   onClose: () => void;
   activeOperationsData?: OperationsDataSnapshot;
+  setActiveTab?: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar') => void;
+  setLastSelectedDate?: (date: string) => void;
 }
 
-export const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, activeOperationsData }) => {
+export const ReportModal: React.FC<ReportModalProps> = ({ 
+  report, 
+  onClose, 
+  activeOperationsData,
+  setActiveTab,
+  setLastSelectedDate
+}) => {
   useEffect(() => {
     // 이전 overflow 상태 기록
     const prevBodyOverflow = document.body.style.overflow;
@@ -155,7 +163,32 @@ export const ReportModal: React.FC<ReportModalProps> = ({ report, onClose, activ
           </div>
         </div>
         
-        <div className="report-modal-footer">
+        <div className="report-modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          {setActiveTab && setLastSelectedDate && (
+            <button 
+              className="report-confirm-btn" 
+              style={{ background: 'transparent', border: '1px solid var(--accent-border)' }}
+              onClick={() => {
+                let recentDate = activeOperationsData?.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0];
+                const dates: string[] = [];
+                if (activeOperationsData) {
+                  activeOperationsData.orders.forEach(o => { if (o.orderDate) dates.push(o.orderDate.split(' ')[0]); });
+                  activeOperationsData.inquiries.forEach(i => { if (i.inquiryDate) dates.push(i.inquiryDate.split(' ')[0]); });
+                  activeOperationsData.reviews.forEach(r => { if (r.reviewDate) dates.push(r.reviewDate.split(' ')[0]); });
+                  activeOperationsData.sales.forEach(s => { if (s.date) dates.push(s.date); });
+                }
+                if (dates.length > 0) {
+                  dates.sort();
+                  recentDate = dates[dates.length - 1];
+                }
+                setLastSelectedDate(recentDate);
+                setActiveTab('calendar');
+                onClose();
+              }}
+            >
+              📅 View Daily Brief
+            </button>
+          )}
           <button className="report-confirm-btn" onClick={onClose}>대시보드로 복귀</button>
         </div>
       </div>

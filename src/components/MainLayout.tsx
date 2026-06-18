@@ -13,6 +13,7 @@ import { BrainPanel } from './BrainPanel';
 import { StudioPanel } from './StudioPanel';
 import { EnginePanel } from './EnginePanel';
 import { DataPanel } from './DataPanel';
+import { CalendarPanel } from './CalendarPanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
 import './MainLayout.css';
 
@@ -21,9 +22,9 @@ interface MainLayoutProps {
   tasks: OperationTask[];
   logs: LogEntry[];
   isSimulating: boolean;
-  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data';
+  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar';
   approvalQueue: ApprovalItem[];
-  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data') => void;
+  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar') => void;
   onStartSimulation: () => void;
   onAddTask: (title: string, agentId: string) => void;
   onSelectAgent: (agent: Agent) => void;
@@ -70,6 +71,12 @@ interface MainLayoutProps {
   setActiveOperationsData: React.Dispatch<React.SetStateAction<OperationsDataSnapshot>>;
   importHistory: ImportHistoryItem[];
   setImportHistory: React.Dispatch<React.SetStateAction<ImportHistoryItem[]>>;
+
+  // Calendar 관련 props
+  lastSelectedDate: string;
+  setLastSelectedDate: (date: string) => void;
+  lastViewedMonth: string;
+  setLastViewedMonth: (month: string) => void;
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({
@@ -120,7 +127,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   activeOperationsData,
   setActiveOperationsData,
   importHistory,
-  setImportHistory
+  setImportHistory,
+  
+  lastSelectedDate,
+  setLastSelectedDate,
+  lastViewedMonth,
+  setLastViewedMonth
 }) => {
   return (
     <div className="main-layout">
@@ -186,20 +198,27 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             >
               🚀 ENGINE
             </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'data' ? 'active' : ''}`}
-              onClick={() => setActiveTab('data')}
-              title="쇼핑몰 데이터 적재 및 관리"
-            >
-              📡 DATA
-            </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
-              onClick={() => setActiveTab('logs')}
-              title="실시간 시스템 로그"
-            >
-              📝 LOGS
-            </button>
+             <button
+               className={`nav-tab-btn ${activeTab === 'data' ? 'active' : ''}`}
+               onClick={() => setActiveTab('data')}
+               title="쇼핑몰 데이터 적재 및 관리"
+             >
+               📡 DATA
+             </button>
+             <button
+               className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
+               onClick={() => setActiveTab('calendar')}
+               title="일자별 운영 캘린더 및 일지"
+             >
+               📅 CALENDAR
+             </button>
+             <button
+               className={`nav-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
+               onClick={() => setActiveTab('logs')}
+               title="실시간 시스템 로그"
+             >
+               📝 LOGS
+             </button>
           </div>
         </div>
       </header>
@@ -308,14 +327,28 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           )}
 
           {activeTab === 'data' && (
-            <DataPanel
-              activeOperationsData={activeOperationsData}
-              setActiveOperationsData={setActiveOperationsData}
-              importHistory={importHistory}
-              setImportHistory={setImportHistory}
-              onAddLog={onAddLog}
-            />
-          )}
+             <DataPanel
+               activeOperationsData={activeOperationsData}
+               setActiveOperationsData={setActiveOperationsData}
+               importHistory={importHistory}
+               setImportHistory={setImportHistory}
+               onAddLog={onAddLog}
+               setActiveTab={setActiveTab}
+               setLastSelectedDate={setLastSelectedDate}
+             />
+           )}
+
+          {activeTab === 'calendar' && (
+             <CalendarPanel
+               activeOperationsData={activeOperationsData}
+               lastSelectedDate={lastSelectedDate}
+               setLastSelectedDate={setLastSelectedDate}
+               lastViewedMonth={lastViewedMonth}
+               setLastViewedMonth={setLastViewedMonth}
+               setActiveTab={setActiveTab}
+               onAddLog={onAddLog}
+             />
+           )}
         </main>
       </div>
     </div>

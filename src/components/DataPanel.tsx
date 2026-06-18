@@ -16,6 +16,8 @@ interface DataPanelProps {
   importHistory: ImportHistoryItem[];
   setImportHistory: React.Dispatch<React.SetStateAction<ImportHistoryItem[]>>;
   onAddLog: (text: string, type: 'info' | 'success' | 'warning' | 'error' | 'agent', agentName?: string) => void;
+  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar') => void;
+  setLastSelectedDate: (date: string) => void;
 }
 
 export const DataPanel: React.FC<DataPanelProps> = ({
@@ -23,7 +25,9 @@ export const DataPanel: React.FC<DataPanelProps> = ({
   setActiveOperationsData,
   importHistory,
   setImportHistory,
-  onAddLog
+  onAddLog,
+  setActiveTab,
+  setLastSelectedDate
 }) => {
   // 탭바 상태
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'upload' | 'preview' | 'mapping' | 'quality' | 'privacy' | 'history'>('overview');
@@ -465,6 +469,29 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                 <p className="status-desc" style={{ fontStyle: 'italic', fontSize: '0.75rem', marginTop: '0.5rem' }}>
                   * Info: 현재 activeOperationsData가 START OPERATION에 반영되어 일일 에이전트 자동화 실행 및 요약 리포트 작성 시 실시간 활용됩니다.
                 </p>
+                <div style={{ marginTop: '1rem', borderTop: '1px solid var(--line-subtle)', paddingTop: '1rem' }}>
+                  <h4 style={{ margin: '0 0 4px 0', fontSize: '0.74rem', color: 'var(--accent-primary)' }}>📅 날짜별 요약 준비 완료</h4>
+                  <p className="status-desc" style={{ fontSize: '0.72rem', margin: '0 0 10px 0' }}>
+                    CALENDAR 탭에서 현재 데이터셋의 일자별 운영 요약을 확인할 수 있습니다.
+                  </p>
+                  <button type="button" className="btn primary" style={{ width: '100%' }} onClick={() => {
+                    let recentDate = activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0];
+                    const dates: string[] = [];
+                    activeOperationsData.orders.forEach(o => { if (o.orderDate) dates.push(o.orderDate.split(' ')[0]); });
+                    activeOperationsData.inquiries.forEach(i => { if (i.inquiryDate) dates.push(i.inquiryDate.split(' ')[0]); });
+                    activeOperationsData.reviews.forEach(r => { if (r.reviewDate) dates.push(r.reviewDate.split(' ')[0]); });
+                    activeOperationsData.sales.forEach(s => { if (s.date) dates.push(s.date); });
+                    if (dates.length > 0) {
+                      dates.sort();
+                      recentDate = dates[dates.length - 1];
+                    }
+                    setLastSelectedDate(recentDate);
+                    setActiveTab('calendar');
+                    onAddLog(`[Data] 캘린더 화면으로 이동하여 최신 데이터 날짜(${recentDate}) 요약을 열람합니다.`, 'info');
+                  }}>
+                    View in Calendar
+                  </button>
+                </div>
               </div>
             </div>
 

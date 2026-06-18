@@ -23,6 +23,7 @@ import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule, E
 import { defaultEngineProviders, defaultEngineRoutingRules, defaultEngineSafetyRules } from './data/defaultEngineData';
 import type { OperationsDataSnapshot, ImportHistoryItem } from './types/dataConnector';
 import { defaultOperationsData } from './data/defaultOperationsData';
+import type { OperationHistoryItem } from './types/calendar';
 import './App.css';
 
 function App() {
@@ -30,7 +31,7 @@ function App() {
   const [tasks, setTasks] = useState<OperationTask[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data'>('office');
+  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar'>('office');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>([]);
   const [report, setReport] = useState<OperationReport | null>(null);
@@ -139,6 +140,32 @@ function App() {
     }
   });
 
+  // GODO OPERATION CALENDAR 상태 관리 (localStorage 우선)
+  const [lastSelectedDate, setLastSelectedDate] = useState<string>(() => {
+    try {
+      return localStorage.getItem('godo.calendar.lastSelectedDate') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [lastViewedMonth, setLastViewedMonth] = useState<string>(() => {
+    try {
+      return localStorage.getItem('godo.calendar.lastViewedMonth') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [operationHistory, setOperationHistory] = useState<OperationHistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('godo.calendar.operationHistory');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [selectedBrainItemId, setSelectedBrainItemId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [studioSubTab, setStudioSubTab] = useState<'brain' | 'agent' | 'skills' | 'tools' | 'permissions' | 'import_export'>('brain');
@@ -201,6 +228,19 @@ function App() {
     localStorage.setItem('godo.data.lastSavedAt', new Date().toISOString());
   }, [importHistory]);
 
+  // GODO OPERATION CALENDAR LocalStorage 자동 동기화 훅
+  useEffect(() => {
+    localStorage.setItem('godo.calendar.lastSelectedDate', lastSelectedDate);
+  }, [lastSelectedDate]);
+
+  useEffect(() => {
+    localStorage.setItem('godo.calendar.lastViewedMonth', lastViewedMonth);
+  }, [lastViewedMonth]);
+
+  useEffect(() => {
+    localStorage.setItem('godo.calendar.operationHistory', JSON.stringify(operationHistory));
+  }, [operationHistory]);
+
   const handleResetAllData = () => {
     setBrainKnowledge(initialBrainKnowledgeItems);
     setAgents(initialAgents);
@@ -231,6 +271,14 @@ function App() {
     localStorage.removeItem('godo.data.activeSnapshot');
     localStorage.removeItem('godo.data.importHistory');
     localStorage.removeItem('godo.data.lastSavedAt');
+
+    setLastSelectedDate('');
+    setLastViewedMonth('');
+    setOperationHistory([]);
+
+    localStorage.removeItem('godo.calendar.lastSelectedDate');
+    localStorage.removeItem('godo.calendar.lastViewedMonth');
+    localStorage.removeItem('godo.calendar.operationHistory');
   };
 
   // 현재 시간 포맷
@@ -442,6 +490,20 @@ function App() {
         ? { ...a, status: 'completed', bubbleText: '오늘의 운영 리포트 작성 완료!' } 
         : a
     ));
+
+    // OperationHistoryItem 축적 저장 (GODO CALENDAR 연동)
+    const newHistoryItem: OperationHistoryItem = {
+      id: `op-hist-${Date.now()}`,
+      date: activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+      timestamp: new Date().toLocaleTimeString(),
+      sourceType: activeOperationsData.sourceType,
+      reportTitle: `일일 자동화 운영 보고서 (${activeOperationsData.sourceType.toUpperCase()})`,
+      autoCompletedCount: finalReport.autoCompletedCount,
+      approvalPendingCount: finalReport.approvalRequiredCount,
+      issueHighlights: finalReport.warningSignals,
+      createdFrom: 'start_operation'
+    };
+    setOperationHistory(prev => [newHistoryItem, ...prev]);
     
     addLog('오늘의 운영 리포트를 생성했습니다.', 'success', 'CEO');
     setIsSimulating(false);
@@ -651,6 +713,12 @@ function App() {
           setActiveOperationsData={setActiveOperationsData}
           importHistory={importHistory}
           setImportHistory={setImportHistory}
+
+          // Calendar 추가 props
+          lastSelectedDate={lastSelectedDate}
+          setLastSelectedDate={setLastSelectedDate}
+          lastViewedMonth={lastViewedMonth}
+          setLastViewedMonth={setLastViewedMonth}
         />
       )}
 
@@ -678,6 +746,8 @@ function App() {
           report={report}
           onClose={handleCloseReport}
           activeOperationsData={activeOperationsData}
+          setActiveTab={setActiveTab}
+          setLastSelectedDate={setLastSelectedDate}
         />
       )}
     </>
