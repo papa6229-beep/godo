@@ -16,7 +16,7 @@ interface DataPanelProps {
   importHistory: ImportHistoryItem[];
   setImportHistory: React.Dispatch<React.SetStateAction<ImportHistoryItem[]>>;
   onAddLog: (text: string, type: 'info' | 'success' | 'warning' | 'error' | 'agent', agentName?: string) => void;
-  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar') => void;
+  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar') => void;
   setLastSelectedDate: (date: string) => void;
 }
 
@@ -73,7 +73,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
     const privacyMaskedCount = activeOperationsData.qualityReport?.privacyMaskedCount ?? 0;
     
     return {
-      sourceType: activeOperationsData.sourceType.toUpperCase(),
+      sourceType: activeOperationsData.sourceType === 'api_mock' ? 'API MOCK' : activeOperationsData.sourceType.toUpperCase(),
       ordersCount,
       inquiriesCount,
       reviewsCount,
@@ -443,9 +443,18 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                 <p className="status-desc">
                   쇼핑몰 어드민 데이터 브릿지가 연결되었습니다. 현재 데이터는 브라우저 보안 샌드박스 내부(LocalStorage)에 정형화 보관되어 있으며, 외부 전송 없이 자율 처리에 즉시 참조됩니다.
                 </p>
+                <div className="security-alert-box" style={{ marginTop: '0.8rem', marginBottom: '0.8rem', background: 'rgba(0, 255, 136, 0.05)', borderColor: 'rgba(0, 255, 136, 0.2)' }}>
+                  <span className="alert-icon">🔌</span>
+                  <span className="alert-text" style={{ color: '#00ff88' }}>
+                    API Bridge Mock Sync 데이터가 현재 Data Connector에 연결되어 있습니다. API 탭에서 Mock Godomall 데이터를 동기화할 수 있습니다.
+                  </span>
+                </div>
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
                   <button type="button" className="btn secondary" onClick={handleResetDemo}>
                     🔄 Reset to Demo Data
+                  </button>
+                  <button type="button" className="btn primary" onClick={() => setActiveTab('api')}>
+                    🔌 Go to API Bridge
                   </button>
                 </div>
               </div>

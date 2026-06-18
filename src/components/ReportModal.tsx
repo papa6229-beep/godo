@@ -7,7 +7,7 @@ interface ReportModalProps {
   report: OperationReport;
   onClose: () => void;
   activeOperationsData?: OperationsDataSnapshot;
-  setActiveTab?: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar') => void;
+  setActiveTab?: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar') => void;
   setLastSelectedDate?: (date: string) => void;
 }
 

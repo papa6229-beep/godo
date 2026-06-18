@@ -335,6 +335,12 @@
   border-color: rgba(45, 245, 162, 0.2);
 }
 
+.brief-source-badge.api_mock {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
 /* 카드 섹션 */
 .brief-section-card {
   background: rgba(255, 255, 255, 0.01);

@@ -24,6 +24,7 @@ import { defaultEngineProviders, defaultEngineRoutingRules, defaultEngineSafetyR
 import type { OperationsDataSnapshot, ImportHistoryItem } from './types/dataConnector';
 import { defaultOperationsData } from './data/defaultOperationsData';
 import type { OperationHistoryItem } from './types/calendar';
+import { resetApiBridgeState } from './utils/apiBridgeStorage';
 import './App.css';
 
 function App() {
@@ -31,7 +32,7 @@ function App() {
   const [tasks, setTasks] = useState<OperationTask[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar'>('office');
+  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar'>('office');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>([]);
   const [report, setReport] = useState<OperationReport | null>(null);
@@ -279,6 +280,9 @@ function App() {
     localStorage.removeItem('godo.calendar.lastSelectedDate');
     localStorage.removeItem('godo.calendar.lastViewedMonth');
     localStorage.removeItem('godo.calendar.operationHistory');
+
+    // API Bridge 상태 리셋 연동
+    resetApiBridgeState();
   };
 
   // 현재 시간 포맷

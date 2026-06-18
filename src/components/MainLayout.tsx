@@ -14,6 +14,7 @@ import { StudioPanel } from './StudioPanel';
 import { EnginePanel } from './EnginePanel';
 import { DataPanel } from './DataPanel';
 import { CalendarPanel } from './CalendarPanel';
+import { ApiBridgePanel } from './ApiBridgePanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
 import './MainLayout.css';
 
@@ -22,9 +23,9 @@ interface MainLayoutProps {
   tasks: OperationTask[];
   logs: LogEntry[];
   isSimulating: boolean;
-  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar';
+  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar';
   approvalQueue: ApprovalItem[];
-  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'calendar') => void;
+  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar') => void;
   onStartSimulation: () => void;
   onAddTask: (title: string, agentId: string) => void;
   onSelectAgent: (agent: Agent) => void;
@@ -206,6 +207,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                📡 DATA
              </button>
              <button
+               className={`nav-tab-btn ${activeTab === 'api' ? 'active' : ''}`}
+               onClick={() => setActiveTab('api')}
+               title="고도몰 API 연동 및 보안 미들웨어"
+             >
+               🔌 API
+             </button>
+             <button
                className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
                onClick={() => setActiveTab('calendar')}
                title="일자별 운영 캘린더 및 일지"
@@ -328,6 +336,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
           {activeTab === 'data' && (
              <DataPanel
+               activeOperationsData={activeOperationsData}
+               setActiveOperationsData={setActiveOperationsData}
+               importHistory={importHistory}
+               setImportHistory={setImportHistory}
+               onAddLog={onAddLog}
+               setActiveTab={setActiveTab}
+               setLastSelectedDate={setLastSelectedDate}
+             />
+           )}
+
+          {activeTab === 'api' && (
+             <ApiBridgePanel
                activeOperationsData={activeOperationsData}
                setActiveOperationsData={setActiveOperationsData}
                importHistory={importHistory}
