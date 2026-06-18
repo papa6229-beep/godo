@@ -143,7 +143,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           <div className="logo-icon">🛰️</div>
           <div className="logo-text-group">
             <h1 className="logo-title">GODO AI OS</h1>
-            <span className="logo-subtitle">OPERATING CENTER v1.0</span>
+            <span className="logo-subtitle">쇼핑몰 AI 운영센터</span>
           </div>
         </div>
 
@@ -160,73 +160,79 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             onClick={onStartSimulation}
             disabled={isSimulating}
           >
-            {isSimulating ? '🛰️ RUNNING' : '▶ START OPERATION'}
+            {isSimulating ? '🛰️ 운영 중' : '▶ START OPERATION'}
           </button>
 
           <div className="header-nav-tabs">
+            {/* ── 운영 메뉴 그룹 ── */}
             <button
               className={`nav-tab-btn ${activeTab === 'office' ? 'active' : ''}`}
               onClick={() => setActiveTab('office')}
-              title="가상 사무실 뷰"
+              title="오늘의 운영 현황"
             >
-              🏢 OFFICE
+              🏢 오늘의 운영
             </button>
             <button
               className={`nav-tab-btn ${activeTab === 'agents' ? 'active' : ''}`}
               onClick={() => setActiveTab('agents')}
-              title="에이전트 목록"
+              title="AI 직원 현황"
             >
-              🤖 AGENTS
+              🤖 AI 직원
             </button>
             <button
-              className={`nav-tab-btn ${activeTab === 'brain' ? 'active' : ''}`}
+              className={`nav-tab-btn ${activeTab === 'data' ? 'active' : ''}`}
+              onClick={() => setActiveTab('data')}
+              title="쇼핑몰 데이터 적재 및 관리"
+            >
+              📡 데이터 가져오기
+            </button>
+            <button
+              className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
+              onClick={() => setActiveTab('calendar')}
+              title="일자별 운영 캘린더 및 일지"
+            >
+              📅 운영일지
+            </button>
+            <button
+              className={`nav-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
+              onClick={() => setActiveTab('logs')}
+              title="실시간 시스템 작업기록"
+            >
+              📝 작업기록
+            </button>
+
+            {/* ── 관리자 설정 구분선 ── */}
+            <div className="nav-divider" aria-hidden="true"></div>
+            <span className="nav-group-label">관리자 설정</span>
+
+            <button
+              className={`nav-tab-btn nav-tab-settings ${activeTab === 'brain' ? 'active' : ''}`}
               onClick={() => setActiveTab('brain')}
-              title="지식 저장소"
+              title="업무 지식 및 매뉴얼 관리"
             >
-              🧠 BRAIN
+              🧠 업무 매뉴얼
             </button>
             <button
-              className={`nav-tab-btn ${activeTab === 'studio' ? 'active' : ''}`}
+              className={`nav-tab-btn nav-tab-settings ${activeTab === 'studio' ? 'active' : ''}`}
               onClick={() => setActiveTab('studio')}
-              title="에이전트 및 지식 설정 편집실"
+              title="AI 직원 설정 편집실"
             >
-              ⚙️ STUDIO
+              ⚙️ AI 설정실
             </button>
             <button
-              className={`nav-tab-btn ${activeTab === 'engine' ? 'active' : ''}`}
+              className={`nav-tab-btn nav-tab-settings ${activeTab === 'engine' ? 'active' : ''}`}
               onClick={() => setActiveTab('engine')}
               title="AI 모델 엔진 라우터 설정"
             >
-              🚀 ENGINE
+              🚀 AI 두뇌 설정
             </button>
-             <button
-               className={`nav-tab-btn ${activeTab === 'data' ? 'active' : ''}`}
-               onClick={() => setActiveTab('data')}
-               title="쇼핑몰 데이터 적재 및 관리"
-             >
-               📡 DATA
-             </button>
-             <button
-               className={`nav-tab-btn ${activeTab === 'api' ? 'active' : ''}`}
-               onClick={() => setActiveTab('api')}
-               title="고도몰 API 연동 및 보안 미들웨어"
-             >
-               🔌 API
-             </button>
-             <button
-               className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
-               onClick={() => setActiveTab('calendar')}
-               title="일자별 운영 캘린더 및 일지"
-             >
-               📅 CALENDAR
-             </button>
-             <button
-               className={`nav-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
-               onClick={() => setActiveTab('logs')}
-               title="실시간 시스템 로그"
-             >
-               📝 LOGS
-             </button>
+            <button
+              className={`nav-tab-btn nav-tab-settings ${activeTab === 'api' ? 'active' : ''}`}
+              onClick={() => setActiveTab('api')}
+              title="고도몰 API 연동 및 보안 미들웨어"
+            >
+              🔌 쇼핑몰 연동
+            </button>
           </div>
         </div>
       </header>

@@ -157,7 +157,51 @@
   border: 1px solid var(--accent-border);
 }
 
-/* 메인 뷰포트 영역 */
+/* 관리자 설정 그룹 구분선 */
+.nav-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--line-subtle);
+  align-self: center;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* 설정 그룹 라벨 */
+.nav-group-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  align-self: center;
+  padding: 0 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* 관리자 설정 메뉴 버튼 - muted style */
+.nav-tab-btn.nav-tab-settings {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.nav-tab-btn.nav-tab-settings:hover {
+  color: var(--text-secondary);
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.nav-tab-btn.nav-tab-settings.active {
+  background: rgba(var(--accent-primary-rgb, 100, 180, 255), 0.08);
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-border);
+  opacity: 1;
+}
+
+
 .main-viewport {
   display: grid;
   grid-template-columns: 400px 1fr;
