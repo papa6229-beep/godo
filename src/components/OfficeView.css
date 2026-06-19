@@ -1,79 +1,120 @@
 .office-view-container {
   display: grid;
-  grid-template-columns: 7fr 3fr;
+  grid-template-columns: 30% 42% 28%;
   gap: 15px;
   height: 100%;
+  width: 100%;
   box-sizing: border-box;
   overflow: hidden;
+  padding: 10px 15px;
 }
 
+/* 1열: 좌측 현황판 */
 .office-left-column {
   display: flex;
   flex-direction: column;
   gap: 15px;
   height: 100%;
   min-height: 0;
-  overflow: hidden; /* 컬럼 자체도 삐져나가지 않게 제한 */
+  overflow-y: auto;
 }
 
-.office-map-card {
+/* 스크롤바 커스텀 */
+.office-left-column::-webkit-scrollbar {
+  width: 4px;
+}
+.office-left-column::-webkit-scrollbar-thumb {
+  background: var(--line-subtle);
+  border-radius: 2px;
+}
+
+.office-map-card.mini-map {
   background: var(--bg-panel-strong);
   border: 1px solid var(--line-subtle);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   border-radius: 16px;
-  padding: 18px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  flex: 0 0 auto; /* 높이 변경에 대응하여 고정 */
-  overflow: hidden; /* 구역 밖으로 맵이 나가는 현상 방지 */
+  gap: 10px;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .map-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
   border-bottom: 1px solid var(--line-subtle);
-  padding-bottom: 8px;
-  flex-shrink: 0; /* 헤더 높이 고정 */
+  padding-bottom: 6px;
+  flex-shrink: 0;
 }
 
 .map-badge {
-  font-family: 'Inter', sans-serif;
-  font-size: 0.92rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
   font-weight: 800;
-  color: var(--text-primary);
+  color: var(--accent-primary);
+  letter-spacing: 0.5px;
 }
 
 .map-desc {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
 }
 
-.office-log-container {
-  flex: 1 1 0px;
-  min-height: 220px;
-  max-height: 280px;
-  overflow: hidden;
+.office-briefing-wrapper {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.office-right-column {
+/* 2열: 중앙 총괄 매니저 콘솔 */
+.office-center-column {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
-/* 1440px 최적화 대응 및 예외처리 */
+/* 3열: 우측 작업보드 */
+.office-right-column {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.office-right-column::-webkit-scrollbar {
+  width: 4px;
+}
+.office-right-column::-webkit-scrollbar-thumb {
+  background: var(--line-subtle);
+  border-radius: 2px;
+}
+
+/* 미디어 쿼리: 반응형 해상도 대응 */
+@media (max-width: 1400px) {
+  .office-view-container {
+    grid-template-columns: 32% 38% 30%;
+    gap: 10px;
+  }
+}
+
 @media (max-width: 1200px) {
   .office-view-container {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto auto;
+    overflow-y: auto;
+    height: auto;
   }
+  .office-left-column,
+  .office-center-column,
   .office-right-column {
     height: auto;
+    overflow: visible;
   }
 }

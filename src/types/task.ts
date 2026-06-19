@@ -1,3 +1,5 @@
+import type { OperationArtifact } from './operationArtifact';
+
 export type TaskStatus = 'pending' | 'assigned' | 'running' | 'completed' | 'needs_approval' | 'failed';
 
 export type TaskRiskLevel = 'low' | 'medium' | 'high' | 'critical';
@@ -23,4 +25,7 @@ export interface OperationTask {
   completedAt?: string;
   inputCount?: number;
   dataSourceType?: string;
+  artifacts?: OperationArtifact[];
+  approvalItemIds?: string[];
 }
+

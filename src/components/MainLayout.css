@@ -159,48 +159,54 @@
 
 /* 관리자 설정 그룹 구분선 */
 .nav-divider {
-  width: 1px;
-  height: 20px;
-  background: var(--line-subtle);
+  width: 2px;
+  height: 24px;
+  background: rgba(80, 255, 190, 0.35); /* 민트 포인트를 차용하여 대비 강화 */
+  box-shadow: 0 0 6px rgba(80, 255, 190, 0.2);
   align-self: center;
-  margin: 0 4px;
+  margin: 0 10px;
   flex-shrink: 0;
 }
 
 /* 설정 그룹 라벨 */
 .nav-group-label {
-  font-size: 0.58rem;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #94a3b8; /* 더 선명하게 대비 강화 */
   letter-spacing: 0.5px;
   align-self: center;
-  padding: 0 2px;
+  padding: 0 6px;
   white-space: nowrap;
   flex-shrink: 0;
-  opacity: 0.7;
 }
 
-/* 관리자 설정 메뉴 버튼 - muted style */
+/* 관리자 설정 메뉴 버튼 - 가독성 강화 */
 .nav-tab-btn.nav-tab-settings {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 600;
-  opacity: 0.8;
+  color: #cbd5e1; /* 더 밝고 선명한 그레이로 대비 극대화 */
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 1; /* 비활성 느낌 제거를 위해 1로 고정 */
+  background: rgba(255, 255, 255, 0.02); /* 별도의 pill group 영역 톤으로 분리 */
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-left: 2px;
 }
 
 .nav-tab-btn.nav-tab-settings:hover {
-  color: var(--text-secondary);
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .nav-tab-btn.nav-tab-settings.active {
-  background: rgba(var(--accent-primary-rgb, 100, 180, 255), 0.08);
+  background: rgba(45, 245, 162, 0.1);
   color: var(--accent-primary);
   border: 1px solid var(--accent-border);
-  opacity: 1;
 }
 
+
+.main-viewport.office-tab-layout {
+  grid-template-columns: 1fr !important;
+}
 
 .main-viewport {
   display: grid;

@@ -12,6 +12,7 @@ interface PixelAgentSpriteProps {
   speech: string | null;
   moveDuration: number; 
   onClick: () => void;
+  isMini?: boolean;
 }
 
 const SPRITE_DEBUG = {
@@ -50,7 +51,8 @@ export const PixelAgentSprite: React.FC<PixelAgentSpriteProps> = ({
   status,
   speech,
   moveDuration,
-  onClick
+  onClick,
+  isMini = false
 }) => {
   const getAgColor = (s: string) => {
     if (s === 'working') return '#00ff66';
@@ -59,7 +61,8 @@ export const PixelAgentSprite: React.FC<PixelAgentSpriteProps> = ({
   };
 
   const agColor = getAgColor(status);
-  const scale = SPRITE_DEBUG.scale;
+  // 미니 모드에서는 스케일을 0.58 정도로 더 작게 축소합니다.
+  const scale = isMini ? SPRITE_DEBUG.scale * 0.75 : SPRITE_DEBUG.scale;
 
   const shellStyle = {
     left: `${x}%`,
@@ -78,10 +81,19 @@ export const PixelAgentSprite: React.FC<PixelAgentSpriteProps> = ({
     backgroundPosition: `${-(frame * SPRITE_DEBUG.frameWidth)}px ${-(directionRow * SPRITE_DEBUG.frameHeight)}px`
   } as React.CSSProperties;
 
+  // 미니 모드일 때는 너무 길거나 자주 나오는 말풍선을 압축하거나 억제합니다.
+  const displaySpeech = isMini
+    ? (speech && speech.length > 8 ? `${speech.slice(0, 7)}...` : speech)
+    : speech;
+
   return (
-    <div className={`office-agent-shell ${status}`} style={shellStyle} onClick={onClick}>
+    <div className={`office-agent-shell ${status} ${isMini ? 'mini-sprite' : ''}`} style={shellStyle} onClick={onClick}>
       {/* 1. 말풍선 (z-index 100) */}
-      {speech && <div className="agent-speech-bubble">{speech}</div>}
+      {displaySpeech && (
+        <div className={`agent-speech-bubble ${isMini ? 'mini-bubble' : ''}`}>
+          {displaySpeech}
+        </div>
+      )}
 
       {/* 2. 네온/옐로우 링 이펙트 (z-index 1) */}
       {(status === 'working' || status === 'thinking') && (

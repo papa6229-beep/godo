@@ -126,3 +126,35 @@
   from { transform: translateX(-50%) scale(0.9) translateY(4px); opacity: 0; }
   to { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; }
 }
+
+/* 미니 모드 캐릭터 쉘 및 하위 요소 조절 */
+.office-agent-shell.mini-sprite {
+  width: 50px;
+  height: 60px;
+}
+
+.office-agent-shell.mini-sprite .agent-name-tag {
+  font-size: 8px;
+  padding: 1px 3px;
+  bottom: -4px;
+}
+
+.office-agent-shell.mini-sprite .agent-glow-ring {
+  width: 28px;
+  height: 28px;
+  bottom: 12px;
+}
+
+.office-agent-shell.mini-sprite .agent-speech-bubble.mini-bubble {
+  padding: 3px 6px;
+  font-size: 9px;
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  bottom: calc(100% + 4px);
+}
+
+.office-agent-shell.mini-sprite .agent-speech-bubble.mini-bubble::after {
+  border-width: 4px 3px 0 3px;
+  bottom: -4px;
+}
+

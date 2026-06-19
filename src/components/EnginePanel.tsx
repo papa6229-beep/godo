@@ -154,6 +154,20 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
         });
         onUpdateEngineProviders(updated);
         
+        const testLog = {
+          id: `usage-test-${Date.now()}`,
+          timestamp: new Date().toTimeString().split(' ')[0],
+          taskId: 'connection_test',
+          taskTitle: 'Gemma 4 E4B Connection Test',
+          agentId: 'system',
+          routeType: 'local' as const,
+          providerId: 'lms_gemma_4',
+          modelName: detectedModelId,
+          reason: `[taskType: connection_test] [latency: ${elapsed}ms] [status: connected]`,
+          status: 'completed' as const
+        };
+        onUpdateEngineUsageLogs([...engineUsageLogs, testLog]);
+        
         if (finalStatus === 'connected') {
           onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 성공! 감지된 모델 ID: ${detectedModelId} (지연시간: ${elapsed}ms)`, 'success', 'Engine');
           showToast(`Gemma 4 E4B 연결 테스트 성공! (${elapsed}ms)`, 'success');
@@ -174,6 +188,21 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
           return p;
         });
         onUpdateEngineProviders(updated);
+        
+        const testLog = {
+          id: `usage-test-${Date.now()}`,
+          timestamp: new Date().toTimeString().split(' ')[0],
+          taskId: 'connection_test',
+          taskTitle: 'Gemma 4 E4B Connection Test',
+          agentId: 'system',
+          routeType: 'local' as const,
+          providerId: 'lms_gemma_4',
+          modelName: 'google/gemma-4-e4b',
+          reason: `[taskType: connection_test] [error: ${result.error || 'Unknown error'}] [status: error]`,
+          status: 'blocked' as const
+        };
+        onUpdateEngineUsageLogs([...engineUsageLogs, testLog]);
+        
         onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 실패: ${result.error}`, 'error', 'Engine');
         showToast(`Gemma 4 E4B 연결 테스트 실패: ${result.error}`, 'error');
       }
@@ -224,9 +253,38 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
           return p;
         });
         onUpdateEngineProviders(updated);
-        onAddLog(`[Engine] 모델 목록 갱신 성공. 감지된 모델: ${detectedModelId}`, 'success', 'Engine');
+
+        const refreshLog = {
+          id: `usage-refresh-${Date.now()}`,
+          timestamp: new Date().toTimeString().split(' ')[0],
+          taskId: 'models_refresh',
+          taskTitle: 'Gemma 4 E4B Models Refresh',
+          agentId: 'system',
+          routeType: 'local' as const,
+          providerId: 'lms_gemma_4',
+          modelName: detectedModelId,
+          reason: `[taskType: models_refresh] [status: refreshed]`,
+          status: 'completed' as const
+        };
+        onUpdateEngineUsageLogs([...engineUsageLogs, refreshLog]);
+
+        onAddLog(`[Engine] 모델 목록 갱신 성공. 감지된 모델: ${detectedModelId} (Models refreshed)`, 'success', 'Engine');
         showToast(`모델 목록이 갱신되었습니다: ${detectedModelId}`, 'success');
       } else {
+        const refreshLog = {
+          id: `usage-refresh-${Date.now()}`,
+          timestamp: new Date().toTimeString().split(' ')[0],
+          taskId: 'models_refresh',
+          taskTitle: 'Gemma 4 E4B Models Refresh',
+          agentId: 'system',
+          routeType: 'local' as const,
+          providerId: 'lms_gemma_4',
+          modelName: 'google/gemma-4-e4b',
+          reason: `[taskType: models_refresh] [error: ${result.error || 'Unknown error'}] [status: error]`,
+          status: 'blocked' as const
+        };
+        onUpdateEngineUsageLogs([...engineUsageLogs, refreshLog]);
+
         onAddLog(`[Engine] 모델 목록 갱신 실패: ${result.error}`, 'error', 'Engine');
         showToast(`모델 갱신 실패: ${result.error}`, 'error');
       }

@@ -251,3 +251,178 @@
   border-color: var(--accent-primary);
   box-shadow: 0 0 12px var(--accent-glow);
 }
+
+/* Operational Control Chat MVP UI */
+.chat-input-textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.88rem;
+  outline: none;
+  resize: none;
+  max-height: 100px;
+  min-height: 22px;
+  line-height: 1.4;
+  padding: 4px 0;
+}
+
+.chat-input-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.intent-badge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: bold;
+  font-family: 'Inter', sans-serif;
+}
+
+.intent-badge.unsafe {
+  background: rgba(255, 77, 77, 0.15);
+  color: #ff4d4d;
+  border: 1px solid rgba(255, 77, 77, 0.3);
+}
+
+.intent-badge.instruction {
+  background: rgba(0, 255, 136, 0.15);
+  color: #00ff88;
+  border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+.intent-badge.info-q {
+  background: rgba(30, 144, 255, 0.15);
+  color: #1e90ff;
+  border: 1px solid rgba(30, 144, 255, 0.3);
+}
+
+.intent-badge.approval-q {
+  background: rgba(255, 165, 0, 0.15);
+  color: #ffa500;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+}
+
+.chat-candidate-action-card {
+  margin-top: 10px;
+  background: rgba(5, 10, 12, 0.6);
+  border: 1px solid rgba(45, 245, 162, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.candidate-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.candidate-title {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.candidate-meta {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.candidate-meta .low { color: #00ff88; }
+.candidate-meta .medium { color: #ffa500; }
+.candidate-meta .high { color: #ff6347; }
+.candidate-meta .critical { color: #ff4d4d; }
+
+.candidate-add-btn {
+  font-size: 0.72rem;
+  padding: 6px 12px;
+  align-self: flex-start;
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: bold;
+}
+
+/* 대형 콘솔 (중앙 배치) 스타일 확대 */
+.chat-console.large-console {
+  flex: 1;
+  height: 100%;
+}
+
+.chat-console.large-console .chat-messages-container {
+  min-height: 380px; /* 세로 영역 대폭 확장 */
+}
+
+/* 가로형 퀵 태스크 추가 바 */
+.chat-quick-task-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 15px;
+  background: rgba(14, 24, 27, 0.4);
+  border-top: 1px solid var(--line-subtle);
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.quick-bar-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+
+.quick-bar-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.quick-bar-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.quick-bar-select {
+  background: var(--bg-panel-strong);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-primary);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.quick-bar-select:focus {
+  border-color: var(--accent-primary);
+}
+
+.quick-bar-btn {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent-primary);
+  padding: 6px 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-bar-btn:hover {
+  background: var(--accent-primary);
+  color: var(--bg-app);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+

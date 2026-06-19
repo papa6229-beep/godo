@@ -13,6 +13,9 @@ interface TaskBoardProps {
   onAddTask: (title: string, agentId: string) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onSelectTask?: (task: OperationTask) => void;
+  onSelectApproval?: (item: ApprovalItem) => void;
+  hideAddTask?: boolean;
 }
 
 export const TaskBoard: React.FC<TaskBoardProps> = ({
@@ -23,7 +26,10 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   onStartSimulation,
   onAddTask,
   onApprove,
-  onReject
+  onReject,
+  onSelectTask,
+  onSelectApproval,
+  hideAddTask = false
 }) => {
   const [newTitle, setNewTitle] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id || 'cs');
@@ -31,6 +37,72 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   const getAgentInfo = (agentId: string) => {
     const agent = agents.find((a) => a.id === agentId);
     return agent ? { name: agent.name, emoji: agent.emoji } : { name: '알 수 없음', emoji: '⚙️' };
+  };
+
+  const getPermissionLabel = (perm: string) => {
+    switch (perm?.toLowerCase()) {
+      case 'draft_only': return '초안만 생성';
+      case 'approval_required': return '승인 필요';
+      case 'auto': return '자동 확인 완료';
+      case 'manual_only': return '사람 확인 필요';
+      default: return perm;
+    }
+  };
+
+  const getRouteLabel = (route: string) => {
+    switch (route?.toLowerCase()) {
+      case 'local': return '내부 AI 처리';
+      case 'hybrid': return '고급 AI 도움';
+      case 'human': return '사람 확인 필요';
+      default: return route;
+    }
+  };
+
+  const getTaskOperatorMessage = (task: OperationTask) => {
+    const agentId = task.assignedAgentId;
+    const count = task.inputCount || 0;
+    
+    if (agentId === 'cs') {
+      return {
+        desc: `답변이 필요한 문의 ${count > 0 ? `${count}건` : '들'}을 분석했습니다. 고객 불편 방지를 위해 AI가 정중한 답변 초안을 생성했습니다.`,
+        action: '✍️ 초안 확인 및 수정하기'
+      };
+    } else if (agentId === 'review') {
+      return {
+        desc: `저평점 부정 리뷰 등 답변이 필요한 고객 피드백을 감지하고 AI 답글 초안을 만들었습니다.`,
+        action: '⭐ 리뷰 및 답글 확인하기'
+      };
+    } else if (task.title.includes('배송') || task.title.includes('송장')) {
+      return {
+        desc: `송장이 등록되지 않았거나 영업일 3일 이상 배송이 지연되고 있는 의심 주문을 감지했습니다.`,
+        action: '🚚 주문 및 배송 정보 확인'
+      };
+    } else if (agentId === 'order') {
+      return {
+        desc: `신규로 접수된 주문 정보 ${count > 0 ? `${count}건` : '들'}을 로드하고, 결제 및 입금 대기 상태를 검증했습니다.`,
+        action: '📋 주문 목록 확인하기'
+      };
+    } else if (agentId === 'stock' || task.title.includes('재고') || task.title.includes('품절')) {
+      return {
+        desc: `안전재고 수량보다 현재고가 적어 품절 위험이 있는 품목을 확인했습니다. 발주 여부 검토가 권장됩니다.`,
+        action: '⚠️ 재고 및 발주 검토'
+      };
+    } else if (agentId === 'marketing') {
+      return {
+        desc: `재구매 유도 및 매출 증대를 위해 특정 구매 이력 고객을 타겟으로 한 할인 쿠폰 발행 캠페인을 기획 제안합니다.`,
+        action: '💡 캠페인 제안 확인'
+      };
+    } else if (agentId === 'finance' || task.title.includes('매출')) {
+      return {
+        desc: `금일의 실시간 매출 집계, 주문 결제 건수 및 광고 클릭 전환율 현황을 종합 요약 분석했습니다.`,
+        action: '📊 일일 매출 대시보드 조회'
+      };
+    }
+    
+    return {
+      desc: task.description || '오늘의 일일 쇼핑몰 운영 작업입니다.',
+      action: '🔍 상세 작업 결과 확인'
+    };
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -45,7 +117,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
       <div className="task-board">
         <div className="board-header">
           <div className="board-title-row">
-            <h2 className="board-title">📋 TODAY'S TASKS ({tasks.length})</h2>
+            <h2 className="board-title">📋 오늘의 할 일 (Today’s Tasks)</h2>
             <button
               className={`simulate-btn ${isSimulating ? 'running' : ''}`}
               onClick={onStartSimulation}
@@ -54,72 +126,77 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
               {isSimulating ? '🛰️ 운영 진행 중...' : '▶ 운영 시작 (Auto Run)'}
             </button>
           </div>
-          <p className="board-subtitle">쇼핑몰 일일 자동화 프로세스 작업 목록입니다.</p>
+          <p className="board-subtitle">쇼핑몰 AI 운영팀이 분석 및 감시하고 있는 일일 업무 목록입니다.</p>
         </div>
 
         <div className="tasks-list">
           {tasks.length === 0 ? (
-            <div className="empty-tasks">작업이 존재하지 않습니다. 운영 시작 버튼을 눌러주십시오.</div>
+            <div className="empty-tasks">아직 작업이 없습니다. 운영 시작 후 오늘 확인할 일이 이곳에 표시됩니다.</div>
           ) : (
             tasks.map((task) => {
               const agentInfo = getAgentInfo(task.assignedAgentId);
+              const opMessage = getTaskOperatorMessage(task);
               return (
-                <div key={task.id} className={`task-item ${task.status}`}>
+                <div
+                  key={task.id}
+                  className={`task-item ${task.status}`}
+                  onClick={() => onSelectTask?.(task)}
+                  style={{ cursor: 'pointer' }}
+                >
                   <div className="task-main">
                     <span className="task-emoji">{agentInfo.emoji}</span>
                     <div className="task-info">
                       <div className="task-title-row">
-                        <span className="task-title">{task.title}</span>
-                        <div className="task-badges-row">
-                          <span className={`badge-type route ${task.routeType}`}>
-                            {task.routeType.toUpperCase()}
-                          </span>
-                          <span className={`badge-type perm ${task.permission}`}>
-                            {task.permission.toUpperCase().replace('_', ' ')}
+                        <span className="task-title" style={{ fontSize: '0.92rem', fontWeight: 650 }}>{task.title}</span>
+                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                          <span className={`task-badge ${task.status}`} style={{ fontSize: '0.68rem', padding: '2px 6px' }}>
+                            {task.status === 'pending' && '대기 중'}
+                            {task.status === 'assigned' && '배정됨'}
+                            {task.status === 'running' && '분석 중'}
+                            {task.status === 'completed' && '확인 완료'}
+                            {task.status === 'needs_approval' && '검토/승인 대기'}
+                            {task.status === 'failed' && '실패'}
                           </span>
                         </div>
                       </div>
-                      <div className="task-agent-name" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
-                        <span>담당: {agentInfo.name.split(' ')[0]}</span>
-                        {task.inputCount !== undefined && (
-                          <span className="task-data-badge" style={{
-                            fontSize: '0.6rem',
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            background: 'rgba(45, 245, 162, 0.08)',
-                            border: '1px solid rgba(45, 245, 162, 0.2)',
-                            color: 'var(--accent-primary)'
-                          }}>
-                            DATA: {task.relatedDataType} {task.inputCount}건
-                          </span>
-                        )}
-                        {task.dataSourceType && (
-                          <span className="task-source-badge" style={{
-                            fontSize: '0.6rem',
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            background: 'rgba(255, 255, 255, 0.05)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            color: 'var(--text-secondary)'
-                          }}>
-                            SOURCE: {task.dataSourceType.toUpperCase()}
-                          </span>
-                        )}
+                      
+                      <div className="task-agent-name" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '3px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        <span>담당 AI: {agentInfo.name}</span>
                       </div>
-                      {task.resultSummary && (
-                        <div className="task-result-summary">📄 {task.resultSummary}</div>
+
+                      {/* 운영자용 직관적인 상세 대상 요약 정보 노출 */}
+                      <div style={{ marginTop: '8px', fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.85)', lineHeight: '1.4' }}>
+                        {opMessage.desc}
+                      </div>
+
+                      {/* 행동 유도 버튼 */}
+                      {task.status !== 'pending' && task.status !== 'running' && (
+                        <div style={{ 
+                          marginTop: '10px', 
+                          display: 'inline-flex', 
+                          alignItems: 'center', 
+                          fontSize: '0.75rem', 
+                          color: task.status === 'needs_approval' ? '#f59e0b' : 'var(--accent-primary)',
+                          fontWeight: 600,
+                          backgroundColor: task.status === 'needs_approval' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(45, 245, 162, 0.05)',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          border: task.status === 'needs_approval' ? '1px solid rgba(245, 158, 11, 0.2)' : '1px solid rgba(45, 245, 162, 0.15)'
+                        }}>
+                          {opMessage.action}
+                        </div>
                       )}
+
+                      {/* 은은한 기술 뱃지 */}
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '10px', fontSize: '0.62rem', opacity: 0.6 }}>
+                        <span style={{ padding: '1px 4px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px' }}>
+                          {getRouteLabel(task.routeType)}
+                        </span>
+                        <span style={{ padding: '1px 4px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px' }}>
+                          {getPermissionLabel(task.permission)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="task-status-area">
-                    <span className={`task-badge ${task.status}`}>
-                      {task.status === 'pending' && '대기 중'}
-                      {task.status === 'assigned' && '배정됨'}
-                      {task.status === 'running' && '진행 중'}
-                      {task.status === 'completed' && '완료'}
-                      {task.status === 'needs_approval' && '승인 필요'}
-                      {task.status === 'failed' && '실패'}
-                    </span>
                   </div>
                 </div>
               );
@@ -127,46 +204,48 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
           )}
         </div>
 
-        <div className="add-task-box">
-          <h3 className="add-task-title">➕ 새 태스크 추가</h3>
-          <form onSubmit={handleAddSubmit} className="add-task-form">
-            <input
-              type="text"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="추가할 일일 작업 제목을 입력하세요..."
-              className="add-task-input"
-            />
-            <div className="add-task-meta">
-              <select
-                value={selectedAgentId}
-                onChange={(e) => setSelectedAgentId(e.target.value)}
-                className="agent-select"
-              >
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.emoji} {agent.name.split(' ')[0]}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" className="add-task-submit">
-                ADD
-              </button>
-            </div>
-          </form>
-        </div>
+        {!hideAddTask && (
+          <div className="add-task-box">
+            <h3 className="add-task-title">➕ 새 태스크 추가</h3>
+            <form onSubmit={handleAddSubmit} className="add-task-form">
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="추가할 일일 작업 제목을 입력하세요..."
+                className="add-task-input"
+              />
+              <div className="add-task-meta">
+                <select
+                  value={selectedAgentId}
+                  onChange={(e) => setSelectedAgentId(e.target.value)}
+                  className="agent-select"
+                >
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.emoji} {agent.name.split(' ')[0]}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="add-task-submit">
+                  ADD
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
 
       {/* Approval Queue 패널 */}
       <div className="approval-queue-board">
         <div className="board-header">
-          <h2 className="board-title">🔑 APPROVAL QUEUE ({approvalQueue.length})</h2>
-          <p className="board-subtitle">운영자 개입(Human-in-the-loop) 및 의사결정이 요구되는 대기 작업입니다.</p>
+          <h2 className="board-title">🔑 승인 대기열 (Approval Queue)</h2>
+          <p className="board-subtitle">고객, 금전, 가격, 캠페인 등 중요 결정으로 인간 운영자의 최종 확인 및 결재가 있어야 실행되는 대기열입니다.</p>
         </div>
         <div className="approval-list">
           {approvalQueue.length === 0 ? (
             <div className="empty-approvals">
-              <span>🛡️ 승인 대기 중인 고위험 작업이 없습니다.</span>
+              <span>승인 대기 중인 항목이 없습니다. AI가 안전하게 지켜보는 중입니다.</span>
             </div>
           ) : (
             approvalQueue.map((item) => {
@@ -175,28 +254,65 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
                 <div key={item.id} className={`approval-item-card status-${item.status}`}>
                   <div className="approval-card-header">
                     <span className="approval-agent">
-                      {agentInfo.emoji} {agentInfo.name.split(' ')[0]}
+                      {agentInfo.emoji} {agentInfo.name}
                     </span>
                     <span className={`risk-badge ${item.riskLevel}`}>
                       {item.riskLevel.toUpperCase()} RISK
                     </span>
                   </div>
                   <h4 className="approval-card-title">{item.title}</h4>
-                  <p className="approval-card-reason">💡 <strong>사유:</strong> {item.reason}</p>
-                  <p className="approval-card-proposal">📝 <strong>제안 액션:</strong> {item.proposedAction}</p>
+                  <p className="approval-card-reason">💡 <strong>검토 사유:</strong> {item.reason}</p>
+                  
+                  {/* proposta 요약 출력 */}
+                  <p className="approval-card-proposal" style={{ 
+                    maxHeight: '60px', 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    display: '-webkit-box', 
+                    WebkitLineClamp: 2, 
+                    WebkitBoxOrient: 'vertical',
+                    fontSize: '0.78rem'
+                  }}>
+                    📝 <strong>요약 제안:</strong> {item.proposedAction.split('\n')[0]}
+                  </p>
                   
                   <div className="approval-card-actions">
+                    <button 
+                      className="appr-btn detail" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectApproval?.(item);
+                      }}
+                      style={{ 
+                        marginRight: 'auto', 
+                        background: 'rgba(255, 255, 255, 0.08)', 
+                        border: '1px solid rgba(255, 255, 255, 0.15)', 
+                        color: 'var(--text-primary)',
+                        padding: '4px 8px',
+                        fontSize: '0.75rem',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🔍 승인안 대조하기
+                    </button>
                     {item.status === 'waiting' ? (
                       <>
                         <button 
                           className="appr-btn approve" 
-                          onClick={() => onApprove(item.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onApprove(item.id);
+                          }}
                         >
                           승인 (Approve)
                         </button>
                         <button 
                           className="appr-btn reject" 
-                          onClick={() => onReject(item.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReject(item.id);
+                          }}
                         >
                           거절 (Reject)
                         </button>

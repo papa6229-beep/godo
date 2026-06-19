@@ -7,7 +7,14 @@ import type {
 } from '../types/dataConnector';
 import { parseCSVToObjectArray } from '../utils/csvParser';
 import { buildOperationsSnapshot, normalizeRawObject } from '../utils/dataNormalizer';
-import { defaultOperationsData } from '../data/defaultOperationsData';
+import {
+  defaultOperationsData,
+  scenarioDefaultData,
+  scenarioCsFocusData,
+  scenarioReviewFocusData,
+  scenarioOrderIssueData,
+  scenarioStockSalesData
+} from '../data/defaultOperationsData';
 import './DataPanel.css';
 
 interface DataPanelProps {
@@ -296,6 +303,33 @@ export const DataPanel: React.FC<DataPanelProps> = ({
     setActiveSubTab('overview');
   };
 
+  // 6-2. 상황별 테스트 시나리오 데이터 로드
+  const handleLoadScenario = (scenarioType: 'default' | 'cs' | 'review' | 'order' | 'stock') => {
+    const scenarios: Record<'default' | 'cs' | 'review' | 'order' | 'stock', { data: OperationsDataSnapshot; label: string }> = {
+      default: { data: scenarioDefaultData, label: '기본 운영 데이터' },
+      cs: { data: scenarioCsFocusData, label: 'CS 집중 테스트 데이터' },
+      review: { data: scenarioReviewFocusData, label: '리뷰 대응 테스트 데이터' },
+      order: { data: scenarioOrderIssueData, label: '주문/배송 문제 데이터' },
+      stock: { data: scenarioStockSalesData, label: '재고/매출 테스트 데이터' }
+    };
+
+    const { data, label } = scenarios[scenarioType];
+
+    // 시간 값 업데이트하여 최신으로 맞춤
+    const updatedData = {
+      ...data,
+      importedAt: new Date().toISOString()
+    };
+    
+    setActiveOperationsData(updatedData);
+    localStorage.setItem('godo.data.activeSnapshot', JSON.stringify(updatedData));
+    localStorage.setItem('godo.data.lastSavedAt', new Date().toISOString());
+    
+    onAddLog(`[Data] 사용자가 로컬 데이터를 [${label}] 시나리오로 변경했습니다.`, 'success');
+    showToast(`${label}를 성공적으로 불러왔습니다.`, 'success');
+    setActiveSubTab('overview');
+  };
+
   // 7. Mapping Rules 계산 (Read-only 결과 도출)
   const mappingRules = useMemo(() => {
     const rules = {
@@ -456,6 +490,31 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                   <button type="button" className="btn primary" onClick={() => setActiveTab('api')}>
                     🔌 Go to API Bridge
                   </button>
+                </div>
+                <div style={{ marginTop: '1.25rem', borderTop: '1px solid var(--line-subtle)', paddingTop: '1.25rem' }}>
+                  <h4 style={{ margin: '0 0 8px 0', fontSize: '0.8rem', color: 'var(--accent-primary)' }}>🧪 테스트 시나리오 불러오기</h4>
+                  <p className="status-desc" style={{ fontSize: '0.72rem', margin: '0 0 12px 0' }}>
+                    다양한 운영 UX 상황을 시뮬레이션하기 위해 기획된 상황별 시나리오 데이터를 즉시 적재합니다.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <button type="button" className="btn secondary" style={{ fontSize: '0.75rem', padding: '6px 10px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} onClick={() => handleLoadScenario('default')}>
+                        기본 운영 데이터 불러오기
+                      </button>
+                      <button type="button" className="btn secondary" style={{ fontSize: '0.75rem', padding: '6px 10px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} onClick={() => handleLoadScenario('cs')}>
+                        CS 집중 테스트 데이터 불러오기
+                      </button>
+                      <button type="button" className="btn secondary" style={{ fontSize: '0.75rem', padding: '6px 10px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} onClick={() => handleLoadScenario('review')}>
+                        리뷰 대응 테스트 데이터 불러오기
+                      </button>
+                      <button type="button" className="btn secondary" style={{ fontSize: '0.75rem', padding: '6px 10px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} onClick={() => handleLoadScenario('order')}>
+                        주문/배송 문제 데이터 불러오기
+                      </button>
+                    </div>
+                    <button type="button" className="btn secondary" style={{ fontSize: '0.75rem', padding: '6px 10px', width: '100%' }} onClick={() => handleLoadScenario('stock')}>
+                      재고/매출 테스트 데이터 불러오기
+                    </button>
+                  </div>
                 </div>
               </div>
 

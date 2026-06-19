@@ -64,7 +64,10 @@ export const routeTask = (
     if (task.assignedAgentId === 'order') {
       matchedRule = routingRules.find(r => r.taskType === 'order_check');
     } else if (task.assignedAgentId === 'cs') {
-      matchedRule = routingRules.find(r => r.taskType === 'inquiry_classify');
+      matchedRule = routingRules.find(r => r.taskType === 'cs_reply_draft');
+      if (!matchedRule) {
+        matchedRule = routingRules.find(r => r.taskType === 'inquiry_classify');
+      }
     } else if (task.assignedAgentId === 'marketing') {
       matchedRule = routingRules.find(r => r.taskType === 'campaign_strategy');
     } else if (task.assignedAgentId === 'finance') {

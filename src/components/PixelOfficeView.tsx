@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { Agent } from '../types';
 import { PixelAgentSprite } from './PixelAgentSprite';
 import './PixelOfficeView.css';
-
 interface PixelOfficeViewProps {
   agents: Agent[];
   onSelectAgent: (agent: Agent) => void;
+  isMini?: boolean;
 }
 
 interface AgentRunState {
@@ -35,20 +35,6 @@ const OFFICE_WAYPOINTS = [
   { name: 'coffee-zone', x: 68, y: 44 }
 ];
 
-// 에이전트별 기본 대기 시선 방향 Y행 고정 매핑
-// 회전 시 점멸/사라짐 현상을 완전히 방지하기 위해, 캐릭터는 평생 이 지정된 시선 방향 한 가지만 유지합니다.
-// const IDLE_DIRECTIONS: Record<string, number> = {
-//   manager: 0,   // 정면
-//   cs: 2,        // 우측
-//   order: 4,     // 후면
-//   delivery: 1,  // 좌측
-//   review: 0,    // 정면
-//   marketing: 2, // 우측
-//   product: 1,   // 좌측
-//   stock: 4,     // 후면
-//   finance: 0    // 정면
-// };
-
 const WALK_SEQUENCE = [0, 1, 2, 3, 4, 5];
 
 // 맵 경계 clamp (말풍선 헤드룸 확보를 위해 MIN_Y를 32로 조정)
@@ -57,7 +43,7 @@ const MAX_X = 92;
 const MIN_Y = 32; 
 const MAX_Y = 85; 
 
-export const PixelOfficeView: React.FC<PixelOfficeViewProps> = ({ agents, onSelectAgent }) => {
+export const PixelOfficeView: React.FC<PixelOfficeViewProps> = ({ agents, onSelectAgent, isMini = false }) => {
   const [runStates, setRunStates] = useState<Record<string, AgentRunState>>({});
   
   const globalFrameRef = useRef(0);
@@ -424,7 +410,7 @@ export const PixelOfficeView: React.FC<PixelOfficeViewProps> = ({ agents, onSele
   }, []); 
 
   return (
-    <div className="pixel-office-viewport">
+    <div className={`pixel-office-viewport ${isMini ? 'mini-viewport' : ''}`}>
       <div className="office-map-frame">
         {/* 사무실 지도 */}
         <img src="/assets/map.jpeg" alt="Pixel Office Map" className="office-map-image" />
@@ -449,10 +435,38 @@ export const PixelOfficeView: React.FC<PixelOfficeViewProps> = ({ agents, onSele
               speech={char.speech}
               moveDuration={char.moveDuration}
               onClick={() => onSelectAgent(originalAgent)}
+              isMini={isMini}
             />
           );
         })}
       </div>
+
+      {/* 미니 모드일 때 에이전트 상태를 간단히 보여주는 목록 */}
+      {isMini && (
+        <div className="mini-office-agent-status-list">
+          {agents.map((agent) => {
+            const char = runStates[agent.id];
+            let statusText = '대기 중';
+            if (char) {
+              if (char.status === 'working') {
+                statusText = agent.bubbleText || '작업 수행 중';
+              } else if (char.status === 'walking') {
+                statusText = '이동 중';
+              } else if (char.status === 'thinking') {
+                statusText = '분석/생각 중';
+              } else if (char.status === 'done') {
+                statusText = '작업 완료';
+              }
+            }
+            return (
+              <div key={agent.id} className="mini-status-item" onClick={() => onSelectAgent(agent)}>
+                <span className="mini-status-name">{agent.name.split(' ')[0]}</span>
+                <span className={`mini-status-val ${char?.status || 'idle'}`}>{statusText}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

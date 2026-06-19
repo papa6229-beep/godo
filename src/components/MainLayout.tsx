@@ -23,6 +23,7 @@ interface MainLayoutProps {
   tasks: OperationTask[];
   logs: LogEntry[];
   isSimulating: boolean;
+  operationRunState: 'idle' | 'running' | 'completed';
   activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar';
   approvalQueue: ApprovalItem[];
   setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar') => void;
@@ -32,6 +33,9 @@ interface MainLayoutProps {
   onClearLogs: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onSelectTask?: (task: OperationTask) => void;
+  onSelectApproval?: (item: ApprovalItem) => void;
+  
   
   // Brain 관련 props
   brainKnowledge: BrainKnowledgeItem[];
@@ -85,6 +89,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   tasks,
   logs,
   isSimulating,
+  operationRunState,
   activeTab,
   approvalQueue,
   setActiveTab,
@@ -94,6 +99,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onClearLogs,
   onApprove,
   onReject,
+  onSelectTask,
+  onSelectApproval,
   brainKnowledge,
   onUpdateKnowledge,
   onAddLog,
@@ -238,31 +245,50 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       </header>
 
       {/* 메인 뷰포트 영역 */}
-      <div className="main-viewport">
-        {/* 좌측: 메인 채팅 제어 콘솔 */}
-        <aside className="viewport-left">
-          <ChatConsole />
-        </aside>
+      <div className={`main-viewport ${activeTab === 'office' ? 'office-tab-layout' : ''}`}>
+        {/* 좌측: 메인 채팅 제어 콘솔 (오늘의 운영 탭이 아닐 때만 렌더링) */}
+        {activeTab !== 'office' && (
+          <aside className="viewport-left">
+            <ChatConsole
+              activeOperationsData={activeOperationsData}
+              tasks={tasks}
+              approvalQueue={approvalQueue}
+              onAddLog={onAddLog}
+              onAddTask={onAddTask}
+              onStartSimulation={onStartSimulation}
+              onApprove={onApprove}
+              onReject={onReject}
+              agents={agents}
+              onUpdateAgents={onUpdateAgents}
+              isSimulating={isSimulating}
+            />
+          </aside>
+        )}
 
         {/* 우측: 다이나믹 패널 표시 영역 */}
         <main 
           className="viewport-right" 
           tabIndex={-1} 
-          style={{ outline: 'none' }}
+          style={{ outline: 'none', padding: activeTab === 'office' ? '0' : '15px' }}
         >
           {activeTab === 'office' && (
             <OfficeView
               agents={agents}
               tasks={tasks}
-              logs={logs}
               isSimulating={isSimulating}
+              operationRunState={operationRunState}
               approvalQueue={approvalQueue}
               onStartSimulation={onStartSimulation}
               onAddTask={onAddTask}
               onSelectAgent={onSelectAgent}
-              onClearLogs={onClearLogs}
               onApprove={onApprove}
               onReject={onReject}
+              onSelectTask={onSelectTask}
+              onSelectApproval={onSelectApproval}
+              activeOperationsData={activeOperationsData}
+              onNavigateToLogs={() => setActiveTab('logs')}
+              onUpdateAgents={onUpdateAgents}
+              onAddLog={onAddLog}
             />
           )}
 
