@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule, EngineUsageLog } from '../types/engine';
 import type { PermissionMatrixItem } from '../types/studio';
 import type { LogEntry } from '../types';
+import { getModels } from '../services/lmsConnector';
 import './EnginePanel.css';
 
 interface EnginePanelProps {
@@ -100,6 +101,10 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
 
   // --- 3. Local Engine States & Handlers ---
   const [selectedLocalId, setSelectedLocalId] = useState<string>('');
+  const lmsGemmaProvider = useMemo(() => {
+    return engineProviders.find(p => p.id === 'lms_gemma_4');
+  }, [engineProviders]);
+
   const localEngines = useMemo(() => engineProviders.filter(p => p.type === 'local'), [engineProviders]);
   const activeLocalItem = useMemo(() => {
     return localEngines.find(p => p.id === selectedLocalId) || localEngines[0] || null;
@@ -112,14 +117,125 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   }, [activeLocalItem, selectedLocalId]);
 
   const [testingLocalId, setTestingLocalId] = useState<string | null>(null);
-  const handleLocalTest = (id: string) => {
+  const [refreshingLocalId, setRefreshingLocalId] = useState<string | null>(null);
+
+  const handleLocalTest = async (id: string) => {
     setTestingLocalId(id);
-    setTimeout(() => {
+    const providerItem = engineProviders.find(p => p.id === id);
+    
+    if (id === 'lms_gemma_4') {
+      const startTime = Date.now();
+      onAddLog(`[Engine] 로컬 엔진 [${providerItem?.name}] LM Studio 연결 테스트를 시작합니다. (Endpoint: ${providerItem?.endpoint})`, 'info', 'Engine');
+      
+      const result = await getModels(providerItem?.endpoint);
+      const elapsed = Date.now() - startTime;
+      
       setTestingLocalId(null);
-      const provider = engineProviders.find(p => p.id === id);
-      onAddLog(`[Engine] 로컬 엔진 [${provider?.name}] Mock Connection 연결 성공 (Ping: 12ms)`, 'success', 'Engine');
-      showToast(`${provider?.name} 로컬 Mock 연결 테스트가 완료되었습니다.`, 'success');
-    }, 800);
+      
+      if (result.success && result.data) {
+        const models = result.data;
+        const targetModel = models.find(m => m.id === 'google/gemma-4-e4b' || m.id.includes('gemma-4-e4b') || m.id.includes('gemma-4'));
+        const detectedModelId = targetModel ? targetModel.id : (models[0]?.id || 'google/gemma-4-e4b');
+        const hasModel = models.length > 0;
+        
+        const finalStatus = hasModel ? ('connected' as const) : ('no_model' as const);
+        
+        const updated = engineProviders.map(p => {
+          if (p.id === id) {
+            return {
+              ...p,
+              status: finalStatus,
+              modelName: detectedModelId,
+              lastLatency: elapsed,
+              lastTestTime: new Date().toLocaleString()
+            };
+          }
+          return p;
+        });
+        onUpdateEngineProviders(updated);
+        
+        if (finalStatus === 'connected') {
+          onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 성공! 감지된 모델 ID: ${detectedModelId} (지연시간: ${elapsed}ms)`, 'success', 'Engine');
+          showToast(`Gemma 4 E4B 연결 테스트 성공! (${elapsed}ms)`, 'success');
+        } else {
+          onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결되었으나 활성화된 모델이 없습니다.`, 'warning', 'Engine');
+          showToast(`Gemma 4 E4B 연결 성공 (모델 없음)`, 'warning');
+        }
+      } else {
+        const updated = engineProviders.map(p => {
+          if (p.id === id) {
+            return {
+              ...p,
+              status: 'error' as const,
+              lastLatency: undefined,
+              lastTestTime: new Date().toLocaleString()
+            };
+          }
+          return p;
+        });
+        onUpdateEngineProviders(updated);
+        onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 실패: ${result.error}`, 'error', 'Engine');
+        showToast(`Gemma 4 E4B 연결 테스트 실패: ${result.error}`, 'error');
+      }
+    } else {
+      setTimeout(() => {
+        setTestingLocalId(null);
+        const provider = engineProviders.find(p => p.id === id);
+        const updated = engineProviders.map(p => {
+          if (p.id === id) {
+            return {
+              ...p,
+              status: 'mock' as const,
+              lastLatency: 12,
+              lastTestTime: new Date().toLocaleString()
+            };
+          }
+          return p;
+        });
+        onUpdateEngineProviders(updated);
+        onAddLog(`[Engine] 로컬 엔진 [${provider?.name}] Mock Connection 연결 성공 (Ping: 12ms)`, 'success', 'Engine');
+        showToast(`${provider?.name} 로컬 Mock 연결 테스트가 완료되었습니다.`, 'success');
+      }, 800);
+    }
+  };
+
+  const handleLocalRefresh = async (id: string) => {
+    setRefreshingLocalId(id);
+    const providerItem = engineProviders.find(p => p.id === id);
+    
+    if (id === 'lms_gemma_4') {
+      onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 모델 목록 갱신을 요청합니다.`, 'info', 'Engine');
+      const result = await getModels(providerItem?.endpoint);
+      setRefreshingLocalId(null);
+      
+      if (result.success && result.data) {
+        const models = result.data;
+        const targetModel = models.find(m => m.id === 'google/gemma-4-e4b' || m.id.includes('gemma-4-e4b') || m.id.includes('gemma-4'));
+        const detectedModelId = targetModel ? targetModel.id : (models[0]?.id || 'google/gemma-4-e4b');
+        
+        const updated = engineProviders.map(p => {
+          if (p.id === id) {
+            return {
+              ...p,
+              status: models.length > 0 ? ('connected' as const) : ('no_model' as const),
+              modelName: detectedModelId
+            };
+          }
+          return p;
+        });
+        onUpdateEngineProviders(updated);
+        onAddLog(`[Engine] 모델 목록 갱신 성공. 감지된 모델: ${detectedModelId}`, 'success', 'Engine');
+        showToast(`모델 목록이 갱신되었습니다: ${detectedModelId}`, 'success');
+      } else {
+        onAddLog(`[Engine] 모델 목록 갱신 실패: ${result.error}`, 'error', 'Engine');
+        showToast(`모델 갱신 실패: ${result.error}`, 'error');
+      }
+    } else {
+      setTimeout(() => {
+        setRefreshingLocalId(null);
+        showToast('Mock 엔진 모델 목록 갱신 완료.', 'success');
+      }, 500);
+    }
   };
 
   const handleSetDefaultLocal = (id: string) => {
@@ -311,7 +427,18 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
           </div>
           <div className="metric-box success">
             <span className="metric-lbl">연동 상태</span>
-            <span className="metric-val" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem' }}>CONNECTED (MOCK)</span>
+            {lmsGemmaProvider && lmsGemmaProvider.status === 'connected' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <span className="metric-val" style={{ color: '#00e676', fontSize: '0.75rem', fontWeight: 'bold' }}>LOCAL LLM READY</span>
+                {lmsGemmaProvider.lastLatency !== undefined && (
+                  <span style={{ fontSize: '0.65rem', opacity: 0.8, color: '#00e676' }}>
+                    {lmsGemmaProvider.lastLatency}ms ({lmsGemmaProvider.lastTestTime})
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="metric-val" style={{ color: 'var(--accent-primary)', fontSize: '0.75rem' }}>CONNECTED (MOCK)</span>
+            )}
           </div>
         </div>
       </div>
@@ -372,6 +499,22 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                   <span className="sub-lbl">예상 과금 레벨</span>
                   <span className="sub-val">{overviewStats.costStatus}</span>
                 </div>
+              </div>
+              <div className="metric-sub-row" style={{ marginTop: '10px', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '10px' }}>
+                <div className="sub-metric">
+                  <span className="sub-lbl">LM Studio 연동</span>
+                  <span className="sub-val" style={{ color: lmsGemmaProvider?.status === 'connected' ? '#00e676' : 'var(--danger)' }}>
+                    {lmsGemmaProvider?.status?.toUpperCase() || 'DISCONNECTED'}
+                  </span>
+                </div>
+                {lmsGemmaProvider?.status === 'connected' && (
+                  <div className="sub-metric">
+                    <span className="sub-lbl">최근 Latency / 시간</span>
+                    <span className="sub-val" style={{ fontSize: '0.75rem', color: '#00e676' }}>
+                      {lmsGemmaProvider.lastLatency}ms / {lmsGemmaProvider.lastTestTime}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -552,6 +695,22 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                       <span className="box-lbl">로컬 엔드포인트</span>
                       <span className="box-val mono">{activeLocalItem.endpoint}</span>
                     </div>
+                    {activeLocalItem.id === 'lms_gemma_4' && (
+                      <div className="meta-box-item" style={{ gridColumn: 'span 2' }}>
+                        <span className="box-lbl">감지된 모델 ID</span>
+                        <span className="box-val mono" style={{ fontSize: '0.75rem', color: '#ffab40' }}>
+                          {activeLocalItem.modelName || 'None'}
+                        </span>
+                      </div>
+                    )}
+                    {activeLocalItem.lastLatency !== undefined && (
+                      <div className="meta-box-item" style={{ gridColumn: 'span 2' }}>
+                        <span className="box-lbl">최근 Latency / 테스트 시각</span>
+                        <span className="box-val" style={{ color: '#00e676', fontSize: '0.75rem' }}>
+                          {activeLocalItem.lastLatency}ms / {activeLocalItem.lastTestTime}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <p className="engine-desc-text">{activeLocalItem.description}</p>
@@ -572,8 +731,23 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                       disabled={testingLocalId !== null}
                       onClick={() => handleLocalTest(activeLocalItem.id)}
                     >
-                      {testingLocalId === activeLocalItem.id ? '⏳ 통신 테스트 중...' : '🔌 Mock Connection Test'}
+                      {testingLocalId === activeLocalItem.id
+                        ? '⏳ 통신 테스트 중...'
+                        : activeLocalItem.id === 'lms_gemma_4'
+                        ? '🔌 Connection Test'
+                        : '🔌 Mock Connection Test'}
                     </button>
+
+                    {activeLocalItem.id === 'lms_gemma_4' && (
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        disabled={refreshingLocalId !== null}
+                        onClick={() => handleLocalRefresh(activeLocalItem.id)}
+                      >
+                        {refreshingLocalId === activeLocalItem.id ? '⏳ 모델 목록 갱신 중...' : '🔄 모델 새로고침'}
+                      </button>
+                    )}
                     
                     {!activeLocalItem.isDefault && (
                       <button

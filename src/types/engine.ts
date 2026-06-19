@@ -7,7 +7,7 @@ export interface EngineProvider {
   name: string;
   type: EngineProviderType;
   description: string;
-  status: 'connected' | 'disconnected' | 'mock' | 'disabled';
+  status: 'connected' | 'disconnected' | 'mock' | 'disabled' | 'no_model' | 'error';
   provider: 'lm_studio' | 'ollama' | 'gemini' | 'claude' | 'openai' | 'human';
   modelName: string;
   endpoint: string;
@@ -17,6 +17,8 @@ export interface EngineProvider {
   estimatedCostLevel: 'free' | 'low' | 'medium' | 'high';
   latencyLevel: 'fast' | 'normal' | 'slow';
   supportedTaskTypes: string[];
+  lastLatency?: number;
+  lastTestTime?: string;
 }
 
 export interface EngineRoutingRule {

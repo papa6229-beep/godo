@@ -18,6 +18,22 @@ export const defaultEngineProviders: EngineProvider[] = [
     supportedTaskTypes: ['inquiry_classify', 'order_check', 'inventory_check', 'sales_summary', 'review_analyze']
   },
   {
+    id: 'lms_gemma_4',
+    name: 'Gemma 4 E4B',
+    type: 'local',
+    description: 'LM Studio 로컬 LLM 연결 엔진 (google/gemma-4-e4b)',
+    status: 'disconnected',
+    provider: 'lm_studio',
+    modelName: 'google/gemma-4-e4b',
+    endpoint: 'http://localhost:1234/v1',
+    isEnabled: true,
+    isDefault: false,
+    privacyLevel: 'safe',
+    estimatedCostLevel: 'free',
+    latencyLevel: 'normal',
+    supportedTaskTypes: ['cs_reply_draft']
+  },
+  {
     id: 'local_vision_ocr',
     name: 'Local Vision OCR',
     type: 'local',
@@ -158,14 +174,14 @@ export const defaultEngineRoutingRules: EngineRoutingRule[] = [
   {
     id: 'rule_4',
     name: 'CS 답변 초안',
-    description: '고객 피드백 답변 추천 초안 생성. 필요에 따라 하이브리드로 대규모 LLM 템플릿 호출 가능',
+    description: '고객 피드백 답변 추천 초안 생성. 로컬 엔진을 우선하여 구동하고 실패 시 인간 검토로 이관합니다.',
     taskType: 'cs_reply_draft',
-    sensitivity: 'medium',
+    sensitivity: 'high',
     complexity: 'medium',
     dataScope: 'customer_sensitive',
-    preferredRoute: 'hybrid',
-    fallbackRoute: 'local',
-    requiredPermission: 'draft_only',
+    preferredRoute: 'local',
+    fallbackRoute: 'human',
+    requiredPermission: 'approval_required',
     enabled: true
   },
   {

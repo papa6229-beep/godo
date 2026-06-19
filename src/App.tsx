@@ -11,6 +11,7 @@ import { executeTask } from './engine/taskExecutor';
 import { composeOperationReport } from './engine/reportComposer';
 import { selectAIModel } from './engine/modelRouter';
 import { mockGodoData } from './data/mockGodoData';
+import { generateCSDrafts } from './engine/csDraftGenerator';
 import { OpeningScreen } from './components/OpeningScreen';
 import { MainLayout } from './components/MainLayout';
 import { AgentDetailModal } from './components/AgentDetailModal';
@@ -242,6 +243,58 @@ function App() {
     localStorage.setItem('godo.calendar.operationHistory', JSON.stringify(operationHistory));
   }, [operationHistory]);
 
+  // MVP 데이터 정밀 동기화 및 마이그레이션 훅
+  useEffect(() => {
+    let changedProviders = false;
+    const currentProviders = [...engineProviders];
+    
+    // Gemma 4 E4B 누락 시 강제 편입
+    if (!currentProviders.some(p => p.id === 'lms_gemma_4')) {
+      const gemma = defaultEngineProviders.find(p => p.id === 'lms_gemma_4');
+      if (gemma) {
+        currentProviders.push(gemma);
+        changedProviders = true;
+      }
+    }
+
+    if (changedProviders) {
+      setTimeout(() => {
+        setEngineProviders(currentProviders);
+      }, 0);
+    }
+
+    let changedRules = false;
+    const currentRules = engineRoutingRules.map(rule => {
+      if (rule.id === 'rule_4') {
+        if (
+          rule.preferredRoute !== 'local' ||
+          rule.fallbackRoute !== 'human' ||
+          rule.requiredPermission !== 'approval_required' ||
+          rule.sensitivity !== 'high' ||
+          rule.dataScope !== 'customer_sensitive'
+        ) {
+          changedRules = true;
+          return {
+            ...rule,
+            description: '고객 피드백 답변 추천 초안 생성. 로컬 엔진을 우선하여 구동하고 실패 시 인간 검토로 이관합니다.',
+            sensitivity: 'high' as const,
+            dataScope: 'customer_sensitive' as const,
+            preferredRoute: 'local' as const,
+            fallbackRoute: 'human' as const,
+            requiredPermission: 'approval_required' as const
+          };
+        }
+      }
+      return rule;
+    });
+
+    if (changedRules) {
+      setTimeout(() => {
+        setEngineRoutingRules(currentRules);
+      }, 0);
+    }
+  }, [engineProviders, engineRoutingRules]);
+
   const handleResetAllData = () => {
     setBrainKnowledge(initialBrainKnowledgeItems);
     setAgents(initialAgents);
@@ -406,7 +459,69 @@ function App() {
       await sleep(1200 + Math.random() * 600);
       
       // 4. 실행 결과 산정
-      const executedTask = await executeTask(routedTask, mockGodoData, activeOperationsData);
+      let executedTask: OperationTask;
+      if (routedTask.assignedAgentId === 'cs') {
+        addLog(`[Engine] CS 답변 초안 생성 작업을 시작합니다. (cs draft started)`, 'info', 'Engine');
+        
+        const startTime = Date.now();
+        const draftResults = await generateCSDrafts(activeOperationsData, engineProviders);
+        const elapsed = Date.now() - startTime;
+        
+        addLog(`[Engine] CS 답변 초안 생성 완료 (cs draft generated). 소요시간: ${elapsed}ms`, 'success', 'Engine');
+        
+        draftResults.forEach(res => {
+          addLog(`[Engine] 문의 ID: ${res.inquiryId} 처리 완료 (elapsed time: ${res.latency}ms, fallback: ${res.fallbackUsed}, PII 제거: ${res.piiRemoved})`, 'info', 'Engine');
+        });
+
+        // CS 초안 작성 사용 이력 추가 기록
+        const csUsageLog: EngineUsageLog = {
+          id: `usage-cs-${Date.now()}-${i}`,
+          timestamp: getFormattedTime(),
+          taskId: routedTask.id,
+          taskTitle: `${routedTask.title} (Draft Generated)`,
+          agentId: 'cs',
+          routeType: routedTask.routeType,
+          providerId: modelConfig.providerId || 'lms_gemma_4',
+          modelName: modelConfig.modelName,
+          reason: `CS Draft Generated. Elapsed: ${elapsed}ms, Fallback: ${draftResults.some(r => r.fallbackUsed)}, PII Masked: ${draftResults.some(r => r.piiRemoved)}`,
+          status: draftResults.some(r => r.fallbackUsed) ? 'fallback' : 'completed'
+        };
+        setEngineUsageLogs(prev => [...prev, csUsageLog]);
+
+        executedTask = {
+          ...routedTask,
+          status: 'needs_approval' as const,
+          resultSummary: `미답변 문의 ${draftResults.length}건에 대한 CS 답변 초안을 성공적으로 생성했습니다.`,
+          logs: [
+            ...routedTask.logs || [],
+            `[Engine] CS 답변 초안 생성 모듈 기동.`,
+            `[Engine] 소요 시간: ${elapsed}ms`,
+            `[Engine] 감지된 모델: ${draftResults[0]?.modelId || 'None'}`,
+            `[Engine] PII 마스킹 처리 결과: ${draftResults.some(r => r.piiRemoved) ? '제거 완료' : '대상 없음'}`,
+            `[Engine] Fallback 적용 건수: ${draftResults.filter(r => r.fallbackUsed).length}건`
+          ],
+          completedAt: new Date().toISOString()
+        };
+
+        // Approval Queue 적재
+        draftResults.forEach((res, idx) => {
+          const proposedText = `[문의 요약]: ${res.title}\n[문의 내용]: ${res.cleanedContent}\n\n[답변 초안]: ${res.draftReply}\n\n[상세 정보]:\n- Model ID: ${res.modelId}\n- Latency: ${res.latency}ms\n- Fallback 사용 여부: ${res.fallbackUsed ? '예' : '아니오'}\n- PII 제거 여부: ${res.piiRemoved ? '예' : '아니오'}`;
+          
+          const newApproval: ApprovalItem = {
+            id: `appr-cs-draft-${Date.now()}-${idx}`,
+            taskId: executedTask.id,
+            title: `CS 답변 초안 - ${res.customerNameMasked} 고객님`,
+            requestedByAgentId: 'cs',
+            riskLevel: 'medium',
+            reason: 'CS 답변 초안 검토 및 승인 대기',
+            proposedAction: proposedText,
+            status: 'waiting'
+          };
+          setApprovalQueue(prev => [...prev, newApproval]);
+        });
+      } else {
+        executedTask = await executeTask(routedTask, mockGodoData, activeOperationsData);
+      }
       currentTasks[i] = executedTask;
       setTasks([...currentTasks]);
 
@@ -455,18 +570,20 @@ function App() {
             : a
         ));
         
-        // 승인 대기 목록 추가
-        const newApproval: ApprovalItem = {
-          id: `appr-${Date.now()}-${i}`,
-          taskId: executedTask.id,
-          title: executedTask.title,
-          requestedByAgentId: executedTask.assignedAgentId,
-          riskLevel: executedTask.riskLevel,
-          reason: '정책 및 의사결정 승인 필요 (HIGH_RISK)',
-          proposedAction: executedTask.resultSummary || '',
-          status: 'waiting'
-        };
-        setApprovalQueue(prev => [...prev, newApproval]);
+        // 승인 대기 목록 추가 (CS는 위에서 카드별로 이미 추가했으므로 제외)
+        if (executedTask.assignedAgentId !== 'cs') {
+          const newApproval: ApprovalItem = {
+            id: `appr-${Date.now()}-${i}`,
+            taskId: executedTask.id,
+            title: executedTask.title,
+            requestedByAgentId: executedTask.assignedAgentId,
+            riskLevel: executedTask.riskLevel,
+            reason: '정책 및 의사결정 승인 필요 (HIGH_RISK)',
+            proposedAction: executedTask.resultSummary || '',
+            status: 'waiting'
+          };
+          setApprovalQueue(prev => [...prev, newApproval]);
+        }
         
         addLog(`${shortAgentName} AI가 ${executedTask.assignedAgentId}_operation_template.md를 참조했습니다.`, 'agent', 'Brain');
         addLog(`${executedTask.title}은 승인 대기 상태입니다.`, 'warning', 'Approval');
