@@ -272,17 +272,24 @@ GODO AI OS에는 9명의 AI 에이전트가 사전 정의되어 있습니다.
 
 ---
 
-## 16. SECURE PROXY Runtime Fix
+## 16. SECURE PROXY Runtime Fix & IDE Warnings Patch
 
-*   **발생했던 문제**: Vercel Serverless Function 배포 후, Node ESM 런타임 환경에서 `ERR_MODULE_NOT_FOUND` 오류가 발생하며 500 에러 페이지가 노출되었습니다 (예: `Cannot find module '/var/task/api/_shared/proxyResponse'`).
-*   **원인**: Vercel의 Node 런타임이 ESM 모듈 형식(`package.json`의 `"type": "module"`)으로 실행될 때, 상대경로 import 문에 파일 확장자(`.js`)가 명시되어 있지 않아 해당 가상 모듈 파일을 찾지 못했습니다.
+*   **발생했던 문제**:
+    1. Vercel Serverless Function 배포 후, Node ESM 런타임 환경에서 `ERR_MODULE_NOT_FOUND` 오류가 발생하며 500 에러 페이지가 노출되었습니다 (예: `Cannot find module '/var/task/api/_shared/proxyResponse'`).
+    2. IDE(VS Code 등)에서 `api/` 폴더 내의 서버리스 함수 파일을 열었을 때, `tsconfig` 컴파일 경로에서 누락되어 Node 내장 모듈의 타입이나 Request 객체의 `method` 속성을 인식하지 못하는 타입스크립트 경고가 노출되었습니다.
+    3. `BrainPanel.css`에서 말줄임 처리를 위해 사용한 `-webkit-line-clamp` 속성에 대해 표준 `line-clamp` 속성이 병기되지 않아 브라우저 호환성 경고(Problems)가 발생했습니다.
+*   **원인**:
+    1. Vercel의 Node 런타임이 ESM 모듈 형식으로 실행될 때, 상대경로 import 문에 파일 확장자(`.js`)가 명시되어 있지 않았습니다.
+    2. `tsconfig.node.json`의 `include` 설정이 `vite.config.ts`만 잡고 있어서 `api/` 디렉토리가 컴파일러 분석 환경에서 제외되어 있었습니다.
+    3. 크로스 브라우저 지원 규격 미준수로 인한 스타일시트 린트 에러였습니다.
 *   **해결책**:
-    1.  `api/godomall/*.ts` 내의 모든 `api/_shared/` 상대경로 import 문 끝에 `.js` 확장자를 명확하게 기입하여 컴파일 후 ESM 번들러가 이를 해석할 수 있도록 보완했습니다 (예: `import { sendOkResponse } from '../_shared/proxyResponse.js';`).
-    2.  `api/_shared/secretGuard.ts` 내부에서 프론트엔드 코드 디렉토리(`../../src/types/proxy`)의 타입을 임포트하던 부분을 삭제했습니다. 타입 정의(`ProxySafetyStatus`)를 서버리스 코드 내에 로컬 인터페이스로 선언하여 서버 컴파일과 클라이언트 컴파일의 의존 경로를 완벽히 격리했습니다.
+    1. `api/godomall/*.ts` 내의 모든 `api/_shared/` 상대경로 import 문 끝에 `.js` 확장자를 명확하게 기입했습니다.
+    2. `tsconfig.node.json` 파일의 `include` 목록에 `"api/**/*"`를 추가하여 IDE 언어 서버가 해당 API 파일들의 타입 및 모듈을 완벽하게 추론하도록 패치했습니다.
+    3. `BrainPanel.css` 내 `.card-summary-text` 클래스에 표준 `line-clamp: 2;`를 병행 선언하여 IDE 문제를 클리어했습니다.
 *   **검증 결과**:
     *   `npm run lint`, `npx tsc --noEmit`, `npm run build` 검사가 무오류로 통과되었습니다.
     *   실제 배포 사이트의 `/api/godomall/health`로 진입 시 500 Vercel 오류 대신 정상적인 200 OK JSON 응답이 반환되는 것을 확인했습니다.
-    *   GET `/api/godomall/sync` 접근 시 핸들러의 분기 필터링에 걸려 405 Method Not Allowed JSON 응답이 정상 반환됨을 실증했습니다.
+    *   에디터 하단 Problems 탭의 모든 린트/컴파일 경고가 0개로 해소되었습니다.
 
 ---
 

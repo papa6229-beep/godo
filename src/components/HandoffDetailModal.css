@@ -1,0 +1,364 @@
+/* ── HandoffDetailModal ─────────────────────────────────────── */
+
+.handoff-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-overlay, rgba(0, 0, 0, 0.65));
+  backdrop-filter: blur(5px);
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: hd-overlay-in 0.18s ease;
+}
+
+@keyframes hd-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.handoff-detail-modal {
+  width: min(640px, 88vw);
+  max-height: min(620px, 84vh);
+  background: var(--modal-bg, #0b1116);
+  border: 1px solid var(--modal-border, #1f2d3d);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: hd-modal-in 0.2s ease;
+}
+
+@keyframes hd-modal-in {
+  from { transform: scale(0.96) translateY(10px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* 헤더 */
+.handoff-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--bg-surface, #0d161d);
+  border-bottom: 1px solid var(--modal-border, #1f2d3d);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.handoff-detail-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.handoff-detail-badge {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--accent-primary, #10b981);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.handoff-detail-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary, #f0f6fc);
+  line-height: 1.3;
+}
+
+.handoff-detail-close {
+  background: transparent;
+  border: 1px solid var(--modal-border, #30363d);
+  border-radius: 8px;
+  color: var(--text-muted, #8b949e);
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.handoff-detail-close:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* 경로 시각화 */
+.handoff-route-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.015);
+  border-bottom: 1px solid var(--modal-border, #1f2d3d);
+  flex-shrink: 0;
+}
+
+.handoff-route-dept {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.handoff-route-dept.from {
+  background: rgba(165, 180, 252, 0.06);
+  border: 1px solid rgba(165, 180, 252, 0.15);
+}
+
+.handoff-route-dept.to {
+  background: rgba(52, 211, 153, 0.06);
+  border: 1px solid rgba(52, 211, 153, 0.15);
+}
+
+.route-dept-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.route-dept-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.route-dept-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted, #8b949e);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.route-dept-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #f0f6fc);
+}
+
+.handoff-route-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.arrow-icon {
+  font-size: 20px;
+  color: var(--text-muted, #8b949e);
+  line-height: 1;
+}
+
+.arrow-label {
+  font-size: 8.5px;
+  color: var(--text-muted, #8b949e);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 본문 */
+.handoff-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.handoff-detail-body::-webkit-scrollbar { width: 5px; }
+.handoff-detail-body::-webkit-scrollbar-thumb { background: var(--modal-border, #1f2d3d); border-radius: 2.5px; }
+
+/* 정보 섹션 */
+.handoff-info-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--modal-border, #1f2d3d);
+  border-radius: 10px;
+}
+
+.handoff-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.handoff-info-label {
+  font-size: 10.5px;
+  color: var(--text-muted, #8b949e);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.handoff-info-value {
+  font-size: 10.5px;
+  color: var(--text-primary, #f0f6fc);
+  font-weight: 600;
+  text-align: right;
+}
+
+.handoff-info-value.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+}
+
+.handoff-info-value.small {
+  font-size: 9px;
+  opacity: 0.7;
+  word-break: break-all;
+}
+
+/* 메시지 섹션 */
+.handoff-section-title {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--accent-primary, #10b981);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin: 0 0 8px 0;
+}
+
+.handoff-message-box {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--modal-border, #1f2d3d);
+  border-left: 3px solid var(--accent-primary, #10b981);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.handoff-message-box p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-primary, #f0f6fc);
+  line-height: 1.55;
+}
+
+/* 관련 결과 섹션 */
+.handoff-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.handoff-result-card {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--modal-border, #1f2d3d);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.handoff-result-card.success   { border-left: 3px solid #10b981; }
+.handoff-result-card.failed    { border-left: 3px solid #ef4444; }
+.handoff-result-card.needs_review { border-left: 3px solid #f59e0b; }
+
+.handoff-result-header {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.handoff-result-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.handoff-result-badge.success { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.handoff-result-badge.failed  { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.handoff-result-badge.needs_review { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+
+.handoff-approval-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.handoff-result-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #f0f6fc);
+}
+
+.handoff-result-findings {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.handoff-result-findings li {
+  font-size: 10.5px;
+  color: var(--text-secondary, #c9d1d9);
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .handoff-detail-modal {
+  background: #fff;
+  border-color: rgba(0, 30, 20, 0.1);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='light'] .handoff-detail-header {
+  background: #f8fbfa;
+}
+
+[data-theme='light'] .handoff-route-visual {
+  background: rgba(0, 168, 120, 0.02);
+}
+
+[data-theme='light'] .handoff-info-section,
+[data-theme='light'] .handoff-message-box,
+[data-theme='light'] .handoff-result-card {
+  background: #f8fbfa;
+  border-color: rgba(0, 30, 20, 0.08);
+}
+
+[data-theme='light'] .handoff-detail-modal { background: var(--modal-bg); }
+[data-theme='light'] .handoff-detail-body::-webkit-scrollbar-thumb { background: var(--line-subtle); }
+
+[data-theme='light'] .handoff-route-dept.from {
+  background: rgba(99, 102, 241, 0.06);
+  border-color: rgba(99, 102, 241, 0.18);
+}
+[data-theme='light'] .handoff-route-dept.to {
+  background: rgba(5, 150, 105, 0.06);
+  border-color: rgba(5, 150, 105, 0.18);
+}
+
+[data-theme='light'] .handoff-message-box {
+  border-left-color: var(--accent-primary);
+}
+[data-theme='light'] .handoff-section-title { color: var(--accent-primary); }
+
+[data-theme='light'] .handoff-result-badge.success { background: rgba(5, 150, 105, 0.12); color: var(--success); }
+[data-theme='light'] .handoff-result-badge.failed  { background: rgba(220, 38, 38, 0.1); color: var(--danger); }
+[data-theme='light'] .handoff-result-badge.needs_review { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+[data-theme='light'] .handoff-approval-tag { background: rgba(217, 119, 6, 0.12); color: var(--warning); }

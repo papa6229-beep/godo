@@ -1,73 +1,23 @@
+/* ── Office View Layout ────────────────────────────────────────── */
+
 .office-view-container {
   display: grid;
-  grid-template-columns: 30% 42% 28%;
-  gap: 15px;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(560px, 1.6fr) minmax(320px, 1fr);
+  gap: 12px;
   height: 100%;
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 10px 15px;
+  padding: 10px 14px;
 }
 
-/* 1열: 좌측 현황판 */
+/* 1열: 좌측 부서 관제 보드 */
 .office-left-column {
   display: flex;
   flex-direction: column;
-  gap: 15px;
   height: 100%;
   min-height: 0;
-  overflow-y: auto;
-}
-
-/* 스크롤바 커스텀 */
-.office-left-column::-webkit-scrollbar {
-  width: 4px;
-}
-.office-left-column::-webkit-scrollbar-thumb {
-  background: var(--line-subtle);
-  border-radius: 2px;
-}
-
-.office-map-card.mini-map {
-  background: var(--bg-panel-strong);
-  border: 1px solid var(--line-subtle);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  border-radius: 16px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex-shrink: 0;
   overflow: hidden;
-}
-
-.map-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--line-subtle);
-  padding-bottom: 6px;
-  flex-shrink: 0;
-}
-
-.map-badge {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 800;
-  color: var(--accent-primary);
-  letter-spacing: 0.5px;
-}
-
-.map-desc {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-}
-
-.office-briefing-wrapper {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 /* 2열: 중앙 총괄 매니저 콘솔 */
@@ -88,18 +38,16 @@
   overflow-y: auto;
 }
 
-.office-right-column::-webkit-scrollbar {
-  width: 4px;
-}
+.office-right-column::-webkit-scrollbar { width: 4px; }
 .office-right-column::-webkit-scrollbar-thumb {
-  background: var(--line-subtle);
+  background: var(--line-subtle, #1f2d3d);
   border-radius: 2px;
 }
 
-/* 미디어 쿼리: 반응형 해상도 대응 */
-@media (max-width: 1400px) {
+/* 반응형 */
+@media (max-width: 1440px) {
   .office-view-container {
-    grid-template-columns: 32% 38% 30%;
+    grid-template-columns: 280px 1fr 320px;
     gap: 10px;
   }
 }
@@ -110,11 +58,13 @@
     grid-template-rows: auto auto auto;
     overflow-y: auto;
     height: auto;
+    padding: 10px;
   }
   .office-left-column,
   .office-center-column,
   .office-right-column {
     height: auto;
     overflow: visible;
+    min-height: 400px;
   }
 }

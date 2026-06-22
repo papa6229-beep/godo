@@ -272,3 +272,108 @@
     height: auto;
   }
 }
+
+/* ── 폰트 위계 미세 조정 (다크/라이트 공통) ─────────────────── */
+.logo-title { font-size: 1.18rem; letter-spacing: 0.4px; }
+.logo-subtitle { font-size: 0.7rem; }
+.nav-tab-btn { font-size: 0.76rem; padding: 6px 12px; }
+.nav-tab-btn.active { box-shadow: 0 1px 0 var(--accent-border) inset; }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .main-header {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--line-subtle);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04), 0 4px 20px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .logo-title { color: var(--text-primary); }
+[data-theme='light'] .logo-subtitle { color: var(--text-muted); }
+[data-theme='light'] .logo-icon { filter: none; }
+
+[data-theme='light'] .demo-badge {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+}
+
+/* 짙은 회색 띠를 라이트 톤으로 */
+[data-theme='light'] .header-nav-tabs {
+  background: #eef2f1;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .nav-tab-btn { color: var(--text-secondary); }
+[data-theme='light'] .nav-tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(0, 168, 120, 0.06);
+}
+[data-theme='light'] .nav-tab-btn.active {
+  background: #ffffff;
+  color: var(--accent-primary-2);
+  border: 1px solid var(--accent-border);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+[data-theme='light'] .nav-divider {
+  background: rgba(0, 168, 120, 0.32);
+  box-shadow: none;
+}
+
+[data-theme='light'] .nav-group-label {
+  color: #64748b;
+}
+
+[data-theme='light'] .nav-tab-btn.nav-tab-settings {
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .nav-tab-btn.nav-tab-settings:hover {
+  color: var(--text-primary);
+  background: rgba(0, 168, 120, 0.06);
+  border-color: var(--accent-border);
+}
+
+[data-theme='light'] .nav-tab-btn.nav-tab-settings.active {
+  background: var(--accent-soft);
+  color: var(--accent-primary-2);
+  border-color: var(--accent-border);
+}
+
+[data-theme='light'] .header-run-btn {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+[data-theme='light'] .header-run-btn:hover:not(:disabled) {
+  background: var(--accent-primary-2);
+  border-color: var(--accent-primary-2);
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(0, 168, 120, 0.22);
+}
+
+[data-theme='light'] .header-run-btn.running {
+  background: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.3);
+  color: var(--warning);
+}
+
+[data-theme='light'] .theme-toggle-btn {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .theme-toggle-btn:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+
+/* 채팅 좌측 컬럼 다크 패치 → 라이트 톤 */
+[data-theme='light'] .viewport-left {
+  background: var(--bg-app);
+  border-right-color: var(--line-subtle);
+  backdrop-filter: none;
+}

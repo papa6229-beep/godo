@@ -1,49 +1,132 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
-:root {
-  /* 1. 디자인 토큰 정의 (SF 운영 콘솔 / 프리미엄 다크) */
-  --bg-app: #050809;
-  --bg-surface: #091012;
-  --bg-panel: rgba(10, 18, 20, 0.82);
-  --bg-panel-strong: rgba(8, 15, 17, 0.94);
-  --bg-elevated: rgba(14, 24, 27, 0.96);
+/* ─────────────────────────────────────────────────────────────
+   GODO AI OS - 글로벌 CSS 변수 & 테마 시스템
+   ───────────────────────────────────────────────────────────── */
 
-  --text-primary: #eefaf5;
-  --text-secondary: #a9c2b8;
-  --text-muted: #6f8d83;
+/* ── Dark Neon Mode (기본) ──────────────────────────────────── */
+:root,
+[data-theme='dark'] {
+  --bg-app:           #050809;
+  --bg-surface:       #091012;
+  --bg-panel:         rgba(10, 18, 20, 0.82);
+  --bg-panel-strong:  rgba(8, 15, 17, 0.94);
+  --bg-elevated:      rgba(14, 24, 27, 0.96);
 
-  --accent-primary: #2df5a2;       /* 민트/청록 네온 */
+  --text-primary:     #eefaf5;
+  --text-secondary:   #a9c2b8;
+  --text-muted:       #6f8d83;
+
+  --accent-primary:   #2df5a2;
   --accent-primary-2: #14c97e;
-  --accent-soft: rgba(45, 245, 162, 0.08);
-  --accent-border: rgba(45, 245, 162, 0.18);
-  --accent-glow: rgba(45, 245, 162, 0.12);
+  --accent-soft:      rgba(45, 245, 162, 0.08);
+  --accent-border:    rgba(45, 245, 162, 0.18);
+  --accent-glow:      rgba(45, 245, 162, 0.12);
 
-  --line-subtle: rgba(120, 160, 145, 0.12);
-  --line-strong: rgba(45, 245, 162, 0.18);
+  --line-subtle:      rgba(120, 160, 145, 0.12);
+  --line-strong:      rgba(45, 245, 162, 0.18);
 
-  --danger: #ff5f7a;
-  --warning: #ffcf5a;
-  --info: #63c7ff;
-  --success: #2df5a2;
+  --danger:           #ff5f7a;
+  --warning:          #ffcf5a;
+  --info:             #63c7ff;
+  --success:          #2df5a2;
 
-  /* 레거시 클래스 호환성 변수 매핑 */
-  --bg-color: var(--bg-app);
-  --panel-bg: var(--bg-panel);
-  --neon-green: var(--accent-primary);
+  /* 카드/패널 배경 */
+  --card-bg:          rgba(10, 18, 20, 0.7);
+  --card-border:      rgba(120, 160, 145, 0.12);
+  --card-hover:       rgba(255, 255, 255, 0.03);
+
+  /* 모달 */
+  --modal-bg:         #0b1116;
+  --modal-border:     #1f2d3d;
+  --modal-overlay:    rgba(0, 0, 0, 0.72);
+
+  /* 입력 */
+  --input-bg:         rgba(7, 14, 16, 0.85);
+  --input-border:     rgba(120, 160, 145, 0.12);
+  --input-focus:      rgba(45, 245, 162, 0.4);
+
+  /* body background */
+  --body-gradient:
+    radial-gradient(circle at top center, rgba(25, 120, 90, 0.12), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(45, 245, 162, 0.05), transparent 25%),
+    linear-gradient(180deg, #050809 0%, #030506 100%);
+
+  /* 레거시 호환 */
+  --bg-color:       var(--bg-app);
+  --panel-bg:       var(--bg-panel);
+  --neon-green:     var(--accent-primary);
   --neon-green-dim: var(--line-strong);
+  --neon-green-dark:var(--bg-surface);
+
+  color-scheme: dark;
+}
+
+/* ── Light Clean Mode ───────────────────────────────────────── */
+[data-theme='light'] {
+  --bg-app:           #f0f4f5;
+  --bg-surface:       #ffffff;
+  --bg-panel:         rgba(255, 255, 255, 0.92);
+  --bg-panel-strong:  rgba(255, 255, 255, 0.98);
+  --bg-elevated:      rgba(248, 251, 252, 0.98);
+
+  --text-primary:     #0d1f1a;
+  --text-secondary:   #3d5a52;
+  --text-muted:       #7a9e94;
+
+  --accent-primary:   #00a878;
+  --accent-primary-2: #008f66;
+  --accent-soft:      rgba(0, 168, 120, 0.08);
+  --accent-border:    rgba(0, 168, 120, 0.22);
+  --accent-glow:      rgba(0, 168, 120, 0.10);
+
+  --line-subtle:      rgba(0, 30, 20, 0.09);
+  --line-strong:      rgba(0, 168, 120, 0.18);
+
+  --danger:           #dc2626;
+  --warning:          #d97706;
+  --info:             #0284c7;
+  --success:          #059669;
+
+  /* 카드/패널 */
+  --card-bg:          #ffffff;
+  --card-border:      rgba(0, 30, 20, 0.09);
+  --card-hover:       rgba(0, 168, 120, 0.04);
+
+  /* 모달 */
+  --modal-bg:         #ffffff;
+  --modal-border:     rgba(0, 30, 20, 0.1);
+  --modal-overlay:    rgba(0, 20, 14, 0.45);
+
+  /* 입력 */
+  --input-bg:         #f8fbfa;
+  --input-border:     rgba(0, 30, 20, 0.12);
+  --input-focus:      rgba(0, 168, 120, 0.35);
+
+  /* body background */
+  --body-gradient:
+    radial-gradient(circle at top center, rgba(0, 168, 120, 0.04), transparent 50%),
+    linear-gradient(180deg, #f0f4f5 0%, #e8eeec 100%);
+
+  /* 레거시 호환 */
+  --bg-color:        var(--bg-app);
+  --panel-bg:        var(--bg-panel);
+  --neon-green:      var(--accent-primary);
+  --neon-green-dim:  var(--line-strong);
   --neon-green-dark: var(--bg-surface);
 
+  color-scheme: light;
+}
+
+/* ── Base ────────────────────────────────────────────────────── */
+html {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color-scheme: dark;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background: 
-    radial-gradient(circle at top center, rgba(25, 120, 90, 0.12), transparent 45%),
-    radial-gradient(circle at 80% 20%, rgba(45, 245, 162, 0.05), transparent 25%),
-    linear-gradient(180deg, #050809 0%, #030506 100%);
+  background: var(--body-gradient);
   background-attachment: fixed;
   color: var(--text-primary);
   overflow: hidden;
@@ -52,6 +135,7 @@ body {
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 #root {
@@ -65,18 +149,40 @@ body {
   flex-direction: column;
 }
 
-/* 글로벌 스크롤바 커스텀 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ── 글로벌 스크롤바 ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(5, 10, 12, 0.2); }
+::-webkit-scrollbar-thumb { background: var(--line-subtle); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-border); }
+
+[data-theme='light'] ::-webkit-scrollbar-track { background: rgba(0, 30, 20, 0.04); }
+[data-theme='light'] ::-webkit-scrollbar-thumb { background: rgba(0, 30, 20, 0.12); }
+[data-theme='light'] ::-webkit-scrollbar-thumb:hover { background: var(--accent-primary); }
+
+/* ── 테마 토글 버튼 ─────────────────────────────────────────── */
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 20px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  font-family: 'Inter', sans-serif;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
-::-webkit-scrollbar-track {
-  background: rgba(5, 10, 12, 0.4);
+
+.theme-toggle-btn:hover {
+  background: var(--accent-primary);
+  color: var(--bg-app);
 }
-::-webkit-scrollbar-thumb {
-  background: var(--line-subtle);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-border);
+
+.theme-toggle-icon {
+  font-size: 14px;
+  line-height: 1;
 }

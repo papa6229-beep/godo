@@ -604,3 +604,196 @@
   0% { box-shadow: 0 0 2px rgba(255, 207, 90, 0.2); }
   100% { box-shadow: 0 0 8px rgba(255, 207, 90, 0.5); }
 }
+
+/* ── 상태 요약 칩 ─────────────────────────────────────────────── */
+.task-status-summary,
+.approval-status-summary {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.approval-status-summary .view-all-chip {
+  margin-left: auto;
+}
+.approval-status-summary .view-all-chip .status-chip-lbl {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line-subtle);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  color: var(--text-secondary);
+}
+
+.status-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.status-chip:disabled,
+.status-chip.zero {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.status-chip:disabled:hover {
+  transform: none;
+  border-color: var(--line-subtle);
+  background: var(--bg-elevated);
+  box-shadow: none;
+}
+
+.status-chip-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.status-chip-lbl {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+/* tone별 강조 (count > 0일 때) */
+.status-chip.tone-running:not(.zero) { border-color: rgba(99, 199, 255, 0.3); }
+.status-chip.tone-running:not(.zero) .status-chip-num { color: var(--info); }
+
+.status-chip.tone-review:not(.zero) { border-color: rgba(255, 207, 90, 0.4); background: rgba(255, 207, 90, 0.06); }
+.status-chip.tone-review:not(.zero) .status-chip-num { color: var(--warning); }
+
+.status-chip.tone-done:not(.zero) { border-color: var(--accent-border); }
+.status-chip.tone-done:not(.zero) .status-chip-num { color: var(--accent-primary); }
+
+.status-chip.tone-failed:not(.zero) { border-color: rgba(255, 95, 122, 0.35); }
+.status-chip.tone-failed:not(.zero) .status-chip-num { color: var(--danger); }
+
+/* ── 폰트 위계 미세 조정 ────────────────────────────────────── */
+.board-title { font-size: 1rem; letter-spacing: -0.2px; }
+.board-subtitle { font-size: 0.72rem; line-height: 1.5; }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .task-board,
+[data-theme='light'] .approval-queue-board {
+  background: var(--bg-surface);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .board-header {
+  border-bottom-color: rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .board-title { color: var(--text-primary); }
+[data-theme='light'] .board-subtitle { color: var(--text-muted); }
+
+[data-theme='light'] .task-item {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+[data-theme='light'] .task-item:hover {
+  border-color: var(--accent-border);
+  background: rgba(0, 168, 120, 0.03);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .task-title { color: var(--text-primary); }
+[data-theme='light'] .task-agent-name { color: var(--text-secondary); }
+
+[data-theme='light'] .empty-tasks,
+[data-theme='light'] .empty-approvals {
+  color: var(--text-muted);
+}
+
+[data-theme='light'] .empty-tasks p,
+[data-theme='light'] .empty-approvals p { color: var(--text-secondary); }
+
+[data-theme='light'] .approval-item-card {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+[data-theme='light'] .approval-card-title { color: var(--text-primary); }
+[data-theme='light'] .approval-card-reason,
+[data-theme='light'] .approval-card-proposal { color: var(--text-secondary); }
+[data-theme='light'] .approval-card-reason strong,
+[data-theme='light'] .approval-card-proposal strong { color: var(--text-primary); }
+
+[data-theme='light'] .approval-agent { color: var(--text-secondary); }
+
+[data-theme='light'] .risk-badge.low      { background: rgba(5, 150, 105, 0.1); color: var(--success); }
+[data-theme='light'] .risk-badge.medium   { background: rgba(217, 119, 6, 0.1); color: var(--warning); }
+[data-theme='light'] .risk-badge.high     { background: rgba(220, 38, 38, 0.1); color: var(--danger); }
+[data-theme='light'] .risk-badge.critical { background: rgba(220, 38, 38, 0.14); color: var(--danger); }
+
+[data-theme='light'] .appr-btn.approve {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+[data-theme='light'] .appr-btn.approve:hover {
+  background: var(--accent-primary-2);
+  border-color: var(--accent-primary-2);
+}
+[data-theme='light'] .appr-btn.reject {
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.3);
+  color: var(--danger);
+}
+[data-theme='light'] .appr-btn.reject:hover {
+  background: var(--danger);
+  color: #ffffff;
+}
+[data-theme='light'] .appr-btn.detail {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-theme='light'] .approval-result-status.approved { background: rgba(2, 132, 199, 0.1); color: var(--info); }
+[data-theme='light'] .approval-result-status.rejected { background: rgba(220, 38, 38, 0.1); color: var(--danger); }
+
+/* 상태 칩 라이트 강화 */
+[data-theme='light'] .status-chip {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+[data-theme='light'] .status-chip:hover:not(:disabled) {
+  background: rgba(0, 168, 120, 0.05);
+  border-color: var(--accent-border);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.06);
+}
+[data-theme='light'] .status-chip-num { color: var(--text-primary); }
+[data-theme='light'] .status-chip-lbl { color: var(--text-muted); }
+
+[data-theme='light'] .status-chip.tone-running:not(.zero) { border-color: rgba(2, 132, 199, 0.35); }
+[data-theme='light'] .status-chip.tone-running:not(.zero) .status-chip-num { color: var(--info); }
+[data-theme='light'] .status-chip.tone-review:not(.zero) {
+  border-color: rgba(217, 119, 6, 0.4);
+  background: rgba(217, 119, 6, 0.05);
+}
+[data-theme='light'] .status-chip.tone-review:not(.zero) .status-chip-num { color: var(--warning); }
+[data-theme='light'] .status-chip.tone-done:not(.zero) { border-color: var(--accent-border); }
+[data-theme='light'] .status-chip.tone-done:not(.zero) .status-chip-num { color: var(--accent-primary-2); }
+[data-theme='light'] .status-chip.tone-failed:not(.zero) { border-color: rgba(220, 38, 38, 0.35); }
+[data-theme='light'] .status-chip.tone-failed:not(.zero) .status-chip-num { color: var(--danger); }

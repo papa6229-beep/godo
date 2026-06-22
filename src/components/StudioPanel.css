@@ -580,3 +580,104 @@
     transform: translateY(0) scale(1);
   }
 }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .studio-panel-container {
+  background: var(--bg-surface);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .studio-header-section {
+  background: #f4f7f6;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .studio-main-title { color: var(--text-primary); }
+[data-theme='light'] .studio-subtitle { color: var(--text-muted); }
+
+[data-theme='light'] .studio-tab-bar {
+  background: transparent;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .studio-tab-btn { background: transparent; color: var(--text-muted); border-bottom-color: transparent; }
+[data-theme='light'] .studio-tab-btn:hover { color: var(--text-primary); }
+[data-theme='light'] .studio-tab-btn.active { color: var(--accent-primary-2); border-bottom-color: var(--accent-primary); }
+
+[data-theme='light'] .studio-list-sidebar {
+  background: #f8fbfa;
+  border-right: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .sidebar-title { color: var(--text-primary); }
+
+[data-theme='light'] .add-btn {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+[data-theme='light'] .add-btn:hover { background: var(--accent-primary-2); }
+
+[data-theme='light'] .sidebar-item-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .sidebar-item-card:hover { border-color: var(--accent-border); background: rgba(0, 168, 120, 0.03); }
+[data-theme='light'] .sidebar-item-card.active { background: var(--accent-soft); border-color: var(--accent-primary); }
+[data-theme='light'] .item-filename { color: var(--text-muted); }
+[data-theme='light'] .item-title { color: var(--text-primary); }
+
+[data-theme='light'] .studio-form-pane { background: #ffffff; }
+[data-theme='light'] .form-pane-title { color: var(--text-primary); }
+[data-theme='light'] .form-info-tag { background: var(--accent-soft); color: var(--accent-primary-2); border: 1px solid var(--accent-border); }
+
+[data-theme='light'] .form-group label,
+[data-theme='light'] .form-group .form-label { color: var(--text-secondary); }
+[data-theme='light'] .form-group input,
+[data-theme='light'] .form-group textarea,
+[data-theme='light'] .form-group select {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: var(--text-primary);
+}
+[data-theme='light'] .form-group input:focus,
+[data-theme='light'] .form-group textarea:focus,
+[data-theme='light'] .form-group select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 168, 120, 0.1);
+}
+[data-theme='light'] .checkbox-label { color: var(--text-secondary); }
+
+[data-theme='light'] .btn.primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+[data-theme='light'] .btn.primary:hover { background: var(--accent-primary-2); }
+[data-theme='light'] .btn.secondary {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .btn.danger {
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--danger);
+}
+[data-theme='light'] .btn.danger:hover { background: var(--danger); color: #ffffff; }
+
+[data-theme='light'] .io-card { background: #f8fbfa; border: 1px solid rgba(15, 23, 42, 0.07); }
+[data-theme='light'] .io-card-title { color: var(--text-primary); }
+[data-theme='light'] .io-desc { color: var(--text-muted); }
+[data-theme='light'] .io-textarea {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: var(--text-primary);
+}
+[data-theme='light'] .io-error-box { background: rgba(220, 38, 38, 0.07); border: 1px solid rgba(220, 38, 38, 0.2); color: var(--danger); }
+[data-theme='light'] .reset-confirm-box { background: rgba(220, 38, 38, 0.06); border: 1px solid rgba(220, 38, 38, 0.2); }
+[data-theme='light'] .confirm-text { color: var(--text-primary); }
+
+[data-theme='light'] .studio-toast {
+  background: #ffffff;
+  color: var(--text-primary);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}

@@ -353,7 +353,7 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
         </div>
         <div className="calendar-metric-box">
           <span className="calendar-metric-lbl">월간 총 매출</span>
-          <span className="calendar-metric-val" style={{ color: '#00ff88' }}>
+          <span className="calendar-metric-val">
             ₩{monthlyStats.totalSales.toLocaleString()}
           </span>
         </div>

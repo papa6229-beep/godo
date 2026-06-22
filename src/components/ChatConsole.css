@@ -425,4 +425,145 @@
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .chat-console {
+  background: var(--bg-surface);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .chat-header {
+  background: #f4f7f6;
+  border-bottom-color: rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .chat-header-title { color: var(--text-primary); }
+
+[data-theme='light'] .chat-3d-container {
+  background: linear-gradient(180deg, rgba(0, 168, 120, 0.02) 0%, transparent 100%);
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .chat-messages-container::-webkit-scrollbar-track { background: transparent; }
+[data-theme='light'] .chat-messages-container::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.12); }
+
+[data-theme='light'] .chat-message.system {
+  background: rgba(0, 168, 120, 0.05);
+  border-color: rgba(0, 168, 120, 0.22);
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .chat-message.user {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .chat-message.agent {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .chat-message.agent .message-sender {
+  color: var(--accent-primary-2);
+  text-shadow: none;
+}
+
+[data-theme='light'] .chat-templates {
+  background: #f4f7f6;
+  border-top-color: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .template-btn {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .template-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary-2);
+}
+
+[data-theme='light'] .chat-input-form {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .chat-input-form:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 168, 120, 0.12);
+}
+
+[data-theme='light'] .chat-input,
+[data-theme='light'] .chat-input-textarea { color: var(--text-primary); }
+
+[data-theme='light'] .chat-prompt-symbol { color: var(--accent-primary-2); }
+
+[data-theme='light'] .chat-send-btn {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+[data-theme='light'] .chat-send-btn:hover {
+  background: var(--accent-primary-2);
+  border-color: var(--accent-primary-2);
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(0, 168, 120, 0.22);
+}
+
+[data-theme='light'] .chat-quick-task-bar {
+  background: #f4f7f6;
+  border-top-color: rgba(15, 23, 42, 0.06);
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .quick-bar-label { color: var(--text-secondary); }
+
+[data-theme='light'] .quick-bar-input,
+[data-theme='light'] .quick-bar-select {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .quick-bar-btn {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+[data-theme='light'] .quick-bar-btn:hover {
+  background: var(--accent-primary-2);
+  border-color: var(--accent-primary-2);
+}
+
+[data-theme='light'] .chat-candidate-action-card {
+  background: #ffffff;
+  border-color: var(--accent-border);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+}
+
+[data-theme='light'] .candidate-title { color: var(--text-primary); }
+[data-theme='light'] .candidate-meta  { color: var(--text-muted); }
+
+/* 인텐트/리스크 배지 - 형광 톤 차분하게 */
+[data-theme='light'] .intent-badge.instruction { background: rgba(5, 150, 105, 0.12); color: var(--success); border-color: rgba(5, 150, 105, 0.3); }
+[data-theme='light'] .intent-badge.info-q      { background: rgba(2, 132, 199, 0.1); color: var(--info); border-color: rgba(2, 132, 199, 0.3); }
+[data-theme='light'] .intent-badge.approval-q  { background: rgba(217, 119, 6, 0.1); color: var(--warning); border-color: rgba(217, 119, 6, 0.3); }
+[data-theme='light'] .intent-badge.unsafe      { background: rgba(220, 38, 38, 0.1); color: var(--danger); border-color: rgba(220, 38, 38, 0.3); }
+
+[data-theme='light'] .candidate-meta .low      { color: var(--success); }
+[data-theme='light'] .candidate-meta .medium   { color: var(--warning); }
+[data-theme='light'] .candidate-meta .high     { color: var(--danger); }
+[data-theme='light'] .candidate-meta .critical { color: var(--danger); }
+
+/* ── 인라인 형광 색 대체 클래스 ──────────────────────────────── */
+.risk-strong-danger    { color: var(--danger); }
+.status-strong-warning { color: var(--warning); }
+.missing-fields-strong { color: var(--danger); }
+
 

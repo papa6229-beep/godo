@@ -487,9 +487,9 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
             <span className="metric-lbl">연동 상태</span>
             {lmsGemmaProvider && lmsGemmaProvider.status === 'connected' ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <span className="metric-val" style={{ color: '#00e676', fontSize: '0.75rem', fontWeight: 'bold' }}>LOCAL LLM READY</span>
+                <span className="metric-val accent-strong" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>LOCAL LLM READY</span>
                 {lmsGemmaProvider.lastLatency !== undefined && (
-                  <span style={{ fontSize: '0.65rem', opacity: 0.8, color: '#00e676' }}>
+                  <span className="accent-strong" style={{ fontSize: '0.65rem', opacity: 0.8 }}>
                     {lmsGemmaProvider.lastLatency}ms ({lmsGemmaProvider.lastTestTime})
                   </span>
                 )}
@@ -568,7 +568,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                 {lmsGemmaProvider?.status === 'connected' && (
                   <div className="sub-metric">
                     <span className="sub-lbl">최근 Latency / 시간</span>
-                    <span className="sub-val" style={{ fontSize: '0.75rem', color: '#00e676' }}>
+                    <span className="sub-val accent-strong" style={{ fontSize: '0.75rem' }}>
                       {lmsGemmaProvider.lastLatency}ms / {lmsGemmaProvider.lastTestTime}
                     </span>
                   </div>
@@ -756,7 +756,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                     {activeLocalItem.id === 'lms_gemma_4' && (
                       <div className="meta-box-item" style={{ gridColumn: 'span 2' }}>
                         <span className="box-lbl">감지된 모델 ID</span>
-                        <span className="box-val mono" style={{ fontSize: '0.75rem', color: '#ffab40' }}>
+                        <span className="box-val mono warning-strong" style={{ fontSize: '0.75rem' }}>
                           {activeLocalItem.modelName || 'None'}
                         </span>
                       </div>
@@ -764,7 +764,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                     {activeLocalItem.lastLatency !== undefined && (
                       <div className="meta-box-item" style={{ gridColumn: 'span 2' }}>
                         <span className="box-lbl">최근 Latency / 테스트 시각</span>
-                        <span className="box-val" style={{ color: '#00e676', fontSize: '0.75rem' }}>
+                        <span className="box-val accent-strong" style={{ fontSize: '0.75rem' }}>
                           {activeLocalItem.lastLatency}ms / {activeLocalItem.lastTestTime}
                         </span>
                       </div>

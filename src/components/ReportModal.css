@@ -299,3 +299,70 @@
   padding: 4px 8px;
   border-radius: 6px;
 }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .report-modal-overlay {
+  background: var(--modal-overlay);
+}
+
+[data-theme='light'] .report-modal-content {
+  background: var(--modal-bg);
+  border-color: var(--accent-border);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(0, 168, 120, 0.08);
+}
+
+[data-theme='light'] .report-modal-header {
+  background: var(--bg-elevated);
+  border-bottom-color: var(--modal-border);
+}
+
+[data-theme='light'] .report-modal-title { color: var(--text-primary); }
+[data-theme='light'] .report-modal-subtitle { color: var(--text-muted); }
+
+[data-theme='light'] .report-close-btn { color: var(--text-muted); }
+[data-theme='light'] .report-close-btn:hover { color: var(--danger); }
+
+[data-theme='light'] .report-section-title { color: var(--accent-primary-2); }
+[data-theme='light'] .report-summary-text { color: var(--text-secondary); }
+
+[data-theme='light'] .report-stat-box {
+  background: #ffffff;
+  border: 1px solid var(--modal-border);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+[data-theme='light'] .report-stat-val { color: var(--accent-primary-2); }
+[data-theme='light'] .report-stat-lbl { color: var(--text-muted); }
+
+[data-theme='light'] .report-list-item {
+  background: #f8fbfa;
+  border: 1px solid var(--modal-border);
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .report-modal-footer {
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--modal-border);
+}
+
+[data-theme='light'] .report-confirm-btn {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+[data-theme='light'] .report-confirm-btn:hover {
+  background: var(--accent-primary-2);
+  border-color: var(--accent-primary-2);
+}
+
+[data-theme='light'] .data-source-card {
+  background: #f8fbfa;
+  border: 1px solid var(--modal-border);
+}
+[data-theme='light'] .info-lbl { color: var(--text-muted); }
+[data-theme='light'] .info-val { color: var(--text-primary); }
+
+[data-theme='light'] .count-badge {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+}

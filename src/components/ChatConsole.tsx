@@ -539,8 +539,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                   <div className="candidate-details">
                     <span className="candidate-title">📋 {msg.actionPlan.title}</span>
                     <span className="candidate-meta">
-                      위험도: <strong className={msg.actionPlan.riskLevel} style={{ color: '#ff4d4d' }}>{msg.actionPlan.riskLevel.toUpperCase()}</strong> | 
-                      상태: <strong style={{ color: '#ffa500' }}>
+                      위험도: <strong className={`${msg.actionPlan.riskLevel} risk-strong-danger`}>{msg.actionPlan.riskLevel.toUpperCase()}</strong> |
+                      상태: <strong className="status-strong-warning">
                         {msg.actionPlan.executionStatus === 'missing_required_fields' ? '필수 조건 부족' : 'API 미연동 보류'}
                       </strong>
                     </span>
@@ -552,7 +552,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
                         ))}
                       </ul>
                       {msg.actionPlan.missingFields.length > 0 && (
-                        <div style={{ color: '#ff4d4d', marginTop: '3px' }}>
+                        <div className="missing-fields-strong" style={{ marginTop: '3px' }}>
                           <strong>누락된 필수 항목:</strong> {msg.actionPlan.missingFields.join(', ')}
                         </div>
                       )}

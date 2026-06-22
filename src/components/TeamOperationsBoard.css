@@ -1,0 +1,746 @@
+/* ── TeamOperationsBoard ─────────────────────────────────────── */
+
+.team-operations-board {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-panel-strong, #0b1116);
+  border: 1px solid var(--line-subtle, #1f2d3d);
+  border-radius: 14px;
+  padding: 16px;
+  color: #c9d1d9;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.team-operations-board::-webkit-scrollbar { width: 4px; }
+.team-operations-board::-webkit-scrollbar-thumb {
+  background: var(--line-subtle, #1f2d3d);
+  border-radius: 2px;
+}
+
+/* 헤더 */
+.board-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line-subtle, #1f2d3d);
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.board-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.board-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #10b981;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.board-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #f0f6fc;
+  letter-spacing: -0.2px;
+}
+
+/* 운영 상태 칩 (버튼 대신 상태 표시) */
+.ops-status-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 5px 11px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.ops-status-chip.idle {
+  background: rgba(139, 148, 158, 0.1);
+  border: 1px solid rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+}
+
+.ops-status-chip.running {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+  animation: chip-pulse 1.4s infinite alternate;
+}
+
+.ops-status-chip.done {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #10b981;
+}
+
+@keyframes chip-pulse {
+  from { opacity: 0.7; }
+  to   { opacity: 1; }
+}
+
+/* 부서 요약 스트립 */
+.dept-summary-strip {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line-subtle, #1f2d3d);
+  border-radius: 10px;
+  padding: 10px 14px;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.summary-stat.alert .summary-num {
+  color: #f59e0b;
+}
+
+.summary-num {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f0f6fc;
+  line-height: 1;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.5px;
+}
+
+.summary-lbl {
+  font-size: 9.5px;
+  color: #8b949e;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin-top: 4px;
+}
+
+.summary-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--line-subtle, #1f2d3d);
+  margin: 0 4px;
+}
+
+/* 부서 카드 섹션 */
+.dept-cards-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 개별 부서 카드 */
+.dept-card {
+  background: #0d161d;
+  border: 1px solid var(--line-subtle, #1f2d3d);
+  border-left: 3px solid transparent;
+  border-radius: 10px;
+  padding: 11px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: default;
+}
+
+.dept-card.completed { border-left-color: #10b981; }
+.dept-card.active    { border-left-color: #f59e0b; }
+.dept-card.blocked   { border-left-color: #ef4444; }
+.dept-card.needs_review { border-left-color: #f59e0b; }
+.dept-card.disabled  { border-left-color: #30363d; opacity: 0.55; }
+
+.dept-card:hover:not(.disabled) {
+  background: #0e1922;
+}
+
+.dept-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dept-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dept-card-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.dept-card-names {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dept-card-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #f0f6fc;
+  letter-spacing: -0.2px;
+}
+
+.dept-card-lead {
+  font-size: 10.5px;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+/* 상태 배지 */
+.dept-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.dept-status-badge.idle        { background: rgba(139, 148, 158, 0.12); color: #8b949e; }
+.dept-status-badge.completed   { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.dept-status-badge.active      { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+.dept-status-badge.blocked     { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.dept-status-badge.needs_review { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+.dept-status-badge.disabled    { background: rgba(48, 54, 61, 0.5); color: #8b949e; }
+
+/* 통계 칩 (클릭 가능) */
+.dept-card-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.stat-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 4px;
+  transition: all 0.18s;
+}
+
+.stat-chip.clickable {
+  cursor: pointer;
+}
+
+.stat-chip.clickable:not(.zero):hover {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+  transform: translateY(-1px);
+}
+
+.stat-chip.clickable:not(.zero):active {
+  transform: translateY(0);
+}
+
+.stat-chip.zero {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.stat-chip.chip-alert .chip-num {
+  color: #f59e0b;
+}
+
+.chip-num {
+  font-size: 15px;
+  font-weight: 800;
+  color: #f0f6fc;
+  line-height: 1;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.chip-lbl {
+  font-size: 9.5px;
+  color: #8b949e;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin-top: 2px;
+}
+
+/* 최근 활동 */
+.dept-card-activity {
+  font-size: 10.5px;
+  color: #8b949e;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 5px;
+  border-left: 2px solid rgba(16, 185, 129, 0.2);
+}
+
+/* 부서 보기 버튼 */
+.dept-enter-btn {
+  align-self: flex-end;
+  background: transparent;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 6px;
+  color: #10b981;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.3px;
+}
+
+.dept-enter-btn:hover {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+/* 섹션 공통 타이틀 */
+.section-title-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.section-title {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #10b981;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+/* 최근 협업 흐름 (클릭 가능) */
+.collab-flow-section {
+  flex-shrink: 0;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.collab-view-all-btn {
+  background: transparent;
+  border: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: #10b981;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 5px;
+  transition: background 0.15s;
+}
+
+.collab-view-all-btn:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.collab-flow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.collab-flow-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line-subtle, #1f2d3d);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  cursor: default;
+  transition: all 0.18s;
+}
+
+.collab-flow-item.clickable {
+  cursor: pointer;
+}
+
+.collab-flow-item.clickable:hover {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.collab-flow-route {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.flow-from { color: #a5b4fc; }
+.flow-arrow { color: #8b949e; font-size: 9px; }
+.flow-to { color: #fde047; }
+
+.collab-detail-hint {
+  font-size: 9px;
+  color: #10b981;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.collab-flow-item.clickable:hover .collab-detail-hint {
+  opacity: 1;
+}
+
+.collab-flow-msg {
+  margin: 0;
+  font-size: 10.5px;
+  color: #8b949e;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 종합 브리핑 요약 */
+.briefing-summary-section {
+  background: rgba(16, 185, 129, 0.04);
+  border: 1px solid rgba(16, 185, 129, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.briefing-summary-text {
+  margin: 0;
+  font-size: 11px;
+  color: #c9d1d9;
+  line-height: 1.5;
+}
+
+.briefing-full-btn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 6px;
+  color: #10b981;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.briefing-full-btn:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+/* 개발자 검증 도구 접힘 패널 */
+.dev-tool-panel {
+  border: 1px dashed rgba(99, 102, 241, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.dev-tool-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(99, 102, 241, 0.04);
+  border: none;
+  padding: 8px 12px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #8b949e;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dev-tool-toggle:hover {
+  background: rgba(99, 102, 241, 0.08);
+  color: #c9d1d9;
+}
+
+.toggle-caret {
+  font-size: 8px;
+  opacity: 0.6;
+}
+
+.dev-tool-body {
+  padding: 10px 12px;
+  background: rgba(99, 102, 241, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dev-tool-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dev-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #8b949e;
+}
+
+.dev-dropdown {
+  background: #0b1116;
+  border: 1px solid #1f2d3d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+  width: 100%;
+}
+
+.dev-dropdown:focus { border-color: #6366f1; }
+.dev-dropdown:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.dev-desc-box {
+  display: flex;
+  gap: 6px;
+  background: rgba(59, 130, 246, 0.04);
+  border: 1px dashed rgba(59, 130, 246, 0.15);
+  border-radius: 6px;
+  padding: 7px 9px;
+  align-items: flex-start;
+}
+
+.dev-desc-icon { font-size: 12px; line-height: 1.2; }
+
+.dev-desc-text {
+  margin: 0;
+  font-size: 10px;
+  color: #8b949e;
+  line-height: 1.45;
+}
+
+.dev-run-btn {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 6px;
+  color: #a5b4fc;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.dev-run-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+.dev-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dev-run-btn.running {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+}
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .team-operations-board {
+  background: var(--bg-panel-strong, #ffffff);
+  border-color: var(--line-subtle, rgba(0, 30, 20, 0.09));
+  color: var(--text-primary, #0d1f1a);
+}
+
+[data-theme='light'] .board-badge {
+  color: var(--accent-primary, #00a878);
+}
+
+[data-theme='light'] .board-title {
+  color: var(--text-primary, #0d1f1a);
+}
+
+[data-theme='light'] .dept-summary-strip {
+  background: rgba(0, 168, 120, 0.03);
+  border-color: rgba(0, 30, 20, 0.08);
+}
+
+[data-theme='light'] .summary-num {
+  color: var(--text-primary, #0d1f1a);
+}
+
+[data-theme='light'] .dept-card {
+  background: #f8fbfa;
+  border-color: rgba(0, 30, 20, 0.08);
+}
+
+[data-theme='light'] .dept-card:hover:not(.disabled) {
+  background: rgba(0, 168, 120, 0.03);
+}
+
+[data-theme='light'] .dept-card-name {
+  color: var(--text-primary, #0d1f1a);
+}
+
+[data-theme='light'] .chip-num {
+  color: var(--text-primary, #0d1f1a);
+}
+
+[data-theme='light'] .stat-chip {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+[data-theme='light'] .stat-chip .chip-num { color: var(--text-primary); }
+[data-theme='light'] .stat-chip .chip-lbl { color: var(--text-muted); }
+
+[data-theme='light'] .stat-chip.clickable:not(.zero):hover {
+  background: rgba(0, 168, 120, 0.06);
+  border-color: rgba(0, 168, 120, 0.32);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .stat-chip.chip-alert .chip-num { color: var(--warning); }
+
+[data-theme='light'] .dept-card-activity {
+  color: var(--text-muted, #7a9e94);
+  background: rgba(0, 30, 20, 0.02);
+  border-left-color: rgba(0, 168, 120, 0.2);
+}
+
+[data-theme='light'] .collab-flow-item {
+  background: #f8fbfa;
+  border-color: rgba(0, 30, 20, 0.08);
+}
+
+[data-theme='light'] .collab-flow-item.clickable:hover {
+  background: rgba(0, 168, 120, 0.04);
+  border-color: rgba(0, 168, 120, 0.2);
+}
+
+[data-theme='light'] .briefing-summary-section {
+  background: rgba(0, 168, 120, 0.04);
+  border-color: rgba(0, 168, 120, 0.12);
+}
+
+[data-theme='light'] .briefing-summary-text {
+  color: var(--text-secondary, #3d5a52);
+}
+
+[data-theme='light'] .dev-tool-panel {
+  border-color: rgba(99, 102, 241, 0.15);
+}
+
+[data-theme='light'] .dev-tool-toggle {
+  background: rgba(99, 102, 241, 0.03);
+  color: var(--text-muted, #7a9e94);
+}
+
+[data-theme='light'] .dev-dropdown {
+  background: #f8fbfa;
+  border-color: rgba(0, 30, 20, 0.1);
+  color: var(--text-primary, #0d1f1a);
+}
+
+[data-theme='light'] .dev-desc-box {
+  background: rgba(0, 30, 20, 0.02);
+  border-color: rgba(0, 30, 20, 0.08);
+}
+
+[data-theme='light'] .dev-desc-text { color: var(--text-muted); }
+
+[data-theme='light'] .dev-tool-body {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+[data-theme='light'] .dev-run-btn {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: rgba(99, 102, 241, 0.22);
+  color: #4338ca;
+}
+[data-theme='light'] .dev-run-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.14);
+}
+
+[data-theme='light'] .dev-label { color: var(--text-secondary); }
+
+[data-theme='light'] .dept-card-lead { color: var(--text-muted); }
+
+[data-theme='light'] .ops-status-chip.idle {
+  background: rgba(15, 23, 42, 0.05);
+  border-color: rgba(15, 23, 42, 0.1);
+  color: var(--text-muted);
+}
+[data-theme='light'] .ops-status-chip.running {
+  background: rgba(217, 119, 6, 0.1);
+  border-color: rgba(217, 119, 6, 0.32);
+  color: var(--warning);
+}
+[data-theme='light'] .ops-status-chip.done {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+}
+
+[data-theme='light'] .dept-status-badge.idle        { background: rgba(15, 23, 42, 0.06); color: var(--text-muted); }
+[data-theme='light'] .dept-status-badge.completed   { background: rgba(5, 150, 105, 0.12); color: var(--success); }
+[data-theme='light'] .dept-status-badge.active      { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+[data-theme='light'] .dept-status-badge.blocked     { background: rgba(220, 38, 38, 0.12); color: var(--danger); }
+[data-theme='light'] .dept-status-badge.needs_review { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+[data-theme='light'] .dept-status-badge.disabled    { background: rgba(15, 23, 42, 0.06); color: var(--text-muted); }
+
+[data-theme='light'] .dept-enter-btn {
+  background: #ffffff;
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+[data-theme='light'] .dept-enter-btn:hover {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+[data-theme='light'] .flow-from { color: #4338ca; }
+[data-theme='light'] .flow-to   { color: #b45309; }
+[data-theme='light'] .flow-arrow { color: var(--text-muted); }
+[data-theme='light'] .collab-flow-msg { color: var(--text-muted); }
+
+[data-theme='light'] .briefing-full-btn,
+[data-theme='light'] .collab-view-all-btn {
+  background: #ffffff;
+  border: 1px solid var(--accent-border);
+  color: var(--accent-primary-2);
+}
+[data-theme='light'] .briefing-full-btn:hover,
+[data-theme='light'] .collab-view-all-btn:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+
+[data-theme='light'] .section-title { color: var(--accent-primary-2); }
+

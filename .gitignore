@@ -30,3 +30,9 @@ dist
 .env.*.local
 .DS_Store
 .vercel
+
+# Claude Code local config
+.claude/
+
+# Local screenshots / scratch
+shot/

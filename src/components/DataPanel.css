@@ -820,3 +820,282 @@
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .data-panel-container {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .data-main-title { color: var(--text-primary); }
+[data-theme='light'] .data-subtitle { color: var(--text-muted); }
+
+[data-theme='light'] .data-metric-box {
+  background: #f8fbfa;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .data-metric-box:hover {
+  background: #ffffff;
+  border-color: var(--accent-border);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+[data-theme='light'] .data-metric-box.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-primary);
+}
+[data-theme='light'] .data-metric-lbl { color: var(--text-muted); }
+[data-theme='light'] .data-metric-val { color: var(--text-primary); }
+[data-theme='light'] .data-metric-val.active { color: var(--text-primary); }
+[data-theme='light'] .data-metric-val.warning { color: var(--warning); }
+[data-theme='light'] .data-metric-val.danger { color: var(--danger); }
+
+/* active-source 박스: 배경/보더만 강조하고 텍스트는 가독성 우선 검정 */
+[data-theme='light'] .data-metric-box.active-source {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+[data-theme='light'] .data-metric-box.active-source .data-metric-val { color: var(--text-primary); }
+
+/* 품질 점수 - 의미 색은 유지하되 차분한 톤으로 */
+[data-theme='light'] .data-metric-box.quality-score-box .score-good { color: var(--success); }
+
+/* 전역 데이터 소스 현황 / Workflow 값 - 가독성 우선 검정 */
+[data-theme='light'] .status-value-highlight { color: var(--text-primary); }
+[data-theme='light'] .ov-val { color: var(--text-primary); }
+[data-theme='light'] .ov-val.success { color: var(--success); }
+[data-theme='light'] .ov-val.warning { color: var(--warning); }
+[data-theme='light'] .ov-val.danger  { color: var(--danger); }
+[data-theme='light'] .wf-val.ready   { color: var(--text-primary); }
+[data-theme='light'] .q-card-val.success { color: var(--success); }
+[data-theme='light'] .q-card-val.warning { color: var(--warning); }
+[data-theme='light'] .q-card-val.danger  { color: var(--danger); }
+
+/* ── 형광 #00ff88 텍스트 → 라이트 모드 가독성 톤 catch-all ──── */
+[data-theme='light'] .data-main-title {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+
+[data-theme='light'] .overview-card h3 {
+  color: var(--text-primary);
+  border-left-color: var(--accent-primary);
+}
+
+[data-theme='light'] .result-title { color: var(--text-primary); }
+
+[data-theme='light'] .preview-table th {
+  background: #f4f7f6;
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .flag-badge.success {
+  background: rgba(5, 150, 105, 0.12);
+  color: var(--success);
+}
+
+[data-theme='light'] .mapping-status-pill.mapped {
+  background: rgba(5, 150, 105, 0.1);
+  color: var(--success);
+}
+
+[data-theme='light'] .history-status-pill.success {
+  background: rgba(5, 150, 105, 0.1);
+  color: var(--success);
+}
+
+[data-theme='light'] .comparison-table td.masked {
+  color: var(--success);
+}
+
+[data-theme='light'] .feedback-bullet::before { color: var(--accent-primary); }
+
+/* 카드 / 패널 섹션 제목 일관 처리 */
+[data-theme='light'] .data-panel-container h3 { color: var(--text-primary); }
+
+/* dropzone 드래그 시 보더 */
+[data-theme='light'] .dropzone-container:hover,
+[data-theme='light'] .dropzone-container.drag-active {
+  border-color: var(--accent-primary);
+}
+
+/* 품질 점수 라벨 — 작은 텍스트라 검정 */
+[data-theme='light'] .quality-overview-title,
+[data-theme='light'] .privacy-section-title,
+[data-theme='light'] .history-section-title,
+[data-theme='light'] .preview-section-title,
+[data-theme='light'] .feedback-section h4 { color: var(--text-primary); }
+
+/* select-file-btn은 이미 라이트 처리됐고, btn.primary도 처리됨. toast.success는 흰 배경이라 OK */
+
+/* ── 새로 도입된 시맨틱 클래스 (인라인 형광 색 대체) ─────────── */
+.data-section-h3 {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+.td-sales-strong {
+  font-weight: 700;
+  color: var(--accent-primary);
+}
+.td-orig-strong {
+  color: var(--accent-primary);
+}
+.td-required {
+  color: var(--danger);
+  font-weight: 600;
+}
+.api-mock-info {
+  background: rgba(45, 245, 162, 0.05);
+  border-color: var(--accent-border);
+}
+.api-mock-info .alert-text {
+  color: var(--accent-primary);
+}
+
+[data-theme='light'] .data-section-h3 { color: var(--text-primary); }
+[data-theme='light'] .td-sales-strong { color: var(--text-primary); }
+[data-theme='light'] .td-orig-strong  { color: var(--text-primary); }
+[data-theme='light'] .api-mock-info {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+[data-theme='light'] .api-mock-info .alert-text { color: var(--text-secondary); }
+
+[data-theme='light'] .data-tab-bar {
+  background: transparent;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+[data-theme='light'] .data-tab-btn { color: var(--text-muted); border-bottom-color: transparent; }
+[data-theme='light'] .data-tab-btn:hover { color: var(--text-primary); border-bottom-color: rgba(15, 23, 42, 0.2); }
+[data-theme='light'] .data-tab-btn.active { color: var(--accent-primary-2); border-bottom-color: var(--accent-primary); }
+
+[data-theme='light'] .overview-card,
+[data-theme='light'] .upload-sidebar,
+[data-theme='light'] .preview-pane-wrapper {
+  background: #f8fbfa;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .overview-sub-metric,
+[data-theme='light'] .workflow-status-indicator {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+[data-theme='light'] .ov-lbl,
+[data-theme='light'] .wf-row,
+[data-theme='light'] .status-desc { color: var(--text-muted); }
+[data-theme='light'] .ov-val { color: var(--accent-primary-2); }
+[data-theme='light'] .ov-val.success { color: var(--success); }
+[data-theme='light'] .ov-val.warning { color: var(--warning); }
+[data-theme='light'] .ov-val.danger  { color: var(--danger); }
+[data-theme='light'] .wf-val.ready   { color: var(--accent-primary-2); }
+[data-theme='light'] .wf-val.pending { color: var(--text-muted); }
+[data-theme='light'] .status-value-highlight { color: var(--accent-primary-2); }
+
+[data-theme='light'] .upload-sidebar-title { color: var(--accent-primary-2); }
+[data-theme='light'] .form-group { color: var(--text-secondary); }
+
+[data-theme='light'] .dropzone-container {
+  background: #ffffff;
+  border: 2px dashed rgba(15, 23, 42, 0.15);
+}
+[data-theme='light'] .dropzone-container.dragover {
+  border-color: var(--accent-primary);
+  background: rgba(0, 168, 120, 0.04);
+}
+[data-theme='light'] .dropzone-text { color: var(--text-muted); }
+
+[data-theme='light'] .select-file-btn {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+}
+[data-theme='light'] .select-file-btn:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+[data-theme='light'] .upload-main-pane,
+[data-theme='light'] .result-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+[data-theme='light'] .result-title { color: var(--text-primary); }
+[data-theme='light'] .result-meta-list { color: var(--text-secondary); }
+
+[data-theme='light'] .warning-box {
+  background: rgba(217, 119, 6, 0.07);
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  color: var(--warning);
+}
+[data-theme='light'] .error-box {
+  background: rgba(220, 38, 38, 0.07);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  color: var(--danger);
+}
+
+[data-theme='light'] .btn.primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+[data-theme='light'] .btn.primary:hover { background: var(--accent-primary-2); }
+[data-theme='light'] .btn.secondary {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .btn.secondary:hover { background: rgba(15, 23, 42, 0.04); color: var(--text-primary); }
+[data-theme='light'] .btn.danger {
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--danger);
+}
+[data-theme='light'] .btn.danger:hover { background: var(--danger); color: #ffffff; }
+
+[data-theme='light'] .excel-badge {
+  background: #1d9e75;
+  color: #ffffff;
+}
+
+[data-theme='light'] .preview-filter-bar {
+  background: #f4f7f6;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .preview-tabs { background: transparent; }
+[data-theme='light'] .p-tab-btn { background: transparent; color: var(--text-muted); }
+[data-theme='light'] .p-tab-btn:hover { color: var(--text-primary); }
+[data-theme='light'] .p-tab-btn.active {
+  background: #ffffff;
+  color: var(--accent-primary-2);
+  border: 1px solid var(--accent-border);
+}
+
+[data-theme='light'] .table-stats-info { color: var(--text-muted); }
+
+[data-theme='light'] .preview-table-scroller {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .preview-table th {
+  background: #f4f7f6;
+  color: var(--accent-primary-2);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+[data-theme='light'] .preview-table td {
+  color: var(--text-secondary);
+  border-bottom-color: rgba(15, 23, 42, 0.05);
+}
+[data-theme='light'] .preview-table tr:nth-child(even) td { background: rgba(0, 168, 120, 0.02); }
+
+[data-theme='light'] .preview-footer-action-bar {
+  background: #f4f7f6;
+  border-top: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .flag-badge { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+
+[data-theme='light'] .toast.success { background: #ffffff; color: var(--accent-primary-2); border-left: 4px solid var(--accent-primary); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); }
+[data-theme='light'] .toast.info    { background: #ffffff; color: var(--info); border-left: 4px solid var(--info); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); }
+[data-theme='light'] .toast.warning { background: #ffffff; color: var(--warning); border-left: 4px solid var(--warning); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); }
+[data-theme='light'] .toast.error   { background: #ffffff; color: var(--danger); border-left: 4px solid var(--danger); box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); }

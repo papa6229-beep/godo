@@ -527,12 +527,12 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                     </div>
                     <div className="field-item">
                       <span className="field-lbl">Production lock mode</span>
-                      <span className="field-val" style={{ color: '#fbbf24' }}>LOCKED (Sandbox Boundary)</span>
+                      <span className="field-val warning-strong">LOCKED (Sandbox Boundary)</span>
                     </div>
                     <div className="field-item">
                       <span className="field-lbl">커넥터 헬스 스코어</span>
                       <span className="field-val">
-                        <span style={{ color: '#00ff88', fontWeight: 'bold' }}>{provider.healthScore}%</span>
+                        <span className="health-score-strong" style={{ fontWeight: 'bold' }}>{provider.healthScore}%</span>
                         <div className="health-bar-container">
                           <div className="health-bar-fill" style={{ width: `${provider.healthScore}%` }}></div>
                         </div>
@@ -583,9 +583,9 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   </button>
                 </div>
 
-                <div className="sync-source-selector" style={{ display: 'flex', alignItems: 'center', gap: '15px', background: 'rgba(10, 15, 26, 0.4)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                  <span style={{ fontSize: '0.72rem', color: '#8892b0', fontWeight: 'bold' }}>동기화 소스 (Sync Source):</span>
-                  <label style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#e0e6ed' }}>
+                <div className="sync-source-selector">
+                  <span className="sync-source-label">동기화 소스 (Sync Source):</span>
+                  <label className="sync-source-radio-label">
                     <input 
                       type="radio" 
                       name="syncSource" 
@@ -596,9 +596,9 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                     />
                     <span>🛡️ Secure Proxy Server Mock (추천)</span>
                   </label>
-                  <label style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#e0e6ed' }}>
-                    <input 
-                      type="radio" 
+                  <label className="sync-source-radio-label">
+                    <input
+                      type="radio"
                       name="syncSource" 
                       value="local_mock" 
                       checked={syncSource === 'local_mock'}

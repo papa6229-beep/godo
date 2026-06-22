@@ -132,3 +132,38 @@
   from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .activity-log {
+  background: var(--bg-surface);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .log-header {
+  background: #f4f7f6;
+  border-bottom-color: rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .clear-log-btn {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .clear-log-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary-2);
+}
+
+[data-theme='light'] .log-terminal {
+  background: #f8fbfa;
+}
+
+[data-theme='light'] .log-line.success-type {
+  color: var(--accent-primary-2);
+  text-shadow: none;
+}
+
+[data-theme='light'] .log-agent { color: var(--info); }
+[data-theme='light'] .log-time  { color: var(--text-muted); }

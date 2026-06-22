@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import type { OperationTask } from '../types/task';
+import type { OperationTask, TaskStatus } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import type { Agent } from '../types';
+import { TaskListModal } from './TaskListModal';
+import { ApprovalListModal } from './ApprovalListModal';
 import './TaskBoard.css';
 
 interface TaskBoardProps {
@@ -18,6 +20,20 @@ interface TaskBoardProps {
   hideAddTask?: boolean;
 }
 
+interface StatusGroup {
+  key: string;
+  label: string;
+  statuses: TaskStatus[];
+  tone: 'idle' | 'running' | 'review' | 'done' | 'failed';
+}
+
+const STATUS_GROUPS: StatusGroup[] = [
+  { key: 'waiting', label: '대기', statuses: ['pending', 'assigned'], tone: 'idle' },
+  { key: 'running', label: '진행 중', statuses: ['running'], tone: 'running' },
+  { key: 'review', label: '검토 필요', statuses: ['needs_approval'], tone: 'review' },
+  { key: 'completed', label: '완료', statuses: ['completed'], tone: 'done' },
+];
+
 export const TaskBoard: React.FC<TaskBoardProps> = ({
   tasks,
   agents,
@@ -33,6 +49,27 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
 }) => {
   const [newTitle, setNewTitle] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id || 'cs');
+  const [listFilter, setListFilter] = useState<{ title: string; statuses: TaskStatus[] } | null>(null);
+  const [approvalListFilter, setApprovalListFilter] = useState<{
+    title: string;
+    statuses?: ApprovalItem['status'][];
+  } | null>(null);
+
+  // 우측 hideAddTask 변수는 onStartSimulation 동일 핸들러 단일화 정책에 따라 별도 사용 안 함
+  void onStartSimulation;
+  void isSimulating;
+
+  const statusCounts = STATUS_GROUPS.map(g => ({
+    ...g,
+    count: tasks.filter(t => g.statuses.includes(t.status)).length,
+  }));
+
+  const approvalCounts = {
+    waiting: approvalQueue.filter(a => a.status === 'waiting').length,
+    approved: approvalQueue.filter(a => a.status === 'approved').length,
+    rejected: approvalQueue.filter(a => a.status === 'rejected').length,
+    total: approvalQueue.length,
+  };
 
   const getAgentInfo = (agentId: string) => {
     const agent = agents.find((a) => a.id === agentId);
@@ -117,21 +154,34 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
       <div className="task-board">
         <div className="board-header">
           <div className="board-title-row">
-            <h2 className="board-title">📋 오늘의 할 일 (Today’s Tasks)</h2>
-            <button
-              className={`simulate-btn ${isSimulating ? 'running' : ''}`}
-              onClick={onStartSimulation}
-              disabled={isSimulating}
-            >
-              {isSimulating ? '🛰️ 운영 진행 중...' : '▶ 운영 시작 (Auto Run)'}
-            </button>
+            <h2 className="board-title">📋 오늘의 할 일</h2>
           </div>
-          <p className="board-subtitle">쇼핑몰 AI 운영팀이 분석 및 감시하고 있는 일일 업무 목록입니다.</p>
+          <p className="board-subtitle">상단 START OPERATION을 누르거나, 총괄 매니저에게 업무를 지시해 주세요.</p>
+
+          {/* 상태 요약 칩 — 클릭 시 해당 상태만 TaskListModal로 표시 */}
+          <div className="task-status-summary">
+            {statusCounts.map(g => (
+              <button
+                key={g.key}
+                type="button"
+                className={`status-chip tone-${g.tone} ${g.count > 0 ? '' : 'zero'}`}
+                onClick={() => g.count > 0 && setListFilter({ title: `${g.label} 작업`, statuses: g.statuses })}
+                disabled={g.count === 0}
+                title={`${g.label} 상태의 작업 ${g.count}건 보기`}
+              >
+                <span className="status-chip-num">{g.count}</span>
+                <span className="status-chip-lbl">{g.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="tasks-list">
           {tasks.length === 0 ? (
-            <div className="empty-tasks">아직 작업이 없습니다. 운영 시작 후 오늘 확인할 일이 이곳에 표시됩니다.</div>
+            <div className="empty-tasks">
+              <p>아직 등록된 오늘의 작업이 없습니다.</p>
+              <p style={{ marginTop: '6px', fontSize: '0.75rem', opacity: 0.7 }}>운영 시작을 누르거나, 총괄 매니저에게 업무를 지시해 주세요.</p>
+            </div>
           ) : (
             tasks.map((task) => {
               const agentInfo = getAgentInfo(task.assignedAgentId);
@@ -239,13 +289,69 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
       {/* Approval Queue 패널 */}
       <div className="approval-queue-board">
         <div className="board-header">
-          <h2 className="board-title">🔑 승인 대기열 (Approval Queue)</h2>
-          <p className="board-subtitle">고객, 금전, 가격, 캠페인 등 중요 결정으로 인간 운영자의 최종 확인 및 결재가 있어야 실행되는 대기열입니다.</p>
+          <h2 className="board-title">🔑 승인 대기</h2>
+          <p className="board-subtitle">고객 답변, 상품 수정, 캠페인 실행처럼 최종 확인이 필요한 업무들입니다.</p>
+
+          {/* 승인 상태 요약 칩 — 클릭 시 ApprovalListModal */}
+          <div className="approval-status-summary">
+            <button
+              type="button"
+              className={`status-chip tone-review ${approvalCounts.waiting > 0 ? '' : 'zero'}`}
+              onClick={() => approvalCounts.waiting > 0 && setApprovalListFilter({
+                title: '승인 대기 항목',
+                statuses: ['waiting'],
+              })}
+              disabled={approvalCounts.waiting === 0}
+              title={`승인 대기 ${approvalCounts.waiting}건 보기`}
+            >
+              <span className="status-chip-num">{approvalCounts.waiting}</span>
+              <span className="status-chip-lbl">대기</span>
+            </button>
+            <button
+              type="button"
+              className={`status-chip tone-done ${approvalCounts.approved > 0 ? '' : 'zero'}`}
+              onClick={() => approvalCounts.approved > 0 && setApprovalListFilter({
+                title: '승인 완료 이력',
+                statuses: ['approved'],
+              })}
+              disabled={approvalCounts.approved === 0}
+              title={`승인 완료 ${approvalCounts.approved}건 보기`}
+            >
+              <span className="status-chip-num">{approvalCounts.approved}</span>
+              <span className="status-chip-lbl">승인</span>
+            </button>
+            <button
+              type="button"
+              className={`status-chip tone-failed ${approvalCounts.rejected > 0 ? '' : 'zero'}`}
+              onClick={() => approvalCounts.rejected > 0 && setApprovalListFilter({
+                title: '거절 처리 이력',
+                statuses: ['rejected'],
+              })}
+              disabled={approvalCounts.rejected === 0}
+              title={`거절 ${approvalCounts.rejected}건 보기`}
+            >
+              <span className="status-chip-num">{approvalCounts.rejected}</span>
+              <span className="status-chip-lbl">거절</span>
+            </button>
+            {approvalCounts.total > 0 && (
+              <button
+                type="button"
+                className="status-chip tone-idle view-all-chip"
+                onClick={() => setApprovalListFilter({
+                  title: '전체 승인 이력',
+                })}
+                title={`전체 ${approvalCounts.total}건 보기`}
+              >
+                <span className="status-chip-lbl">전체 보기 →</span>
+              </button>
+            )}
+          </div>
         </div>
         <div className="approval-list">
           {approvalQueue.length === 0 ? (
             <div className="empty-approvals">
-              <span>승인 대기 중인 항목이 없습니다. AI가 안전하게 지켜보는 중입니다.</span>
+              <p>승인 대기 중인 항목이 없습니다.</p>
+              <p style={{ marginTop: '6px', fontSize: '0.72rem', opacity: 0.65 }}>고객 답변, 상품 수정, 캠페인 실행처럼 최종 확인이 필요한 작업이 생기면 이곳에 표시됩니다.</p>
             </div>
           ) : (
             approvalQueue.map((item) => {
@@ -329,6 +435,34 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
           )}
         </div>
       </div>
+
+      {/* 상태별 작업 목록 모달 */}
+      {listFilter && (
+        <TaskListModal
+          isOpen={!!listFilter}
+          onClose={() => setListFilter(null)}
+          tasks={tasks}
+          agents={agents}
+          statuses={listFilter.statuses}
+          title={listFilter.title}
+          onSelectTask={onSelectTask}
+        />
+      )}
+
+      {/* 승인 대기 목록 모달 */}
+      {approvalListFilter && (
+        <ApprovalListModal
+          isOpen={!!approvalListFilter}
+          onClose={() => setApprovalListFilter(null)}
+          items={approvalQueue}
+          agents={agents}
+          statuses={approvalListFilter.statuses}
+          title={approvalListFilter.title}
+          onSelectApproval={onSelectApproval}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      )}
     </div>
   );
 };

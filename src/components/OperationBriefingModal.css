@@ -1,0 +1,670 @@
+/* ── Operation Briefing Modal ─────────────────────────────────── */
+
+.briefing-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(5px);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlay-in 0.2s ease;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.briefing-modal {
+  width: min(860px, 90vw);
+  height: min(720px, 86vh);
+  background: #0b1116;
+  border: 1px solid #1f2d3d;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65);
+  animation: modal-up 0.22s ease;
+}
+
+@keyframes modal-up {
+  from { transform: translateY(16px) scale(0.97); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* 헤더 */
+.briefing-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #0d161d;
+  border-bottom: 1px solid #1f2d3d;
+  flex-shrink: 0;
+}
+
+.briefing-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.briefing-modal-badge {
+  font-size: 9px;
+  font-weight: 800;
+  color: #10b981;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.briefing-modal-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #f0f6fc;
+  margin: 0;
+}
+
+.briefing-close-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #8b949e;
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.briefing-close-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* 탭 바 */
+.briefing-modal-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 20px;
+  background: #0d161d;
+  border-bottom: 1px solid #1f2d3d;
+  flex-shrink: 0;
+}
+
+.briefing-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+
+.briefing-tab:hover { color: #c9d1d9; }
+.briefing-tab.active {
+  color: #10b981;
+  border-bottom-color: #10b981;
+}
+
+/* 본문 */
+.briefing-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.briefing-modal-body::-webkit-scrollbar { width: 5px; }
+.briefing-modal-body::-webkit-scrollbar-thumb { background: #1f2d3d; border-radius: 2.5px; }
+
+/* 종합 요약 탭 */
+.briefing-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.briefing-alert-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 10px;
+}
+
+.briefing-alert-icon { font-size: 18px; }
+
+.briefing-alert-box strong {
+  display: block;
+  font-size: 13px;
+  color: #f59e0b;
+  margin-bottom: 4px;
+}
+
+.briefing-alert-box p {
+  margin: 0;
+  font-size: 11.5px;
+  color: #c9d1d9;
+}
+
+/* 마크다운 브리핑 */
+.briefing-markdown {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid #1f2d3d;
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.briefing-spacer { height: 8px; }
+
+.briefing-h3 {
+  font-size: 12px;
+  font-weight: 800;
+  color: #10b981;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 10px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+}
+
+.briefing-h2 {
+  font-size: 14px;
+  font-weight: 800;
+  color: #f0f6fc;
+  margin: 12px 0 6px;
+}
+
+.briefing-quote {
+  border-left: 2.5px solid #10b981;
+  padding: 6px 12px;
+  margin: 6px 0;
+  background: rgba(16, 185, 129, 0.04);
+  border-radius: 0 6px 6px 0;
+  color: #10b981;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.briefing-li {
+  font-size: 12px;
+  color: #c9d1d9;
+  margin: 4px 0 4px 14px;
+  line-height: 1.5;
+}
+
+.briefing-p {
+  font-size: 12px;
+  color: #c9d1d9;
+  margin: 4px 0;
+  line-height: 1.55;
+}
+
+/* 부서별 결과 그리드 */
+.dept-results-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-mini-title {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #10b981;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin: 0;
+}
+
+.dept-result-card {
+  background: #0d161d;
+  border: 1px solid #1f2d3d;
+  border-radius: 10px;
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dept-result-card.completed { border-left: 3px solid #10b981; }
+.dept-result-card.failed    { border-left: 3px solid #ef4444; }
+
+.dept-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dept-result-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f0f6fc;
+}
+
+.dept-result-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.dept-result-badge.success    { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.dept-result-badge.completed  { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.dept-result-badge.failed     { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+.dept-result-badge.needs_review { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+.dept-result-badge.blocked    { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
+
+.approval-required-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.dept-result-summary {
+  margin: 0;
+  font-size: 11.5px;
+  color: #8b949e;
+  line-height: 1.45;
+}
+
+/* 부서 간 전달 탭 */
+.handoffs-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.handoff-full-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.handoff-full-item {
+  background: #0d161d;
+  border: 1px solid #1f2d3d;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.handoff-full-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.handoff-from {
+  font-size: 11px;
+  font-weight: 700;
+  color: #a5b4fc;
+}
+
+.handoff-arrow {
+  color: #8b949e;
+  font-size: 10px;
+}
+
+.handoff-to {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fde047;
+}
+
+.handoff-time {
+  font-size: 9.5px;
+  color: #8b949e;
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: auto;
+}
+
+.handoff-full-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0f6fc;
+}
+
+.handoff-full-msg {
+  margin: 0;
+  font-size: 11px;
+  color: #8b949e;
+  line-height: 1.45;
+}
+
+/* 빈 상태 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 200px;
+  color: #8b949e;
+  font-size: 12px;
+  text-align: center;
+}
+
+.empty-state span { font-size: 32px; opacity: 0.5; }
+.empty-state p { margin: 0; }
+
+/* 기술 로그 탭 */
+.techlog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.techlog-meta {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid #1f2d3d;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.techlog-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #8b949e;
+}
+
+.techlog-row .mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  color: #c9d1d9;
+  word-break: break-all;
+}
+
+.techlog-toggle-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.techlog-toggle {
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 7px;
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.techlog-toggle:hover {
+  background: rgba(99, 102, 241, 0.12);
+  color: #c9d1d9;
+}
+
+.techlog-raw {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #1f2d3d;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.techlog-section-title {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #6366f1;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 4px;
+}
+
+.techlog-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: #8b949e;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 2px 0;
+}
+
+.techlog-status.completed { color: #10b981; }
+.techlog-status.failed    { color: #ef4444; }
+.techlog-status.pending   { color: #8b949e; }
+
+.techlog-dept {
+  color: #6366f1;
+  opacity: 0.8;
+}
+
+/* ── 클릭 가능 요소 공통 ─────────────────────────────────────── */
+.briefing-alert-box.clickable,
+.dept-result-card.clickable,
+.handoff-full-item.clickable {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  position: relative;
+}
+
+.briefing-alert-box.clickable:hover {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.45);
+  transform: translateY(-1px);
+}
+
+.dept-result-card.clickable:hover {
+  border-color: #2e3d52;
+  background: #11202a;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.handoff-full-item.clickable:hover {
+  border-color: #2e3d52;
+  background: #11202a;
+  transform: translateY(-1px);
+}
+
+/* 알람 박스 우측 화살표 */
+.briefing-alert-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.briefing-alert-arrow {
+  color: #f59e0b;
+  font-size: 16px;
+  font-weight: 700;
+  margin-left: 8px;
+  align-self: center;
+  opacity: 0.7;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.briefing-alert-box.clickable:hover .briefing-alert-arrow {
+  opacity: 1;
+  transform: translateX(3px);
+}
+
+/* 부서 결과 카드 화살표 */
+.dept-result-arrow {
+  margin-left: auto;
+  color: #8b949e;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.6;
+  transition: transform 0.15s ease, opacity 0.15s ease, color 0.15s ease;
+}
+
+.dept-result-card.clickable:hover .dept-result-arrow {
+  opacity: 1;
+  transform: translateX(3px);
+  color: #10b981;
+}
+
+/* 섹션 보조 힌트 */
+.section-hint {
+  font-size: 9px;
+  font-weight: 600;
+  color: #8b949e;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  margin-left: 6px;
+}
+
+/* 핸드오프 카드 상세 힌트 */
+.handoff-detail-hint {
+  margin-left: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #8b949e;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+
+.handoff-full-item.clickable:hover .handoff-detail-hint {
+  opacity: 1;
+  color: #10b981;
+  transform: translateX(3px);
+}
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .briefing-modal {
+  background: var(--modal-bg);
+  border-color: var(--modal-border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='light'] .briefing-modal-header,
+[data-theme='light'] .briefing-modal-tabs {
+  background: var(--bg-elevated);
+  border-bottom-color: var(--modal-border);
+}
+
+[data-theme='light'] .briefing-modal-title { color: var(--text-primary); }
+[data-theme='light'] .briefing-modal-badge { color: var(--accent-primary); }
+
+[data-theme='light'] .briefing-close-btn {
+  border-color: var(--modal-border);
+  color: var(--text-muted);
+}
+
+[data-theme='light'] .briefing-tab { color: var(--text-muted); }
+[data-theme='light'] .briefing-tab:hover { color: var(--text-secondary); }
+[data-theme='light'] .briefing-tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+[data-theme='light'] .briefing-modal-body::-webkit-scrollbar-thumb { background: var(--line-subtle); }
+
+[data-theme='light'] .briefing-alert-box {
+  background: rgba(217, 119, 6, 0.06);
+  border-color: rgba(217, 119, 6, 0.25);
+}
+[data-theme='light'] .briefing-alert-box strong { color: var(--warning); }
+[data-theme='light'] .briefing-alert-box p { color: var(--text-secondary); }
+[data-theme='light'] .briefing-alert-arrow { color: var(--warning); }
+
+[data-theme='light'] .briefing-markdown {
+  background: var(--bg-elevated);
+  border-color: var(--modal-border);
+}
+[data-theme='light'] .briefing-h3 {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-border);
+}
+[data-theme='light'] .briefing-h2 { color: var(--text-primary); }
+[data-theme='light'] .briefing-quote {
+  border-left-color: var(--accent-primary);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+[data-theme='light'] .briefing-li,
+[data-theme='light'] .briefing-p {
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .section-mini-title { color: var(--accent-primary); }
+[data-theme='light'] .section-hint { color: var(--text-muted); }
+
+[data-theme='light'] .dept-result-card {
+  background: var(--bg-elevated);
+  border-color: var(--modal-border);
+}
+[data-theme='light'] .dept-result-card.clickable:hover {
+  background: var(--card-hover);
+  border-color: var(--accent-border);
+}
+[data-theme='light'] .dept-result-name { color: var(--text-primary); }
+[data-theme='light'] .dept-result-summary { color: var(--text-muted); }
+[data-theme='light'] .dept-result-arrow { color: var(--text-muted); }
+
+[data-theme='light'] .dept-result-badge.success,
+[data-theme='light'] .dept-result-badge.completed { background: rgba(5, 150, 105, 0.12); color: var(--success); }
+[data-theme='light'] .dept-result-badge.failed,
+[data-theme='light'] .dept-result-badge.blocked { background: rgba(220, 38, 38, 0.1); color: var(--danger); }
+[data-theme='light'] .dept-result-badge.needs_review { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+[data-theme='light'] .approval-required-badge { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+
+[data-theme='light'] .handoff-full-item {
+  background: var(--bg-elevated);
+  border-color: var(--modal-border);
+}
+[data-theme='light'] .handoff-full-item.clickable:hover {
+  background: var(--card-hover);
+  border-color: var(--accent-border);
+}
+[data-theme='light'] .handoff-from { color: #6366f1; }
+[data-theme='light'] .handoff-to { color: #b45309; }
+[data-theme='light'] .handoff-arrow,
+[data-theme='light'] .handoff-time { color: var(--text-muted); }
+[data-theme='light'] .handoff-full-title { color: var(--text-primary); }
+[data-theme='light'] .handoff-full-msg { color: var(--text-muted); }
+
+[data-theme='light'] .empty-state { color: var(--text-muted); }
+
+[data-theme='light'] .techlog-meta,
+[data-theme='light'] .techlog-raw {
+  background: var(--bg-elevated);
+  border-color: var(--modal-border);
+}
+[data-theme='light'] .techlog-row { color: var(--text-muted); }
+[data-theme='light'] .techlog-row .mono { color: var(--text-secondary); }
+[data-theme='light'] .techlog-toggle {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .techlog-toggle:hover { color: var(--text-primary); }
+[data-theme='light'] .techlog-section-title { color: var(--accent-primary); }
+[data-theme='light'] .techlog-entry { color: var(--text-muted); }
+[data-theme='light'] .techlog-dept { color: var(--accent-primary-2); }

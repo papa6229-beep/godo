@@ -429,7 +429,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
           </div>
           <div className="data-metric-box">
             <span className="data-metric-lbl">개인정보 마스킹</span>
-            <span className="data-metric-val" style={{ color: '#00ff88' }}>
+            <span className="data-metric-val">
               {stats.privacyMaskedCount}건 감지 보호
             </span>
           </div>
@@ -477,9 +477,9 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                 <p className="status-desc">
                   쇼핑몰 어드민 데이터 브릿지가 연결되었습니다. 현재 데이터는 브라우저 보안 샌드박스 내부(LocalStorage)에 정형화 보관되어 있으며, 외부 전송 없이 자율 처리에 즉시 참조됩니다.
                 </p>
-                <div className="security-alert-box" style={{ marginTop: '0.8rem', marginBottom: '0.8rem', background: 'rgba(0, 255, 136, 0.05)', borderColor: 'rgba(0, 255, 136, 0.2)' }}>
+                <div className="security-alert-box api-mock-info" style={{ marginTop: '0.8rem', marginBottom: '0.8rem' }}>
                   <span className="alert-icon">🔌</span>
-                  <span className="alert-text" style={{ color: '#00ff88' }}>
+                  <span className="alert-text">
                     API Bridge Mock Sync 데이터가 현재 Data Connector에 연결되어 있습니다. API 탭에서 Mock Godomall 데이터를 동기화할 수 있습니다.
                   </span>
                 </div>
@@ -899,7 +899,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                       {activeOperationsData.sales.slice(0, 100).map((s) => (
                         <tr key={s.date}>
                           <td className="bold-cell">{s.date}</td>
-                          <td style={{ fontWeight: 700, color: '#00ff88' }}>{s.totalSales.toLocaleString()}원</td>
+                          <td className="td-sales-strong">{s.totalSales.toLocaleString()}원</td>
                           <td>{s.orderCount}건</td>
                           <td>{s.conversionRate}%</td>
                           <td>{s.topProducts.join(', ')}</td>
@@ -923,7 +923,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
         {/* 4) Mapping Rules */}
         {activeSubTab === 'mapping' && (
           <div className="mapping-rules-wrapper">
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.9rem', color: '#00ff88' }}>🧭 E-Commerce 표준화 자동 매핑 가이드라인</h3>
+            <h3 className="data-section-h3" style={{ margin: '0 0 1rem 0', fontSize: '0.9rem' }}>🧭 E-Commerce 표준화 자동 매핑 가이드라인</h3>
             <div className="mapping-table-container">
               <table className="preview-table">
                 <thead>
@@ -941,10 +941,10 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                     list.map((r, i) => (
                       <tr key={`${domain}-${i}`}>
                         <td className="bold-cell">{domain.toUpperCase()}</td>
-                        <td style={{ color: '#00ff88' }}>{r.orig}</td>
+                        <td className="td-orig-strong">{r.orig}</td>
                         <td className="mono-cell">{r.std}</td>
                         <td>{r.desc}</td>
-                        <td>{r.required ? <span style={{ color: '#ff4d4d' }}>REQUIRED</span> : 'OPTIONAL'}</td>
+                        <td>{r.required ? <span className="td-required">REQUIRED</span> : 'OPTIONAL'}</td>
                         <td>
                           <span className={`mapping-status-pill ${r.status}`}>
                             {r.status.toUpperCase()}
@@ -962,7 +962,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
         {/* 5) Quality Check */}
         {activeSubTab === 'quality' && (
           <div className="quality-check-wrapper">
-            <h3 style={{ margin: '0', fontSize: '0.9rem', color: '#00ff88' }}>🛡️ 데이터 무결성 및 적재 품질 점검 결과</h3>
+            <h3 className="data-section-h3" style={{ margin: '0', fontSize: '0.9rem' }}>🛡️ 데이터 무결성 및 적재 품질 점검 결과</h3>
             <div className="quality-report-grid">
               <div className="quality-stat-card good">
                 <span className="q-card-lbl">총 행 개수</span>
@@ -1073,7 +1073,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
         {/* 7) Import History */}
         {activeSubTab === 'history' && (
           <div className="history-pane-wrapper">
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.9rem', color: '#00ff88' }}>📜 쇼핑몰 데이터 적재 로그 (Import History)</h3>
+            <h3 className="data-section-h3" style={{ margin: '0 0 1rem 0', fontSize: '0.9rem' }}>📜 쇼핑몰 데이터 적재 로그 (Import History)</h3>
             <div className="history-table-scroller">
               {importHistory.length === 0 ? (
                 <div className="empty-data-message">이전 데이터 적재 이력이 비어 있습니다.</div>

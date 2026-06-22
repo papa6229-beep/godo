@@ -844,3 +844,211 @@
   color: var(--text-muted, #8892b0);
   font-size: 0.65rem;
 }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .api-bridge-panel-container {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .api-bridge-header {
+  background: #f4f7f6;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .api-main-title { color: var(--accent-primary-2); }
+[data-theme='light'] .api-subtitle { color: var(--text-muted); }
+
+[data-theme='light'] .api-nav-btn {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .api-nav-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary-2);
+}
+
+[data-theme='light'] .api-summary-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .summary-lbl { color: var(--text-muted); }
+[data-theme='light'] .summary-val { color: var(--text-primary); }
+
+[data-theme='light'] .api-sub-tabs {
+  background: transparent;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .sub-tab-btn { background: transparent; color: var(--text-muted); }
+[data-theme='light'] .sub-tab-btn:hover { color: var(--text-primary); }
+[data-theme='light'] .sub-tab-btn.active { color: var(--accent-primary-2); border-bottom-color: var(--accent-primary); }
+
+[data-theme='light'] .api-info-card,
+[data-theme='light'] .flow-node,
+[data-theme='light'] .provider-detail-card,
+[data-theme='light'] .resource-sync-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .security-alert-box {
+  background: rgba(217, 119, 6, 0.06);
+  border: 1px solid rgba(217, 119, 6, 0.22);
+  color: var(--warning);
+}
+[data-theme='light'] .alert-text { color: var(--warning); }
+
+[data-theme='light'] .flow-node:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+[data-theme='light'] .node-title { color: var(--text-primary); }
+[data-theme='light'] .node-desc { color: var(--text-muted); }
+[data-theme='light'] .flow-arrow { color: var(--accent-primary); }
+
+[data-theme='light'] .provider-name { color: var(--text-primary); }
+[data-theme='light'] .provider-desc,
+[data-theme='light'] .field-lbl { color: var(--text-muted); }
+[data-theme='light'] .field-val { color: var(--text-primary); }
+
+[data-theme='light'] .provider-mode-badge {
+  background: var(--accent-soft);
+  color: var(--accent-primary-2);
+  border: 1px solid var(--accent-border);
+}
+
+[data-theme='light'] .ready-dot   { background-color: var(--success); box-shadow: 0 0 6px rgba(5, 150, 105, 0.4); }
+[data-theme='light'] .syncing-dot { background-color: var(--warning); box-shadow: 0 0 6px rgba(217, 119, 6, 0.4); }
+[data-theme='light'] .error-dot   { background-color: var(--danger);  box-shadow: 0 0 6px rgba(220, 38, 38, 0.4); }
+[data-theme='light'] .locked-dot  { background-color: var(--text-muted); }
+
+[data-theme='light'] .field-item {
+  background: #f8fbfa;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .health-bar-container {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .api-action-btn {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .api-action-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent-primary-2);
+  border-color: var(--accent-border);
+}
+[data-theme='light'] .api-action-btn.primary {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+[data-theme='light'] .api-action-btn.primary:hover { background: var(--accent-primary-2); }
+
+[data-theme='light'] .sync-info-text { color: var(--text-muted); }
+[data-theme='light'] .resource-header { color: var(--text-primary); }
+
+/* 형광 #00ff88 텍스트 가독성 보정 */
+[data-theme='light'] .summary-val.status-ready { color: var(--text-primary); }
+[data-theme='light'] .summary-val.status-syncing { color: var(--text-primary); }
+[data-theme='light'] .ready-indicator {
+  background-color: var(--success);
+  box-shadow: 0 0 4px rgba(5, 150, 105, 0.4);
+}
+[data-theme='light'] .job-status-badge.success { background: rgba(5, 150, 105, 0.12); color: var(--success); }
+[data-theme='light'] .job-status-badge.fail { background: rgba(220, 38, 38, 0.12); color: var(--danger); }
+[data-theme='light'] .job-status-badge.syncing { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+[data-theme='light'] .safety-log-item.level-safety .log-badge { background: var(--accent-soft); color: var(--accent-primary-2); }
+
+/* ── 형광 #00ff88, #38bdf8 catch-all ──────────────────────────── */
+/* main-title: var(--primary-mint, #00ff88) 폴백이 라이트에서도 #00ff88로 렌더되므로 명시적으로 검정 */
+[data-theme='light'] .api-main-title {
+  color: var(--text-primary) !important;
+  text-shadow: none;
+}
+
+[data-theme='light'] .api-nav-btn {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+}
+[data-theme='light'] .api-nav-btn:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+}
+
+[data-theme='light'] .sub-tab-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+}
+
+[data-theme='light'] .api-info-card h3,
+[data-theme='light'] .api-info-card h4,
+[data-theme='light'] .api-tab-pane h3 {
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .summary-val.mode-mock { color: var(--info); }
+
+[data-theme='light'] .provider-mode-badge {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.25);
+  color: var(--info);
+}
+
+[data-theme='light'] .permission-badge.read-only {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.25);
+  color: var(--info);
+}
+
+[data-theme='light'] .safety-log-item.level-info .log-badge {
+  background: rgba(2, 132, 199, 0.12);
+  color: var(--info);
+}
+
+/* ── 인라인 형광 색 대체 클래스 ──────────────────────────────── */
+.warning-strong { color: var(--warning); }
+.health-score-strong { color: var(--accent-primary); font-weight: bold; }
+
+.sync-source-selector {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: rgba(10, 15, 26, 0.4);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.sync-source-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: bold;
+}
+.sync-source-radio-label {
+  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.sync-source-radio-label input { cursor: pointer; }
+
+[data-theme='light'] .warning-strong { color: var(--text-primary); }
+[data-theme='light'] .health-score-strong { color: var(--text-primary); }
+[data-theme='light'] .sync-source-selector {
+  background: #f8fbfa;
+  border-color: rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .sync-source-label { color: var(--text-secondary); }
+[data-theme='light'] .sync-source-radio-label { color: var(--text-secondary); }

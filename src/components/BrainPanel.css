@@ -352,6 +352,7 @@
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -704,3 +705,115 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .brain-panel-container {
+  background: var(--bg-surface);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .brain-header-section {
+  background: #f4f7f6;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .brain-main-title { color: var(--text-primary); }
+[data-theme='light'] .brain-subtitle { color: var(--text-muted); }
+
+[data-theme='light'] .metric-box {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .metric-box.alert { border-color: var(--accent-border); background: var(--accent-soft); }
+[data-theme='light'] .metric-lbl { color: var(--text-muted); }
+[data-theme='light'] .metric-val { color: var(--text-primary); }
+
+[data-theme='light'] .brain-control-bar {
+  background: #f8fbfa;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .brain-search-input {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  color: var(--text-primary);
+}
+[data-theme='light'] .brain-search-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 168, 120, 0.1);
+}
+
+[data-theme='light'] .brain-filter-select {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .brain-filter-select:focus {
+  border-color: var(--accent-primary);
+}
+
+[data-theme='light'] .brain-sidebar {
+  background: #f8fbfa;
+  border-right: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .category-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+[data-theme='light'] .category-tab-btn:hover {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .category-tab-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-primary-2);
+  border-color: var(--accent-border);
+}
+
+[data-theme='light'] .knowledge-item-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+[data-theme='light'] .knowledge-item-card:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+[data-theme='light'] .knowledge-item-card.active {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+
+[data-theme='light'] .card-filename { color: var(--text-secondary); }
+[data-theme='light'] .card-title-text { color: var(--text-primary); }
+[data-theme='light'] .card-summary-text { color: var(--text-secondary); }
+[data-theme='light'] .card-footer-meta,
+[data-theme='light'] .card-usage { color: var(--text-muted); }
+
+[data-theme='light'] .agent-tag-chip {
+  background: #f4f7f6;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .importance-badge.priority-high   { background: rgba(220, 38, 38, 0.1); color: var(--danger); }
+[data-theme='light'] .importance-badge.priority-medium { background: rgba(217, 119, 6, 0.1); color: var(--warning); }
+[data-theme='light'] .importance-badge.priority-low    { background: rgba(2, 132, 199, 0.1); color: var(--info); }
+
+[data-theme='light'] .brain-detail-view {
+  background: var(--bg-surface);
+}
+
+[data-theme='light'] .detail-header-card {
+  background: #f8fbfa;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .detail-title { color: var(--text-primary); }
+
+[data-theme='light'] .empty-results { color: var(--text-muted); }
+[data-theme='light'] .no-active-detail { color: var(--text-muted); }
+
+[data-theme='light'] .clear-search { color: var(--text-muted); }
+[data-theme='light'] .clear-search:hover { color: var(--danger); }

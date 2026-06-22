@@ -296,3 +296,172 @@
   width: fit-content;
   max-width: 100%;
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+   Native Agent Org Chart - Department & Grouping Styles
+   ────────────────────────────────────────────────────────────────────── */
+.departments-container {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.department-section {
+  background: rgba(14, 24, 27, 0.25);
+  border: 1px solid var(--line-subtle);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.dept-section-header {
+  border-bottom: 1px solid rgba(120, 160, 145, 0.1);
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.dept-section-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 2px 0;
+  letter-spacing: 0.5px;
+}
+
+.dept-section-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.dept-agents-layout {
+  display: grid;
+  grid-template-columns: 290px 1fr;
+  gap: 20px;
+}
+
+.dept-lead-zone {
+  display: flex;
+  flex-direction: column;
+}
+
+.dept-members-zone {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 15px;
+  width: 100%;
+}
+
+/* 팀장 에이전트 카드 스타일 커스터마이징 (글로우 효과 부여) */
+.agent-card.lead-card {
+  border: 1px solid rgba(45, 245, 162, 0.35);
+  background: rgba(45, 245, 162, 0.015);
+}
+
+.agent-card.lead-card:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 0 20px rgba(45, 245, 162, 0.25);
+}
+
+.lead-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: var(--accent-primary);
+  color: var(--bg-app);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* 매니저 HQ 부서는 단일 레이아웃 처리 */
+.department-section:first-child .dept-agents-layout {
+  grid-template-columns: 1fr;
+}
+.department-section:first-child .dept-lead-zone {
+  max-width: 320px;
+}
+
+/* 반응형 모바일 그리드 붕괴 대응 */
+@media (max-width: 1024px) {
+  .dept-agents-layout {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+}
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .agent-panel {
+  background: var(--bg-surface);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+[data-theme='light'] .agent-panel::-webkit-scrollbar-track { background: transparent; }
+[data-theme='light'] .panel-header { border-bottom-color: rgba(15, 23, 42, 0.08); }
+
+[data-theme='light'] .agent-card {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+[data-theme='light'] .agent-card:hover {
+  border-color: var(--accent-border);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='light'] .card-top { background: transparent; }
+
+[data-theme='light'] .card-task-preview,
+[data-theme='light'] .card-knowledge-preview {
+  background: #f4f7f6;
+  border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+[data-theme='light'] .skill-chip {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary-2);
+}
+[data-theme='light'] .skill-chip-more {
+  background: #f4f7f6;
+  border-color: rgba(15, 23, 42, 0.08);
+  color: var(--text-muted);
+}
+
+[data-theme='light'] .kb-file-tag {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.08);
+  color: var(--text-secondary);
+}
+
+[data-theme='light'] .department-section {
+  background: #f8fbfa;
+  border-color: rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .dept-section-header { border-bottom-color: rgba(15, 23, 42, 0.07); }
+
+[data-theme='light'] .agent-card.lead-card {
+  background: rgba(0, 168, 120, 0.03);
+  border-color: rgba(0, 168, 120, 0.35);
+}
+[data-theme='light'] .agent-card.lead-card:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 10px 24px rgba(0, 168, 120, 0.15);
+}
+[data-theme='light'] .lead-badge {
+  background: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 168, 120, 0.25);
+}

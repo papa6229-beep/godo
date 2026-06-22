@@ -16,6 +16,8 @@ import { DataPanel } from './DataPanel';
 import { CalendarPanel } from './CalendarPanel';
 import { ApiBridgePanel } from './ApiBridgePanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
+import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
+import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
 import './MainLayout.css';
 
 interface MainLayoutProps {
@@ -23,7 +25,6 @@ interface MainLayoutProps {
   tasks: OperationTask[];
   logs: LogEntry[];
   isSimulating: boolean;
-  operationRunState: 'idle' | 'running' | 'completed';
   activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar';
   approvalQueue: ApprovalItem[];
   setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar') => void;
@@ -82,6 +83,19 @@ interface MainLayoutProps {
   setLastSelectedDate: (date: string) => void;
   lastViewedMonth: string;
   setLastViewedMonth: (month: string) => void;
+  lastNativeAgentRun?: NativeAgentRun | null;
+
+  // Native Runtime Verification props
+  validationScenario: ValidationScenarioType;
+  onScenarioChange: (scenario: ValidationScenarioType) => void;
+  uploadedFiles: Record<string, { name: string; size: number; type: string; timestamp: string }[]>;
+  onAddFileMetadata: (deptId: string, file: { name: string; size: number; type: string }) => void;
+  manualCommands: Record<string, { text: string; timestamp: string }[]>;
+  onAddManualCommand: (deptId: string, text: string) => void;
+
+  // 테마
+  theme: 'dark' | 'light';
+  onToggleTheme: () => void;
 }
 
 export const MainLayout: React.FC<MainLayoutProps> = ({
@@ -89,7 +103,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   tasks,
   logs,
   isSimulating,
-  operationRunState,
   activeTab,
   approvalQueue,
   setActiveTab,
@@ -140,7 +153,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   lastSelectedDate,
   setLastSelectedDate,
   lastViewedMonth,
-  setLastViewedMonth
+  setLastViewedMonth,
+  lastNativeAgentRun,
+
+  validationScenario,
+  onScenarioChange,
+  uploadedFiles,
+  onAddFileMetadata,
+  manualCommands,
+  onAddManualCommand,
+  theme,
+  onToggleTheme,
 }) => {
   return (
     <div className="main-layout">
@@ -162,6 +185,15 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         </div>
 
         <div className="header-right">
+          <button
+            className="theme-toggle-btn"
+            onClick={onToggleTheme}
+            title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+          >
+            <span className="theme-toggle-icon">{theme === 'dark' ? '☀️' : '🌙'}</span>
+            {theme === 'dark' ? 'Light' : 'Dark'}
+          </button>
+
           <button
             className={`header-run-btn ${isSimulating ? 'running' : ''}`}
             onClick={onStartSimulation}
@@ -276,24 +308,34 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               agents={agents}
               tasks={tasks}
               isSimulating={isSimulating}
-              operationRunState={operationRunState}
               approvalQueue={approvalQueue}
               onStartSimulation={onStartSimulation}
               onAddTask={onAddTask}
-              onSelectAgent={onSelectAgent}
               onApprove={onApprove}
               onReject={onReject}
               onSelectTask={onSelectTask}
               onSelectApproval={onSelectApproval}
               activeOperationsData={activeOperationsData}
-              onNavigateToLogs={() => setActiveTab('logs')}
               onUpdateAgents={onUpdateAgents}
               onAddLog={onAddLog}
+              lastNativeAgentRun={lastNativeAgentRun}
+              
+              // Native Runtime Verification props
+              validationScenario={validationScenario}
+              onScenarioChange={onScenarioChange}
+              uploadedFiles={uploadedFiles}
+              onAddFileMetadata={onAddFileMetadata}
+              manualCommands={manualCommands}
+              onAddManualCommand={onAddManualCommand}
             />
           )}
 
           {activeTab === 'agents' && (
-            <AgentPanel agents={agents} onSelectAgent={onSelectAgent} />
+            <AgentPanel 
+              agents={agents} 
+              onSelectAgent={onSelectAgent} 
+              lastNativeAgentRun={lastNativeAgentRun}
+            />
           )}
 
           {activeTab === 'brain' && (

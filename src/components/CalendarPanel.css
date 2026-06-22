@@ -473,3 +473,116 @@
   color: var(--text-secondary);
   line-height: 1.4;
 }
+
+/* ── Light theme overrides ─────────────────────────────────────── */
+[data-theme='light'] .calendar-panel-container {
+  background: var(--bg-surface);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+[data-theme='light'] .calendar-header-section {
+  background: #f4f7f6;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .calendar-metric-box {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+[data-theme='light'] .calendar-metric-box:hover {
+  border-color: var(--accent-border);
+  background: rgba(0, 168, 120, 0.02);
+}
+[data-theme='light'] .calendar-metric-box.alert {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+[data-theme='light'] .calendar-nav-btn {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  color: var(--text-secondary);
+}
+[data-theme='light'] .calendar-nav-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent-primary-2);
+  border-color: var(--accent-border);
+}
+
+[data-theme='light'] .calendar-week-header { color: var(--text-muted); }
+
+[data-theme='light'] .calendar-day-cell {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+[data-theme='light'] .calendar-day-cell:hover {
+  background: rgba(0, 168, 120, 0.04);
+  border-color: rgba(0, 168, 120, 0.3);
+}
+[data-theme='light'] .calendar-day-cell.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent-primary) !important;
+}
+[data-theme='light'] .calendar-day-cell.has-data {
+  background: rgba(0, 168, 120, 0.03);
+}
+
+[data-theme='light'] .cell-badge { background: #ffffff; }
+[data-theme='light'] .cell-badge.orders   { color: var(--info); background: rgba(2, 132, 199, 0.08); border: 1px solid rgba(2, 132, 199, 0.18); }
+[data-theme='light'] .cell-badge.inquiry  { color: var(--accent-primary-2); background: var(--accent-soft); border: 1px solid var(--accent-border); }
+[data-theme='light'] .cell-badge.review   { color: #0ea5e9; background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(14, 165, 233, 0.18); }
+[data-theme='light'] .cell-badge.risk     { color: var(--warning); background: rgba(217, 119, 6, 0.08); border: 1px solid rgba(217, 119, 6, 0.2); }
+[data-theme='light'] .cell-badge.alert    { color: var(--danger); background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.2); }
+
+[data-theme='light'] .brief-container,
+[data-theme='light'] .brief-section-card {
+  background: #f8fbfa;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+}
+
+[data-theme='light'] .brief-stat-item {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+[data-theme='light'] .brief-stat-lbl { color: var(--text-muted); }
+[data-theme='light'] .brief-stat-val { color: var(--text-primary); }
+
+[data-theme='light'] .bullet-item { color: var(--text-secondary); }
+
+[data-theme='light'] .timeline-time { color: var(--text-muted); }
+
+[data-theme='light'] .timeline-item {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+[data-theme='light'] .calendar-month-title { color: var(--text-primary); }
+
+[data-theme='light'] .brief-source-badge.demo {
+  color: var(--info);
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.18);
+}
+[data-theme='light'] .brief-source-badge.csv,
+[data-theme='light'] .brief-source-badge.json {
+  color: var(--accent-primary-2);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+[data-theme='light'] .brief-source-badge.api_mock,
+[data-theme='light'] .brief-source-badge.api_proxy_mock {
+  color: var(--info);
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.18);
+}
+
+[data-theme='light'] .brief-container h3,
+[data-theme='light'] .brief-container h4,
+[data-theme='light'] .brief-section-card h3,
+[data-theme='light'] .brief-section-card h4 { color: var(--text-primary); }
+
+[data-theme='light'] .brief-date { color: var(--text-muted); }
+[data-theme='light'] .brief-title-row { color: var(--text-primary); }
+
+[data-theme='light'] .timeline-desc { color: var(--text-secondary); }

@@ -5,16 +5,8 @@ import type { OperationTask } from './types/task';
 import type { ApprovalItem } from './types/approval';
 import type { OperationReport } from './types/operation';
 import { initialAgents } from './data/agents';
-import { createDailyOperationTasks } from './engine/taskPlanner';
-import { routeTask } from './engine/taskRouter';
-import { executeTask } from './engine/taskExecutor';
 import { TaskResultModal } from './components/TaskResultModal';
 import { ApprovalDetailModal } from './components/ApprovalDetailModal';
-import type { OperationArtifact } from './types/operationArtifact';
-import { composeOperationReport } from './engine/reportComposer';
-import { selectAIModel } from './engine/modelRouter';
-import { mockGodoData } from './data/mockGodoData';
-import { generateCSDrafts } from './engine/csDraftGenerator';
 import { OpeningScreen } from './components/OpeningScreen';
 import { MainLayout } from './components/MainLayout';
 import { AgentDetailModal } from './components/AgentDetailModal';
@@ -28,42 +20,48 @@ import { defaultEngineProviders, defaultEngineRoutingRules, defaultEngineSafetyR
 import type { OperationsDataSnapshot, ImportHistoryItem } from './types/dataConnector';
 import { defaultOperationsData } from './data/defaultOperationsData';
 import type { OperationHistoryItem } from './types/calendar';
+import { runNativeAgentOperation } from './engine/nativeAgentRuntime/nativeAgentRuntime';
+import type { NativeAgentRun } from './engine/nativeAgentRuntime/types';
 import { resetApiBridgeState } from './utils/apiBridgeStorage';
+import { composeOperationReport } from './engine/reportComposer';
+import { getScenarioData, type ValidationScenarioType } from './engine/nativeAgentRuntime/validationScenarios';
+import { useTheme } from './hooks/useTheme';
 import './App.css';
 
-function getRiskLevelAndPermission(task: OperationTask): 'low' | 'medium' | 'high' | 'critical' {
-  const title = task.title;
-  const agentId = task.assignedAgentId;
-  
-  let riskLevel: 'low' | 'medium' | 'high' | 'critical';
-  
-  if (title.includes('가격') || title.includes('price')) {
-    riskLevel = 'critical';
-  } else if (title.includes('환불') || title.includes('refund')) {
-    riskLevel = 'critical';
-  } else if (title.includes('쿠폰') || title.includes('coupon')) {
-    riskLevel = 'high';
-  } else if (title.includes('마케팅') || title.includes('캠페인') || agentId === 'marketing') {
-    riskLevel = 'high';
-  } else if (title.includes('상품') || title.includes('수정') || title.includes('등록')) {
-    riskLevel = 'high';
-  } else if (agentId === 'cs') {
-    riskLevel = 'medium';
-  } else if (agentId === 'review') {
-    riskLevel = 'medium';
-  } else {
-    riskLevel = task.riskLevel || 'medium';
-  }
-  
-  return riskLevel;
-}
 
 function App() {
+  const { theme, toggleTheme } = useTheme();
   const [showOpening, setShowOpening] = useState(true);
+  const [validationScenario, setValidationScenario] = useState<ValidationScenarioType>(() => {
+    try {
+      const saved = localStorage.getItem('godo.nativeAgentRuntime.activeScenario');
+      return (saved as ValidationScenarioType) || 'normal';
+    } catch {
+      return 'normal';
+    }
+  });
+
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, { name: string; size: number; type: string; timestamp: string }[]>>(() => {
+    try {
+      const saved = localStorage.getItem('godo.nativeAgentRuntime.uploadedFiles');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [manualCommands, setManualCommands] = useState<Record<string, { text: string; timestamp: string }[]>>(() => {
+    try {
+      const saved = localStorage.getItem('godo.nativeAgentRuntime.manualCommands');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   const [tasks, setTasks] = useState<OperationTask[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [operationRunState, setOperationRunState] = useState<'idle' | 'running' | 'completed'>('idle');
   const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar'>('office');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>([]);
@@ -202,6 +200,33 @@ function App() {
   });
 
   const [selectedBrainItemId, setSelectedBrainItemId] = useState<string | null>(null);
+  const [lastNativeAgentRun, setLastNativeAgentRun] = useState<NativeAgentRun | null>(() => {
+    try {
+      const saved = localStorage.getItem('godo.nativeAgentRuntime.lastRun');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (lastNativeAgentRun) {
+      localStorage.setItem('godo.nativeAgentRuntime.lastRun', JSON.stringify(lastNativeAgentRun));
+    }
+  }, [lastNativeAgentRun]);
+
+  useEffect(() => {
+    localStorage.setItem('godo.nativeAgentRuntime.activeScenario', validationScenario);
+  }, [validationScenario]);
+
+  useEffect(() => {
+    localStorage.setItem('godo.nativeAgentRuntime.uploadedFiles', JSON.stringify(uploadedFiles));
+  }, [uploadedFiles]);
+
+  useEffect(() => {
+    localStorage.setItem('godo.nativeAgentRuntime.manualCommands', JSON.stringify(manualCommands));
+  }, [manualCommands]);
+
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [studioSubTab, setStudioSubTab] = useState<'brain' | 'agent' | 'skills' | 'tools' | 'permissions' | 'import_export'>('brain');
 
@@ -329,11 +354,18 @@ function App() {
   }, [engineProviders, engineRoutingRules]);
 
   const handleResetAllData = () => {
-    setOperationRunState('idle');
     setBrainKnowledge(initialBrainKnowledgeItems);
     setAgents(initialAgents);
     setSkills(defaultSkills);
     setTools(defaultTools);
+    setUploadedFiles({});
+    setManualCommands({});
+    setValidationScenario('normal');
+    localStorage.removeItem('godo.nativeAgentRuntime.uploadedFiles');
+    localStorage.removeItem('godo.nativeAgentRuntime.manualCommands');
+    localStorage.removeItem('godo.nativeAgentRuntime.activeScenario');
+    localStorage.removeItem('godo.nativeAgentRuntime.lastRun');
+    setLastNativeAgentRun(null);
     setPermissionMatrix(defaultPermissionMatrix);
     setEngineMode('hybrid_auto');
     setEngineProviders(defaultEngineProviders);
@@ -395,392 +427,200 @@ function App() {
     if (isSimulating) return;
 
     setIsSimulating(true);
-    setOperationRunState('running');
     setReport(null);
     setApprovalQueue([]);
     
+    // 시나리오 데이터 적용
+    const scenarioData = getScenarioData(validationScenario);
+    const snapshotToUse = scenarioData.snapshot;
+    const agentsToUse = scenarioData.agents;
+
     // 0. 데이터 소스 정보 로깅
-    if (activeOperationsData && activeOperationsData.sourceType !== 'demo') {
-      addLog(`[Data] 현재 ${activeOperationsData.sourceType.toUpperCase()} 업로드 데이터 스냅샷을 기준으로 운영을 시작합니다.`, 'info', 'SYSTEM');
-      const lastUpdate = activeOperationsData.importedAt ? new Date(activeOperationsData.importedAt).toLocaleString() : '미정';
-      addLog(`[Data] 데이터 소스: ${activeOperationsData.sourceType}, 마지막 업데이트: ${lastUpdate}`, 'info', 'SYSTEM');
-    } else {
-      addLog('[Data] 업로드된 운영 데이터가 없어 Demo 데이터로 운영을 시작합니다.', 'info', 'SYSTEM');
-    }
+    addLog(`[Scenario] 검증 프리셋 [${validationScenario.toUpperCase()}] 적용: ${scenarioData.description}`, 'info', 'SYSTEM');
 
-    // 1. 작업 플래닝
-    const dailyTasks = createDailyOperationTasks(activeOperationsData);
-    setTasks(dailyTasks);
-    
-    // 매니저가 업무 분석 시작
-    setAgents(prev => prev.map(a => 
-      a.id === 'manager' 
-        ? { ...a, status: 'working', bubbleText: '운영 작업 분석 및 분해 중...' } 
-        : { ...a, status: 'idle', bubbleText: undefined }
-    ));
-    
-    addLog('오늘의 운영 작업을 생성했습니다.', 'info', 'CEO');
-    
-    const currentTasks = [...dailyTasks];
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-    
-    await sleep(1500);
-    
-    for (let i = 0; i < currentTasks.length; i++) {
-      const task = currentTasks[i];
+    try {
+      addLog('[Native Agent Runtime] 다중 에이전트 협업 엔진 기동 시작...', 'info', 'SYSTEM');
       
-      // 2. 라우팅
-      const routedTask = routeTask(task, engineMode, engineRoutingRules, engineSafetyRules);
-      const modelConfig = selectAIModel(routedTask, engineMode, engineProviders, engineRoutingRules);
+      // Native Agent Runtime 실행
+      const runtimeResult = await runNativeAgentOperation(
+        '오늘 운영 점검', 
+        snapshotToUse, 
+        engineProviders,
+        agentsToUse
+      );
       
-      currentTasks[i] = routedTask;
-      setTasks([...currentTasks]);
+      // 실시간으로 협업 단계 로그 출력
+      const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       
-      const agent = agents.find(a => a.id === routedTask.assignedAgentId);
-      const shortAgentName = agent ? agent.name.split(' ')[0] : routedTask.assignedAgentId;
-      
-      // Usage Log 기록 생성
-      const newUsageLog: EngineUsageLog = {
-        id: `usage-${Date.now()}-${i}`,
-        timestamp: getFormattedTime(),
-        taskId: routedTask.id,
-        taskTitle: routedTask.title,
-        agentId: routedTask.assignedAgentId,
-        routeType: routedTask.routeType,
-        providerId: modelConfig.providerId || 'unknown',
-        modelName: modelConfig.modelName,
-        reason: routedTask.routeType === 'human' ? '민감 데이터/승인 필요로 휴먼 게이트 배정' : '인프라 및 규칙 기반 라우팅 완료',
-        status: routedTask.routeType === 'human' ? 'blocked' : 'routed'
-      };
-      setEngineUsageLogs(prev => [...prev, newUsageLog]);
-
-      addLog(`${routedTask.title} -> ${agent?.name || routedTask.assignedAgentId} 배정`, 'info', 'Router');
-      
-      // Engine 상세 로그 출력
-      addLog(`[Engine] ${routedTask.title}은 ${routedTask.routeType.toUpperCase()} 규칙에 따라 ${modelConfig.modelName}으로 라우팅되었습니다.`, 'info', 'Engine');
-      
-      // 민감 정보 보호 차단 로그 모의 (Engine / Safety Guard 연동)
-      const isSensitive = routedTask.title.includes('고객') || routedTask.title.includes('inquiry') || routedTask.title.includes('CS') || routedTask.title.includes('주문') || routedTask.relatedDataType === 'orders' || routedTask.relatedDataType === 'inquiries';
-      const isSafetyRuleEnabled = (id: string) => engineSafetyRules.find(r => r.id === id)?.isEnabled ?? false;
-      if (isSensitive && isSafetyRuleEnabled('safety_1')) {
-        addLog(`[Safety] 고객 민감정보가 포함된 ${routedTask.relatedDataType === 'orders' ? '주문' : '문의'} 데이터는 Cloud Engine으로 전송하지 않습니다.`, 'warning', 'Engine');
-        if (routedTask.assignedAgentId === 'cs') {
-          addLog(`[Engine] CS 문의 분석 작업을 Local 또는 Hybrid 보호 경로로 라우팅했습니다.`, 'info', 'Engine');
-        } else if (routedTask.routeType === 'local') {
-          addLog(`[Engine] 고객 민감정보 보호를 위해 Cloud 전송을 차단하고 Local Engine으로 우회시켰습니다.`, 'warning', 'Engine');
+      for (const logText of runtimeResult.activityLogs) {
+        let logType: LogEntry['type'] = 'info';
+        let sender = 'SYSTEM';
+        if (logText.includes('상품관리팀')) {
+          logType = 'agent';
+          sender = '상품관리 팀장 AI';
+        } else if (logText.includes('CS팀')) {
+          logType = 'agent';
+          sender = 'CS 팀장 AI';
+        } else if (logText.includes('마케팅팀')) {
+          logType = 'agent';
+          sender = '마케팅 전략 팀장';
+        } else if (logText.includes('총괄 매니저')) {
+          logType = 'success';
+          sender = 'HQ-01';
         }
+        
+        addLog(logText, logType, sender);
+        await sleep(600);
       }
 
-      // 3. 작업 진행 상태로 갱신 (running)
-      routedTask.status = 'running';
-      currentTasks[i] = routedTask;
-      setTasks([...currentTasks]);
-      
-      // 에이전트 캐릭터의 모션 상태 주입
-      const characterStatus = routedTask.permission === 'approval_required' ? 'thinking' : 'working';
-      setAgents(prev => prev.map(a => 
-        a.id === routedTask.assignedAgentId 
-          ? { ...a, status: characterStatus, bubbleText: `${routedTask.title} 수행 중...` } 
-          : a
-      ));
-      
-      addLog(`${routedTask.title}은 ${modelConfig.modelName}으로 처리합니다.`, 'info', 'Engine');
-      
-      if (routedTask.requiredSkills && routedTask.requiredSkills.length > 0) {
-        addLog(`스킬 활성화: ${shortAgentName} AI가 [${routedTask.requiredSkills.join(', ')}] 스킬을 적용하여 분석을 수행합니다.`, 'agent', agent?.name);
-      }
-      
-      // 실제 모의 실행 시간 대기
-      await sleep(1200 + Math.random() * 600);
-      
-      // 4. 실행 결과 산정
-      let executedTask: OperationTask;
-      if (routedTask.assignedAgentId === 'cs') {
-        const queryCount = activeOperationsData.inquiries.filter(inq => inq.status === '미답변').slice(0, 3).length;
-        addLog(`[CS] 미답변 문의 ${queryCount}건 분석 시작`, 'info', 'CS');
-        
-        // LM Studio 설정 조회
-        const lmsProvider = engineProviders.find(p => p.id === 'lms_gemma_4');
-        const useRealLMS = lmsProvider && lmsProvider.status === 'connected' && lmsProvider.isEnabled;
-        const modelId = lmsProvider?.modelName || 'google/gemma-4-e4b';
-        
-        if (useRealLMS) {
-          addLog(`[LLM] Local Gemma 호출 시작: ${modelId}`, 'info', 'Engine');
-        } else {
-          addLog(`[LLM] Local Gemma 연결이 비활성화 상태이므로 템플릿 Fallback 모드를 준비합니다.`, 'warning', 'Engine');
+      // 픽셀 오피스 에이전트 상태 업데이트 (기존 9인 캐릭터 매핑)
+      setAgents(prev => prev.map(a => {
+        let matchingJob = null;
+        if (a.id === 'manager') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'manager_agent');
+        } else if (a.id === 'product') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'product_lead');
+        } else if (a.id === 'order') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'product_analyst');
+        } else if (a.id === 'stock') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'inventory_monitor');
+        } else if (a.id === 'cs') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'cs_lead');
+        } else if (a.id === 'delivery') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'inquiry_analyst');
+        } else if (a.id === 'review') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'review_detector');
+        } else if (a.id === 'marketing') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'marketing_lead');
+        } else if (a.id === 'trend_researcher' || a.id === 'finance') {
+          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'trend_researcher');
         }
-        
-        addLog(`[Engine] CS 답변 초안 생성 작업을 시작합니다. (cs_reply_draft started)`, 'info', 'Engine');
-        
-        const startTime = Date.now();
-        const draftResults = await generateCSDrafts(activeOperationsData, engineProviders);
-        const elapsed = Date.now() - startTime;
-        
-        const isFallback = draftResults.some(r => r.fallbackUsed);
-        
-        if (isFallback) {
-          if (useRealLMS) {
-            addLog(`[LLM] Local Gemma 호출 실패`, 'error', 'Engine');
-          }
-          addLog(`[Fallback] CS 답변 초안은 템플릿으로 대체 생성됨 (cs_reply_draft fallback used)`, 'warning', 'Engine');
-          addLog(`[Approval] Fallback CS 답변 초안 ${draftResults.length}건이 승인 대기열에 추가됨`, 'warning', 'Approval');
-        } else {
-          addLog(`[LLM] CS 답변 초안 ${draftResults.length}건 생성 완료`, 'success', 'Engine');
-          addLog(`[Approval] CS 답변 초안 ${draftResults.length}건이 승인 대기열에 추가됨`, 'success', 'Approval');
-        }
-        
-        if (draftResults.some(r => r.piiRemoved)) {
-          addLog(`[Safety] 고객 개인정보는 마스킹 후 처리됨`, 'warning', 'Safety');
-        }
-        
-        addLog(`[Engine] CS 답변 초안 생성 완료 (cs_reply_draft generated). 소요시간: ${elapsed}ms`, 'success', 'Engine');
-        
-        draftResults.forEach(res => {
-          addLog(`[Engine] 문의 ID: ${res.inquiryId} 처리 완료 (elapsed time: ${res.latency}ms, fallback: ${res.fallbackUsed}, PII 제거: ${res.piiRemoved})`, 'info', 'Engine');
-        });
 
-        // CS 초안 작성 사용 이력 추가 기록
-        const csUsageLog: EngineUsageLog = {
-          id: `usage-cs-${Date.now()}-${i}`,
-          timestamp: getFormattedTime(),
-          taskId: routedTask.id,
-          taskTitle: `${routedTask.title} (Draft Generated)`,
-          agentId: 'cs',
-          routeType: routedTask.routeType,
-          providerId: modelConfig.providerId || 'lms_gemma_4',
-          modelName: modelConfig.modelName,
-          reason: `[taskType: cs_reply_draft] [fallbackUsed: ${isFallback}] [piiRemoved: ${draftResults.some(r => r.piiRemoved)}] [latency: ${elapsed}ms] [approvalRequired: true]`,
-          status: isFallback ? 'fallback' : 'completed'
-        };
-        setEngineUsageLogs(prev => [...prev, csUsageLog]);
-
-        // CSDraftResult 1건당 OperationArtifact 1건 생성
-        const csArtifacts: OperationArtifact[] = draftResults.map((res, idx) => ({
-          id: `art-cs-draft-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 5)}`,
-          taskId: routedTask.id,
-          taskType: 'cs_reply_draft',
-          agentId: 'cs',
-          title: `CS 답변 초안 - ${res.customerNameMasked} 고객님`,
-          sourceType: activeOperationsData.sourceType,
-          originalIssue: res.originalContent,
-          maskedInput: res.cleanedContent,
-          generatedDraft: res.draftReply,
-          summary: res.title,
-          modelId: res.modelId,
-          route: routedTask.routeType.toUpperCase() as 'LOCAL' | 'HYBRID' | 'CLOUD' | 'HUMAN' | 'MOCK',
-          latency: res.latency,
-          fallbackUsed: res.fallbackUsed,
-          piiRemoved: res.piiRemoved,
-          riskLevel: 'medium',
-          approvalStatus: 'waiting',
-          referencedKnowledge: ['cs_policy.md', 'cs_auto_template.md'],
-          createdAt: new Date().toISOString()
-        }));
-
-        // Approval Queue 적재 시 확장된 구조화 필드 적용
-        const newCSApprovals: ApprovalItem[] = draftResults.map((res, idx) => {
-          const proposedText = `[문의 요약]: ${res.title}\n[문의 내용]: ${res.cleanedContent}\n\n[답변 초안]: ${res.draftReply}\n\n[상세 정보]:\n- Model ID: ${res.modelId}\n- Latency: ${res.latency}ms\n- Fallback 사용 여부: ${res.fallbackUsed ? '예' : '아니오'}\n- PII 제거 여부: ${res.piiRemoved ? '예' : '아니오'}`;
-          
-          const apprId = `appr-cs-draft-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 5)}`;
+        if (matchingJob) {
           return {
-            id: apprId,
-            taskId: routedTask.id,
-            title: `CS 답변 초안 - ${res.customerNameMasked} 고객님`,
-            requestedByAgentId: 'cs',
-            riskLevel: 'medium' as const,
-            reason: 'CS 답변 초안 검토 및 승인 대기',
-            proposedAction: proposedText,
-            status: 'waiting' as const,
-            originalIssue: res.originalContent,
-            maskedInput: res.cleanedContent,
-            generatedDraft: res.draftReply,
-            metadata: {
-              modelId: res.modelId,
-              latency: res.latency,
-              fallbackUsed: res.fallbackUsed,
-              piiRemoved: res.piiRemoved,
-              route: routedTask.routeType.toUpperCase() as 'LOCAL' | 'HYBRID' | 'CLOUD' | 'HUMAN' | 'MOCK',
-              taskType: 'cs_reply_draft',
-              sourceType: activeOperationsData.sourceType,
-              referencedKnowledge: ['cs_policy.md', 'cs_auto_template.md'],
-              approvalRequired: true
-            }
+            ...a,
+            status: 'completed' as const,
+            currentTask: matchingJob.title,
+            bubbleText: '협업 분석 완료! 🎉'
           };
-        });
-
-        executedTask = {
-          ...routedTask,
-          status: 'needs_approval' as const,
-          resultSummary: `미답변 문의 ${draftResults.length}건에 대한 CS 답변 초안을 성공적으로 생성했습니다.`,
-          logs: [
-            ...routedTask.logs || [],
-            `[Engine] CS 답변 초안 생성 모듈 기동.`,
-            `[Engine] 소요 시간: ${elapsed}ms`,
-            `[Engine] 감지된 모델: ${modelId}`,
-            `[Engine] PII 마스킹 처리 결과: ${draftResults.some(r => r.piiRemoved) ? '제거 완료' : '대상 없음'}`,
-            `[Engine] Fallback 적용 건수: ${draftResults.filter(r => r.fallbackUsed).length}건`
-          ],
-          completedAt: new Date().toISOString(),
-          artifacts: csArtifacts,
-          approvalItemIds: newCSApprovals.map(a => a.id)
-        };
-        
-        setApprovalQueue(prev => [...prev, ...newCSApprovals]);
-        addLog(`[Engine] cs_reply_draft 승인 카드가 대기열에 추가되었습니다. (cs_reply_draft approval queued)`, 'info', 'Engine');
-      } else {
-        executedTask = await executeTask(routedTask, mockGodoData, activeOperationsData);
-      }
-
-      // CS 외 에이전트의 산출물/아티팩트 구조화 추가
-      if (executedTask.assignedAgentId !== 'cs') {
-        const riskLevel = getRiskLevelAndPermission(executedTask);
-        const artId = `art-ex-${Date.now()}-${i}`;
-        const defaultArtifact: OperationArtifact = {
-          id: artId,
-          taskId: executedTask.id,
-          taskType: 'auto_execution',
-          agentId: executedTask.assignedAgentId,
-          title: executedTask.title,
-          summary: executedTask.resultSummary,
-          generatedDraft: executedTask.resultSummary,
-          riskLevel: riskLevel,
-          route: executedTask.routeType.toUpperCase() as 'LOCAL' | 'HYBRID' | 'CLOUD' | 'HUMAN' | 'MOCK',
-          approvalStatus: executedTask.status === 'needs_approval' ? 'waiting' : 'none',
-          createdAt: new Date().toISOString()
-        };
-        executedTask.artifacts = [defaultArtifact];
-      }
-
-      currentTasks[i] = executedTask;
-      setTasks([...currentTasks]);
-
-      // RAG 지식 참조 시뮬레이션: brainKnowledge 사용 횟수(usageCount) 및 로그 업데이트
-      let referencedFiles: string[] = [];
-      if (executedTask.assignedAgentId === 'order') {
-        referencedFiles = ['order_check_template.md'];
-      } else if (executedTask.assignedAgentId === 'cs') {
-        referencedFiles = ['cs_policy.md', 'cs_auto_template.md'];
-      } else if (executedTask.assignedAgentId === 'stock') {
-        referencedFiles = ['inventory_snapshot.json'];
-      } else if (executedTask.assignedAgentId === 'finance') {
-        referencedFiles = ['sales_report_template.md'];
-      } else if (executedTask.assignedAgentId === 'marketing') {
-        referencedFiles = ['campaign_result_report.md', 'marketing_decision_log.md'];
-      } else if (executedTask.assignedAgentId === 'review') {
-        referencedFiles = ['review_reply_template.md'];
-      }
-
-      if (referencedFiles.length > 0) {
-        setBrainKnowledge(prev => prev.map(k => {
-          if (referencedFiles.includes(k.filename)) {
-            return {
-              ...k,
-              usageCount: k.usageCount + 1,
-              lastUsedAt: new Date().toTimeString().split(' ')[0]
-            };
-          }
-          return k;
-        }));
-        referencedFiles.forEach(file => {
-          if (file === 'inventory_snapshot.json' && activeOperationsData) {
-            addLog(`[Brain] inventory_snapshot.json이 현재 운영 데이터 스냅샷 기준으로 참조되었습니다.`, 'info', 'Brain');
-          } else {
-            addLog(`[Brain] RAG 시스템이 지식 저장소에서 "${file}"을(를) 참조했습니다.`, 'info', 'Brain');
-          }
-        });
-      }
-      
-      // 4-7. Today’s Tasks와 Approval Queue 상태 연결
-      const isApprovalRequired =
-        routedTask.permission === 'approval_required' ||
-        routedTask.permission === 'draft_only' ||
-        routedTask.assignedAgentId === 'cs';
-
-      if (isApprovalRequired) {
-        executedTask.status = 'needs_approval';
-      }
-
-      // 상태 분기 처리
-      if (executedTask.status === 'needs_approval') {
-        // 에이전트를 승인 대기 중으로 유지
-        setAgents(prev => prev.map(a => 
-          a.id === executedTask.assignedAgentId 
-            ? { ...a, status: 'thinking', bubbleText: '승인 대기 중...' } 
-            : a
-        ));
-        
-        // 승인 대기 목록 추가 (CS는 위에서 카드별로 이미 추가했으므로 제외)
-        if (executedTask.assignedAgentId !== 'cs') {
-          const riskLevel = getRiskLevelAndPermission(executedTask);
-          const apprId = `appr-${Date.now()}-${i}`;
-          const newApproval: ApprovalItem = {
-            id: apprId,
-            taskId: executedTask.id,
-            title: executedTask.title,
-            requestedByAgentId: executedTask.assignedAgentId,
-            riskLevel: riskLevel,
-            reason: `${executedTask.title} 검토 및 승인 대기`,
-            proposedAction: executedTask.resultSummary || '',
-            status: 'waiting' as const,
-            originalIssue: executedTask.description,
-            generatedDraft: executedTask.resultSummary,
-            metadata: {
-              route: executedTask.routeType.toUpperCase() as 'LOCAL' | 'HYBRID' | 'CLOUD' | 'HUMAN' | 'MOCK',
-              taskType: 'auto_execution',
-              sourceType: activeOperationsData.sourceType,
-              referencedKnowledge: [`${executedTask.assignedAgentId}_policy.md`],
-              approvalRequired: true
-            }
-          };
-          executedTask.approvalItemIds = [apprId];
-          setApprovalQueue(prev => [...prev, newApproval]);
-          addLog(`[Engine] ${executedTask.title} 승인 카드가 대기열에 추가되었습니다. (approval queued)`, 'info', 'Engine');
         }
         
-        addLog(`${shortAgentName} AI가 ${executedTask.assignedAgentId}_operation_template.md를 참조했습니다.`, 'agent', 'Brain');
-        addLog(`${executedTask.title}은 승인 대기 상태입니다.`, 'warning', 'Approval');
-      } else {
-        // 에이전트를 완료 상태로 전환
-        setAgents(prev => prev.map(a => 
-          a.id === executedTask.assignedAgentId 
-            ? { ...a, status: 'completed', bubbleText: '작업 완료!' } 
-            : a
-        ));
-        
-        addLog(executedTask.resultSummary || '', 'success', agent?.name);
-        addLog(`${shortAgentName} AI가 ${executedTask.assignedAgentId}_auto_template.md를 참조했습니다.`, 'agent', 'Brain');
-      }
-      
-      await sleep(1000);
-    }
-    
-    // 5. 종합 운영 리포트 작성
-    const finalReport = composeOperationReport(currentTasks, activeOperationsData);
-    setReport(finalReport);
-    
-    setAgents(prev => prev.map(a => 
-      a.id === 'manager' 
-        ? { ...a, status: 'completed', bubbleText: '오늘의 운영 리포트 작성 완료!' } 
-        : a
-    ));
+        if (a.id === 'manager') {
+          return {
+            ...a,
+            status: 'completed' as const,
+            bubbleText: '종합 브리핑 완성!'
+          };
+        }
+        return a;
+      }));
 
-    // OperationHistoryItem 축적 저장 (GODO CALENDAR 연동)
-    const newHistoryItem: OperationHistoryItem = {
-      id: `op-hist-${Date.now()}`,
-      date: activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
-      timestamp: new Date().toLocaleTimeString(),
-      sourceType: activeOperationsData.sourceType,
-      reportTitle: `일일 자동화 운영 보고서 (${activeOperationsData.sourceType.toUpperCase()})`,
-      autoCompletedCount: finalReport.autoCompletedCount,
-      approvalPendingCount: finalReport.approvalRequiredCount,
-      issueHighlights: finalReport.warningSignals,
-      createdFrom: 'start_operation'
-    };
-    setOperationHistory(prev => [newHistoryItem, ...prev]);
-    
-    addLog('오늘의 운영 리포트를 생성했습니다.', 'success', 'CEO');
-    setIsSimulating(false);
-    setOperationRunState('completed');
+      // RAG 지식 참조 기록 처리 (사용 횟수 및 로그 갱신)
+      const referencedFiles = ['order_check_template.md', 'cs_policy.md', 'cs_auto_template.md', 'inventory_snapshot.json', 'campaign_result_report.md', 'marketing_decision_log.md', 'review_reply_template.md'];
+      setBrainKnowledge(prev => prev.map(k => {
+        if (referencedFiles.includes(k.filename)) {
+          return {
+            ...k,
+            usageCount: k.usageCount + 1,
+            lastUsedAt: new Date().toTimeString().split(' ')[0]
+          };
+        }
+        return k;
+      }));
+      referencedFiles.forEach(file => {
+        addLog(`[Brain] RAG 시스템이 지식 저장소에서 "${file}"을(를) 참조했습니다.`, 'info', 'Brain');
+      });
+
+      // 3. Today's Tasks(tasks)에 협업 제안 반영
+      const runtimeTasks: OperationTask[] = runtimeResult.orchestration.proposedTasks.map((t, idx) => ({
+        id: `runtime-task-${idx}-${Date.now()}`,
+        title: t.title,
+        description: t.description,
+        assignedAgentId: t.agentId,
+        status: 'completed',
+        riskLevel: 'medium',
+        permission: 'approval_required',
+        routeType: 'local',
+        resultSummary: t.description,
+        createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
+      }));
+      setTasks(runtimeTasks);
+
+      // 4. Approval Queue에 반영
+      const newApprovals: ApprovalItem[] = runtimeResult.orchestration.proposedApprovalItems.map((item, idx) => {
+        const apprId = `appr-runtime-${idx}-${Date.now()}`;
+        return {
+          id: apprId,
+          taskId: `task-${item.agentId}-${Date.now()}`,
+          title: item.title,
+          requestedByAgentId: item.agentId,
+          riskLevel: item.artifact.approvalRequired ? 'high' : 'medium',
+          reason: item.reason,
+          proposedAction: item.proposedAction + '\n\n' + item.artifact.body,
+          status: 'waiting',
+          originalIssue: item.artifact.body,
+          generatedDraft: item.artifact.body,
+          metadata: {
+            modelId: (item.artifact.data?.modelId as string) || 'local_gemma',
+            latency: 1200,
+            fallbackUsed: false,
+            piiRemoved: true,
+            route: 'LOCAL',
+            taskType: item.artifact.type,
+            sourceType: activeOperationsData.sourceType,
+            approvalRequired: item.artifact.approvalRequired
+          }
+        };
+      });
+      setApprovalQueue(newApprovals);
+
+      // 5. 종합 운영 리포트 작성
+      const simulatedTasksForReport: OperationTask[] = runtimeResult.run.jobs.map(j => ({
+        id: j.id,
+        title: j.title,
+        description: j.objective,
+        assignedAgentId: j.assignedAgentId,
+        status: j.riskLevel === 'approval_required' ? 'needs_approval' : 'completed',
+        riskLevel: j.riskLevel === 'auto_safe' ? 'low' : 'high',
+        permission: j.riskLevel === 'auto_safe' ? 'auto' : 'approval_required',
+        routeType: 'local',
+        resultSummary: j.objective,
+        createdAt: j.createdAt,
+        completedAt: j.completedAt
+      }));
+      const finalReport = composeOperationReport(simulatedTasksForReport, snapshotToUse);
+      
+      finalReport.warningSignals = runtimeResult.run.results.reduce((acc: string[], r) => {
+        return acc.concat(r.riskFlags);
+      }, []);
+      finalReport.recommendedActions = runtimeResult.run.results.reduce((acc: string[], r) => {
+        return acc.concat(r.recommendations);
+      }, []);
+      
+      setReport(finalReport);
+      setLastNativeAgentRun(runtimeResult.run);
+
+      // OperationHistoryItem 축적 저장 (캘린더 연동)
+      const newHistoryItem: OperationHistoryItem = {
+        id: `op-hist-${Date.now()}`,
+        date: activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+        timestamp: new Date().toLocaleTimeString(),
+        sourceType: activeOperationsData.sourceType,
+        reportTitle: `Native 협업 자동화 운영 보고서 (${activeOperationsData.sourceType.toUpperCase()})`,
+        autoCompletedCount: finalReport.autoCompletedCount,
+        approvalPendingCount: finalReport.approvalRequiredCount,
+        issueHighlights: finalReport.warningSignals,
+        createdFrom: 'start_operation'
+      };
+      setOperationHistory(prev => [newHistoryItem, ...prev]);
+
+      addLog('총괄 매니저 AI가 최종 브리핑을 완성했습니다.', 'success', 'CEO');
+    } catch (err: unknown) {
+      addLog(`[Error] Native Agent Runtime 실행 오류: ${err instanceof Error ? err.message : String(err)}`, 'error', 'SYSTEM');
+    } finally {
+      setIsSimulating(false);
+    }
   };
 
   // 수동 태스크 추가
@@ -985,6 +825,40 @@ function App() {
     }, 50);
   };
 
+  const handleAddManualCommand = (deptId: string, text: string) => {
+    const newCmd = { text, timestamp: new Date().toISOString() };
+    setManualCommands(prev => ({
+      ...prev,
+      [deptId]: [newCmd, ...(prev[deptId] || [])]
+    }));
+    
+    const deptNames: Record<string, string> = {
+      manager: '본부 및 오케스트레이션',
+      product: '상품관리팀',
+      cs: 'CS 운영팀',
+      marketing: '마케팅 기획팀'
+    };
+    const deptName = deptNames[deptId] || deptId;
+    addLog(`[Direct Command] 운영자가 ${deptName}장에게 신규 업무를 지시했습니다: "${text}"`, 'info', 'SYSTEM');
+  };
+
+  const handleAddFileMetadata = (deptId: string, file: { name: string; size: number; type: string }) => {
+    const newFile = { ...file, timestamp: new Date().toISOString() };
+    setUploadedFiles(prev => ({
+      ...prev,
+      [deptId]: [newFile, ...(prev[deptId] || [])]
+    }));
+    
+    const deptNames: Record<string, string> = {
+      manager: '본부 및 오케스트레이션',
+      product: '상품관리팀',
+      cs: 'CS 운영팀',
+      marketing: '마케팅 기획팀'
+    };
+    const deptName = deptNames[deptId] || deptId;
+    addLog(`[File Attached] ${deptName}에 신규 파일이 첨부되었습니다: ${file.name} (${file.type})`, 'info', 'SYSTEM');
+  };
+
   const handleClearLogs = () => {
     setLogs([]);
   };
@@ -1003,10 +877,11 @@ function App() {
           tasks={tasks}
           logs={logs}
           isSimulating={isSimulating}
-          operationRunState={operationRunState}
           activeTab={activeTab}
           approvalQueue={approvalQueue}
           setActiveTab={setActiveTab}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onStartSimulation={handleStartSimulation}
           onAddTask={handleAddTask}
           onSelectAgent={(agent) => setSelectedAgent(agent)}
@@ -1059,6 +934,15 @@ function App() {
           setLastSelectedDate={setLastSelectedDate}
           lastViewedMonth={lastViewedMonth}
           setLastViewedMonth={setLastViewedMonth}
+          lastNativeAgentRun={lastNativeAgentRun}
+
+          // Native Runtime Verification props
+          validationScenario={validationScenario}
+          onScenarioChange={setValidationScenario}
+          uploadedFiles={uploadedFiles}
+          onAddFileMetadata={handleAddFileMetadata}
+          manualCommands={manualCommands}
+          onAddManualCommand={handleAddManualCommand}
         />
       )}
 
