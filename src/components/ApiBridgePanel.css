@@ -94,6 +94,11 @@
   text-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
 }
 
+.summary-val.mode-live {
+  color: #00ff88; /* 라이브(실 READ) */
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.35);
+}
+
 .summary-val.status-ready {
   color: #00ff88;
   display: flex;
@@ -226,6 +231,11 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
+}
+
+.security-alert-box.live-mode {
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.3);
 }
 
 .alert-icon {

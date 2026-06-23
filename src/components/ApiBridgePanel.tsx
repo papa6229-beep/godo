@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { OperationsDataSnapshot, ImportHistoryItem, DataDomain } from '../types/dataConnector';
 import type { ApiResourceType } from '../types/apiBridge';
+import type { ProxyHealthResponse } from '../types/proxy';
 import { runMockSync } from '../services/mockGodomallApi';
 import {
   loadApiBridgeState,
@@ -422,6 +423,41 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     return new Date(apiState.lastSyncAt).toLocaleString();
   }, [apiState.lastSyncAt]);
 
+  // 탭 진입(마운트) 시 서버 health를 자동 조회하여 모드/키 상태를 즉시 반영
+  // (버튼을 눌러야만 갱신되던 stale 표시 문제 해결)
+  useEffect(() => {
+    let active = true;
+    checkProxyHealth()
+      .then((health: ProxyHealthResponse) => {
+        if (!active) return;
+        setProxyHealth({
+          status: health.status,
+          mode: health.mode || health.secrets.mode || 'mock',
+          hasApiKey: health.secrets.hasApiKey,
+          hasApiSecret: health.secrets.hasApiSecret,
+          hasBaseUrl: health.secrets.hasBaseUrl,
+          hasPartnerKey: health.hasPartnerKey ?? health.secrets.hasPartnerKey ?? false,
+          hasUserKey: health.hasUserKey ?? health.secrets.hasUserKey ?? false,
+          hasRealBaseUrl: health.hasRealBaseUrl ?? health.secrets.hasRealBaseUrl ?? false,
+          hasSandboxBaseUrl: health.hasSandboxBaseUrl ?? health.secrets.hasSandboxBaseUrl ?? false,
+          productionLocked: health.secrets.productionLocked
+        });
+      })
+      .catch(() => {
+        // health 조회 실패 시 표시는 mock fallback 유지
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // 라이브(실 READ) 상태 판정: 모드가 real/sandbox 이고 키가 모두 로드됨
+  const isLive =
+    !!proxyHealth &&
+    (proxyHealth.mode === 'sandbox' || proxyHealth.mode === 'real') &&
+    proxyHealth.hasPartnerKey &&
+    proxyHealth.hasUserKey;
+
   return (
     <div className="api-bridge-panel-container">
       {/* 1. 헤더 */}
@@ -447,12 +483,19 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
       <div className="api-status-summary-row">
         <div className="api-summary-card">
           <span className="summary-lbl">현재 연동 모드</span>
-          <span className="summary-val mode-mock">{getModeLabel(proxyHealth?.mode)}</span>
+          <span className={`summary-val ${isLive ? 'mode-live' : 'mode-mock'}`}>
+            {!proxyHealth
+              ? '연결 확인 중…'
+              : isLive
+                ? getModeLabel(proxyHealth.mode)
+                : 'MOCK (Fallback)'}
+          </span>
         </div>
         <div className="api-summary-card">
           <span className="summary-lbl">프록시 연결 상태</span>
-          <span className="summary-val status-ready">
-            <span className="ready-indicator"></span> Ready
+          <span className={`summary-val ${proxyHealth && proxyHealth.status !== 'error_fallback' ? 'status-ready' : ''}`}>
+            <span className="ready-indicator"></span>
+            {!proxyHealth ? ' Checking…' : proxyHealth.status === 'error_fallback' ? ' Offline (Fallback)' : ' Ready'}
           </span>
         </div>
         <div className="api-summary-card">
@@ -505,11 +548,19 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   고도몰 API와의 연결 과정에서 **API 토큰 및 개인키 유출 위험**을 철저히 봉쇄하기 위해 설계된 보안 미들웨어 모듈입니다.
                   프론트엔드 브라우저 내에 크레덴셜을 보관하지 않고, 서버사이드 프록시(Secure Proxy)에서만 검증 절차를 통과시키는 구조를 모델링하고 있습니다.
                 </p>
-                <div className="security-alert-box">
-                  <span className="alert-icon">⚠️</span>
-                  <span className="alert-text">
-                    현재 API Bridge는 **Mock Mode**로 실행 중입니다. 실제 고도몰 API 키는 브라우저 로컬스토리지에 저장하지 않으며, 추후 상용화 단계에서는 안전한 서버 환경변수(.env)를 통해서만 연결됩니다.
-                  </span>
+                <div className={`security-alert-box ${isLive ? 'live-mode' : ''}`}>
+                  <span className="alert-icon">{isLive ? '✅' : '⚠️'}</span>
+                  {isLive ? (
+                    <span className="alert-text">
+                      현재 API Bridge는 <strong>{proxyHealth?.mode === 'real' ? 'REAL' : 'SANDBOX'} Live READ 모드</strong>로 동작 중입니다.
+                      고도몰5 Open API(OpenHub)에서 실제 데이터를 읽어오며, 쓰기(write) 액션은 비활성화되어 있습니다.
+                      API 키는 브라우저에 저장되지 않고 서버 환경변수로만 사용되며, 라이브 호출 실패 시 자동으로 Mock으로 안전하게 폴백합니다.
+                    </span>
+                  ) : (
+                    <span className="alert-text">
+                      현재 API Bridge는 <strong>Mock Mode</strong>로 실행 중입니다. 실제 고도몰 API 키는 브라우저 로컬스토리지에 저장하지 않으며, 서버 환경변수(GODOMALL_API_MODE=real/sandbox)를 통해서만 라이브 연결됩니다.
+                    </span>
+                  )}
                 </div>
               </div>
 
