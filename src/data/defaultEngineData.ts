@@ -25,7 +25,7 @@ export const defaultEngineProviders: EngineProvider[] = [
     status: 'disconnected',
     provider: 'lm_studio',
     modelName: 'google/gemma-4-e4b',
-    endpoint: 'http://localhost:1234/v1',
+    endpoint: 'http://127.0.0.1:1234/v1',
     isEnabled: true,
     isDefault: false,
     privacyLevel: 'safe',
