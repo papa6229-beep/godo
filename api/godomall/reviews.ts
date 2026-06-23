@@ -1,23 +1,22 @@
 import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
-import { getProxyMockReviews } from '../_shared/mockProxyData.js';
-import { maskRecordsList } from '../_shared/piiMaskGuard.js';
+import { resolveResource } from '../_shared/godomallResource.js';
 
-// GET /api/godomall/reviews
-export default function handler(req: IncomingMessage, res: VercelResponse) {
+// GET /api/godomall/reviews — 라이브 미지원(Board_List.php 매핑 대기) -> mock fallback. PII 마스킹 완료.
+export default async function handler(req: IncomingMessage, res: VercelResponse) {
   if (req.method !== 'GET') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only GET is accepted.', 405);
   }
 
   try {
-    const rawReviews = getProxyMockReviews();
-    const { maskedRecords, maskedCount } = maskRecordsList(rawReviews);
-
+    const resolved = await resolveResource('reviews');
     sendOkResponse(res, {
-      records: maskedRecords,
-      maskedPiiCount: maskedCount,
-      productionLocked: true
+      records: resolved.records,
+      maskedPiiCount: resolved.maskedCount,
+      mode: resolved.mode,
+      sourceType: resolved.source,
+      errorMessage: resolved.errorMessage
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);

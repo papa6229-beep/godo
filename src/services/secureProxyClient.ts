@@ -26,11 +26,20 @@ export const checkProxyHealth = async (): Promise<ProxyHealthResponse> => {
       source: 'local_fallback',
       mode: 'mock',
       status: 'error_fallback',
+      hasPartnerKey: false,
+      hasUserKey: false,
+      hasRealBaseUrl: false,
+      hasSandboxBaseUrl: false,
       secrets: {
         hasApiKey: false,
         hasApiSecret: false,
         hasBaseUrl: false,
-        productionLocked: true
+        productionLocked: false,
+        mode: 'mock',
+        hasPartnerKey: false,
+        hasUserKey: false,
+        hasRealBaseUrl: false,
+        hasSandboxBaseUrl: false
       },
       resources: ['orders', 'inquiries', 'reviews', 'inventory', 'sales', 'products'],
       safetyRules: [
@@ -49,6 +58,7 @@ export interface SecureProxySyncResult {
   warningCount: number;
   isFallback: boolean;
   sourceType: string;
+  errorMessage?: string;
 }
 
 export const syncProxyResource = async (
@@ -62,7 +72,8 @@ export const syncProxyResource = async (
       },
       body: JSON.stringify({
         resourceType,
-        mode: 'mock'
+        // 모드는 서버 환경변수(GODOMALL_API_MODE)가 권위를 가짐
+        mode: 'auto'
       })
     });
 
@@ -71,23 +82,27 @@ export const syncProxyResource = async (
     }
 
     const data = (await res.json()) as ProxySyncResponse;
-    
+
     // sync API 응답의 records 구조 파싱
     let rawItems: Record<string, string>[] = [];
     if (resourceType === 'all') {
       // 'all'인 경우 records가 객체 구조임 ({ orders: [...], inquiries: [...] })
       rawItems = []; // 개별 스토어 적재용
     } else {
-      rawItems = (data.records || []) as Record<string, string>[];
+      rawItems = (data.records || []) as unknown as Record<string, string>[];
     }
+
+    // 서버가 real/sandbox 호출에 실패해 mock으로 대체한 경우도 fallback으로 표시
+    const serverFellBack = data.sourceType === 'api_mock_fallback';
 
     return {
       rawItems,
       importedCount: data.importedCount,
       maskedPiiCount: data.maskedPiiCount,
       warningCount: data.warningCount,
-      isFallback: false,
-      sourceType: data.sourceType || 'api_proxy_mock'
+      isFallback: serverFellBack,
+      sourceType: data.sourceType || 'api_mock_fallback',
+      errorMessage: data.errorMessage
     };
   } catch {
     // 실패 시 기존 로컬 Mock API 어댑터로 안전하게 Fallback 처리
@@ -110,7 +125,8 @@ export const syncProxyResource = async (
         maskedPiiCount: totalMasked,
         warningCount: totalWarning,
         isFallback: true,
-        sourceType: 'api_mock'
+        sourceType: 'api_mock_fallback',
+        errorMessage: 'Secure Proxy unreachable. Local mock adapter used.'
       };
     } else {
       const localResult = await runMockSync(resourceType);
@@ -120,7 +136,8 @@ export const syncProxyResource = async (
         maskedPiiCount: localResult.maskedPiiCount,
         warningCount: localResult.warningCount,
         isFallback: true,
-        sourceType: 'api_mock' // 로컬 mock 소스 표시
+        sourceType: 'api_mock_fallback', // 로컬 mock 소스 표시
+        errorMessage: 'Secure Proxy unreachable. Local mock adapter used.'
       };
     }
   }

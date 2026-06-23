@@ -1052,3 +1052,44 @@
 }
 [data-theme='light'] .sync-source-label { color: var(--text-secondary); }
 [data-theme='light'] .sync-source-radio-label { color: var(--text-secondary); }
+
+/* 마지막 동기화 결과 박스 (출처/건수/마스킹/시각/에러) */
+.last-sync-result-box {
+  margin-top: 0.8rem;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.last-sync-result-box.source-real { border-color: rgba(0, 255, 136, 0.5); }
+.last-sync-result-box.source-sandbox { border-color: rgba(90, 170, 255, 0.5); }
+.last-sync-result-box.source-fallback { border-color: rgba(255, 179, 0, 0.5); }
+.last-sync-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.74rem;
+  gap: 1rem;
+}
+.last-sync-lbl { color: var(--text-secondary); }
+.last-sync-val { color: var(--text-primary); font-weight: 600; text-align: right; }
+.last-sync-row.error .last-sync-val { color: var(--warning, #ffb300); font-weight: 500; }
+.source-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.source-badge.source-real { background: rgba(0, 255, 136, 0.15); color: #00ff88; }
+.source-badge.source-sandbox { background: rgba(90, 170, 255, 0.15); color: #5aaaff; }
+.source-badge.source-fallback { background: rgba(255, 179, 0, 0.15); color: #ffb300; }
+.source-badge.source-mock { background: rgba(136, 146, 176, 0.18); color: #8892b0; }
+
+[data-theme='light'] .last-sync-result-box {
+  background: #f8fbfa;
+  border-color: rgba(15, 23, 42, 0.08);
+}

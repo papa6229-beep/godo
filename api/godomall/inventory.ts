@@ -1,23 +1,22 @@
 import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
-import { getProxyMockInventory } from '../_shared/mockProxyData.js';
-import { maskRecordsList } from '../_shared/piiMaskGuard.js';
+import { resolveResource } from '../_shared/godomallResource.js';
 
-// GET /api/godomall/inventory
-export default function handler(req: IncomingMessage, res: VercelResponse) {
+// GET /api/godomall/inventory — Goods_Search.php 응답에서 재고 파생 (real/sandbox) 또는 mock fallback.
+export default async function handler(req: IncomingMessage, res: VercelResponse) {
   if (req.method !== 'GET') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only GET is accepted.', 405);
   }
 
   try {
-    const rawInventory = getProxyMockInventory();
-    const { maskedRecords, maskedCount } = maskRecordsList(rawInventory);
-
+    const resolved = await resolveResource('inventory');
     sendOkResponse(res, {
-      records: maskedRecords,
-      maskedPiiCount: maskedCount,
-      productionLocked: true
+      records: resolved.records,
+      maskedPiiCount: resolved.maskedCount,
+      mode: resolved.mode,
+      sourceType: resolved.source,
+      errorMessage: resolved.errorMessage
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
