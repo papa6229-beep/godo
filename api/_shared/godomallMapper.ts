@@ -21,6 +21,20 @@ const pick = (obj: Raw, candidates: string[], fallback = ''): string => {
   return fallback;
 };
 
+// 숫자/정수/불리언 정규화 (고도몰 플래그는 'y'/'n' 문자열)
+const toNumber = (v: string): number => {
+  const n = parseFloat(String(v).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const toInt = (v: string): number => {
+  const n = parseInt(String(v).replace(/[^0-9-]/g, ''), 10);
+  return Number.isFinite(n) ? n : 0;
+};
+const toBool = (v: string): boolean => {
+  const s = String(v).trim().toLowerCase();
+  return s === 'y' || s === '1' || s === 'true';
+};
+
 // ---- 상품(Goods_Search) ----
 // 출력: 상품/재고 파생용 중간 구조
 export interface ProductIntermediate extends Record<string, string> {
@@ -58,6 +72,55 @@ export const mapGoodsToInventory = (goods: Raw[]): InventoryIntermediate[] => {
     optionName: p.optionName,
     stock: p.stock,
     safetyStock: p.safetyStock
+  }));
+};
+
+// ---- 확정 Products 매퍼 (Goods_Search.php 실응답 기준) ----
+// 필드명은 고도몰5 Goods_Search.php 실제 응답에서 확인된 값으로 고정한다.
+// (type 별칭 사용 → Record<string,unknown> 할당 호환)
+export type StandardProduct = {
+  productId: string;       // goodsNo
+  productCode: string;     // goodsCd
+  productName: string;     // goodsNm
+  price: number;           // goodsPrice
+  fixedPrice: number;      // fixedPrice
+  stock: number;           // totalStock
+  stockEnabled: boolean;   // stockFl
+  soldOut: boolean;        // soldOutFl
+  displayPc: boolean;      // goodsDisplayFl
+  displayMobile: boolean;  // goodsDisplayMobileFl
+  sellPc: boolean;         // goodsSellFl
+  sellMobile: boolean;     // goodsSellMobileFl
+  categoryCode: string;    // cateCd
+  allCategoryCode: string; // allCateCd
+  registeredAt: string;    // regDt
+  modifiedAt: string;      // modDt
+  makerName: string;       // makerNm
+  originName: string;      // originNm
+  optionName: string;      // optionName
+};
+
+export const mapGoodsToProducts = (goods: Raw[]): StandardProduct[] => {
+  return goods.map((g) => ({
+    productId: pick(g, ['goodsNo']),
+    productCode: pick(g, ['goodsCd']),
+    productName: pick(g, ['goodsNm']),
+    price: toNumber(pick(g, ['goodsPrice'], '0')),
+    fixedPrice: toNumber(pick(g, ['fixedPrice'], '0')),
+    stock: toInt(pick(g, ['totalStock'], '0')),
+    stockEnabled: toBool(pick(g, ['stockFl'], '')),
+    soldOut: toBool(pick(g, ['soldOutFl'], '')),
+    displayPc: toBool(pick(g, ['goodsDisplayFl'], '')),
+    displayMobile: toBool(pick(g, ['goodsDisplayMobileFl'], '')),
+    sellPc: toBool(pick(g, ['goodsSellFl'], '')),
+    sellMobile: toBool(pick(g, ['goodsSellMobileFl'], '')),
+    categoryCode: pick(g, ['cateCd']),
+    allCategoryCode: pick(g, ['allCateCd']),
+    registeredAt: pick(g, ['regDt']),
+    modifiedAt: pick(g, ['modDt']),
+    makerName: pick(g, ['makerNm']),
+    originName: pick(g, ['originNm']),
+    optionName: pick(g, ['optionName'])
   }));
 };
 

@@ -7,8 +7,8 @@
 import { getGodomallConfig, isLiveMode, postGodomall } from './godomallOpenApiClient.js';
 import { parseGodomallXml, extractList } from './godomallXmlParser.js';
 import {
-  mapGoodsList,
   mapGoodsToInventory,
+  mapGoodsToProducts,
   mapOrderList,
   deriveSalesFromOrders
 } from './godomallMapper.js';
@@ -38,8 +38,8 @@ export interface ResolvedResource {
 const GOODS_SEARCH_PATH = '/goods/Goods_Search.php';
 const ORDER_SEARCH_PATH = '/order/Order_Search.php';
 
-// 리스트 추출 후보 키 (실 응답 태그명 확인 후 보강)
-export const GOODS_LIST_KEYS = ['goods', 'item', 'list', 'row', 'data'];
+// 리스트 추출 후보 키 (실 응답 확인: Goods_Search 리스트는 data.return.goods_data)
+export const GOODS_LIST_KEYS = ['goods_data', 'goods', 'item', 'list', 'row', 'data'];
 export const ORDER_LIST_KEYS = ['order', 'item', 'list', 'row', 'data'];
 
 // 주문 조회 기본 기간 (최근 30일)
@@ -62,7 +62,7 @@ const fetchLiveRecords = async (
     const parsed = parseGodomallXml(res.xml);
     if (!parsed.ok) throw new Error(`Goods_Search error code ${parsed.code}: ${parsed.msg}`);
     const goods = extractList(parsed.root, GOODS_LIST_KEYS);
-    return resourceType === 'inventory' ? mapGoodsToInventory(goods) : mapGoodsList(goods);
+    return resourceType === 'inventory' ? mapGoodsToInventory(goods) : mapGoodsToProducts(goods);
   }
 
   if (resourceType === 'orders' || resourceType === 'sales') {
