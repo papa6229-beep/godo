@@ -315,8 +315,10 @@ GODO AI OS에는 9명의 AI 에이전트가 사전 정의되어 있습니다.
 
 *   **GitHub Repository**: [papa6229-beep/godo](https://github.com/papa6229-beep/godo.git)
 *   **Vercel Production Application**: [godo-psi.vercel.app](https://godo-psi.vercel.app)
-*   **최신 커밋**: `ab3a12c` (메시지: *fix: ESM import extension fix for Vercel Serverless Functions*)
-*   현재 로컬 및 원격의 `main` 브랜치가 최종 픽스 커밋까지 완전히 push 완료되어 실제 Vercel 서버리스 및 클라이언트 화면 모두 무오류 상태로 가동 중인 Production Ready 상태입니다.
+*   **최신 커밋(main)**: `b722cee` (메시지: *Merge feature/godomall-read-bridge: Godomall5 Open API Products READ v0*)
+*   현재 로컬 및 원격의 `main` 브랜치가 Products READ v0 머지까지 완전히 push 완료되어 실제 Vercel 서버리스 및 클라이언트 화면 모두 무오류 상태로 가동 중인 Production Ready 상태입니다.
+*   **Products READ v0 Production 검증 완료** (2026-06-23): 고도몰5 Open API real mode 연결 및 상품 동기화가 Preview·Production 양쪽에서 정상 확인되었습니다. 상세는 **[29. Godomall Products READ v0]** 참조.
+*   **진행 중 별도 브랜치**: `fix/lmstudio-connector` (LM Studio 로컬 LLM 커넥터 복구, main 미머지 / 로컬 검증 단계).
 
 ---
 
@@ -470,8 +472,10 @@ GODO AI OS는 상시 클라우드 요금 폭탄과 프라이버시 침해를 방
    - '오늘의 운영'(Dashboard), '운영 데이터'(CSV 수집/마스킹), '운영 캘린더'(일별 성과 추적), 'API 연동 브릿지'(Mock 동기화) 컴포넌트 구현 완료.
    - Vercel Production 배포 및 `/api/godomall/health` (200 OK), `/api/godomall/sync` (POST 통신) 정상 작동 확인 완료.
    - API Key는 프론트엔드 UI나 localStorage에 절대 입력받거나 저장하지 않음.
-3. 미구현 및 예정 사항:
-   - 실제 LLM 연결, LM Studio 실 모델 ID 확인, 외부 검색 연동, 실제 고도몰 API 연결 및 승인 후 Write Action(실제 CS 답변 등록, 쿠폰 발급, 가격 수정 등)은 모두 미구현 상태임.
+3. 완료/진행 (2026-06-23 갱신):
+   - **고도몰5 Open API Products READ v0 완료 (Production 검증)**: real mode 연결 + Goods_Search.php 상품 조회 + StandardProduct 매핑 정상. (§29 참조)
+   - LM Studio 로컬 LLM 커넥터 복구는 `fix/lmstudio-connector` 브랜치에서 별도 진행 중(main 미머지).
+   - 미구현: Orders/Inquiries/Reviews 라이브 연결, Inventory 실 파생, 외부 검색 연동, 승인 후 Write Action(실제 CS 답변 등록, 쿠폰 발급, 가격 수정 등).
 4. 당면 목표: 다음 작업은 'GODO LLM BRIDGE MVP' 구현입니다. 기본 전략은 Local Gemma First, Cloud Assist Optional이며, 실제 LM Studio의 Gemma 모델 ID는 API 호출을 통해 확인해야 합니다. 실제 고도몰 API 연결은 LLM Bridge 구축 후 별도의 API Mapping Plan을 수립하여 read-only 어댑터부터 점진적으로 연동할 예정입니다.
 ```
 
@@ -496,3 +500,54 @@ GODO AI OS는 상시 클라우드 요금 폭탄과 프라이버시 침해를 방
 8. Cloud AI 직접 호출은 MVP 범위가 아니므로 아직 연동하지 않습니다.
 9. 작업이 완료되면 lint 검사(`npm run lint`), TypeScript 컴파일 검사(`npx tsc --noEmit`), 배포 빌드 검사(`npm run build`)가 정상 통과됨을 명확히 검증해주세요."
 ```
+
+---
+
+## 29. Godomall Products READ v0 (2026-06-23, Production 검증 완료)
+
+고도몰5 Open API(OpenHub)와의 실제 **상품 조회(READ)** 연동 1차(v0)가 완료되어 Production까지 검증되었습니다. `docs/EXECUTION_PLAN_2026-06-22.md`의 Phase 5(Godomall READ Bridge) 중 **상품(Products)** 범위에 해당합니다.
+
+### A. 완료 상태 (확인된 사실)
+*   **Merge commit**: `b722cee` (`feature/godomall-read-bridge` → `main`, `--no-ff`).
+*   **Production health 확인 완료** — `GET /api/godomall/health` 응답:
+    *   `ok: true`, `mode: real`, `status: ready`, `productionLocked: true`
+    *   Write actions remain disabled (쓰기 액션 전면 비활성, READ 전용)
+    *   `hasPartnerKey / hasUserKey / hasRealBaseUrl / hasSandboxBaseUrl` = true (키 원문은 미노출, boolean만)
+*   **Products READ v0는 Preview·Production 모두 real READ 상태**로 동작.
+*   `Goods_Search.php` real 호출 성공, 고도몰 관리자 상품 수와 GODO Products count 동기화 확인(상품 추가 시 12→13 증가 검증).
+*   임시 진단 라우트 `/api/godomall/debug-goods`는 **제거 완료(404 확인)**.
+
+### B. 아키텍처 (READ 전용)
+*   호출 도메인: 쇼핑몰 직접 호출이 아닌 **OpenHub** (`real: https://openhub.godo.co.kr/godomall5`, `sandbox: http://sbopenhub.godo.co.kr/godomall5`), 방식 `POST` + 응답 `XML`.
+*   서버 모듈 (`api/_shared/`):
+    *   `godomallOpenApiClient.ts` — real/sandbox base 선택, `partner_key`/`key` 주입(키 미노출), 30s timeout.
+    *   `godomallXmlParser.ts` — `fast-xml-parser` 기반, `header.code/msg` 검사, **태그명 비의존 리스트 추출**(가장 큰 객체 배열 = 리스트, `data.return.goods_data` 자동 인식).
+    *   `godomallMapper.ts` — `mapGoodsToProducts` (실 필드 확정 매핑) + `StandardProduct`.
+    *   `godomallResource.ts` — 리소스 오케스트레이터: real/sandbox 호출 → 실패 시 mock fallback. source 표기 `api_proxy_real` / `api_proxy_sandbox` / `api_mock_fallback`.
+*   `mockProxyData.ts` fallback **유지**(라이브 실패 시 안전 폴백).
+*   환경변수(서버/Vercel 전용): `GODOMALL_API_MODE`, `GODOMALL_PARTNER_KEY`, `GODOMALL_USER_KEY`, `GODOMALL_REAL_BASE_URL`, `GODOMALL_SANDBOX_BASE_URL`.
+
+### C. 확정 Products 필드 매핑 (Goods_Search.php 실응답 기준)
+```
+goodsNo→productId  goodsCd→productCode  goodsNm→productName
+goodsPrice→price(number)  fixedPrice→fixedPrice(number)  totalStock→stock(number)
+stockFl→stockEnabled(bool)  soldOutFl→soldOut(bool)
+goodsDisplayFl→displayPc(bool)  goodsDisplayMobileFl→displayMobile(bool)
+goodsSellFl→sellPc(bool)  goodsSellMobileFl→sellMobile(bool)
+cateCd→categoryCode  allCateCd→allCategoryCode
+regDt→registeredAt  modDt→modifiedAt
+makerNm→makerName  originNm→originName  optionName→optionName
+```
+상태값은 하나로 뭉치지 않고 6종 boolean(stockEnabled/soldOut/displayPc/displayMobile/sellPc/sellMobile)으로 분리 보존하며, price/fixedPrice/stock은 number로 정규화합니다.
+
+### D. 보안 준수
+*   키(partner_key/user_key)는 화면·로그·응답 JSON 어디에도 미노출 (서버 환경변수 전용).
+*   상품 값 전체를 노출하던 debug 라우트 제거 → 현재 어떤 로그에도 상품/키 원문 미노출.
+*   Write API·상품수정·재고수정 미연결 (READ 전용 원칙 유지).
+
+### E. 범위 밖 (이번 v0 제외) & 다음 작업 후보
+*   이번 v0에서 제외: Orders/Inquiries/Reviews 라이브 연결, Inventory 실 파생.
+*   **다음 작업 후보**:
+    1.  API Bridge UI 문구 정리.
+    2.  Inventory 파생 v0.
+    3.  `fix/lmstudio-connector` 재개 (LM Studio 로컬 LLM 커넥터).

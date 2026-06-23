@@ -434,6 +434,11 @@ async function canAutoRun(): Promise<boolean> {
 > **목표**: 고도몰 Open API 키 발급 후 실제 데이터 흡입
 > **산출물**: `api/godomall/` 실제 호출 라우터 + XML 파서 + StandardModel 변환
 
+> **🟢 상태 (2026-06-23): Products READ v0 완료 + Production 검증 완료.**
+> 고도몰5 Open API real mode 연결, `Goods_Search.php` 상품 조회, `StandardProduct` 매핑 정상.
+> merge commit `b722cee` (main). 상세: `docs/PROJECT_STATE.md` §29.
+> 남은 범위: Orders/Inquiries/Reviews 라이브, Inventory 실 파생 (차기 진행).
+
 ### Step 5.1 — 환경변수 정리
 
 ```
@@ -466,10 +471,11 @@ GODOMALL_API_MODE        ('sandbox' | 'real')
 
 ### Phase 5 Definition of Done
 
-- [ ] /api/godomall/products가 실제 12개 상품 반환
-- [ ] PII 마스킹된 응답만 프론트에 전달
-- [ ] Data Connector에 "API Source" 옵션 추가
-- [ ] Mock과 동일한 StandardModel 인터페이스
+- [x] /api/godomall/products가 실제 상품 반환 (real mode, Production 검증 완료)
+- [x] PII 마스킹된 응답만 프론트에 전달 (상품은 PII 없음, 서버 마스킹 파이프라인 경유)
+- [x] Mock과 동일한 StandardModel 인터페이스 (mock fallback 유지)
+- [ ] Data Connector에 "API Source" 옵션 추가 (Orders/기타 도메인 라이브 시 보강)
+- [ ] Orders/Inquiries/Reviews 라이브 + Inventory 실 파생 (차기)
 
 ---
 
