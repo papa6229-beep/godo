@@ -180,7 +180,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         <div className="header-center">
           <span className="demo-badge">
             <span className="badge-blink"></span>
-            LOCAL DEMO MODE
+            LOCAL APP MODE
           </span>
         </div>
 

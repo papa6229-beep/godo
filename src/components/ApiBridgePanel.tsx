@@ -693,7 +693,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                     onClick={handleSyncAllResources}
                     disabled={syncingResource !== null}
                   >
-                    {syncingResource === 'all' ? '🔄 Syncing All...' : '⚡ Sync All Mock Resources'}
+                    {syncingResource === 'all' ? '🔄 Syncing All...' : '⚡ Sync All Resources'}
                   </button>
                 </div>
 
@@ -708,7 +708,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       onChange={() => setSyncSource('secure_proxy')}
                       style={{ cursor: 'pointer' }}
                     />
-                    <span>🛡️ Secure Proxy Server Mock (추천)</span>
+                    <span>🛡️ Secure Proxy Server{isLive ? ' (REAL READ)' : ''} (추천)</span>
                   </label>
                   <label className="sync-source-radio-label">
                     <input
@@ -873,10 +873,10 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       {getPermissionLabel(apiState.providers[0].permissions.products).text}
                     </span>
                   </div>
-                  <p className="resource-desc">Goods_Search.php 상품조회 (개인정보 없음 · 실연결 테스트 대상)</p>
+                  <p className="resource-desc">Goods_Search.php 상품조회 (개인정보 없음 · 실연동 READ)</p>
                   <div className="resource-meta-info">
-                    <span>최종 동기화: {apiState.providers[0].lastSyncAt ? '완료' : '대기'}</span>
-                    <span>엔드포인트: Goods_Search.php</span>
+                    <span>Endpoint: Goods_Search.php</span>
+                    <span>Source: {isLive ? 'REAL (Live)' : 'Mock / Fallback'}</span>
                   </div>
                   <button
                     className="sync-card-btn"
