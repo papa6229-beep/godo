@@ -1,16 +1,9 @@
 import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
-import {
-  getProxyMockOrders,
-  getProxyMockInquiries,
-  getProxyMockReviews,
-  getProxyMockInventory,
-  getProxyMockSales
-} from '../_shared/mockProxyData.js';
-import { maskRecordsList } from '../_shared/piiMaskGuard.js';
+import { resolveResource } from '../_shared/godomallResource.js';
+import type { ResourceType } from '../_shared/godomallResource.js';
 
-// Vercel Request Body 호환 확장 인터페이스
 interface ExtendedRequest extends IncomingMessage {
   body?: {
     resourceType?: string;
@@ -18,86 +11,75 @@ interface ExtendedRequest extends IncomingMessage {
   };
 }
 
+const VALID_RESOURCES: ResourceType[] = ['orders', 'inquiries', 'reviews', 'inventory', 'sales', 'products'];
+
 // POST /api/godomall/sync
+// 모드(real/sandbox/mock)는 서버 환경변수(GODOMALL_API_MODE)가 권위를 가진다.
+// real/sandbox 실패 시 자동으로 mock fallback. source로 출처를 명시한다.
 export default async function handler(req: ExtendedRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only POST is accepted.', 405);
   }
 
-  // Vercel Functions는 req.body에 파싱된 객체를 주입함
   const body = req.body || {};
-  const resourceType = body.resourceType || 'all';
-  const mode = body.mode || 'mock';
-
-  if (mode !== 'mock') {
-    return sendErrorResponse(res, 'BLOCKED_MODE', 'Production and Sandbox connection is locked. Only mock mode is allowed in this MVP.', 400);
-  }
+  const resourceType = (body.resourceType || 'all') as string;
 
   try {
     if (resourceType === 'all') {
-      const rawOrders = getProxyMockOrders();
-      const rawInquiries = getProxyMockInquiries();
-      const rawReviews = getProxyMockReviews();
-      const rawInventory = getProxyMockInventory();
-      const rawSales = getProxyMockSales();
+      const resources: ResourceType[] = ['orders', 'inquiries', 'reviews', 'inventory', 'sales'];
+      const resolved = await Promise.all(resources.map((r) => resolveResource(r)));
 
-      const { maskedRecords: orders, maskedCount: mcOrders } = maskRecordsList(rawOrders);
-      const { maskedRecords: inquiries, maskedCount: mcInquiries } = maskRecordsList(rawInquiries);
-      const { maskedRecords: reviews, maskedCount: mcReviews } = maskRecordsList(rawReviews);
-      const { maskedRecords: inventory, maskedCount: mcInventory } = maskRecordsList(rawInventory);
-      const { maskedRecords: sales, maskedCount: mcSales } = maskRecordsList(rawSales);
+      const records: Record<string, unknown> = {};
+      let importedCount = 0;
+      let maskedPiiCount = 0;
+      const sources: Record<string, string> = {};
+      let anyLive = false;
+      const errors: string[] = [];
 
-      const importedCount = orders.length + inquiries.length + reviews.length + inventory.length + sales.length;
-      const maskedPiiCount = mcOrders + mcInquiries + mcReviews + mcInventory + mcSales;
-      const warningCount = 11; // 가상 경고 건수 (Orders 4 + Inquiries 3 + Reviews 2 + Inventory 2)
+      resources.forEach((r, i) => {
+        const res0 = resolved[i];
+        records[r] = res0.records;
+        importedCount += res0.count;
+        maskedPiiCount += res0.maskedCount;
+        sources[r] = res0.source;
+        if (res0.live) anyLive = true;
+        if (res0.errorMessage) errors.push(`${r}: ${res0.errorMessage}`);
+      });
+
+      // 대표 sourceType: 하나라도 라이브면 그 모드, 아니면 fallback
+      const primaryMode = resolved[0]?.mode || 'mock';
+      const sourceType = anyLive
+        ? (primaryMode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox')
+        : 'api_mock_fallback';
 
       return sendOkResponse(res, {
         resourceType: 'all',
-        records: { orders, inquiries, reviews, inventory, sales },
+        records,
         importedCount,
         maskedPiiCount,
-        warningCount,
-        sourceType: 'api_proxy_mock'
+        warningCount: 0,
+        mode: primaryMode,
+        sourceType,
+        sources,
+        errorMessage: errors.length > 0 ? errors.join(' | ') : undefined
       });
     }
 
-    let rawRecords: Record<string, unknown>[] = [];
-    let warningCount = 0;
-
-    switch (resourceType) {
-      case 'orders':
-        rawRecords = getProxyMockOrders();
-        warningCount = 4;
-        break;
-      case 'inquiries':
-        rawRecords = getProxyMockInquiries();
-        warningCount = 3;
-        break;
-      case 'reviews':
-        rawRecords = getProxyMockReviews();
-        warningCount = 2;
-        break;
-      case 'inventory':
-        rawRecords = getProxyMockInventory();
-        warningCount = 2;
-        break;
-      case 'sales':
-        rawRecords = getProxyMockSales();
-        warningCount = 0;
-        break;
-      default:
-        return sendErrorResponse(res, 'INVALID_RESOURCE', `Resource type [${resourceType}] is not supported.`, 400);
+    if (!VALID_RESOURCES.includes(resourceType as ResourceType)) {
+      return sendErrorResponse(res, 'INVALID_RESOURCE', `Resource type [${resourceType}] is not supported.`, 400);
     }
 
-    const { maskedRecords, maskedCount } = maskRecordsList(rawRecords);
+    const resolved = await resolveResource(resourceType as ResourceType);
 
-    sendOkResponse(res, {
+    return sendOkResponse(res, {
       resourceType,
-      records: maskedRecords,
-      importedCount: maskedRecords.length,
-      maskedPiiCount: maskedCount,
-      warningCount,
-      sourceType: 'api_proxy_mock'
+      records: resolved.records,
+      importedCount: resolved.count,
+      maskedPiiCount: resolved.maskedCount,
+      warningCount: 0,
+      mode: resolved.mode,
+      sourceType: resolved.source,
+      errorMessage: resolved.errorMessage
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);

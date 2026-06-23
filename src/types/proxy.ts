@@ -7,11 +7,22 @@ export interface ProxyHealthResponse {
   source: string;
   mode: string;
   status: string;
+  // top-level 편의 필드 (Godomall5 Open API)
+  hasPartnerKey?: boolean;
+  hasUserKey?: boolean;
+  hasRealBaseUrl?: boolean;
+  hasSandboxBaseUrl?: boolean;
   secrets: {
     hasApiKey: boolean;
     hasApiSecret: boolean;
     hasBaseUrl: boolean;
     productionLocked: boolean;
+    // 확장 필드
+    mode?: string;
+    hasPartnerKey?: boolean;
+    hasUserKey?: boolean;
+    hasRealBaseUrl?: boolean;
+    hasSandboxBaseUrl?: boolean;
   };
   resources: string[];
   safetyRules: string[];
@@ -19,8 +30,9 @@ export interface ProxyHealthResponse {
 
 // Proxy 동기화 요청 구조
 export interface ProxySyncRequest {
-  resourceType: 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales' | 'all';
-  mode: 'mock';
+  resourceType: 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales' | 'products' | 'all';
+  // 모드는 서버 환경변수가 권위를 가짐. 클라이언트는 'auto'로 위임.
+  mode: 'auto';
 }
 
 // Proxy 동기화 응답 구조
@@ -31,11 +43,12 @@ export interface ProxySyncResponse {
   mode: string;
   requestId: string;
   resourceType: string;
-  records: unknown[];
+  records: unknown[] | Record<string, unknown[]>;
   importedCount: number;
   maskedPiiCount: number;
   warningCount: number;
   sourceType: string;
+  errorMessage?: string;
 }
 
 // Proxy 개별 리소스 응답 구조

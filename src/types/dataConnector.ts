@@ -1,6 +1,16 @@
 export type DataDomain = 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales';
 
-export type DataSourceType = 'demo' | 'csv' | 'json' | 'manual' | 'api_mock' | 'api_proxy_mock';
+export type DataSourceType =
+  | 'demo'
+  | 'csv'
+  | 'json'
+  | 'manual'
+  | 'api_mock'
+  | 'api_proxy_mock'
+  // Godomall5 Open API READ Bridge
+  | 'api_proxy_real'
+  | 'api_proxy_sandbox'
+  | 'api_mock_fallback';
 
 export type DataImportStatus = 'idle' | 'parsing' | 'success' | 'warning' | 'error';
 
