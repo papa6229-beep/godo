@@ -38,6 +38,10 @@ export interface ResolvedResource {
 const GOODS_SEARCH_PATH = '/goods/Goods_Search.php';
 const ORDER_SEARCH_PATH = '/order/Order_Search.php';
 
+// 리스트 추출 후보 키 (실 응답 태그명 확인 후 보강)
+export const GOODS_LIST_KEYS = ['goods', 'item', 'list', 'row', 'data'];
+export const ORDER_LIST_KEYS = ['order', 'item', 'list', 'row', 'data'];
+
 // 주문 조회 기본 기간 (최근 30일)
 const defaultOrderRange = (): { startDate: string; endDate: string } => {
   const end = new Date();
@@ -53,11 +57,11 @@ const fetchLiveRecords = async (
   config: ReturnType<typeof getGodomallConfig>
 ): Promise<Record<string, unknown>[]> => {
   if (resourceType === 'products' || resourceType === 'inventory') {
-    const res = await postGodomall(GOODS_SEARCH_PATH, { page: 1, size: 50 }, config);
+    const res = await postGodomall(GOODS_SEARCH_PATH, { page: 1, size: 100 }, config);
     if (!res.ok || !res.xml) throw new Error(res.error || 'Goods_Search failed');
     const parsed = parseGodomallXml(res.xml);
     if (!parsed.ok) throw new Error(`Goods_Search error code ${parsed.code}: ${parsed.msg}`);
-    const goods = extractList(parsed.root, ['goods', 'item', 'list', 'data', 'row']);
+    const goods = extractList(parsed.root, GOODS_LIST_KEYS);
     return resourceType === 'inventory' ? mapGoodsToInventory(goods) : mapGoodsList(goods);
   }
 
@@ -71,7 +75,7 @@ const fetchLiveRecords = async (
     if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
     const parsed = parseGodomallXml(res.xml);
     if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
-    const rawOrders = extractList(parsed.root, ['order', 'item', 'list', 'data', 'row']);
+    const rawOrders = extractList(parsed.root, ORDER_LIST_KEYS);
     const mappedOrders = mapOrderList(rawOrders);
     return resourceType === 'sales' ? deriveSalesFromOrders(mappedOrders) : mappedOrders;
   }

@@ -88,16 +88,111 @@ const findKeyDeep = (node: unknown, key: string, depth = 0): Record<string, unkn
   return [];
 };
 
-// 후보 키를 "우선순위 순서대로" 트리 전체에서 탐색한다.
-// 핵심: 구체 키(goods/order)를 래퍼 키(data/list/row)보다 먼저 찾아야
-// <data>...</data> 같은 래퍼 엘리먼트를 리스트로 오인하지 않는다.
+// 트리 내 모든 "객체 배열" 노드를 경로와 함께 수집
+// (fast-xml-parser는 반복 형제 태그를 배열로 접는다 → 12개 상품이면 길이 12 배열)
+export interface ArrayNodeInfo {
+  path: string;
+  leafKey: string;
+  items: Record<string, unknown>[];
+}
+
+export const collectObjectArrays = (
+  node: unknown,
+  path = '',
+  depth = 0,
+  out: ArrayNodeInfo[] = []
+): ArrayNodeInfo[] => {
+  if (depth > 10 || !isObject(node)) return out;
+  for (const [key, value] of Object.entries(node)) {
+    const childPath = path ? `${path}.${key}` : key;
+    if (Array.isArray(value)) {
+      const objs = value.filter(isObject) as Record<string, unknown>[];
+      if (objs.length > 0) {
+        out.push({ path: childPath, leafKey: key, items: objs });
+        // 배열 원소 안에도 중첩 배열이 있을 수 있으나, 리스트 추출에는 상위 배열로 충분
+      }
+    } else if (isObject(value)) {
+      collectObjectArrays(value, childPath, depth + 1, out);
+    }
+  }
+  return out;
+};
+
+// 리스트 추출 — 태그명에 의존하지 않는 견고한 전략:
+//  1) 트리 내 "객체 배열"들 중 후보 키 이름과 일치하는 배열(가장 큰 것) 우선
+//  2) 없으면 트리 전체에서 가장 큰 객체 배열 (반복 엘리먼트 = 실제 리스트)
+//  3) 배열이 전혀 없으면(단건 응답) 후보 키의 단일 객체를 우선순위대로 탐색
+// 이로써 <data> 같은 래퍼 단일 객체를 리스트로 오인하던 문제를 제거한다.
 export const extractList = (
   node: unknown,
   candidateKeys: string[]
 ): Record<string, unknown>[] => {
+  const arrays = collectObjectArrays(node);
+
+  if (arrays.length > 0) {
+    const byCandidate = arrays
+      .filter((a) => candidateKeys.includes(a.leafKey))
+      .sort((x, y) => y.items.length - x.items.length);
+    if (byCandidate.length > 0) return byCandidate[0].items;
+
+    return arrays.slice().sort((x, y) => y.items.length - x.items.length)[0].items;
+  }
+
+  // 배열이 없으면 단건 응답으로 간주하고 후보 키 단일 객체 탐색
   for (const key of candidateKeys) {
     const found = findKeyDeep(node, key);
     if (found.length > 0) return found;
   }
   return [];
+};
+
+// 응답 구조 안전 요약 (진단용) — 값/인증키는 절대 포함하지 않고 경로·count·필드명만
+export interface StructureSummary {
+  headerCode: string;
+  headerMsg: string;
+  topLevelKeys: string[];
+  arrays: { path: string; count: number }[];
+  detectedListPath: string | null;
+  rawItemCount: number;
+  sampleItemKeys: string[];
+  responseTotalCount: string | null;
+}
+
+const findCountField = (node: unknown, depth = 0): string | null => {
+  if (depth > 6 || !isObject(node)) return null;
+  const countKeys = ['totalCount', 'total_count', 'count', 'totalCnt', 'listCount', 'total'];
+  for (const k of countKeys) {
+    if (k in node && (typeof node[k] === 'string' || typeof node[k] === 'number')) {
+      return String(node[k]);
+    }
+  }
+  for (const v of Object.values(node)) {
+    if (Array.isArray(v)) continue;
+    const found = findCountField(v, depth + 1);
+    if (found !== null) return found;
+  }
+  return null;
+};
+
+export const summarizeStructure = (
+  root: Record<string, unknown>,
+  candidateKeys: string[],
+  header: { code: string; msg: string }
+): StructureSummary => {
+  const arrays = collectObjectArrays(root);
+  const list = extractList(root, candidateKeys);
+  const detected = arrays
+    .filter((a) => a.items === list || (a.items.length === list.length && a.leafKey))
+    .sort((x, y) => y.items.length - x.items.length)[0];
+
+  return {
+    headerCode: header.code,
+    headerMsg: header.msg,
+    topLevelKeys: Object.keys(root),
+    arrays: arrays.map((a) => ({ path: a.path, count: a.items.length })),
+    detectedListPath: detected ? detected.path : null,
+    rawItemCount: list.length,
+    sampleItemKeys: list.length > 0 ? Object.keys(list[0]) : [],
+    responseTotalCount: findCountField(root)
+  };
 };
