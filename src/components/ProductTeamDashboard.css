@@ -77,10 +77,25 @@
 .ptd-link-btn { background: none; border: none; color: var(--ptd-teal); font-size: 12px; cursor: pointer; padding: 0; }
 .ptd-link-btn:hover { text-decoration: underline; }
 
-/* 기간 토글 */
+/* 기간 토글 / 공유 기간 컨트롤 */
 .ptd-period-toggle { display: inline-flex; background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 8px; overflow: hidden; }
 .ptd-seg { font-size: 11px; padding: 4px 10px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.14s ease; }
 .ptd-seg.active { background: color-mix(in srgb, var(--ptd-teal) 18%, transparent); color: var(--ptd-teal); font-weight: 600; }
+
+.ptd-period-ctl {
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px;
+  background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 3px 4px;
+}
+.ptd-period-ctl .ptd-seg { border-radius: 6px; }
+.ptd-period-select { font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-subtle); background: var(--bg-surface); color: var(--text-primary); cursor: pointer; max-width: 140px; }
+.ptd-period-select:focus { outline: none; border-color: var(--ptd-teal); }
+
+/* 도넛/필터바 기간 기준 표시 */
+.ptd-donut-basis { font-size: 11px; color: var(--text-muted); margin: 6px 0 8px; }
+.ptd-donut-basis b { color: var(--ptd-teal); font-weight: 600; }
+.ptd-filter-basis { font-size: 11px; color: var(--text-muted); display: inline-flex; align-items: baseline; gap: 4px; }
+.ptd-filter-basis b { color: var(--ptd-teal); font-weight: 600; }
+.ptd-filter-basis small { opacity: 0.7; }
 
 /* 매출 추이 차트 */
 .ptd-trend { position: relative; }

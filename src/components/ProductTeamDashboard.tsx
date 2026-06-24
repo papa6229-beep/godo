@@ -505,12 +505,12 @@ const KpiCard: React.FC<{ icon: string; label: string; value: number; money?: bo
 
 export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ products, revenue, loading, onRefresh }) => {
   const [category, setCategory] = useState('all');
-  const [year, setYear] = useState('all');
-  const [month, setMonth] = useState('all');
   const [dataSrc, setDataSrc] = useState<'all' | 'real' | 'synthetic'>('all');
-  const [period, setPeriod] = useState<Period>('month');
-  // 공통 기간(범위) 필터 — KPI/매출추이/도넛/순위가 함께 공유
-  const [rangePreset, setRangePreset] = useState<'all' | 'm1' | 'w1' | 'd1' | 'custom'>('all');
+  // ★ 공통 기간 기준 (shared) — KPI/매출추이/도넛/상품순위가 모두 이 하나를 공유
+  const [timeMode, setTimeMode] = useState<'all' | 'month' | 'week' | 'day' | 'custom'>('all');
+  const [pickMonth, setPickMonth] = useState('');
+  const [pickWeek, setPickWeek] = useState('');
+  const [pickDay, setPickDay] = useState('');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [rankOpen, setRankOpen] = useState(false);
@@ -519,16 +519,6 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const orders = useMemo<RevenueOrderLite[]>(() => revenue?.orders ?? [], [revenue]);
   const stockImpact = useMemo<StockImpactItem[]>(() => revenue?.stockImpact ?? [], [revenue]);
   const summary = revenue?.summary ?? null;
-
-  // 프리셋(최근 N일) 계산용 최신 주문일
-  const maxOrderMs = useMemo(() => {
-    let m = 0;
-    for (const o of orders) {
-      const ms = Date.parse(o.orderDate.slice(0, 10));
-      if (Number.isFinite(ms) && ms > m) m = ms;
-    }
-    return m;
-  }, [orders]);
 
   const goodsCategory = useMemo(() => {
     const m = new Map<string, { code: string; label: string }>();
@@ -542,41 +532,59 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     return Array.from(m.keys()).sort().map((code) => ({ code, label: code }));
   }, [orders]);
 
-  const yearOptions = useMemo(() => {
+  // 기간 모드별 선택 옵션 (실데이터 기반)
+  const monthOptions = useMemo(() => {
     const s = new Set<string>();
-    for (const o of orders) if (o.orderDate.length >= 4) s.add(o.orderDate.slice(0, 4));
+    for (const o of orders) if (o.orderDate.length >= 7) s.add(o.orderDate.slice(0, 7));
     return Array.from(s).sort();
   }, [orders]);
-
-  const monthsPresent = useMemo(() => {
+  const weekOptions = useMemo(() => {
     const s = new Set<string>();
-    for (const o of orders) {
-      if (year !== 'all' && o.orderDate.slice(0, 4) !== year) continue;
-      if (o.orderDate.length >= 7) s.add(String(parseInt(o.orderDate.slice(5, 7), 10)));
-    }
-    return s;
-  }, [orders, year]);
+    for (const o of orders) if (o.orderDate.length >= 10) s.add(periodKey(o.orderDate, 'week'));
+    return Array.from(s).sort();
+  }, [orders]);
+  const dayOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const o of orders) if (o.orderDate.length >= 10) s.add(o.orderDate.slice(0, 10));
+    return Array.from(s).sort();
+  }, [orders]);
+  // 선택값 미지정 시 가장 최근 것을 기본값으로
+  const effMonth = pickMonth || (monthOptions.length ? monthOptions[monthOptions.length - 1] : '');
+  const effWeek = pickWeek || (weekOptions.length ? weekOptions[weekOptions.length - 1] : '');
+  const effDay = pickDay || (dayOptions.length ? dayOptions[dayOptions.length - 1] : '');
 
+  // ★ 공통 기간 기준으로 orders 필터 → KPI/추이/도넛/순위가 모두 같은 기준 공유
   const ordersFiltered = useMemo(() => {
-    const startMs = rangePreset === 'custom' && customStart ? Date.parse(customStart) : null;
-    const endMs = rangePreset === 'custom' && customEnd ? Date.parse(customEnd) : null;
-    const presetDays = rangePreset === 'm1' ? 30 : rangePreset === 'w1' ? 7 : rangePreset === 'd1' ? 1 : 0;
-    const presetCut = presetDays > 0 && maxOrderMs > 0 ? maxOrderMs - presetDays * 86400000 : null;
+    const sMs = timeMode === 'custom' && customStart ? Date.parse(customStart) : null;
+    const eMs = timeMode === 'custom' && customEnd ? Date.parse(customEnd) : null;
     return orders.filter((o) => {
-      const y = o.orderDate.slice(0, 4);
-      const m = o.orderDate.length >= 7 ? String(parseInt(o.orderDate.slice(5, 7), 10)) : '';
-      if (year !== 'all' && y !== year) return false;
-      if (month !== 'all' && m !== month) return false;
       if (dataSrc === 'real' && o.sourceType !== 'real_godomall') return false;
       if (dataSrc === 'synthetic' && o.sourceType !== 'synthetic_test') return false;
-      // 공통 기간(범위) 필터
-      const ms = Date.parse(o.orderDate.slice(0, 10));
-      if (presetCut != null && ms < presetCut) return false;
-      if (startMs != null && ms < startMs) return false;
-      if (endMs != null && ms > endMs) return false;
+      const d10 = o.orderDate.slice(0, 10);
+      if (timeMode === 'month') return o.orderDate.slice(0, 7) === effMonth;
+      if (timeMode === 'week') return periodKey(o.orderDate, 'week') === effWeek;
+      if (timeMode === 'day') return d10 === effDay;
+      if (timeMode === 'custom') {
+        const ms = Date.parse(d10);
+        if (sMs != null && ms < sMs) return false;
+        if (eMs != null && ms > eMs) return false;
+      }
       return true;
     });
-  }, [orders, year, month, dataSrc, rangePreset, customStart, customEnd, maxOrderMs]);
+  }, [orders, dataSrc, timeMode, effMonth, effWeek, effDay, customStart, customEnd]);
+
+  // 매출 추이 집계 단위는 기간 모드에서 파생 (전체→월, 월/주/일→일, 직접→기간 길이 기준)
+  const trendGran: Period = useMemo(() => {
+    if (timeMode === 'all') return 'month';
+    if (timeMode === 'custom') {
+      if (customStart && customEnd) {
+        const span = (Date.parse(customEnd) - Date.parse(customStart)) / 86400000;
+        return span <= 62 ? 'day' : 'month';
+      }
+      return 'day';
+    }
+    return 'day';
+  }, [timeMode, customStart, customEnd]);
 
   const relevantOrders = useMemo(
     () => (category === 'all' ? ordersFiltered : ordersFiltered.filter((o) => o.lines.some((l) => l.categoryCode === category))),
@@ -622,8 +630,8 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     const m = new Map<string, PeriodBucket>();
     for (const o of relevantOrders) {
       if (o.orderDate.length < 10) continue;
-      const key = periodKey(o.orderDate, period);
-      const b = m.get(key) || { key, label: periodLabel(key, period), revenue: 0, orders: 0, deliveryFee: 0, totalAmount: 0 };
+      const key = periodKey(o.orderDate, trendGran);
+      const b = m.get(key) || { key, label: periodLabel(key, trendGran), revenue: 0, orders: 0, deliveryFee: 0, totalAmount: 0 };
       b.orders += 1;
       b.deliveryFee += o.deliveryFee;
       b.totalAmount += o.totalAmount;
@@ -631,10 +639,9 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
       m.set(key, b);
     }
     let arr = Array.from(m.values()).sort((a, b) => a.key.localeCompare(b.key));
-    if (period === 'day') arr = arr.slice(-30);
-    if (period === 'week') arr = arr.slice(-26);
+    if (trendGran === 'day') arr = arr.slice(-62);
     return arr;
-  }, [relevantOrders, period, category]);
+  }, [relevantOrders, trendGran, category]);
 
   const categoryData = useMemo(() => {
     const m = new Map<string, { code: string; revenue: number }>();
@@ -661,13 +668,58 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
 
   const resetFilters = () => {
     setCategory('all');
-    setYear('all');
-    setMonth('all');
     setDataSrc('all');
-    setRangePreset('all');
+    setTimeMode('all');
+    setPickMonth('');
+    setPickWeek('');
+    setPickDay('');
     setCustomStart('');
     setCustomEnd('');
   };
+
+  // 현재 기간 기준 표시용 라벨
+  const weekRangeLabel = (wk: string): string => {
+    if (!wk) return '주간별';
+    const end = new Date(Date.parse(wk) + 6 * 86400000);
+    return `${wk} ~ ${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  };
+  const periodBasisLabel =
+    timeMode === 'all' ? '전체 기간'
+    : timeMode === 'month' ? (effMonth ? `${effMonth.slice(0, 4)}년 ${parseInt(effMonth.slice(5, 7), 10)}월` : '월별')
+    : timeMode === 'week' ? weekRangeLabel(effWeek)
+    : timeMode === 'day' ? (effDay || '일별')
+    : `${customStart || '…'} ~ ${customEnd || '…'}`;
+
+  // 추이/도넛 카드가 공유하는 기간 기준 컨트롤 (양쪽에서 렌더 → 같은 state)
+  const renderPeriodControl = () => (
+    <div className="ptd-period-ctl">
+      {([['all', '전체'], ['month', '월별'], ['week', '주간별'], ['day', '일별'], ['custom', '직접']] as const).map(([v, l]) => (
+        <button key={v} type="button" className={`ptd-seg ${timeMode === v ? 'active' : ''}`} onClick={() => setTimeMode(v)}>{l}</button>
+      ))}
+      {timeMode === 'month' && (
+        <select className="ptd-period-select" value={effMonth} onChange={(e) => setPickMonth(e.target.value)} aria-label="월 선택">
+          {monthOptions.map((m) => <option key={m} value={m}>{`${m.slice(0, 4)}년 ${parseInt(m.slice(5, 7), 10)}월`}</option>)}
+        </select>
+      )}
+      {timeMode === 'week' && (
+        <select className="ptd-period-select" value={effWeek} onChange={(e) => setPickWeek(e.target.value)} aria-label="주 선택">
+          {weekOptions.map((w) => <option key={w} value={w}>{`${w} 주`}</option>)}
+        </select>
+      )}
+      {timeMode === 'day' && (
+        <select className="ptd-period-select" value={effDay} onChange={(e) => setPickDay(e.target.value)} aria-label="일 선택">
+          {dayOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      )}
+      {timeMode === 'custom' && (
+        <span className="ptd-daterange">
+          <input type="date" className="ptd-date-input" value={customStart} max={customEnd || undefined} onChange={(e) => setCustomStart(e.target.value)} aria-label="시작일" />
+          <span className="ptd-date-sep">~</span>
+          <input type="date" className="ptd-date-input" value={customEnd} min={customStart || undefined} onChange={(e) => setCustomEnd(e.target.value)} aria-label="종료일" />
+        </span>
+      )}
+    </div>
+  );
 
   const synthOn = (summary?.syntheticOrderCount ?? 0) > 0;
   const unavailable = !revenue || revenue.source === 'unavailable' || !summary;
@@ -702,37 +754,12 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
               ))}
             </div>
             <div className="ptd-filter-group">
-              <span className="ptd-filter-label">연도</span>
-              <button className={`ptd-chip ${year === 'all' ? 'active' : ''}`} onClick={() => setYear('all')}>전체</button>
-              {yearOptions.map((y) => (<button key={y} className={`ptd-chip ${year === y ? 'active' : ''}`} onClick={() => setYear(y)}>{y}</button>))}
-            </div>
-            <div className="ptd-filter-group">
-              <span className="ptd-filter-label">월</span>
-              <button className={`ptd-chip ${month === 'all' ? 'active' : ''}`} onClick={() => setMonth('all')}>전체</button>
-              {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((m) => (
-                <button key={m} className={`ptd-chip ${month === m ? 'active' : ''} ${monthsPresent.has(m) ? '' : 'dim'}`} onClick={() => setMonth(m)}>{m}월</button>
-              ))}
-            </div>
-            <div className="ptd-filter-group">
               <span className="ptd-filter-label">데이터</span>
               {([['all', '전체'], ['real', '실제만'], ['synthetic', '가상만']] as const).map(([v, label]) => (
                 <button key={v} className={`ptd-chip ${dataSrc === v ? 'active' : ''}`} onClick={() => setDataSrc(v)}>{label}</button>
               ))}
             </div>
-            {/* 공통 기간(범위) 필터 — 대시보드 전체(KPI/추이/도넛/순위) 공유 */}
-            <div className="ptd-filter-group">
-              <span className="ptd-filter-label">기간</span>
-              {([['all', '전체'], ['m1', '최근 1개월'], ['w1', '최근 1주'], ['d1', '최근 1일'], ['custom', '직접 선택']] as const).map(([v, label]) => (
-                <button key={v} className={`ptd-chip ${rangePreset === v ? 'active' : ''}`} onClick={() => setRangePreset(v)}>{label}</button>
-              ))}
-              {rangePreset === 'custom' && (
-                <span className="ptd-daterange">
-                  <input type="date" className="ptd-date-input" value={customStart} max={customEnd || undefined} onChange={(e) => setCustomStart(e.target.value)} aria-label="시작일" />
-                  <span className="ptd-date-sep">~</span>
-                  <input type="date" className="ptd-date-input" value={customEnd} min={customStart || undefined} onChange={(e) => setCustomEnd(e.target.value)} aria-label="종료일" />
-                </span>
-              )}
-            </div>
+            <span className="ptd-filter-basis">기간 기준: <b>{periodBasisLabel}</b> <small>(매출추이·도넛 카드에서 변경)</small></span>
             <button type="button" className="ptd-reset" onClick={resetFilters}>↺ 초기화</button>
           </div>
 
@@ -746,17 +773,15 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
           <div className="ptd-row">
             <div className="ptd-panel ptd-panel-wide">
               <div className="ptd-panel-head">
-                <h3>매출 추이</h3>
-                <div className="ptd-period-toggle">
-                  {([['month', '월별'], ['week', '주간별'], ['day', '일별']] as const).map(([v, label]) => (
-                    <button key={v} className={`ptd-seg ${period === v ? 'active' : ''}`} onClick={() => setPeriod(v)}>{label}</button>
-                  ))}
-                </div>
+                <h3>매출 추이 <span className="ptd-panel-meta">기준: {periodBasisLabel}</span></h3>
+                {renderPeriodControl()}
               </div>
-              <TrendChart data={trend} period={period} />
+              <TrendChart data={trend} period={trendGran} />
             </div>
             <div className="ptd-panel">
               <div className="ptd-panel-head"><h3>매출 구성</h3><span className="ptd-panel-meta">카테고리 비중</span></div>
+              {renderPeriodControl()}
+              <div className="ptd-donut-basis">기준: <b>{periodBasisLabel}</b></div>
               {categoryData.items.length === 0 || categoryData.total <= 0 ? (
                 <p className="ptd-muted">표시할 데이터가 없습니다.</p>
               ) : (
