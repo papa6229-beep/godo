@@ -77,6 +77,12 @@ export type RevenueSummary = {
   // 실/가상 구분 (synthetic 포함 시 활용, 기본도 채워짐)
   realOrderCount: number;
   syntheticOrderCount: number;
+  // 가상 재고 영향 요약 (includeSynthetic=true 일 때만 채워짐)
+  syntheticTrackedProductCount?: number;
+  syntheticUnlimitedProductCount?: number;
+  syntheticTotalSoldQuantity?: number;
+  syntheticTotalRestoredQuantity?: number;
+  syntheticTotalNetSoldQuantity?: number;
 };
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────

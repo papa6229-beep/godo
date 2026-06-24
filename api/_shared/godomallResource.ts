@@ -20,7 +20,12 @@ import {
   summarizeRevenue
 } from './godomallRevenue.js';
 import type { RevenueOrder, RevenueSummary } from './godomallRevenue.js';
-import { generateSyntheticRevenueOrders } from './syntheticRevenue.js';
+import {
+  generateSyntheticRevenueOrders,
+  computeSyntheticStockImpact,
+  summarizeStockImpact
+} from './syntheticRevenue.js';
+import type { SyntheticStockImpact } from './syntheticRevenue.js';
 import { maskRecordsList } from './piiMaskGuard.js';
 import {
   getProxyMockOrders,
@@ -225,6 +230,7 @@ export interface ResolvedRevenue {
   orders: RevenueOrder[];
   count: number;
   summary: RevenueSummary;
+  stockImpact: SyntheticStockImpact[];
   source: ResourceSource;
   mode: 'real' | 'sandbox' | 'mock';
   live: boolean;
@@ -286,10 +292,18 @@ export const resolveOrdersRevenue = async (
   const syntheticOrders = opts.includeSynthetic ? generateSyntheticRevenueOrders(products) : [];
   const orders = [...realOrders, ...syntheticOrders];
 
+  // 가상 재고 영향 (옵션) — 실 Products 현재 재고 기준으로 역산 (고도몰 재고 미변경)
+  const stockImpact = opts.includeSynthetic ? computeSyntheticStockImpact(products, syntheticOrders) : [];
+  const summary: RevenueSummary = {
+    ...summarizeRevenue(orders),
+    ...(opts.includeSynthetic ? summarizeStockImpact(stockImpact) : {})
+  };
+
   return {
     orders,
     count: orders.length,
-    summary: summarizeRevenue(orders),
+    summary,
+    stockImpact,
     source,
     mode: config.mode,
     live,

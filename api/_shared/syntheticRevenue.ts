@@ -15,6 +15,27 @@ import type { StandardProduct } from './godomallMapper.js';
 import type { RevenueOrder, RevenueOrderLine, RevenueOrderState } from './godomallRevenue.js';
 import { deriveOrderState } from './godomallRevenue.js';
 
+// ── Synthetic Inventory Impact (가상 재고 영향) ──────────────────────────────
+// 고도몰 실제 재고는 절대 변경하지 않는다(Write 금지). 아래 값은 GODO 내부 synthetic
+// 계산값일 뿐이다. Products의 currentStock을 기준으로 6개월 전 초기재고를 역산해,
+// projectedStock이 currentStock과 일치하도록 맞춘다.
+export type StockMode = 'tracked' | 'unlimited' | 'unknown';
+
+export type SyntheticStockImpact = {
+  productId: string;
+  productCode?: string;
+  productName: string;
+  currentStock: number | null;
+  syntheticInitialStock: number | null;
+  syntheticSoldQuantity: number;
+  syntheticRestoredQuantity: number;
+  syntheticNetSoldQuantity: number;
+  syntheticProjectedStock: number | null;
+  stockEnabled: boolean;
+  stockMode: StockMode;
+  warning?: string;
+};
+
 export type SyntheticRevenueOptions = {
   months?: number;
   orderCount?: number;
@@ -212,4 +233,98 @@ export const generateSyntheticRevenueOrders = (
     });
   }
   return orders;
+};
+
+// 상품별 가상 재고 영향 계산.
+//   차감 대상: 결제완료~구매확정(미취소) = state.paid && !state.canceled
+//   복구 대상: 취소/반품/환불 = state.canceled
+//   제외:     입금대기/미결제 = !state.paid
+// 공식(§3): initialStock = currentStock + netSold,
+//          projectedStock = initialStock - sold + restored  → currentStock 과 일치
+export const computeSyntheticStockImpact = (
+  products: StandardProduct[],
+  syntheticOrders: RevenueOrder[]
+): SyntheticStockImpact[] => {
+  const sold = new Map<string, number>();
+  const restored = new Map<string, number>();
+  for (const o of syntheticOrders) {
+    const isRestore = o.state.canceled;
+    const isSale = o.state.paid && !o.state.canceled;
+    if (!isRestore && !isSale) continue; // 미결제 등 제외
+    const bucket = isRestore ? restored : sold;
+    for (const line of o.lines) {
+      if (!line.goodsNo) continue;
+      bucket.set(line.goodsNo, (bucket.get(line.goodsNo) || 0) + (line.quantity || 0));
+    }
+  }
+
+  return products.map((p) => {
+    const soldQ = sold.get(p.productId) || 0;
+    const restoredQ = restored.get(p.productId) || 0;
+    const netSold = soldQ - restoredQ;
+    const stockMode: StockMode = p.stockEnabled ? 'tracked' : 'unlimited';
+
+    const head = {
+      productId: p.productId,
+      productCode: p.productCode || undefined,
+      productName: p.productName || 'unknown_product',
+      syntheticSoldQuantity: soldQ,
+      syntheticRestoredQuantity: restoredQ,
+      syntheticNetSoldQuantity: netSold,
+      stockEnabled: p.stockEnabled,
+      stockMode
+    };
+
+    // unlimited(재고 무제한) — 수량은 참고값으로만 유지, 재고값은 null
+    if (stockMode !== 'tracked') {
+      return {
+        ...head,
+        currentStock: null,
+        syntheticInitialStock: null,
+        syntheticProjectedStock: null
+      };
+    }
+
+    const currentStock = p.stock;
+    const initialStock = currentStock + netSold;
+    const projectedStock = initialStock - soldQ + restoredQ; // === currentStock
+    const warning = initialStock < 0 ? 'syntheticInitialStock < 0 (복구수량 > 판매수량)' : undefined;
+    return {
+      ...head,
+      currentStock,
+      syntheticInitialStock: initialStock,
+      syntheticProjectedStock: projectedStock,
+      ...(warning ? { warning } : {})
+    };
+  });
+};
+
+export type SyntheticStockSummary = {
+  syntheticTrackedProductCount: number;
+  syntheticUnlimitedProductCount: number;
+  syntheticTotalSoldQuantity: number;
+  syntheticTotalRestoredQuantity: number;
+  syntheticTotalNetSoldQuantity: number;
+};
+
+export const summarizeStockImpact = (impact: SyntheticStockImpact[]): SyntheticStockSummary => {
+  let tracked = 0;
+  let unlimited = 0;
+  let totalSold = 0;
+  let totalRestored = 0;
+  let totalNet = 0;
+  for (const s of impact) {
+    if (s.stockMode === 'tracked') tracked++;
+    else if (s.stockMode === 'unlimited') unlimited++;
+    totalSold += s.syntheticSoldQuantity;
+    totalRestored += s.syntheticRestoredQuantity;
+    totalNet += s.syntheticNetSoldQuantity;
+  }
+  return {
+    syntheticTrackedProductCount: tracked,
+    syntheticUnlimitedProductCount: unlimited,
+    syntheticTotalSoldQuantity: totalSold,
+    syntheticTotalRestoredQuantity: totalRestored,
+    syntheticTotalNetSoldQuantity: totalNet
+  };
 };

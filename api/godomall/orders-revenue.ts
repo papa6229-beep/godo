@@ -29,6 +29,7 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
       count: resolved.count,
       orders: resolved.orders,
       summary: resolved.summary,
+      stockImpact: resolved.stockImpact,
       errorMessage: resolved.errorMessage
     });
   } catch (err: unknown) {
