@@ -4,53 +4,54 @@
    GODO AI OS - 글로벌 CSS 변수 & 테마 시스템
    ───────────────────────────────────────────────────────────── */
 
-/* ── Dark Neon Mode (기본) ──────────────────────────────────── */
+/* ── Dark Teal Mode (기본) ──────────────────────────────────── */
+/* 컨셉: 네온 그린 → 세련된 청록(teal) + 쿨 슬레이트. 색상만 조정. */
 :root,
 [data-theme='dark'] {
-  --bg-app:           #050809;
-  --bg-surface:       #091012;
-  --bg-panel:         rgba(10, 18, 20, 0.82);
-  --bg-panel-strong:  rgba(8, 15, 17, 0.94);
-  --bg-elevated:      rgba(14, 24, 27, 0.96);
+  --bg-app:           #06090c;
+  --bg-surface:       #0a1015;
+  --bg-panel:         rgba(12, 19, 25, 0.82);
+  --bg-panel-strong:  rgba(9, 15, 20, 0.94);
+  --bg-elevated:      rgba(16, 26, 33, 0.96);
 
-  --text-primary:     #eefaf5;
-  --text-secondary:   #a9c2b8;
-  --text-muted:       #6f8d83;
+  --text-primary:     #eaf2f5;
+  --text-secondary:   #a6bbc6;
+  --text-muted:       #6e8794;
 
-  --accent-primary:   #2df5a2;
-  --accent-primary-2: #14c97e;
-  --accent-soft:      rgba(45, 245, 162, 0.08);
-  --accent-border:    rgba(45, 245, 162, 0.18);
-  --accent-glow:      rgba(45, 245, 162, 0.12);
+  --accent-primary:   #31d6c4;
+  --accent-primary-2: #1f9aaa;
+  --accent-soft:      rgba(49, 214, 196, 0.08);
+  --accent-border:    rgba(49, 214, 196, 0.20);
+  --accent-glow:      rgba(49, 214, 196, 0.12);
 
-  --line-subtle:      rgba(120, 160, 145, 0.12);
-  --line-strong:      rgba(45, 245, 162, 0.18);
+  --line-subtle:      rgba(127, 156, 170, 0.12);
+  --line-strong:      rgba(49, 214, 196, 0.20);
 
-  --danger:           #ff5f7a;
-  --warning:          #ffcf5a;
-  --info:             #63c7ff;
-  --success:          #2df5a2;
+  --danger:           #ff4d6d;
+  --warning:          #fbbf24;
+  --info:             #5ac8fa;
+  --success:          #31d6c4;
 
   /* 카드/패널 배경 */
-  --card-bg:          rgba(10, 18, 20, 0.7);
-  --card-border:      rgba(120, 160, 145, 0.12);
+  --card-bg:          rgba(12, 19, 25, 0.7);
+  --card-border:      rgba(127, 156, 170, 0.12);
   --card-hover:       rgba(255, 255, 255, 0.03);
 
   /* 모달 */
-  --modal-bg:         #0b1116;
-  --modal-border:     #1f2d3d;
+  --modal-bg:         #0b1218;
+  --modal-border:     #1e2c39;
   --modal-overlay:    rgba(0, 0, 0, 0.72);
 
   /* 입력 */
-  --input-bg:         rgba(7, 14, 16, 0.85);
-  --input-border:     rgba(120, 160, 145, 0.12);
-  --input-focus:      rgba(45, 245, 162, 0.4);
+  --input-bg:         rgba(8, 14, 19, 0.85);
+  --input-border:     rgba(127, 156, 170, 0.12);
+  --input-focus:      rgba(49, 214, 196, 0.4);
 
   /* body background */
   --body-gradient:
-    radial-gradient(circle at top center, rgba(25, 120, 90, 0.12), transparent 45%),
-    radial-gradient(circle at 80% 20%, rgba(45, 245, 162, 0.05), transparent 25%),
-    linear-gradient(180deg, #050809 0%, #030506 100%);
+    radial-gradient(circle at top center, rgba(31, 154, 170, 0.12), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(49, 214, 196, 0.05), transparent 25%),
+    linear-gradient(180deg, #06090c 0%, #04070a 100%);
 
   /* 레거시 호환 */
   --bg-color:       var(--bg-app);

@@ -183,12 +183,37 @@ export interface StockImpactItem {
   syntheticProjectedStock: number;
 }
 
+// 대시보드 집계용 경량 주문/라인 (필터·차트 파생용)
+export interface RevenueLineLite {
+  goodsNo: string;
+  goodsName: string;
+  quantity: number;
+  lineRevenue: number;
+  categoryCode: string;
+  categoryLabel: string;
+}
+
+export interface RevenueOrderLite {
+  orderNo: string;
+  orderDate: string; // 'YYYY-MM-DD HH:MM:SS'
+  sourceType: string; // 'real_godomall' | 'synthetic_test'
+  deliveryFee: number;
+  totalAmount: number;
+  productRevenueByLines: number;
+  paid: boolean;
+  unpaid: boolean;
+  confirmed: boolean;
+  canceled: boolean;
+  lines: RevenueLineLite[];
+}
+
 export interface RevenueResult {
   count: number;
   source: DataSourceTag;
   live: boolean;
   summary: RevenueSummary | null;
   stockImpact: StockImpactItem[];
+  orders: RevenueOrderLite[];
   errorMessage?: string;
 }
 
@@ -240,12 +265,38 @@ export const fetchRevenue = async (includeSynthetic = true): Promise<RevenueResu
       syntheticNetSoldQuantity: num(r.syntheticNetSoldQuantity),
       syntheticProjectedStock: num(r.syntheticProjectedStock)
     }));
+    const ordersRaw = (data.orders || []) as Record<string, unknown>[];
+    const orders: RevenueOrderLite[] = ordersRaw.map((o) => {
+      const st = (o.state || {}) as Record<string, unknown>;
+      const linesRaw = (o.lines || []) as Record<string, unknown>[];
+      return {
+        orderNo: str(o.orderNo),
+        orderDate: str(o.orderDate),
+        sourceType: str(o.sourceType),
+        deliveryFee: num(o.deliveryFee),
+        totalAmount: num(o.totalAmount),
+        productRevenueByLines: num(o.productRevenueByLines),
+        paid: bool(st.paid),
+        unpaid: bool(st.unpaid),
+        confirmed: bool(st.confirmed),
+        canceled: bool(st.canceled),
+        lines: linesRaw.map((l) => ({
+          goodsNo: str(l.goodsNo),
+          goodsName: str(l.goodsName),
+          quantity: num(l.quantity),
+          lineRevenue: num(l.lineRevenue),
+          categoryCode: str(l.categoryCode) || 'uncategorized',
+          categoryLabel: str(l.categoryLabel) || str(l.categoryCode) || 'uncategorized'
+        }))
+      };
+    });
     return {
       count: num(data.count),
       source: tagFromModeLive(data.mode, data.live),
       live: data.live === true,
       summary: parseSummary(data.summary as Record<string, unknown> | undefined),
       stockImpact,
+      orders,
       errorMessage: data.errorMessage
     };
   } catch (err: unknown) {
@@ -255,6 +306,7 @@ export const fetchRevenue = async (includeSynthetic = true): Promise<RevenueResu
       live: false,
       summary: null,
       stockImpact: [],
+      orders: [],
       errorMessage: err instanceof Error ? err.message : String(err)
     };
   }

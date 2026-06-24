@@ -14,10 +14,10 @@
 
 .report-modal-content {
   background: rgba(8, 15, 17, 0.98);
-  border: 1px solid rgba(45, 245, 162, 0.3);
+  border: 1px solid rgba(49, 214, 196, 0.3);
   box-shadow: 
     0 24px 64px rgba(0, 0, 0, 0.7),
-    0 0 40px rgba(45, 245, 162, 0.12);
+    0 0 40px rgba(49, 214, 196, 0.12);
   width: 90%;
   max-width: 680px;
   border-radius: 20px;
@@ -138,8 +138,8 @@
 }
 
 .report-stat-box.success {
-  background: rgba(45, 245, 162, 0.02);
-  border-color: rgba(45, 245, 162, 0.15);
+  background: rgba(49, 214, 196, 0.02);
+  border-color: rgba(49, 214, 196, 0.15);
 }
 
 .report-stat-box.warning {
@@ -293,8 +293,8 @@
 .count-badge {
   font-size: 0.65rem;
   font-weight: 700;
-  background: rgba(45, 245, 162, 0.05);
-  border: 1px solid rgba(45, 245, 162, 0.15);
+  background: rgba(49, 214, 196, 0.05);
+  border: 1px solid rgba(49, 214, 196, 0.15);
   color: var(--accent-primary);
   padding: 4px 8px;
   border-radius: 6px;

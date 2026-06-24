@@ -360,15 +360,15 @@
 
 /* 팀장 에이전트 카드 스타일 커스터마이징 (글로우 효과 부여) */
 .agent-card.lead-card {
-  border: 1px solid rgba(45, 245, 162, 0.35);
-  background: rgba(45, 245, 162, 0.015);
+  border: 1px solid rgba(49, 214, 196, 0.35);
+  background: rgba(49, 214, 196, 0.015);
 }
 
 .agent-card.lead-card:hover {
   border-color: var(--accent-primary);
   box-shadow: 
     0 12px 28px rgba(0, 0, 0, 0.45),
-    0 0 20px rgba(45, 245, 162, 0.25);
+    0 0 20px rgba(49, 214, 196, 0.25);
 }
 
 .lead-badge {

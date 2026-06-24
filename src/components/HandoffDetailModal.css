@@ -58,7 +58,7 @@
 .handoff-detail-badge {
   font-size: 9px;
   font-weight: 800;
-  color: var(--accent-primary, #10b981);
+  color: var(--accent-primary, #1f9aaa);
   text-transform: uppercase;
   letter-spacing: 2px;
 }
@@ -233,7 +233,7 @@
 .handoff-section-title {
   font-size: 9.5px;
   font-weight: 800;
-  color: var(--accent-primary, #10b981);
+  color: var(--accent-primary, #1f9aaa);
   text-transform: uppercase;
   letter-spacing: 1.5px;
   margin: 0 0 8px 0;
@@ -242,7 +242,7 @@
 .handoff-message-box {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--modal-border, #1f2d3d);
-  border-left: 3px solid var(--accent-primary, #10b981);
+  border-left: 3px solid var(--accent-primary, #1f9aaa);
   border-radius: 8px;
   padding: 10px 14px;
 }
@@ -271,7 +271,7 @@
   gap: 5px;
 }
 
-.handoff-result-card.success   { border-left: 3px solid #10b981; }
+.handoff-result-card.success   { border-left: 3px solid #1f9aaa; }
 .handoff-result-card.failed    { border-left: 3px solid #ef4444; }
 .handoff-result-card.needs_review { border-left: 3px solid #f59e0b; }
 
@@ -288,7 +288,7 @@
   border-radius: 8px;
 }
 
-.handoff-result-badge.success { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.handoff-result-badge.success { background: rgba(16, 185, 129, 0.12); color: #1f9aaa; }
 .handoff-result-badge.failed  { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
 .handoff-result-badge.needs_review { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
 

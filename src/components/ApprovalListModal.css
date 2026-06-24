@@ -197,7 +197,7 @@
 }
 
 .approval-list-status.status-waiting   { background: rgba(245, 158, 11, 0.12); color: var(--warning, #f59e0b); }
-.approval-list-status.status-approved  { background: rgba(16, 185, 129, 0.15); color: var(--success, #10b981); }
+.approval-list-status.status-approved  { background: rgba(16, 185, 129, 0.15); color: var(--success, #1f9aaa); }
 .approval-list-status.status-rejected  { background: rgba(239, 68, 68, 0.12); color: var(--danger, #ef4444); }
 
 .approval-list-card-title {
@@ -231,7 +231,7 @@
 }
 
 .approval-list-card-clickable:hover .approval-list-card-hint {
-  color: var(--accent-primary, #10b981);
+  color: var(--accent-primary, #1f9aaa);
   opacity: 1;
 }
 
@@ -258,11 +258,11 @@
 .approval-list-approve {
   background: var(--accent-soft, rgba(16, 185, 129, 0.1));
   border: 1px solid var(--accent-border, rgba(16, 185, 129, 0.3));
-  color: var(--accent-primary, #10b981);
+  color: var(--accent-primary, #1f9aaa);
 }
 
 .approval-list-approve:hover {
-  background: var(--accent-primary, #10b981);
+  background: var(--accent-primary, #1f9aaa);
   color: var(--bg-app, #050809);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px var(--accent-glow, rgba(16, 185, 129, 0.25));

@@ -143,8 +143,8 @@
 }
 
 .task-item.running {
-  border-color: rgba(45, 245, 162, 0.28);
-  background: rgba(45, 245, 162, 0.02);
+  border-color: rgba(49, 214, 196, 0.28);
+  background: rgba(49, 214, 196, 0.02);
 }
 
 .task-item.completed {
@@ -217,8 +217,8 @@
 
 /* route 뱃지 */
 .badge-type.route.local {
-  background: rgba(45, 245, 162, 0.08);
-  border: 1px solid rgba(45, 245, 162, 0.2);
+  background: rgba(49, 214, 196, 0.08);
+  border: 1px solid rgba(49, 214, 196, 0.2);
   color: var(--accent-primary);
 }
 .badge-type.route.cloud {
@@ -306,7 +306,7 @@
 }
 
 .task-badge.running {
-  background: rgba(45, 245, 162, 0.12);
+  background: rgba(49, 214, 196, 0.12);
   border: 1px solid var(--accent-primary);
   color: var(--accent-primary);
   animation: pulse-glow 1.2s infinite alternate;
@@ -374,8 +374,8 @@
 }
 
 .add-task-input:focus {
-  border-color: rgba(45, 245, 162, 0.42);
-  box-shadow: 0 0 0 3px rgba(45, 245, 162, 0.08);
+  border-color: rgba(49, 214, 196, 0.42);
+  box-shadow: 0 0 0 3px rgba(49, 214, 196, 0.08);
 }
 
 .add-task-meta {
@@ -397,7 +397,7 @@
 }
 
 .agent-select:focus {
-  border-color: rgba(45, 245, 162, 0.42);
+  border-color: rgba(49, 214, 196, 0.42);
 }
 
 .agent-select option {
@@ -497,9 +497,9 @@
 }
 
 .risk-badge.low {
-  background: rgba(45, 245, 162, 0.08);
+  background: rgba(49, 214, 196, 0.08);
   color: var(--accent-primary);
-  border: 1px solid rgba(45, 245, 162, 0.2);
+  border: 1px solid rgba(49, 214, 196, 0.2);
 }
 
 .risk-badge.medium {
@@ -596,8 +596,8 @@
 }
 
 @keyframes pulse-glow {
-  0% { box-shadow: 0 0 2px rgba(45, 245, 162, 0.2); }
-  100% { box-shadow: 0 0 8px rgba(45, 245, 162, 0.5); }
+  0% { box-shadow: 0 0 2px rgba(49, 214, 196, 0.2); }
+  100% { box-shadow: 0 0 8px rgba(49, 214, 196, 0.5); }
 }
 
 @keyframes pulse-warn {

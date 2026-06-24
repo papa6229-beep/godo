@@ -17,12 +17,12 @@
   font-size: 1.6rem;
   font-weight: 700;
   margin: 0;
-  color: #00ff88;
+  color: #31d6c4;
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  text-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
+  text-shadow: 0 0 10px rgba(49, 214, 196, 0.2);
 }
 
 .data-subtitle {
@@ -51,7 +51,7 @@
 }
 
 .data-metric-box:hover {
-  border-color: rgba(0, 255, 136, 0.25);
+  border-color: rgba(49, 214, 196, 0.25);
   background: rgba(30, 41, 59, 0.65);
 }
 
@@ -70,16 +70,16 @@
 }
 
 .data-metric-box.active-source {
-  border-color: rgba(0, 255, 136, 0.35);
-  background: rgba(0, 255, 136, 0.05);
+  border-color: rgba(49, 214, 196, 0.35);
+  background: rgba(49, 214, 196, 0.05);
 }
 
 .data-metric-box.active-source .data-metric-val {
-  color: #00ff88;
+  color: #31d6c4;
 }
 
 .data-metric-box.quality-score-box .score-good {
-  color: #00ff88;
+  color: #31d6c4;
 }
 .data-metric-box.quality-score-box .score-warning {
   color: #ffb300;
@@ -122,8 +122,8 @@
 }
 
 .data-tab-btn.active {
-  color: #00ff88;
-  border-bottom-color: #00ff88;
+  color: #31d6c4;
+  border-bottom-color: #31d6c4;
   font-weight: 600;
 }
 
@@ -164,8 +164,8 @@
   margin-bottom: 1rem;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #00ff88;
-  border-left: 3px solid #00ff88;
+  color: #31d6c4;
+  border-left: 3px solid #31d6c4;
   padding-left: 0.5rem;
 }
 
@@ -196,12 +196,12 @@
 
 .ov-val.danger { color: #ff4d4d; }
 .ov-val.warning { color: #ffb300; }
-.ov-val.success { color: #00ff88; }
+.ov-val.success { color: #31d6c4; }
 
 .status-value-highlight {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #00ff88;
+  color: #31d6c4;
 }
 
 .status-desc {
@@ -228,7 +228,7 @@
 .wf-val {
   font-weight: 600;
 }
-.wf-val.ready { color: #00ff88; }
+.wf-val.ready { color: #31d6c4; }
 .wf-val.pending { color: #94a3b8; }
 
 /* Upload Center 스타일 */
@@ -279,7 +279,7 @@
 }
 
 .dropzone-container {
-  border: 2px dashed rgba(0, 255, 136, 0.25);
+  border: 2px dashed rgba(49, 214, 196, 0.25);
   border-radius: 6px;
   background: rgba(15, 23, 42, 0.4);
   padding: 2rem 1rem;
@@ -293,8 +293,8 @@
 }
 
 .dropzone-container:hover, .dropzone-container.drag-active {
-  border-color: #00ff88;
-  background: rgba(0, 255, 136, 0.03);
+  border-color: #31d6c4;
+  background: rgba(49, 214, 196, 0.03);
 }
 
 .dropzone-icon {
@@ -312,9 +312,9 @@
 }
 
 .select-file-btn {
-  background: rgba(0, 255, 136, 0.1);
-  border: 1px solid #00ff88;
-  color: #00ff88;
+  background: rgba(49, 214, 196, 0.1);
+  border: 1px solid #31d6c4;
+  color: #31d6c4;
   padding: 0.4rem 1rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -324,7 +324,7 @@
 }
 
 .select-file-btn:hover {
-  background: #00ff88;
+  background: #31d6c4;
   color: #0f172a;
 }
 
@@ -345,7 +345,7 @@
 
 .result-card {
   background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(0, 255, 136, 0.2);
+  border: 1px solid rgba(49, 214, 196, 0.2);
   border-radius: 6px;
   padding: 1.25rem;
 }
@@ -353,7 +353,7 @@
 .result-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #00ff88;
+  color: #31d6c4;
   margin-top: 0;
   margin-bottom: 0.75rem;
   display: flex;
@@ -414,7 +414,7 @@
 }
 
 .btn.primary {
-  background: #00ff88;
+  background: #31d6c4;
   color: #0f172a;
 }
 .btn.primary:hover {
@@ -523,7 +523,7 @@
 
 .preview-table th {
   background: rgba(30, 41, 59, 0.75);
-  color: #00ff88;
+  color: #31d6c4;
   font-weight: 600;
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -579,8 +579,8 @@
 }
 
 .flag-badge.success {
-  background: rgba(0, 255, 136, 0.15);
-  color: #00ff88;
+  background: rgba(49, 214, 196, 0.15);
+  color: #31d6c4;
 }
 
 /* Mapping Rules 스타일 */
@@ -605,8 +605,8 @@
 }
 
 .mapping-status-pill.mapped {
-  background: rgba(0, 255, 136, 0.12);
-  color: #00ff88;
+  background: rgba(49, 214, 196, 0.12);
+  color: #31d6c4;
 }
 .mapping-status-pill.missing {
   background: rgba(255, 77, 77, 0.12);
@@ -638,7 +638,7 @@
   text-align: center;
 }
 
-.quality-stat-card.good { border-color: rgba(0, 255, 136, 0.25); }
+.quality-stat-card.good { border-color: rgba(49, 214, 196, 0.25); }
 .quality-stat-card.warn { border-color: rgba(255, 179, 0, 0.25); }
 .quality-stat-card.err { border-color: rgba(255, 77, 77, 0.25); }
 
@@ -653,7 +653,7 @@
   margin-top: 0.25rem;
 }
 
-.q-card-val.success { color: #00ff88; }
+.q-card-val.success { color: #31d6c4; }
 .q-card-val.warn { color: #ffb300; }
 .q-card-val.err { color: #ff4d4d; }
 
@@ -669,7 +669,7 @@
   font-weight: 600;
   margin-top: 0;
   margin-bottom: 0.75rem;
-  color: #00ff88;
+  color: #31d6c4;
 }
 
 .feedback-items-scroller {
@@ -688,7 +688,7 @@
 
 .feedback-bullet::before {
   content: '•';
-  color: #00ff88;
+  color: #31d6c4;
   position: absolute;
   left: 0;
   font-weight: 700;
@@ -740,7 +740,7 @@
 }
 
 .comparison-table td.masked {
-  color: #00ff88;
+  color: #31d6c4;
   font-weight: 600;
 }
 
@@ -766,8 +766,8 @@
 }
 
 .history-status-pill.success {
-  background: rgba(0, 255, 136, 0.12);
-  color: #00ff88;
+  background: rgba(49, 214, 196, 0.12);
+  color: #31d6c4;
 }
 .history-status-pill.warning {
   background: rgba(255, 179, 0, 0.12);
@@ -811,7 +811,7 @@
   animation: slideIn 0.2s ease-out;
 }
 
-.toast.success { background: #1d9e75; border-left: 4px solid #00ff88; }
+.toast.success { background: #1d9e75; border-left: 4px solid #31d6c4; }
 .toast.info { background: #1e293b; border-left: 4px solid #3b82f6; }
 .toast.warning { background: #b45309; border-left: 4px solid #ffb300; }
 .toast.error { background: #991b1b; border-left: 4px solid #ff4d4d; }
@@ -872,7 +872,7 @@
 [data-theme='light'] .q-card-val.warning { color: var(--warning); }
 [data-theme='light'] .q-card-val.danger  { color: var(--danger); }
 
-/* ── 형광 #00ff88 텍스트 → 라이트 모드 가독성 톤 catch-all ──── */
+/* ── 형광 #31d6c4 텍스트 → 라이트 모드 가독성 톤 catch-all ──── */
 [data-theme='light'] .data-main-title {
   color: var(--text-primary);
   text-shadow: none;
@@ -946,7 +946,7 @@
   font-weight: 600;
 }
 .api-mock-info {
-  background: rgba(45, 245, 162, 0.05);
+  background: rgba(49, 214, 196, 0.05);
   border-color: var(--accent-border);
 }
 .api-mock-info .alert-text {

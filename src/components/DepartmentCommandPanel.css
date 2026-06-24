@@ -59,7 +59,7 @@
 }
 
 .workspace-back:hover {
-  color: #10b981;
+  color: #1f9aaa;
   border-color: rgba(16, 185, 129, 0.2);
   background: rgba(16, 185, 129, 0.04);
 }
@@ -80,7 +80,7 @@
 .workspace-dept-label {
   font-size: 9px;
   font-weight: 800;
-  color: #10b981;
+  color: #1f9aaa;
   letter-spacing: 2px;
   text-transform: uppercase;
 }
@@ -146,7 +146,7 @@
 .sidebar-section-title {
   font-size: 9.5px;
   font-weight: 800;
-  color: #10b981;
+  color: #1f9aaa;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   margin: 0;
@@ -204,7 +204,7 @@
   background: rgba(16, 185, 129, 0.08);
   border: 1px solid rgba(16, 185, 129, 0.15);
   border-radius: 10px;
-  color: #10b981;
+  color: #1f9aaa;
   font-weight: 600;
 }
 
@@ -256,7 +256,7 @@
 
 .member-badge.on {
   background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  color: #1f9aaa;
 }
 
 .member-badge.off {
@@ -348,8 +348,8 @@
 }
 
 .workspace-tab-btn.active {
-  color: #10b981;
-  border-bottom-color: #10b981;
+  color: #1f9aaa;
+  border-bottom-color: #1f9aaa;
 }
 
 /* 탭 콘텐츠 */
@@ -412,8 +412,8 @@
   transition: border-color 0.2s;
 }
 
-.record-card.completed { border-left: 3px solid #10b981; }
-.record-card.success   { border-left: 3px solid #10b981; }
+.record-card.completed { border-left: 3px solid #1f9aaa; }
+.record-card.success   { border-left: 3px solid #1f9aaa; }
 .record-card.running   { border-left: 3px solid #f59e0b; }
 .record-card.failed    { border-left: 3px solid #ef4444; }
 .record-card.blocked   { border-left: 3px solid #ef4444; }
@@ -433,8 +433,8 @@
   text-transform: uppercase;
 }
 
-.record-status-badge.success      { background: rgba(16, 185, 129, 0.12); color: #10b981; }
-.record-status-badge.completed    { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.record-status-badge.success      { background: rgba(16, 185, 129, 0.12); color: #1f9aaa; }
+.record-status-badge.completed    { background: rgba(16, 185, 129, 0.12); color: #1f9aaa; }
 .record-status-badge.running      { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
 .record-status-badge.pending      { background: rgba(139, 148, 158, 0.1); color: #8b949e; }
 .record-status-badge.queued       { background: rgba(139, 148, 158, 0.1); color: #8b949e; }
@@ -506,7 +506,7 @@
 }
 
 .handoff-card.outgoing { border-left: 3px solid #a5b4fc; }
-.handoff-card.incoming { border-left: 3px solid #34d399; }
+.handoff-card.incoming { border-left: 3px solid #31d6c4; }
 
 .handoff-card-header {
   display: flex;
@@ -528,7 +528,7 @@
 
 .direction-badge.in {
   background: rgba(52, 211, 153, 0.1);
-  color: #34d399;
+  color: #31d6c4;
 }
 
 .handoff-route {
@@ -574,7 +574,7 @@
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid rgba(16, 185, 129, 0.25);
   border-radius: 8px;
-  color: #10b981;
+  color: #1f9aaa;
   font-size: 12px;
   font-weight: 700;
   padding: 8px 20px;
@@ -701,7 +701,7 @@
   background: rgba(16, 185, 129, 0.12);
   border: 1px solid rgba(16, 185, 129, 0.3);
   border-radius: 8px;
-  color: #10b981;
+  color: #1f9aaa;
   font-size: 12px;
   font-weight: 700;
   padding: 8px 20px;
