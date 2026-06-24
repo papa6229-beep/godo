@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { Agent, LogEntry } from '../types';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
@@ -20,6 +20,31 @@ import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataCon
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
 import './MainLayout.css';
+
+// 관리/설정성 메뉴 — 우측 "관리자 설정" 드롭다운으로 묶음 (라우팅 키/화면 동작은 그대로)
+type AdminNavKey = 'data' | 'api' | 'logs' | 'brain' | 'studio' | 'engine';
+const ADMIN_NAV_GROUPS: { label: string; items: { key: AdminNavKey; label: string; title: string }[] }[] = [
+  {
+    label: '데이터 / 연동',
+    items: [
+      { key: 'data', label: '📡 데이터 가져오기', title: '쇼핑몰 데이터 적재 및 관리' },
+      { key: 'api', label: '🔌 쇼핑몰 연동', title: '고도몰 API 연동 및 보안 미들웨어' }
+    ]
+  },
+  {
+    label: '기록 / 감사',
+    items: [{ key: 'logs', label: '📝 작업기록', title: '실시간 시스템 작업기록' }]
+  },
+  {
+    label: '지식 / AI 설정',
+    items: [
+      { key: 'brain', label: '🧠 업무 매뉴얼', title: '업무 지식 및 매뉴얼 관리' },
+      { key: 'studio', label: '⚙️ AI 설정실', title: 'AI 직원 설정 편집실' },
+      { key: 'engine', label: '🚀 AI 두뇌 설정', title: 'AI 모델 엔진 라우터 설정' }
+    ]
+  }
+];
+const ADMIN_NAV_KEYS: AdminNavKey[] = ['data', 'api', 'logs', 'brain', 'studio', 'engine'];
 
 interface MainLayoutProps {
   agents: Agent[];
@@ -166,6 +191,30 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   theme,
   onToggleTheme,
 }) => {
+  // 관리자 설정 드롭다운 (외부 클릭/ESC 닫기)
+  const [adminOpen, setAdminOpen] = useState(false);
+  const adminRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!adminOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (adminRef.current && !adminRef.current.contains(e.target as Node)) setAdminOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAdminOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [adminOpen]);
+  const adminActive = ADMIN_NAV_KEYS.includes(activeTab as AdminNavKey);
+  const selectAdminTab = (key: AdminNavKey) => {
+    setActiveTab(key);
+    setAdminOpen(false);
+  };
+
   return (
     <div className="main-layout">
       {/* 상단 헤더 */}
@@ -204,7 +253,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           </button>
 
           <div className="header-nav-tabs">
-            {/* ── 운영 메뉴 그룹 ── */}
+            {/* ── 운영 메뉴 (매일 쓰는 핵심) ── */}
             <button
               className={`nav-tab-btn ${activeTab === 'office' ? 'active' : ''}`}
               onClick={() => setActiveTab('office')}
@@ -227,59 +276,48 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               🤖 AI 직원
             </button>
             <button
-              className={`nav-tab-btn ${activeTab === 'data' ? 'active' : ''}`}
-              onClick={() => setActiveTab('data')}
-              title="쇼핑몰 데이터 적재 및 관리"
-            >
-              📡 데이터 가져오기
-            </button>
-            <button
               className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
               onClick={() => setActiveTab('calendar')}
               title="일자별 운영 캘린더 및 일지"
             >
               📅 운영일지
             </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
-              onClick={() => setActiveTab('logs')}
-              title="실시간 시스템 작업기록"
-            >
-              📝 작업기록
-            </button>
 
-            {/* ── 관리자 설정 구분선 ── */}
+            {/* ── 관리/설정 드롭다운 ── */}
             <div className="nav-divider" aria-hidden="true"></div>
-            <span className="nav-group-label">관리자 설정</span>
-
-            <button
-              className={`nav-tab-btn nav-tab-settings ${activeTab === 'brain' ? 'active' : ''}`}
-              onClick={() => setActiveTab('brain')}
-              title="업무 지식 및 매뉴얼 관리"
-            >
-              🧠 업무 매뉴얼
-            </button>
-            <button
-              className={`nav-tab-btn nav-tab-settings ${activeTab === 'studio' ? 'active' : ''}`}
-              onClick={() => setActiveTab('studio')}
-              title="AI 직원 설정 편집실"
-            >
-              ⚙️ AI 설정실
-            </button>
-            <button
-              className={`nav-tab-btn nav-tab-settings ${activeTab === 'engine' ? 'active' : ''}`}
-              onClick={() => setActiveTab('engine')}
-              title="AI 모델 엔진 라우터 설정"
-            >
-              🚀 AI 두뇌 설정
-            </button>
-            <button
-              className={`nav-tab-btn nav-tab-settings ${activeTab === 'api' ? 'active' : ''}`}
-              onClick={() => setActiveTab('api')}
-              title="고도몰 API 연동 및 보안 미들웨어"
-            >
-              🔌 쇼핑몰 연동
-            </button>
+            <div className="nav-admin" ref={adminRef}>
+              <button
+                type="button"
+                className={`nav-tab-btn nav-admin-trigger ${adminActive || adminOpen ? 'active' : ''}`}
+                onClick={() => setAdminOpen((o) => !o)}
+                aria-haspopup="true"
+                aria-expanded={adminOpen}
+                title="데이터·기록·지식·AI 설정 등 관리 메뉴"
+              >
+                ⚙️ 관리자 설정 <span className={`nav-admin-caret ${adminOpen ? 'open' : ''}`}>▾</span>
+              </button>
+              {adminOpen && (
+                <div className="nav-admin-menu" role="menu">
+                  {ADMIN_NAV_GROUPS.map((group) => (
+                    <div key={group.label} className="nav-admin-group">
+                      <div className="nav-admin-group-label">{group.label}</div>
+                      {group.items.map((it) => (
+                        <button
+                          key={it.key}
+                          type="button"
+                          role="menuitem"
+                          className={`nav-admin-item ${activeTab === it.key ? 'active' : ''}`}
+                          onClick={() => selectAdminTab(it.key)}
+                          title={it.title}
+                        >
+                          {it.label}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>

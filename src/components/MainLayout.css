@@ -203,6 +203,94 @@
   border: 1px solid var(--accent-border);
 }
 
+/* ── 관리자 설정 드롭다운 ── */
+.nav-admin {
+  position: relative;
+  flex-shrink: 0;
+}
+.nav-admin-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.nav-admin-caret {
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+.nav-admin-caret.open {
+  transform: rotate(180deg);
+}
+.nav-admin-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 230px;
+  max-width: min(280px, 90vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-elevated, var(--bg-surface));
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  padding: 8px;
+  z-index: 200;
+  animation: navAdminPop 0.15s ease;
+}
+@keyframes navAdminPop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.nav-admin-group {
+  padding: 4px 0;
+}
+.nav-admin-group + .nav-admin-group {
+  border-top: 1px solid var(--line-subtle);
+  margin-top: 2px;
+}
+.nav-admin-group-label {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  text-transform: uppercase;
+}
+.nav-admin-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.nav-admin-item:hover {
+  background: var(--card-hover, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary);
+}
+.nav-admin-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+/* 좁은 화면: 드롭다운이 화면 밖으로 잘리지 않게 우측 정렬 + 고정 폭 */
+@media (max-width: 768px) {
+  .nav-admin-menu {
+    position: fixed;
+    top: auto;
+    right: 8px;
+    left: auto;
+    min-width: 200px;
+    max-width: calc(100vw - 16px);
+  }
+}
 
 .main-viewport.office-tab-layout,
 .main-viewport.department-tab-layout {
