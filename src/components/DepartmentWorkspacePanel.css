@@ -24,6 +24,12 @@
   overflow-y: auto;
 }
 
+/* 상품관리팀 대시보드는 자체 헤더/스크롤/패딩을 가지므로 컬럼 패딩 제거 */
+.dept-col-center-dashboard {
+  padding: 0;
+  overflow: hidden;
+}
+
 .dept-col-head {
   border-bottom: 1px solid var(--line-subtle);
   padding-bottom: 10px;
