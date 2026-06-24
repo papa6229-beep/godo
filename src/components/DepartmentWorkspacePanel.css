@@ -1,0 +1,337 @@
+/* 부서 업무 관장 (Department Workspace) — 1차 뼈대 스타일
+   기존 디자인 토큰(var(--...))을 재사용해 톤을 맞춘다. */
+
+.dept-workspace {
+  display: grid;
+  grid-template-columns: 22% 56% 22%;
+  gap: 12px;
+  height: 100%;
+  width: 100%;
+  padding: 14px;
+  box-sizing: border-box;
+  background: var(--bg-app);
+  overflow: hidden;
+}
+
+.dept-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.dept-col-head {
+  border-bottom: 1px solid var(--line-subtle);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.dept-col-head h2,
+.dept-col-head h3 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.dept-col-head h3 {
+  font-size: 15px;
+}
+
+.dept-col-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dept-team-emoji {
+  margin-right: 6px;
+}
+
+/* ── 좌측: 팀 목록 ── */
+.dept-team-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dept-team-card {
+  text-align: left;
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  color: var(--text-primary);
+}
+
+.dept-team-card:hover {
+  border-color: var(--accent-border);
+  transform: translateY(-1px);
+}
+
+.dept-team-card.active {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-primary) inset;
+}
+
+.dept-team-card-top {
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.dept-team-role {
+  margin: 6px 0 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.dept-team-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── 좌측: 선택 팀 상세 ── */
+.dept-team-detail {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-subtle);
+}
+
+.dept-detail-title {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.dept-detail-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dept-detail-list > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dept-detail-list dt {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.dept-detail-list dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* ── 중앙: 대시보드 ── */
+.dept-dashboard-title {
+  display: flex;
+  align-items: center;
+  font-size: 19px;
+}
+
+.dept-dashboard-desc {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.dept-placeholder-banner {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--text-secondary);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
+.dept-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.dept-stat-card {
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dept-stat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.dept-stat-icon {
+  font-size: 16px;
+}
+
+.dept-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.dept-stat-tag {
+  align-self: flex-start;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.dept-future-note {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--line-subtle);
+  padding-top: 12px;
+}
+
+.dept-future-icon {
+  font-size: 14px;
+}
+
+/* ── 우측: 명령 채팅 ── */
+.dept-col-right {
+  background: var(--bg-surface);
+}
+
+.dept-chat-log {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.dept-chat-empty {
+  margin: auto 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.dept-chat-empty-hint {
+  margin-top: 6px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.dept-chat-msg {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 10px;
+  max-width: 92%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dept-chat-msg.user {
+  align-self: flex-end;
+  background: var(--accent-primary);
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.dept-chat-msg.system {
+  align-self: flex-start;
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-secondary);
+  border-bottom-left-radius: 3px;
+}
+
+.dept-chat-input-row {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dept-chat-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  border-radius: 10px;
+  padding: 9px 11px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.dept-chat-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.dept-chat-send {
+  align-self: flex-end;
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: 9px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dept-chat-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dept-chat-disclaimer {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 반응형: 좁은 화면에서는 세로 스택 */
+@media (max-width: 1100px) {
+  .dept-workspace {
+    grid-template-columns: 1fr;
+    grid-auto-rows: auto;
+    overflow-y: auto;
+  }
+}

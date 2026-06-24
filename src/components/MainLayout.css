@@ -204,7 +204,8 @@
 }
 
 
-.main-viewport.office-tab-layout {
+.main-viewport.office-tab-layout,
+.main-viewport.department-tab-layout {
   grid-template-columns: 1fr !important;
 }
 

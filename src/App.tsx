@@ -62,7 +62,7 @@ function App() {
   const [tasks, setTasks] = useState<OperationTask[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar'>('office');
+  const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department'>('office');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>([]);
   const [report, setReport] = useState<OperationReport | null>(null);
