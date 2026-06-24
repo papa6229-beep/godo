@@ -257,12 +257,15 @@
 }
 
 .cell-badge {
-  font-size: 0.55rem;
+  font-size: 0.6rem;
   font-weight: 700;
-  padding: 1px 3px;
+  letter-spacing: -0.02em;
+  padding: 1px 4px;
   border-radius: 3px;
-  display: flex;
-  justify-content: space-between;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -327,6 +330,24 @@
   color: #3b82f6;
   background: rgba(59, 130, 246, 0.08);
   border-color: rgba(59, 130, 246, 0.2);
+}
+
+.brief-source-badge.synthetic {
+  color: var(--accent-primary);
+  background: rgba(49, 214, 196, 0.08);
+  border-color: rgba(49, 214, 196, 0.2);
+}
+.brief-source-badge.real {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+.cal-pending {
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 .brief-source-badge.csv, .brief-source-badge.json {
@@ -472,6 +493,27 @@
   font-size: 0.72rem;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+/* 이슈 타입별 점 색상 */
+.timeline-item.warning .timeline-dot { background: var(--warning); box-shadow: 0 0 6px var(--warning); }
+.timeline-item.danger .timeline-dot { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.timeline-item.warning .timeline-time { color: var(--warning); }
+.timeline-item.danger .timeline-time { color: var(--danger); }
+
+/* 이슈 카드 안내 문구 / 판매 참고 요약 */
+.cal-issue-note {
+  margin: 10px 0 0;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  opacity: 0.85;
+}
+.cal-ref-summary {
+  gap: 4px;
+}
+.cal-ref-summary .bullet-item {
+  font-size: 0.72rem;
 }
 
 /* ── Light theme overrides ─────────────────────────────────────── */
