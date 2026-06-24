@@ -222,6 +222,47 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
     () => Array.from(selData.prodRev.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
     [selData]
   );
+  // 최상위 카테고리(비중)
+  const topCategory = topCategories[0]; // [code, revenue] | undefined
+  const topCatShare = topCategory && selData.productRevenue > 0 ? topCategory[1] / selData.productRevenue : 0;
+
+  // 운영 이슈 타임라인 — RevenueOrder + stockImpact 기반 감지(실제 AI 런타임 로그 연동 전)
+  type IssueType = 'normal' | 'warning' | 'danger';
+  const dailyIssues = useMemo(() => {
+    const events: { time: string; agent: string; desc: string; type: IssueType }[] = [];
+    if (!sel || sel.orderCount === 0) return events;
+
+    if (sel.riskGoods.size > 0) {
+      events.push({ time: '15:00', agent: '재고 감시 AI', desc: `재고주의 상품 ${sel.riskGoods.size}건이 당일 판매되어 재고 확인이 필요합니다.`, type: 'danger' });
+    }
+    if (topCategory && topCatShare >= 0.5) {
+      events.push({ time: '15:10', agent: '매출 분석 AI', desc: `${catName(topCategory[0])} 매출 비중이 ${(topCatShare * 100).toFixed(1)}%로 높게 나타났습니다.`, type: 'warning' });
+    }
+    // 최근 7일 평균 대비 (선택일 직전 7일, 데이터 없는 날은 0원으로 포함)
+    const selMs = Date.parse(lastSelectedDate);
+    if (Number.isFinite(selMs)) {
+      let sum = 0;
+      for (let d = 1; d <= 7; d++) {
+        const dt = new Date(selMs - d * 86400000);
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        sum += revByDate.get(key)?.productRevenue ?? 0;
+      }
+      const avg = sum / 7;
+      if (avg > 0) {
+        const diff = (sel.productRevenue - avg) / avg;
+        if (diff >= 0.3) events.push({ time: '15:20', agent: '운영 HQ', desc: `오늘 매출은 최근 7일 평균 대비 ${Math.round(diff * 100)}% 높습니다.`, type: 'normal' });
+        else if (diff <= -0.3) events.push({ time: '15:20', agent: '운영 HQ', desc: `오늘 매출은 최근 7일 평균 대비 ${Math.round(Math.abs(diff) * 100)}% 낮습니다.`, type: 'warning' });
+      }
+    }
+    // 이상 데이터 감지
+    if (sel.orderCount > 0 && sel.productRevenue === 0) {
+      events.push({ time: '15:30', agent: '데이터 감시 AI', desc: `주문 ${sel.orderCount}건이 있으나 상품매출이 0원인 이상 데이터가 감지되었습니다.`, type: 'danger' });
+    }
+    if (sel.soldQty === 0 && sel.productRevenue > 0) {
+      events.push({ time: '15:35', agent: '데이터 감시 AI', desc: `판매수량 0인데 매출이 발생한 이상 데이터가 감지되었습니다.`, type: 'danger' });
+    }
+    return events.sort((a, b) => a.time.localeCompare(b.time));
+  }, [sel, lastSelectedDate, revByDate, topCategory, topCatShare]);
 
   const handleSelectDay = (cell: RevCell) => {
     setLastSelectedDate(cell.date);
@@ -391,33 +432,49 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
               </div>
             </div>
 
-            {/* 카테고리 / 상위 상품 */}
+            {/* 운영 이슈 · AI 활동 타임라인 (메인) — RevenueOrder + stockImpact 기반 감지 */}
             <div className="brief-section-card">
-              <h4>🏷️ 주요 판매 카테고리 · 상위 상품</h4>
+              <h4>🕒 운영 이슈 · AI 활동 타임라인</h4>
+              {selData.orderCount === 0 ? (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  이 날짜에는 기록된 운영 이슈가 없습니다. (판매·재고 관련 감지 이슈 없음)
+                </span>
+              ) : dailyIssues.length === 0 ? (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  판매·재고 관련 감지 이슈가 없습니다. 정상 운영 흐름입니다.
+                </span>
+              ) : (
+                <div className="timeline-list">
+                  {dailyIssues.map((ev, i) => (
+                    <div key={i} className={`timeline-item active ${ev.type}`}>
+                      <span className="timeline-dot"></span>
+                      <span className="timeline-time">[{ev.time}] {ev.agent}</span>
+                      <span className="timeline-desc">{ev.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="cal-issue-note">
+                ※ 실제 AI 실행 로그는 아직 연결 전입니다. 현재는 매출·재고 데이터 기반 감지 이슈를 표시합니다.
+              </p>
+            </div>
+
+            {/* 판매 참고 요약 (축소) */}
+            <div className="brief-section-card">
+              <h4>🏷️ 판매 참고 요약</h4>
               {selData.orderCount === 0 ? (
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>해당 날짜 매출 데이터가 없습니다. (0원 / 0건)</span>
               ) : (
-                <>
-                  <ul className="bullet-list">
-                    {topCategories.map(([code, rev]) => (
-                      <li key={code} className="bullet-item"><span className="icon">📦</span> <span>{catName(code)} — {won(rev)}</span></li>
-                    ))}
-                  </ul>
-                  <ul className="bullet-list" style={{ marginTop: '6px' }}>
-                    {topProducts.map((p, i) => (
-                      <li key={i} className="bullet-item"><span className="icon">🏆</span> <span>{p.name || '(이름 없음)'} — {won(p.revenue)} · {p.qty}개</span></li>
-                    ))}
-                  </ul>
-                </>
+                <ul className="bullet-list cal-ref-summary">
+                  {topCategory && (
+                    <li className="bullet-item"><span className="icon">📦</span> <span>주요 카테고리: {catName(topCategory[0])} ({(topCatShare * 100).toFixed(1)}%)</span></li>
+                  )}
+                  {topProducts[0] && (
+                    <li className="bullet-item"><span className="icon">🏆</span> <span>상위 상품: {topProducts[0].name || '(이름 없음)'} ({won(topProducts[0].revenue)})</span></li>
+                  )}
+                  <li className="bullet-item" style={{ color: 'var(--text-muted)' }}><span className="icon">🧾</span> <span>판매 상품 {selData.prodRev.size}종 · 총 {selData.soldQty.toLocaleString('ko-KR')}개</span></li>
+                </ul>
               )}
-            </div>
-
-            {/* 런타임 미연동 영역 (placeholder 유지) */}
-            <div className="brief-section-card">
-              <h4>🤖 AI 운영 활동 · Issue Timeline</h4>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                에이전트 운영 활동/이슈 타임라인은 실제 런타임 데이터 연동 전 단계입니다. (매출·주문·재고는 실데이터 기반)
-              </span>
             </div>
           </div>
         </div>
