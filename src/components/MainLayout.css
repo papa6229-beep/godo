@@ -161,8 +161,8 @@
 .nav-divider {
   width: 2px;
   height: 24px;
-  background: rgba(80, 255, 190, 0.35); /* 민트 포인트를 차용하여 대비 강화 */
-  box-shadow: 0 0 6px rgba(80, 255, 190, 0.2);
+  background: rgba(90, 220, 205, 0.35); /* 민트 포인트를 차용하여 대비 강화 */
+  box-shadow: 0 0 6px rgba(90, 220, 205, 0.2);
   align-self: center;
   margin: 0 10px;
   flex-shrink: 0;
@@ -198,7 +198,7 @@
 }
 
 .nav-tab-btn.nav-tab-settings.active {
-  background: rgba(45, 245, 162, 0.1);
+  background: rgba(49, 214, 196, 0.1);
   color: var(--accent-primary);
   border: 1px solid var(--accent-border);
 }

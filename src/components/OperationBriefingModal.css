@@ -55,7 +55,7 @@
 .briefing-modal-badge {
   font-size: 9px;
   font-weight: 800;
-  color: #10b981;
+  color: #1f9aaa;
   text-transform: uppercase;
   letter-spacing: 2px;
 }
@@ -113,8 +113,8 @@
 
 .briefing-tab:hover { color: #c9d1d9; }
 .briefing-tab.active {
-  color: #10b981;
-  border-bottom-color: #10b981;
+  color: #1f9aaa;
+  border-bottom-color: #1f9aaa;
 }
 
 /* 본문 */
@@ -176,7 +176,7 @@
 .briefing-h3 {
   font-size: 12px;
   font-weight: 800;
-  color: #10b981;
+  color: #1f9aaa;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 10px 0 6px;
@@ -192,12 +192,12 @@
 }
 
 .briefing-quote {
-  border-left: 2.5px solid #10b981;
+  border-left: 2.5px solid #1f9aaa;
   padding: 6px 12px;
   margin: 6px 0;
   background: rgba(16, 185, 129, 0.04);
   border-radius: 0 6px 6px 0;
-  color: #10b981;
+  color: #1f9aaa;
   font-weight: 600;
   font-size: 12px;
 }
@@ -226,7 +226,7 @@
 .section-mini-title {
   font-size: 9.5px;
   font-weight: 800;
-  color: #10b981;
+  color: #1f9aaa;
   text-transform: uppercase;
   letter-spacing: 1.5px;
   margin: 0;
@@ -242,7 +242,7 @@
   gap: 5px;
 }
 
-.dept-result-card.completed { border-left: 3px solid #10b981; }
+.dept-result-card.completed { border-left: 3px solid #1f9aaa; }
 .dept-result-card.failed    { border-left: 3px solid #ef4444; }
 
 .dept-result-header {
@@ -264,8 +264,8 @@
   border-radius: 8px;
 }
 
-.dept-result-badge.success    { background: rgba(16, 185, 129, 0.12); color: #10b981; }
-.dept-result-badge.completed  { background: rgba(16, 185, 129, 0.12); color: #10b981; }
+.dept-result-badge.success    { background: rgba(16, 185, 129, 0.12); color: #1f9aaa; }
+.dept-result-badge.completed  { background: rgba(16, 185, 129, 0.12); color: #1f9aaa; }
 .dept-result-badge.failed     { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
 .dept-result-badge.needs_review { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
 .dept-result-badge.blocked    { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
@@ -452,7 +452,7 @@
   padding: 2px 0;
 }
 
-.techlog-status.completed { color: #10b981; }
+.techlog-status.completed { color: #1f9aaa; }
 .techlog-status.failed    { color: #ef4444; }
 .techlog-status.pending   { color: #8b949e; }
 
@@ -527,7 +527,7 @@
 .dept-result-card.clickable:hover .dept-result-arrow {
   opacity: 1;
   transform: translateX(3px);
-  color: #10b981;
+  color: #1f9aaa;
 }
 
 /* 섹션 보조 힌트 */
@@ -552,7 +552,7 @@
 
 .handoff-full-item.clickable:hover .handoff-detail-hint {
   opacity: 1;
-  color: #10b981;
+  color: #1f9aaa;
   transform: translateX(3px);
 }
 
