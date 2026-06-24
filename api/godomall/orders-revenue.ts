@@ -12,8 +12,17 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only GET is accepted.', 405);
   }
 
+  // ?includeSynthetic=true 일 때만 가상 매출 데이터 포함 (기본 false = 기존 동작 유지)
+  let includeSynthetic = false;
   try {
-    const resolved = await resolveOrdersRevenue();
+    const url = new URL(req.url || '', 'http://localhost');
+    includeSynthetic = url.searchParams.get('includeSynthetic') === 'true';
+  } catch {
+    // 파싱 실패 시 false 유지
+  }
+
+  try {
+    const resolved = await resolveOrdersRevenue({ includeSynthetic });
     sendOkResponse(res, {
       mode: resolved.mode,
       live: resolved.live,
