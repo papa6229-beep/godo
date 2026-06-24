@@ -47,6 +47,16 @@
 .ptd-reset { margin-left: auto; font-size: 12px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line-subtle); background: transparent; color: var(--text-muted); cursor: pointer; }
 .ptd-reset:hover { color: var(--text-primary); border-color: var(--ptd-teal); }
 
+/* 직접 기간 선택 (date inputs) */
+.ptd-daterange { display: inline-flex; align-items: center; gap: 5px; }
+.ptd-date-input { font-size: 12px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-primary); }
+.ptd-date-input:focus { outline: none; border-color: var(--ptd-teal); }
+.ptd-date-sep { color: var(--text-muted); font-size: 12px; }
+
+/* 정렬 방향 토글 */
+.ptd-dir-toggle { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ptd-teal); background: color-mix(in srgb, var(--ptd-teal) 14%, transparent); color: var(--ptd-teal); cursor: pointer; }
+.ptd-dir-toggle:hover { background: color-mix(in srgb, var(--ptd-teal) 22%, transparent); }
+
 /* KPI */
 .ptd-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .ptd-kpi-card { background: var(--bg-surface); border: 1px solid var(--line-subtle); border-left: 3px solid var(--ptd-teal); border-radius: 12px; padding: 14px; transition: transform 0.14s ease, box-shadow 0.14s ease; }

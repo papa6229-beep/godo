@@ -293,29 +293,41 @@ const srcFilter = (orders: RevenueOrderLite[], s: 'all' | 'real' | 'synthetic'):
 };
 
 // ── 상품별 매출 순위 전체보기 모달 ──
+type RankField = 'revenue' | 'quantity' | 'stock' | 'name' | 'category';
 const RankingModal: React.FC<{
   orders: RevenueOrderLite[];
+  stockImpact: StockImpactItem[];
   categoryOptions: { code: string; label: string }[];
   onClose: () => void;
-}> = ({ orders, categoryOptions, onClose }) => {
+}> = ({ orders, stockImpact, categoryOptions, onClose }) => {
   const [cat, setCat] = useState('all');
   const [win, setWin] = useState<'all' | 'month' | 'week' | 'day'>('all');
   const [src, setSrc] = useState<'all' | 'real' | 'synthetic'>('all');
-  const [sort, setSort] = useState<'revenue' | 'quantity' | 'name' | 'category'>('revenue');
+  const [sortField, setSortField] = useState<RankField>('revenue');
+  const [dir, setDir] = useState<'asc' | 'desc'>('desc'); // 기본 매출 내림차순
+
+  const stockMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of stockImpact) m.set(s.productId, s.syntheticProjectedStock);
+    return m;
+  }, [stockImpact]);
 
   const rows = useMemo(() => {
     const filtered = srcFilter(windowFilter(orders, win), src);
     const agg = Array.from(aggregateProducts(filtered, cat).values());
     const total = agg.reduce((s, x) => s + x.revenue, 0);
-    const arr = agg.map((a) => ({ ...a, pct: total > 0 ? a.revenue / total : 0 }));
+    const arr = agg.map((a) => ({ ...a, pct: total > 0 ? a.revenue / total : 0, projected: stockMap.get(a.goodsNo) ?? 0 }));
     arr.sort((a, b) => {
-      if (sort === 'quantity') return b.quantity - a.quantity;
-      if (sort === 'name') return a.name.localeCompare(b.name);
-      if (sort === 'category') return catName(a.category).localeCompare(catName(b.category));
-      return b.revenue - a.revenue;
+      const r =
+        sortField === 'quantity' ? a.quantity - b.quantity :
+        sortField === 'stock' ? a.projected - b.projected :
+        sortField === 'name' ? a.name.localeCompare(b.name) :
+        sortField === 'category' ? catName(a.category).localeCompare(catName(b.category)) :
+        a.revenue - b.revenue;
+      return dir === 'asc' ? r : -r;
     });
     return arr;
-  }, [orders, cat, win, src, sort]);
+  }, [orders, cat, win, src, sortField, dir, stockMap]);
 
   return (
     <Modal title="상품별 매출 순위 — 전체" onClose={onClose}>
@@ -330,14 +342,17 @@ const RankingModal: React.FC<{
           <Chips value={src} options={[['all', '전체'], ['real', '실제'], ['synthetic', '가상']]} onChange={setSrc} />
         </div>
         <div className="ptd-mf"><span className="ptd-filter-label">정렬</span>
-          <Chips value={sort} options={[['revenue', '매출순'], ['quantity', '수량순'], ['category', '카테고리순'], ['name', '상품명순']]} onChange={setSort} />
+          <Chips value={sortField} options={[['revenue', '상품매출'], ['quantity', '판매수량'], ['stock', '가상재고'], ['category', '카테고리'], ['name', '상품명']]} onChange={setSortField} />
+          <button type="button" className="ptd-dir-toggle" onClick={() => setDir(dir === 'asc' ? 'desc' : 'asc')}>
+            {dir === 'asc' ? '↑ 오름차순' : '↓ 내림차순'}
+          </button>
         </div>
       </div>
       <table className="ptd-table">
-        <thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th className="num">상품매출</th><th className="num">판매수량</th><th className="num">비중</th></tr></thead>
+        <thead><tr><th>#</th><th>상품명</th><th>카테고리</th><th className="num">상품매출</th><th className="num">판매수량</th><th className="num">가상재고</th><th className="num">비중</th></tr></thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={6} className="ptd-muted">표시할 상품이 없습니다.</td></tr>
+            <tr><td colSpan={7} className="ptd-muted">표시할 상품이 없습니다.</td></tr>
           ) : rows.map((r, i) => (
             <tr key={r.goodsNo || i}>
               <td>{i + 1}</td>
@@ -345,6 +360,7 @@ const RankingModal: React.FC<{
               <td>{catName(r.category)} <span className="ptd-td-note">code {r.category || '-'}</span></td>
               <td className="num strong">{won(r.revenue)}</td>
               <td className="num">{qty(r.quantity)}</td>
+              <td className="num">{qty(r.projected)}</td>
               <td className="num">{pctStr(r.pct)}</td>
             </tr>
           ))}
@@ -493,12 +509,26 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const [month, setMonth] = useState('all');
   const [dataSrc, setDataSrc] = useState<'all' | 'real' | 'synthetic'>('all');
   const [period, setPeriod] = useState<Period>('month');
+  // 공통 기간(범위) 필터 — KPI/매출추이/도넛/순위가 함께 공유
+  const [rangePreset, setRangePreset] = useState<'all' | 'm1' | 'w1' | 'd1' | 'custom'>('all');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
   const [rankOpen, setRankOpen] = useState(false);
   const [allOpen, setAllOpen] = useState(false);
 
   const orders = useMemo<RevenueOrderLite[]>(() => revenue?.orders ?? [], [revenue]);
   const stockImpact = useMemo<StockImpactItem[]>(() => revenue?.stockImpact ?? [], [revenue]);
   const summary = revenue?.summary ?? null;
+
+  // 프리셋(최근 N일) 계산용 최신 주문일
+  const maxOrderMs = useMemo(() => {
+    let m = 0;
+    for (const o of orders) {
+      const ms = Date.parse(o.orderDate.slice(0, 10));
+      if (Number.isFinite(ms) && ms > m) m = ms;
+    }
+    return m;
+  }, [orders]);
 
   const goodsCategory = useMemo(() => {
     const m = new Map<string, { code: string; label: string }>();
@@ -527,19 +557,26 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     return s;
   }, [orders, year]);
 
-  const ordersFiltered = useMemo(
-    () =>
-      orders.filter((o) => {
-        const y = o.orderDate.slice(0, 4);
-        const m = o.orderDate.length >= 7 ? String(parseInt(o.orderDate.slice(5, 7), 10)) : '';
-        if (year !== 'all' && y !== year) return false;
-        if (month !== 'all' && m !== month) return false;
-        if (dataSrc === 'real' && o.sourceType !== 'real_godomall') return false;
-        if (dataSrc === 'synthetic' && o.sourceType !== 'synthetic_test') return false;
-        return true;
-      }),
-    [orders, year, month, dataSrc]
-  );
+  const ordersFiltered = useMemo(() => {
+    const startMs = rangePreset === 'custom' && customStart ? Date.parse(customStart) : null;
+    const endMs = rangePreset === 'custom' && customEnd ? Date.parse(customEnd) : null;
+    const presetDays = rangePreset === 'm1' ? 30 : rangePreset === 'w1' ? 7 : rangePreset === 'd1' ? 1 : 0;
+    const presetCut = presetDays > 0 && maxOrderMs > 0 ? maxOrderMs - presetDays * 86400000 : null;
+    return orders.filter((o) => {
+      const y = o.orderDate.slice(0, 4);
+      const m = o.orderDate.length >= 7 ? String(parseInt(o.orderDate.slice(5, 7), 10)) : '';
+      if (year !== 'all' && y !== year) return false;
+      if (month !== 'all' && m !== month) return false;
+      if (dataSrc === 'real' && o.sourceType !== 'real_godomall') return false;
+      if (dataSrc === 'synthetic' && o.sourceType !== 'synthetic_test') return false;
+      // 공통 기간(범위) 필터
+      const ms = Date.parse(o.orderDate.slice(0, 10));
+      if (presetCut != null && ms < presetCut) return false;
+      if (startMs != null && ms < startMs) return false;
+      if (endMs != null && ms > endMs) return false;
+      return true;
+    });
+  }, [orders, year, month, dataSrc, rangePreset, customStart, customEnd, maxOrderMs]);
 
   const relevantOrders = useMemo(
     () => (category === 'all' ? ordersFiltered : ordersFiltered.filter((o) => o.lines.some((l) => l.categoryCode === category))),
@@ -627,6 +664,9 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     setYear('all');
     setMonth('all');
     setDataSrc('all');
+    setRangePreset('all');
+    setCustomStart('');
+    setCustomEnd('');
   };
 
   const synthOn = (summary?.syntheticOrderCount ?? 0) > 0;
@@ -678,6 +718,20 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
               {([['all', '전체'], ['real', '실제만'], ['synthetic', '가상만']] as const).map(([v, label]) => (
                 <button key={v} className={`ptd-chip ${dataSrc === v ? 'active' : ''}`} onClick={() => setDataSrc(v)}>{label}</button>
               ))}
+            </div>
+            {/* 공통 기간(범위) 필터 — 대시보드 전체(KPI/추이/도넛/순위) 공유 */}
+            <div className="ptd-filter-group">
+              <span className="ptd-filter-label">기간</span>
+              {([['all', '전체'], ['m1', '최근 1개월'], ['w1', '최근 1주'], ['d1', '최근 1일'], ['custom', '직접 선택']] as const).map(([v, label]) => (
+                <button key={v} className={`ptd-chip ${rangePreset === v ? 'active' : ''}`} onClick={() => setRangePreset(v)}>{label}</button>
+              ))}
+              {rangePreset === 'custom' && (
+                <span className="ptd-daterange">
+                  <input type="date" className="ptd-date-input" value={customStart} max={customEnd || undefined} onChange={(e) => setCustomStart(e.target.value)} aria-label="시작일" />
+                  <span className="ptd-date-sep">~</span>
+                  <input type="date" className="ptd-date-input" value={customEnd} min={customStart || undefined} onChange={(e) => setCustomEnd(e.target.value)} aria-label="종료일" />
+                </span>
+              )}
             </div>
             <button type="button" className="ptd-reset" onClick={resetFilters}>↺ 초기화</button>
           </div>
@@ -803,7 +857,7 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         </>
       )}
 
-      {rankOpen && <RankingModal orders={ordersFiltered} categoryOptions={categoryOptions} onClose={() => setRankOpen(false)} />}
+      {rankOpen && <RankingModal orders={ordersFiltered} stockImpact={stockImpact} categoryOptions={categoryOptions} onClose={() => setRankOpen(false)} />}
       {allOpen && (
         <AllProductsModal
           orders={ordersFiltered}
