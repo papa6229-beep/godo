@@ -257,12 +257,15 @@
 }
 
 .cell-badge {
-  font-size: 0.55rem;
+  font-size: 0.6rem;
   font-weight: 700;
-  padding: 1px 3px;
+  letter-spacing: -0.02em;
+  padding: 1px 4px;
   border-radius: 3px;
-  display: flex;
-  justify-content: space-between;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }

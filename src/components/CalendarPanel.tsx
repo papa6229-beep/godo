@@ -53,6 +53,16 @@ interface RevCell {
 }
 
 const won = (n: number): string => `₩${Math.round(n).toLocaleString('ko-KR')}`;
+// 셀용 짧은 한국어 금액 표기 (40000→4만, 333000→33만, 3,026,529→303만)
+const wonShort = (n: number): string => {
+  if (n >= 100000000) {
+    const v = n / 100000000;
+    return `${v % 1 === 0 ? v : Number(v.toFixed(1))}억`;
+  }
+  if (n >= 10000) return `${Math.round(n / 10000).toLocaleString('ko-KR')}만`;
+  if (n > 0) return `${Math.round(n).toLocaleString('ko-KR')}원`;
+  return '0원';
+};
 
 export const CalendarPanel: React.FC<CalendarPanelProps> = ({
   lastSelectedDate,
@@ -317,13 +327,13 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
                     {cell.daily && (
                       <div className="day-cell-badges">
                         {cell.daily.orderCount > 0 && (
-                          <span className="cell-badge ord"><span>ORD</span> <span>{cell.daily.orderCount}</span></span>
+                          <span className="cell-badge ord">주문 {cell.daily.orderCount}건</span>
                         )}
                         {cell.daily.productRevenue > 0 && (
-                          <span className="cell-badge sales"><span>₩</span> <span>{Math.round(cell.daily.productRevenue / 1000)}k</span></span>
+                          <span className="cell-badge sales">매출 {wonShort(cell.daily.productRevenue)}</span>
                         )}
                         {cell.daily.riskGoods.size > 0 && (
-                          <span className="cell-badge stk"><span>STK</span> <span>{cell.daily.riskGoods.size}</span></span>
+                          <span className="cell-badge stk">재고주의 {cell.daily.riskGoods.size}건</span>
                         )}
                       </div>
                     )}
