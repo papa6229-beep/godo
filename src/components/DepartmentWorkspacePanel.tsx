@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import './DepartmentWorkspacePanel.css';
 import {
   fetchAdminProducts,
-  fetchAdminOrders,
+  fetchRevenue,
   type AdminProductsResult,
-  type AdminOrdersResult,
+  type RevenueResult,
   type DataSourceTag
 } from '../services/departmentDataService';
 
@@ -134,18 +134,18 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   });
   const [input, setInput] = useState('');
 
-  // 상품관리팀 대시보드 데이터 (Products REAL READ + Orders READ v0)
+  // 상품관리팀 대시보드 데이터 (Products 13개 + orders-revenue?includeSynthetic=true)
   const [productData, setProductData] = useState<{
     products: AdminProductsResult | null;
-    orders: AdminOrdersResult | null;
+    revenue: RevenueResult | null;
     loading: boolean;
     loaded: boolean;
-  }>({ products: null, orders: null, loading: false, loaded: false });
+  }>({ products: null, revenue: null, loading: false, loaded: false });
 
   const loadProductTeamData = async () => {
     setProductData((prev) => ({ ...prev, loading: true }));
-    const [products, orders] = await Promise.all([fetchAdminProducts(), fetchAdminOrders()]);
-    setProductData({ products, orders, loading: false, loaded: true });
+    const [products, revenue] = await Promise.all([fetchAdminProducts(), fetchRevenue(true)]);
+    setProductData({ products, revenue, loading: false, loaded: true });
   };
 
   // 팀 선택 — 상품관리팀을 처음 선택하면 1회 자동 로드 (이벤트 핸들러에서 트리거)
@@ -181,9 +181,9 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     }
   };
 
-  // 상품관리팀 대시보드 데이터 영역 (최소 확인용 — 디자인 고도화 X)
+  // 상품관리팀 대시보드 — orders-revenue(includeSynthetic=true) 데이터 연결 (디자인 고도화 X)
   const renderProductData = () => {
-    const { products, orders, loading, loaded } = productData;
+    const { products, revenue, loading, loaded } = productData;
 
     if (!loaded && loading) {
       return <div className="dept-data-loading">데이터를 불러오는 중…</div>;
@@ -199,14 +199,22 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     }
 
     const p = products;
-    const o = orders;
-    const productPreview = (p?.products ?? []).slice(0, 5);
-    const orderPreview = o?.orders ?? [];
+    const r = revenue;
+    const sum = r?.summary ?? null;
+    const stock = r?.stockImpact ?? [];
+    const qty = (n: number): string => n.toLocaleString('ko-KR');
+    const virtualCurrentStock = stock.reduce((s, x) => s + x.syntheticProjectedStock, 0);
+    const stockPreview = stock.slice(0, 8);
+    const synthOn = (sum?.syntheticOrderCount ?? 0) > 0;
 
     return (
       <div className="dept-data-wrap">
         <div className="dept-data-toolbar">
-          <span className="dept-data-hint">상품관리팀 대시보드 데이터 연결 확인용</span>
+          <span className={`dept-synth-badge ${synthOn ? 'on' : 'off'}`}>
+            {synthOn
+              ? `🧪 실제 ${sum?.realOrderCount ?? 0}건 + 가상 ${sum?.syntheticOrderCount ?? 0}건 포함`
+              : 'Synthetic Test Data OFF'}
+          </span>
           <button
             type="button"
             className="dept-refresh-btn"
@@ -217,95 +225,100 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           </button>
         </div>
 
-        {/* 요약 카드 */}
+        {/* 1) 상품/주문 수 */}
+        <div className="dept-group-label">상품 · 주문</div>
         <div className="dept-card-grid">
           <div className="dept-stat-card">
-            <div className="dept-stat-head">
-              <span className="dept-stat-icon">🏷️</span>
-              <span className="dept-stat-label">상품 수</span>
-            </div>
+            <div className="dept-stat-head"><span className="dept-stat-icon">🏷️</span><span className="dept-stat-label">상품 수</span></div>
             <div className="dept-stat-value">{p?.count ?? 0}<span className="dept-stat-unit">개</span></div>
-            <span className={`dept-stat-tag src-${p?.source ?? 'unavailable'}`}>
-              출처: {SOURCE_LABEL[p?.source ?? 'unavailable']}
-            </span>
+            <span className={`dept-stat-tag src-${p?.source ?? 'unavailable'}`}>출처: {SOURCE_LABEL[p?.source ?? 'unavailable']}</span>
           </div>
-
           <div className="dept-stat-card">
-            <div className="dept-stat-head">
-              <span className="dept-stat-icon">🧾</span>
-              <span className="dept-stat-label">주문 수</span>
-            </div>
-            <div className="dept-stat-value">{o?.count ?? 0}<span className="dept-stat-unit">건</span></div>
-            <span className={`dept-stat-tag src-${o?.source ?? 'unavailable'}`}>
-              출처: {SOURCE_LABEL[o?.source ?? 'unavailable']}
-            </span>
+            <div className="dept-stat-head"><span className="dept-stat-icon">🧾</span><span className="dept-stat-label">총 주문</span></div>
+            <div className="dept-stat-value">{qty(sum?.orderCount ?? 0)}<span className="dept-stat-unit">건</span></div>
+            <span className={`dept-stat-tag src-${r?.source ?? 'unavailable'}`}>출처: {SOURCE_LABEL[r?.source ?? 'unavailable']}</span>
           </div>
-
           <div className="dept-stat-card">
-            <div className="dept-stat-head">
-              <span className="dept-stat-icon">💳</span>
-              <span className="dept-stat-label">미결제 주문</span>
-            </div>
-            <div className="dept-stat-value">{o?.unpaidCount ?? 0}<span className="dept-stat-unit">건</span></div>
-            <span className="dept-stat-tag">결제 대기/미입금</span>
+            <div className="dept-stat-head"><span className="dept-stat-icon">🛍️</span><span className="dept-stat-label">실제 주문</span></div>
+            <div className="dept-stat-value">{qty(sum?.realOrderCount ?? 0)}<span className="dept-stat-unit">건</span></div>
+            <span className="dept-stat-tag src-real">real_godomall</span>
           </div>
-
           <div className="dept-stat-card">
-            <div className="dept-stat-head">
-              <span className="dept-stat-icon">📦</span>
-              <span className="dept-stat-label">미배송 주문</span>
-            </div>
-            <div className="dept-stat-value">{o?.undeliveredCount ?? 0}<span className="dept-stat-unit">건</span></div>
-            <span className="dept-stat-tag">배송 전</span>
+            <div className="dept-stat-head"><span className="dept-stat-icon">🧪</span><span className="dept-stat-label">가상 주문</span></div>
+            <div className="dept-stat-value">{qty(sum?.syntheticOrderCount ?? 0)}<span className="dept-stat-unit">건</span></div>
+            <span className="dept-stat-tag">synthetic_test</span>
           </div>
         </div>
 
-        {/* 상품 미리보기 */}
+        {/* 2) 매출 요약 */}
+        <div className="dept-group-label">매출 요약</div>
+        <div className="dept-card-grid">
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">💰</span><span className="dept-stat-label">상품매출</span></div>
+            <div className="dept-stat-value dept-stat-money">{won(sum?.productRevenueByLines ?? 0)}</div>
+            <span className="dept-stat-tag">라인합 (배송비 제외)</span>
+          </div>
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">🚚</span><span className="dept-stat-label">배송비</span></div>
+            <div className="dept-stat-value dept-stat-money">{won(sum?.deliveryFeeTotal ?? 0)}</div>
+            <span className="dept-stat-tag">상품매출과 분리</span>
+          </div>
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">🧮</span><span className="dept-stat-label">총주문금액</span></div>
+            <div className="dept-stat-value dept-stat-money">{won(sum?.totalAmount ?? 0)}</div>
+            <span className="dept-stat-tag">상품매출 + 배송비</span>
+          </div>
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">📈</span><span className="dept-stat-label">판매수량</span></div>
+            <div className="dept-stat-value">{qty(sum?.syntheticTotalSoldQuantity ?? 0)}<span className="dept-stat-unit">개</span></div>
+            <span className="dept-stat-tag">정상 판매 라인</span>
+          </div>
+        </div>
+
+        {/* 3) 재고 요약 (stockImpact) */}
+        <div className="dept-group-label">재고 요약 <small>(synthetic 가상 재고)</small></div>
+        <div className="dept-card-grid">
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">📦</span><span className="dept-stat-label">관리 상품</span></div>
+            <div className="dept-stat-value">{qty(sum?.syntheticTrackedProductCount ?? 0)}<span className="dept-stat-unit">개</span></div>
+            <span className="dept-stat-tag">tracked</span>
+          </div>
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">🔻</span><span className="dept-stat-label">총 판매수량</span></div>
+            <div className="dept-stat-value">{qty(sum?.syntheticTotalSoldQuantity ?? 0)}<span className="dept-stat-unit">개</span></div>
+            <span className="dept-stat-tag">차감</span>
+          </div>
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">↩️</span><span className="dept-stat-label">복구수량</span></div>
+            <div className="dept-stat-value">{qty(sum?.syntheticTotalRestoredQuantity ?? 0)}<span className="dept-stat-unit">개</span></div>
+            <span className="dept-stat-tag">취소/반품/환불</span>
+          </div>
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">⚖️</span><span className="dept-stat-label">순판매수량</span></div>
+            <div className="dept-stat-value">{qty(sum?.syntheticTotalNetSoldQuantity ?? 0)}<span className="dept-stat-unit">개</span></div>
+            <span className="dept-stat-tag">판매 − 복구</span>
+          </div>
+          <div className="dept-stat-card">
+            <div className="dept-stat-head"><span className="dept-stat-icon">🏬</span><span className="dept-stat-label">가상 현재 재고</span></div>
+            <div className="dept-stat-value">{qty(virtualCurrentStock)}<span className="dept-stat-unit">개</span></div>
+            <span className="dept-stat-tag">projected 합계</span>
+          </div>
+        </div>
+
+        {/* 상품 미리보기 — 가상재고(projected) 기준, 원본재고는 보조 */}
         <div className="dept-preview-block">
-          <h4 className="dept-preview-title">상품 미리보기 <small>상품명 / 판매가 / 재고상태</small></h4>
-          {productPreview.length === 0 ? (
+          <h4 className="dept-preview-title">상품 미리보기 <small>상품명 / 가상재고 (원본재고 보조)</small></h4>
+          {stockPreview.length === 0 ? (
             <p className="dept-preview-empty">표시할 상품이 없습니다.</p>
           ) : (
             <ul className="dept-preview-list">
-              {productPreview.map((pr) => (
-                <li key={pr.productId || pr.productName} className="dept-preview-row">
-                  <span className="dept-preview-name">{pr.productName || '(이름 없음)'}</span>
-                  <span className="dept-preview-mid">{won(pr.price)}</span>
-                  <span className={`dept-preview-badge ${pr.soldOut ? 'danger' : pr.stockEnabled && pr.stock <= 0 ? 'danger' : 'ok'}`}>
-                    {pr.soldOut ? '품절' : pr.stockEnabled ? `재고 ${pr.stock}` : '재고무제한'}
+              {stockPreview.map((s) => (
+                <li key={s.productId || s.productName} className="dept-preview-row">
+                  <span className="dept-preview-name">{s.productName || '(이름 없음)'}</span>
+                  <span className="dept-preview-mid">
+                    원본 {qty(s.sourceStock)}{s.sourceStockEnabled ? '' : ' (관리안함)'}
                   </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* 주문 미리보기 (관리자 화면 — 원본 고객정보 표시 가능) */}
-        <div className="dept-preview-block">
-          <h4 className="dept-preview-title">주문 미리보기 <small>주문번호 / 상품 / 금액 / 결제 / 배송</small></h4>
-          {orderPreview.length === 0 ? (
-            <p className="dept-preview-empty">표시할 주문이 없습니다.</p>
-          ) : (
-            <ul className="dept-preview-list">
-              {orderPreview.map((or) => (
-                <li key={or.orderId || or.orderNo} className="dept-order-row">
-                  <div className="dept-order-line1">
-                    <span className="dept-order-no">{or.orderNo || '(주문번호 없음)'}</span>
-                    <span className="dept-order-amount">{won(or.totalAmount)}</span>
-                  </div>
-                  <div className="dept-order-line2">
-                    <span className="dept-order-prod">{or.productName || '(상품 없음)'}</span>
-                    {or.quantity ? <span className="dept-order-qty">×{or.quantity}</span> : null}
-                  </div>
-                  <div className="dept-order-line3">
-                    <span className={`dept-order-badge ${or.unpaid ? 'danger' : 'ok'}`}>{or.paymentStatus}</span>
-                    <span className={`dept-order-badge ${or.undelivered ? 'warn' : 'ok'}`}>{or.deliveryStatus}</span>
-                    {(or.ordererName || or.receiverName) && (
-                      <span className="dept-order-cust">
-                        주문자 {or.ordererName || '-'} · 수령 {or.receiverName || '-'}
-                      </span>
-                    )}
-                  </div>
+                  <span className="dept-preview-badge ok">가상재고 {qty(s.syntheticProjectedStock)}</span>
                 </li>
               ))}
             </ul>
@@ -313,9 +326,10 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         </div>
 
         <p className="dept-data-disclaimer">
-          이 화면은 상품관리팀 대시보드 데이터 연결 확인용입니다. 상세 출력 방식과 디자인은 다음 단계에서 조정됩니다.
+          이 화면은 상품관리팀 대시보드 데이터 연결 확인용입니다. (주문/매출/재고 = orders-revenue?includeSynthetic=true,
+          상품 수 = Products READ) 상세 출력 방식과 디자인은 다음 단계에서 조정됩니다.
         </p>
-        {(p?.source === 'unavailable' || o?.source === 'unavailable') && (
+        {(p?.source === 'unavailable' || r?.source === 'unavailable' || !sum) && (
           <p className="dept-data-disclaimer warn">
             ※ 일부 데이터를 불러오지 못했습니다. (로컬 dev 환경에서는 서버 라우트가 없을 수 있습니다. 배포 환경에서 확인하세요.)
           </p>

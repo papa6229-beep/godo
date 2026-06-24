@@ -347,6 +347,45 @@
   color: var(--text-muted);
 }
 
+/* Synthetic 포함 배지 */
+.dept-synth-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-border);
+}
+.dept-synth-badge.on {
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+}
+.dept-synth-badge.off {
+  color: var(--text-muted);
+  border-color: var(--line-subtle);
+}
+
+/* 카드 그룹 라벨 */
+.dept-group-label {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+.dept-group-label small {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.dept-group-label:first-of-type {
+  margin-top: 4px;
+}
+
+/* 금액 값은 조금 작게(자릿수 대응) */
+.dept-stat-money {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
 .dept-refresh-btn {
   background: var(--bg-app);
   border: 1px solid var(--line-subtle);
