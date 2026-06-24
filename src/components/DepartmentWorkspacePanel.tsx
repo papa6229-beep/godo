@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
 import './DepartmentWorkspacePanel.css';
+import {
+  fetchAdminProducts,
+  fetchAdminOrders,
+  type AdminProductsResult,
+  type AdminOrdersResult,
+  type DataSourceTag
+} from '../services/departmentDataService';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -62,8 +69,8 @@ const TEAMS: TeamConfig[] = [
     dashboardTitle: '상품관리팀 대시보드',
     dashboardDesc: '상품 목록, 카테고리, 재고, 품절, 노출상태, 판매상태를 이곳에서 확인할 예정입니다.',
     chatTitle: '상품관리팀에게 지시하기',
-    chatPlaceholder: '예: 재고가 부족한 상품만 보여줘',
-    futureDataNote: '다음 단계 연결 예정: Products REAL READ 데이터'
+    chatPlaceholder: '예: 미결제 주문만 보여줘',
+    futureDataNote: '연결됨: Products REAL READ · Orders READ v0 (관리자 주문)'
   },
   {
     id: 'cs',
@@ -108,6 +115,15 @@ interface ChatMessage {
   text: string;
 }
 
+const SOURCE_LABEL: Record<DataSourceTag, string> = {
+  real: '고도몰 REAL READ',
+  sandbox: 'SANDBOX (Live)',
+  mock: 'Mock / Fallback',
+  unavailable: '불러오기 실패 (미연결)'
+};
+
+const won = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
+
 export const DepartmentWorkspacePanel: React.FC = () => {
   const [selectedTeamId, setSelectedTeamId] = useState<TeamId>('hq');
   const [chatLog, setChatLog] = useState<Record<TeamId, ChatMessage[]>>({
@@ -117,6 +133,28 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     marketing: []
   });
   const [input, setInput] = useState('');
+
+  // 상품관리팀 대시보드 데이터 (Products REAL READ + Orders READ v0)
+  const [productData, setProductData] = useState<{
+    products: AdminProductsResult | null;
+    orders: AdminOrdersResult | null;
+    loading: boolean;
+    loaded: boolean;
+  }>({ products: null, orders: null, loading: false, loaded: false });
+
+  const loadProductTeamData = async () => {
+    setProductData((prev) => ({ ...prev, loading: true }));
+    const [products, orders] = await Promise.all([fetchAdminProducts(), fetchAdminOrders()]);
+    setProductData({ products, orders, loading: false, loaded: true });
+  };
+
+  // 팀 선택 — 상품관리팀을 처음 선택하면 1회 자동 로드 (이벤트 핸들러에서 트리거)
+  const handleSelectTeam = (id: TeamId) => {
+    setSelectedTeamId(id);
+    if (id === 'product' && !productData.loaded && !productData.loading) {
+      void loadProductTeamData();
+    }
+  };
 
   const team = TEAMS.find((t) => t.id === selectedTeamId) as TeamConfig;
   const messages = chatLog[selectedTeamId];
@@ -143,6 +181,149 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     }
   };
 
+  // 상품관리팀 대시보드 데이터 영역 (최소 확인용 — 디자인 고도화 X)
+  const renderProductData = () => {
+    const { products, orders, loading, loaded } = productData;
+
+    if (!loaded && loading) {
+      return <div className="dept-data-loading">데이터를 불러오는 중…</div>;
+    }
+    if (!loaded) {
+      return (
+        <div className="dept-data-loading">
+          <button type="button" className="dept-refresh-btn" onClick={() => void loadProductTeamData()}>
+            데이터 불러오기
+          </button>
+        </div>
+      );
+    }
+
+    const p = products;
+    const o = orders;
+    const productPreview = (p?.products ?? []).slice(0, 5);
+    const orderPreview = o?.orders ?? [];
+
+    return (
+      <div className="dept-data-wrap">
+        <div className="dept-data-toolbar">
+          <span className="dept-data-hint">상품관리팀 대시보드 데이터 연결 확인용</span>
+          <button
+            type="button"
+            className="dept-refresh-btn"
+            onClick={() => void loadProductTeamData()}
+            disabled={loading}
+          >
+            {loading ? '새로고침 중…' : '↻ 새로고침'}
+          </button>
+        </div>
+
+        {/* 요약 카드 */}
+        <div className="dept-card-grid">
+          <div className="dept-stat-card">
+            <div className="dept-stat-head">
+              <span className="dept-stat-icon">🏷️</span>
+              <span className="dept-stat-label">상품 수</span>
+            </div>
+            <div className="dept-stat-value">{p?.count ?? 0}<span className="dept-stat-unit">개</span></div>
+            <span className={`dept-stat-tag src-${p?.source ?? 'unavailable'}`}>
+              출처: {SOURCE_LABEL[p?.source ?? 'unavailable']}
+            </span>
+          </div>
+
+          <div className="dept-stat-card">
+            <div className="dept-stat-head">
+              <span className="dept-stat-icon">🧾</span>
+              <span className="dept-stat-label">주문 수</span>
+            </div>
+            <div className="dept-stat-value">{o?.count ?? 0}<span className="dept-stat-unit">건</span></div>
+            <span className={`dept-stat-tag src-${o?.source ?? 'unavailable'}`}>
+              출처: {SOURCE_LABEL[o?.source ?? 'unavailable']}
+            </span>
+          </div>
+
+          <div className="dept-stat-card">
+            <div className="dept-stat-head">
+              <span className="dept-stat-icon">💳</span>
+              <span className="dept-stat-label">미결제 주문</span>
+            </div>
+            <div className="dept-stat-value">{o?.unpaidCount ?? 0}<span className="dept-stat-unit">건</span></div>
+            <span className="dept-stat-tag">결제 대기/미입금</span>
+          </div>
+
+          <div className="dept-stat-card">
+            <div className="dept-stat-head">
+              <span className="dept-stat-icon">📦</span>
+              <span className="dept-stat-label">미배송 주문</span>
+            </div>
+            <div className="dept-stat-value">{o?.undeliveredCount ?? 0}<span className="dept-stat-unit">건</span></div>
+            <span className="dept-stat-tag">배송 전</span>
+          </div>
+        </div>
+
+        {/* 상품 미리보기 */}
+        <div className="dept-preview-block">
+          <h4 className="dept-preview-title">상품 미리보기 <small>상품명 / 판매가 / 재고상태</small></h4>
+          {productPreview.length === 0 ? (
+            <p className="dept-preview-empty">표시할 상품이 없습니다.</p>
+          ) : (
+            <ul className="dept-preview-list">
+              {productPreview.map((pr) => (
+                <li key={pr.productId || pr.productName} className="dept-preview-row">
+                  <span className="dept-preview-name">{pr.productName || '(이름 없음)'}</span>
+                  <span className="dept-preview-mid">{won(pr.price)}</span>
+                  <span className={`dept-preview-badge ${pr.soldOut ? 'danger' : pr.stockEnabled && pr.stock <= 0 ? 'danger' : 'ok'}`}>
+                    {pr.soldOut ? '품절' : pr.stockEnabled ? `재고 ${pr.stock}` : '재고무제한'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* 주문 미리보기 (관리자 화면 — 원본 고객정보 표시 가능) */}
+        <div className="dept-preview-block">
+          <h4 className="dept-preview-title">주문 미리보기 <small>주문번호 / 상품 / 금액 / 결제 / 배송</small></h4>
+          {orderPreview.length === 0 ? (
+            <p className="dept-preview-empty">표시할 주문이 없습니다.</p>
+          ) : (
+            <ul className="dept-preview-list">
+              {orderPreview.map((or) => (
+                <li key={or.orderId || or.orderNo} className="dept-order-row">
+                  <div className="dept-order-line1">
+                    <span className="dept-order-no">{or.orderNo || '(주문번호 없음)'}</span>
+                    <span className="dept-order-amount">{won(or.totalAmount)}</span>
+                  </div>
+                  <div className="dept-order-line2">
+                    <span className="dept-order-prod">{or.productName || '(상품 없음)'}</span>
+                    {or.quantity ? <span className="dept-order-qty">×{or.quantity}</span> : null}
+                  </div>
+                  <div className="dept-order-line3">
+                    <span className={`dept-order-badge ${or.unpaid ? 'danger' : 'ok'}`}>{or.paymentStatus}</span>
+                    <span className={`dept-order-badge ${or.undelivered ? 'warn' : 'ok'}`}>{or.deliveryStatus}</span>
+                    {(or.ordererName || or.receiverName) && (
+                      <span className="dept-order-cust">
+                        주문자 {or.ordererName || '-'} · 수령 {or.receiverName || '-'}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <p className="dept-data-disclaimer">
+          이 화면은 상품관리팀 대시보드 데이터 연결 확인용입니다. 상세 출력 방식과 디자인은 다음 단계에서 조정됩니다.
+        </p>
+        {(p?.source === 'unavailable' || o?.source === 'unavailable') && (
+          <p className="dept-data-disclaimer warn">
+            ※ 일부 데이터를 불러오지 못했습니다. (로컬 dev 환경에서는 서버 라우트가 없을 수 있습니다. 배포 환경에서 확인하세요.)
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="dept-workspace">
       {/* ── 좌측: 부서 선택 / 팀 정보 ── */}
@@ -158,7 +339,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
               key={t.id}
               type="button"
               className={`dept-team-card ${t.id === selectedTeamId ? 'active' : ''}`}
-              onClick={() => setSelectedTeamId(t.id)}
+              onClick={() => handleSelectTeam(t.id)}
             >
               <div className="dept-team-card-top">
                 <span className="dept-team-emoji">{t.emoji}</span>
@@ -206,22 +387,28 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           <p className="dept-dashboard-desc">{team.dashboardDesc}</p>
         </div>
 
-        <div className="dept-placeholder-banner">
-          🚧 이 화면은 아직 데이터가 연결되지 않은 미리보기입니다. 아래 수치는 예시(placeholder)입니다.
-        </div>
-
-        <div className="dept-card-grid">
-          {PLACEHOLDER_CARDS.map((c) => (
-            <div key={c.key} className="dept-stat-card">
-              <div className="dept-stat-head">
-                <span className="dept-stat-icon">{c.icon}</span>
-                <span className="dept-stat-label">{c.label}</span>
-              </div>
-              <div className="dept-stat-value">—</div>
-              <span className="dept-stat-tag">예시 · 미연결</span>
+        {team.id === 'product' ? (
+          renderProductData()
+        ) : (
+          <>
+            <div className="dept-placeholder-banner">
+              🚧 이 화면은 아직 데이터가 연결되지 않은 미리보기입니다. 아래 수치는 예시(placeholder)입니다.
             </div>
-          ))}
-        </div>
+
+            <div className="dept-card-grid">
+              {PLACEHOLDER_CARDS.map((c) => (
+                <div key={c.key} className="dept-stat-card">
+                  <div className="dept-stat-head">
+                    <span className="dept-stat-icon">{c.icon}</span>
+                    <span className="dept-stat-label">{c.label}</span>
+                  </div>
+                  <div className="dept-stat-value">—</div>
+                  <span className="dept-stat-tag">예시 · 미연결</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="dept-future-note">
           <span className="dept-future-icon">🔌</span>

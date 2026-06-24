@@ -10,8 +10,10 @@ import {
   mapGoodsToInventory,
   mapGoodsToProducts,
   mapOrderList,
+  mapOrdersToAdmin,
   deriveSalesFromOrders
 } from './godomallMapper.js';
+import type { StandardOrderAdmin } from './godomallMapper.js';
 import { maskRecordsList } from './piiMaskGuard.js';
 import {
   getProxyMockOrders,
@@ -41,6 +43,9 @@ const ORDER_SEARCH_PATH = '/order/Order_Search.php';
 // 리스트 추출 후보 키 (실 응답 확인: Goods_Search 리스트는 data.return.goods_data)
 export const GOODS_LIST_KEYS = ['goods_data', 'goods', 'item', 'list', 'row', 'data'];
 export const ORDER_LIST_KEYS = ['order', 'item', 'list', 'row', 'data'];
+// 관리자 주문 리스트 추출 후보 (Order_Search 실응답: data.return.order_data)
+// 실제 리스트 키 order_data 를 generic wrapper 'data'보다 앞에 둔다.
+export const ADMIN_ORDER_LIST_KEYS = ['order_data', 'order_list', 'order', 'orderInfo', 'orderList', 'orderData', 'item', 'list', 'row', 'data'];
 
 // 주문 조회 기본 기간 (최근 30일)
 const defaultOrderRange = (): { startDate: string; endDate: string } => {
@@ -136,5 +141,71 @@ export const resolveResource = async (resourceType: ResourceType): Promise<Resol
     mode: config.mode,
     live: false,
     errorMessage
+  };
+};
+
+// ── 관리자 주문 조회 (Orders READ v0) ──────────────────────────────────────
+// 부서 업무 관장 > 상품관리팀 대시보드 등 관리자 내부 화면 전용.
+// 기존 resolveResource('orders')와 달리 PII 마스킹을 하지 않는다(관리자가 주문
+// 처리에 필요). 단, 키/raw XML은 절대 노출하지 않으며 READ 전용이다.
+// 라이브 실패/미설정 시 mock 주문으로 안전 폴백한다.
+export interface ResolvedAdminOrders {
+  records: StandardOrderAdmin[];
+  count: number;
+  source: ResourceSource;
+  mode: 'real' | 'sandbox' | 'mock';
+  live: boolean;
+  unpaidCount: number;
+  undeliveredCount: number;
+  errorMessage?: string;
+}
+
+const summarizeAdminOrders = (
+  records: StandardOrderAdmin[]
+): { unpaidCount: number; undeliveredCount: number } => ({
+  unpaidCount: records.filter((o) => o.unpaid).length,
+  undeliveredCount: records.filter((o) => o.undelivered).length
+});
+
+export const resolveOrdersAdmin = async (): Promise<ResolvedAdminOrders> => {
+  const config = getGodomallConfig();
+  let errorMessage: string | undefined;
+
+  if (isLiveMode(config)) {
+    try {
+      const { startDate, endDate } = defaultOrderRange();
+      const res = await postGodomall(
+        ORDER_SEARCH_PATH,
+        { dateType: 'order', startDate, endDate, page: 1, size: 50 },
+        config
+      );
+      if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
+      const parsed = parseGodomallXml(res.xml);
+      if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
+      const rawOrders = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
+      const records = mapOrdersToAdmin(rawOrders);
+      return {
+        records,
+        count: records.length,
+        source: config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox',
+        mode: config.mode,
+        live: true,
+        ...summarizeAdminOrders(records)
+      };
+    } catch (err: unknown) {
+      errorMessage = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // mock fallback (mock 데이터는 가상 고객정보 → 마스킹 불필요)
+  const records = mapOrdersToAdmin(getProxyMockOrders());
+  return {
+    records,
+    count: records.length,
+    source: 'api_mock_fallback',
+    mode: config.mode,
+    live: false,
+    errorMessage,
+    ...summarizeAdminOrders(records)
   };
 };

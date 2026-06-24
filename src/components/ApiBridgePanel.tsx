@@ -763,17 +763,19 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       {getPermissionLabel(apiState.providers[0].permissions.orders).text}
                     </span>
                   </div>
-                  <p className="resource-desc">신규 결제 내역, 배송 현황, 결제 정보 동기화</p>
+                  <p className="resource-desc">Order_Search.php 주문조회 · 결제/배송 현황 ({isLive ? '실연동 READ' : 'Mock'})</p>
                   <div className="resource-meta-info">
-                    <span>최종 동기화: {apiState.providers[0].lastSyncAt ? '완료' : '대기'}</span>
-                    <span>예상 데이터: 5 rows</span>
+                    <span>Endpoint: Order_Search.php</span>
+                    <span>Source: {isLive ? 'REAL (Live)' : 'Mock / Fallback'}</span>
                   </div>
                   <button
                     className="sync-card-btn"
                     onClick={() => handleSyncResource('orders')}
                     disabled={syncingResource !== null}
                   >
-                    {syncingResource === 'orders' ? '🔄 Syncing...' : 'Sync Mock Orders'}
+                    {syncingResource === 'orders'
+                      ? '🔄 Syncing...'
+                      : isLive ? 'Sync Orders' : 'Sync Mock Orders'}
                   </button>
                 </div>
 

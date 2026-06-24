@@ -161,6 +161,136 @@ export const mapOrderList = (orders: Raw[]): OrderIntermediate[] => {
   }));
 };
 
+// ---- 주문 관리자 화면용 매퍼 (Orders READ v0) ----
+// 용도: 부서 업무 관장 > 상품관리팀 대시보드 등 "관리자 내부 운영 화면" 전용.
+//   - 마스킹하지 않은 원본 고객정보를 포함한다 (관리자가 주문 처리에 필요).
+//   - 외부 AI 전송/공개 화면/로그용이 아니다. (그쪽은 기존 mapOrderList + maskRecordsList 사용)
+//   - type 별칭 → 서버 Record<string,unknown> 파이프라인 할당 호환.
+//
+// 실응답 구조(확인됨): data.return.order_data (단건이면 object) 안에
+//   상위: orderNo, orderDate, totalGoodsPrice, totalDeliveryCharge, settlePrice,
+//         settleKind, paymentDt, orderStatus, orderGoodsNm/Cnt(요약)
+//   중첩 orderInfoData: orderName, receiverName, orderCellPhone, receiverAddress(+Sub)
+//   중첩 orderGoodsData(object|array): goodsNm, goodsCnt, goodsPrice, goodsNo, goodsCd
+// mock(평문 customerName/productName/amount 등)도 fallback 후보로 함께 처리한다.
+export type StandardOrderAdmin = {
+  orderId: string;
+  orderNo: string;
+  orderDate: string;
+  ordererName: string;
+  receiverName: string;
+  phone: string;
+  address: string;
+  productName: string;
+  quantity: number;
+  productAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  deliveryStatus: string;
+  unpaid: boolean;       // 미결제/입금대기 계열이면 true
+  undelivered: boolean;  // 배송 전(미배송)이면 true
+};
+
+// 중첩 객체 안전 접근 (orderInfoData / orderGoodsData)
+const asRecord = (v: unknown): Raw | undefined =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Raw) : undefined;
+
+// orderGoodsData는 단일 object 또는 (상품 여러 개면) array 로 올 수 있다 → 첫 객체 반환
+const firstRecordOf = (v: unknown): Raw | undefined => {
+  if (Array.isArray(v)) return v.find((x) => asRecord(x)) as Raw | undefined;
+  return asRecord(v);
+};
+
+// 결제 여부 판단: 결제일시(paymentDt)가 유효하면 결제됨
+const hasPaymentDate = (s: string): boolean => {
+  const t = String(s || '').trim();
+  if (!t) return false;
+  if (/^0000[-/.]?0?0/.test(t)) return false; // 0000-00-00 류
+  return /[1-9]/.test(t); // 실제 날짜면 0이 아닌 숫자 포함
+};
+
+// orderStatus(코드/텍스트) 보조 판단 — 결제 이후 단계인지
+const isPaidStatus = (s: string): boolean => {
+  const t = String(s || '').trim().toLowerCase();
+  if (!t) return false;
+  if (/미결제|미입금|입금\s*대기|결제\s*대기|입금전|결제전/.test(t)) return false;
+  if (/결제완료|입금완료|배송|구매확정|deliver|paid/.test(t)) return true;
+  if (/^o\d/.test(t)) return false;        // o1: 입금대기(미결제)
+  return /^[pdgsf]\d/.test(t);             // p/d/g/s/f 단계: 결제 이후
+};
+
+// 배송상태 해석 (orderStatus 코드/텍스트 + 결제여부)
+const interpretDelivery = (s: string, paid: boolean): { deliveryStatus: string; undelivered: boolean } => {
+  const t = String(s || '').trim().toLowerCase();
+  if (/배송\s*완료|배송완료|구매확정/.test(t) || /^d2|^f\d|^g\d/.test(t)) {
+    return { deliveryStatus: '배송완료', undelivered: false };
+  }
+  if (/배송\s*중|발송/.test(t) || /^d1/.test(t)) {
+    return { deliveryStatus: '배송중', undelivered: false };
+  }
+  return { deliveryStatus: paid ? '배송 준비' : '배송 전', undelivered: true };
+};
+
+export const mapOrdersToAdmin = (orders: Raw[]): StandardOrderAdmin[] => {
+  return orders.map((o) => {
+    // 중첩: 주문자/수령자 정보 + 상품 상세 (Order_Search 실응답 구조)
+    const info = asRecord(o['orderInfoData']) ?? {};
+    const goods = firstRecordOf(o['orderGoodsData']) ?? {};
+
+    const orderNo = pick(o, ['orderNo', 'orderId'], '');
+    const orderDate = pick(o, ['orderDate', 'orderYmd', 'regDt', 'order_date'], '');
+    const paymentDt = pick(o, ['paymentDt', 'paymentDate', 'settleDt'], '');
+    const orderStatus = pick(o, ['orderStatus', 'orderStatusText', 'orderStep'], '') || pick(goods, ['orderStatus'], '');
+    // 실응답(코드) 우선, 없으면 mock의 평문 상태 텍스트를 보조로 사용
+    const payHint = orderStatus || pick(o, ['paymentStatus', 'settleStateText'], '');
+    const delivHint = orderStatus || pick(o, ['deliveryStatus', 'deliveryStatusText'], '');
+
+    const productAmount = toNumber(pick(o, ['totalGoodsPrice', 'orderGoodsPrice', 'goodsPrice'], '0'));
+    const deliveryFee = toNumber(pick(o, ['totalDeliveryCharge', 'deliveryCharge', 'sumDeliveryCharge'], '0'));
+    const settle = toNumber(pick(o, ['settlePrice', 'totalSettlePrice', 'totalPrice', 'orderPrice', 'amount'], '0'));
+
+    // 상품 상세는 중첩 orderGoodsData.goodsNm 우선, 없으면 상위/평문 fallback
+    const productName = pick(goods, ['goodsNm', 'goodsName']) || pick(o, ['orderGoodsNm', 'goodsNm', 'productName', 'goods_name'], '');
+    const quantity = toInt(pick(goods, ['goodsCnt']) || pick(o, ['orderGoodsCnt', 'goodsCnt', 'quantity', 'ea'], '1'));
+
+    // 주문자/수령자 (orderInfoData) — 관리자 화면 전용, 마스킹하지 않은 원본.
+    // mock(평문 customerName 등)도 처리되도록 상위 o 도 fallback.
+    const ordererName = pick(info, ['orderName', 'ordererName']) || pick(o, ['orderName', 'ordererName', 'customerName', 'buyerName'], '');
+    const receiverName = pick(info, ['receiverName']) || pick(o, ['receiverName'], '');
+    const phone =
+      pick(info, ['orderCellPhone', 'orderPhone', 'orderHp']) ||
+      pick(o, ['orderCellPhone', 'orderHp', 'customerPhone', 'phone', 'hp'], '');
+    const addrMain = pick(info, ['receiverAddress', 'orderAddress']) || pick(o, ['receiverAddress', 'orderAddress', 'address', 'addr'], '');
+    const addrSub = pick(info, ['receiverAddressSub', 'orderAddressSub'], '');
+    const address = [addrMain, addrSub].filter((x) => x.length > 0).join(' ').trim();
+
+    const paid = hasPaymentDate(paymentDt) || isPaidStatus(payHint);
+    const { deliveryStatus, undelivered } = interpretDelivery(delivHint, paid);
+
+    return {
+      orderId: pick(o, ['orderId', 'orderNo'], orderNo),
+      orderNo,
+      orderDate,
+      ordererName,
+      receiverName,
+      phone,
+      address,
+      productName,
+      quantity,
+      productAmount,
+      deliveryFee,
+      totalAmount: settle || productAmount + deliveryFee,
+      paymentMethod: pick(o, ['settleKind', 'settleKindText', 'settleMethodText'], ''),
+      paymentStatus: paid ? '결제완료' : '미결제',
+      deliveryStatus,
+      unpaid: !paid,
+      undelivered
+    };
+  });
+};
+
 // ---- 매출(sales) 파생 ----
 // 공식 매출 endpoint를 임의로 만들지 않고, 주문 결과를 일자별로 집계한다.
 export interface SalesIntermediate extends Record<string, string> {
