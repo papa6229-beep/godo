@@ -146,3 +146,116 @@ export const fetchAdminOrders = async (): Promise<AdminOrdersResult> => {
     };
   }
 };
+
+// ── 매출 분석(RevenueOrder + Synthetic) — /api/godomall/orders-revenue ──
+// 상품관리팀 대시보드 전용. includeSynthetic=true 시 실 주문 + 가상 240건 + stockImpact 포함.
+export interface RevenueSummary {
+  orderCount: number;
+  lineCount: number;
+  productRevenueByHeader: number;
+  productRevenueByLines: number;
+  deliveryFeeTotal: number;
+  totalAmount: number;
+  paidOrderCount: number;
+  unpaidOrderCount: number;
+  confirmedOrderCount: number;
+  canceledOrderCount: number;
+  realOrderCount: number;
+  syntheticOrderCount: number;
+  syntheticTrackedProductCount: number;
+  syntheticUnlimitedProductCount: number;
+  syntheticTotalSoldQuantity: number;
+  syntheticTotalRestoredQuantity: number;
+  syntheticTotalNetSoldQuantity: number;
+}
+
+export interface StockImpactItem {
+  productId: string;
+  productCode: string;
+  productName: string;
+  sourceStockEnabled: boolean;
+  sourceStock: number;
+  syntheticStockMode: string;
+  syntheticInitialStock: number;
+  syntheticSoldQuantity: number;
+  syntheticRestoredQuantity: number;
+  syntheticNetSoldQuantity: number;
+  syntheticProjectedStock: number;
+}
+
+export interface RevenueResult {
+  count: number;
+  source: DataSourceTag;
+  live: boolean;
+  summary: RevenueSummary | null;
+  stockImpact: StockImpactItem[];
+  errorMessage?: string;
+}
+
+// revenue route는 sourceType 대신 mode/live 를 반환 → 태그로 변환
+const tagFromModeLive = (mode: unknown, live: unknown): DataSourceTag => {
+  if (live === true) return mode === 'sandbox' ? 'sandbox' : 'real';
+  return 'mock';
+};
+
+const parseSummary = (s: Record<string, unknown> | undefined): RevenueSummary | null => {
+  if (!s) return null;
+  return {
+    orderCount: num(s.orderCount),
+    lineCount: num(s.lineCount),
+    productRevenueByHeader: num(s.productRevenueByHeader),
+    productRevenueByLines: num(s.productRevenueByLines),
+    deliveryFeeTotal: num(s.deliveryFeeTotal),
+    totalAmount: num(s.totalAmount),
+    paidOrderCount: num(s.paidOrderCount),
+    unpaidOrderCount: num(s.unpaidOrderCount),
+    confirmedOrderCount: num(s.confirmedOrderCount),
+    canceledOrderCount: num(s.canceledOrderCount),
+    realOrderCount: num(s.realOrderCount),
+    syntheticOrderCount: num(s.syntheticOrderCount),
+    syntheticTrackedProductCount: num(s.syntheticTrackedProductCount),
+    syntheticUnlimitedProductCount: num(s.syntheticUnlimitedProductCount),
+    syntheticTotalSoldQuantity: num(s.syntheticTotalSoldQuantity),
+    syntheticTotalRestoredQuantity: num(s.syntheticTotalRestoredQuantity),
+    syntheticTotalNetSoldQuantity: num(s.syntheticTotalNetSoldQuantity)
+  };
+};
+
+export const fetchRevenue = async (includeSynthetic = true): Promise<RevenueResult> => {
+  try {
+    const res = await fetch(`/api/godomall/orders-revenue?includeSynthetic=${includeSynthetic ? 'true' : 'false'}`);
+    if (!res.ok) throw new Error(`orders-revenue HTTP ${res.status}`);
+    const data = await res.json();
+    const stockImpactRaw = (data.stockImpact || []) as Record<string, unknown>[];
+    const stockImpact: StockImpactItem[] = stockImpactRaw.map((r) => ({
+      productId: str(r.productId),
+      productCode: str(r.productCode),
+      productName: str(r.productName),
+      sourceStockEnabled: bool(r.sourceStockEnabled),
+      sourceStock: num(r.sourceStock),
+      syntheticStockMode: str(r.syntheticStockMode),
+      syntheticInitialStock: num(r.syntheticInitialStock),
+      syntheticSoldQuantity: num(r.syntheticSoldQuantity),
+      syntheticRestoredQuantity: num(r.syntheticRestoredQuantity),
+      syntheticNetSoldQuantity: num(r.syntheticNetSoldQuantity),
+      syntheticProjectedStock: num(r.syntheticProjectedStock)
+    }));
+    return {
+      count: num(data.count),
+      source: tagFromModeLive(data.mode, data.live),
+      live: data.live === true,
+      summary: parseSummary(data.summary as Record<string, unknown> | undefined),
+      stockImpact,
+      errorMessage: data.errorMessage
+    };
+  } catch (err: unknown) {
+    return {
+      count: 0,
+      source: 'unavailable',
+      live: false,
+      summary: null,
+      stockImpact: [],
+      errorMessage: err instanceof Error ? err.message : String(err)
+    };
+  }
+};
