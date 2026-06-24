@@ -2,15 +2,32 @@ import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 import { getGodomallConfig, isLiveMode, postGodomall } from '../_shared/godomallOpenApiClient.js';
-import { parseGodomallXml, collectObjectArrays } from '../_shared/godomallXmlParser.js';
+import { parseGodomallXml, collectObjectArrays, extractList } from '../_shared/godomallXmlParser.js';
+import { ADMIN_ORDER_LIST_KEYS } from '../_shared/godomallResource.js';
 
 // ⚠️ 진단(임시) 라우트 — Order_Search.php 실응답의 "구조"만 확인하기 위함.
 //   main merge 전에 제거하거나 dev-only로 제한해야 한다. (작업 지시서 §11)
 //
 // 안전 원칙:
 //   - raw XML 미반환 / API key·partner_key·user_key 미반환
-//   - 고객 개인정보 "값" 미반환 — 오직 필드 "이름(key)"과 개수만 반환
+//   - 고객 개인정보 "값" 미반환 — 오직 필드 "이름(key)"·타입·개수만 반환
 //   - ?confirm=structure 쿼리가 있을 때만 실호출 (오발동 방지)
+
+// 레코드의 각 필드를 값 노출 없이 (이름/타입/중첩 키)로만 기술
+const describeRecord = (rec: Record<string, unknown>) =>
+  Object.entries(rec).map(([key, v]) => {
+    if (Array.isArray(v)) {
+      const firstObj = v.find((x) => x && typeof x === 'object' && !Array.isArray(x)) as
+        | Record<string, unknown>
+        | undefined;
+      return { key, type: `array(${v.length})`, childKeys: firstObj ? Object.keys(firstObj) : [] };
+    }
+    if (v && typeof v === 'object') {
+      return { key, type: 'object', childKeys: Object.keys(v as Record<string, unknown>) };
+    }
+    return { key, type: typeof v };
+  });
+
 export default async function handler(req: IncomingMessage, res: VercelResponse) {
   if (req.method !== 'GET') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only GET is accepted.', 405);
@@ -27,7 +44,7 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
   if (!confirm) {
     return sendOkResponse(res, {
       probe: 'orders',
-      note: '구조 확인용 진단 라우트. ?confirm=structure 를 붙여야 실호출합니다. (필드 이름/개수만 반환, 값·XML·키 미노출)'
+      note: '구조 확인용 진단 라우트. ?confirm=structure 를 붙여야 실호출합니다. (필드 이름/타입/개수만 반환, 값·XML·키 미노출)'
     });
   }
 
@@ -54,10 +71,9 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     const parsed = parseGodomallXml(apiRes.xml);
     const arrays = collectObjectArrays(parsed.root);
 
-    // 가장 큰 객체 배열(=주문 리스트로 추정)의 "필드 이름"만 추출 (값은 절대 미반환)
-    const sorted = arrays.slice().sort((a, b) => b.items.length - a.items.length);
-    const top = sorted[0];
-    const firstRecordKeys = top && top.items[0] ? Object.keys(top.items[0]) : [];
+    // orders-admin이 실제로 매핑 대상으로 잡는 레코드(extractList 결과)를 그대로 기술
+    const list = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
+    const firstRecord = list[0] as Record<string, unknown> | undefined;
 
     sendOkResponse(res, {
       probe: 'orders',
@@ -65,12 +81,13 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
       parseOk: parsed.ok,
       code: parsed.code,
       msg: parsed.msg,
-      // 어떤 노드들이 배열로 잡혔는지 (경로 + 길이만)
+      // 응답 최상위 봉투 키 (구조 파악용)
+      rootKeys: Object.keys(parsed.root),
+      // 배열로 접힌 노드들 (경로 + leafKey + 길이)
       arrayNodes: arrays.map((a) => ({ path: a.path, leafKey: a.leafKey, length: a.items.length })),
-      // 주문 리스트 추정 노드의 필드 이름 목록 (값 미포함 — 매핑 후보 확정용)
-      listCandidatePath: top ? top.path : null,
-      listCandidateCount: top ? top.items.length : 0,
-      firstRecordKeys
+      // orders-admin이 매핑하는 레코드의 구조 (필드 이름/타입/중첩 키만, 값 미포함)
+      mappedRecordCount: list.length,
+      mappedRecordFields: firstRecord ? describeRecord(firstRecord) : []
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
