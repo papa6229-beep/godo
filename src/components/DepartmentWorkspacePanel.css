@@ -327,6 +327,209 @@
   color: var(--text-muted);
 }
 
+/* ── 상품관리팀 데이터 영역 (Orders READ v0) ── */
+.dept-data-loading {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.dept-data-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.dept-data-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dept-refresh-btn {
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.dept-refresh-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.dept-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dept-stat-unit {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+/* 출처 태그 색 구분 */
+.dept-stat-tag.src-real {
+  color: var(--success);
+  border-color: var(--success);
+}
+.dept-stat-tag.src-sandbox {
+  color: var(--info);
+  border-color: var(--info);
+}
+.dept-stat-tag.src-mock {
+  color: var(--text-muted);
+}
+.dept-stat-tag.src-unavailable {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* 미리보기 블록 */
+.dept-preview-block {
+  margin-top: 16px;
+}
+
+.dept-preview-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.dept-preview-title small {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.dept-preview-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.dept-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dept-preview-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.dept-preview-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dept-preview-mid {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dept-preview-badge,
+.dept-order-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-subtle);
+  white-space: nowrap;
+}
+
+.dept-preview-badge.ok,
+.dept-order-badge.ok {
+  color: var(--success);
+  border-color: var(--success);
+}
+.dept-preview-badge.danger,
+.dept-order-badge.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.dept-order-badge.warn {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+/* 주문 행 */
+.dept-order-row {
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dept-order-line1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.dept-order-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.dept-order-line2 {
+  display: flex;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.dept-order-qty {
+  color: var(--text-muted);
+}
+
+.dept-order-line3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dept-order-cust {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dept-data-disclaimer {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.dept-data-disclaimer.warn {
+  color: var(--warning);
+}
+
 /* 반응형: 좁은 화면에서는 세로 스택 */
 @media (max-width: 1100px) {
   .dept-workspace {

@@ -161,6 +161,88 @@ export const mapOrderList = (orders: Raw[]): OrderIntermediate[] => {
   }));
 };
 
+// ---- 주문 관리자 화면용 매퍼 (Orders READ v0) ----
+// 용도: 부서 업무 관장 > 상품관리팀 대시보드 등 "관리자 내부 운영 화면" 전용.
+//   - 마스킹하지 않은 원본 고객정보를 포함한다 (관리자가 주문 처리에 필요).
+//   - 외부 AI 전송/공개 화면/로그용이 아니다. (그쪽은 기존 mapOrderList + maskRecordsList 사용)
+//   - type 별칭 → 서버 Record<string,unknown> 파이프라인 할당 호환.
+//
+// ⚠️ 필드명은 고도몰 Order_Search.php 응답의 추정 후보다. 첫 실응답 확인 후
+// candidate 배열만 보정하면 된다. (Products v0가 거쳐온 방식과 동일)
+export type StandardOrderAdmin = {
+  orderId: string;
+  orderNo: string;
+  orderDate: string;
+  ordererName: string;
+  receiverName: string;
+  phone: string;
+  address: string;
+  productName: string;
+  quantity: number;
+  productAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  deliveryStatus: string;
+  unpaid: boolean;       // 미결제/입금대기 계열이면 true
+  undelivered: boolean;  // 배송 전(미배송)이면 true
+};
+
+// 결제상태 텍스트가 미결제/입금대기 계열인지
+const isUnpaidStatus = (s: string): boolean =>
+  /미결제|미입금|입금\s*대기|결제\s*대기|결제전|결제\s*전|입금전|unpaid|waiting/i.test(s);
+
+// 배송상태가 "아직 배송되지 않음"인지 (배송중/완료/발송이 아니면 미배송으로 간주)
+const isUndeliveredStatus = (s: string): boolean =>
+  !/배송\s*중|배송\s*완료|배송완료|발송\s*완료|발송완료|배송됨|출고완료|deliver|shipp/i.test(s);
+
+export const mapOrdersToAdmin = (orders: Raw[]): StandardOrderAdmin[] => {
+  return orders.map((o) => {
+    const orderNo = pick(o, ['orderNo', 'orderId', 'orderCd', 'order_no', 'sno']);
+    const paymentStatus = pick(
+      o,
+      ['orderStatusText', 'orderStatus', 'settleKindText', 'paymentStatusText', 'paymentStatus', 'orderStep', 'settleStateText'],
+      ''
+    );
+    const deliveryStatus = pick(
+      o,
+      ['deliveryStatusText', 'deliveryStatus', 'delivStatusText', 'delivStatus', 'orderStepText', 'orderDeliveryStatus'],
+      ''
+    );
+    const productAmount = toNumber(
+      pick(o, ['totalGoodsPrice', 'orderGoodsPrice', 'settleGoodsPrice', 'goodsPrice', 'productAmount'], '0')
+    );
+    const deliveryFee = toNumber(
+      pick(o, ['deliveryCharge', 'delivCharge', 'sumDeliveryCharge', 'deliveryPrice', 'deliveryFee'], '0')
+    );
+    const totalAmount = toNumber(
+      pick(o, ['settlePrice', 'totalSettlePrice', 'totalPrice', 'orderPrice', 'totalAmount', 'amount'], '0')
+    );
+
+    return {
+      orderId: pick(o, ['orderId', 'orderNo', 'orderCd', 'sno'], orderNo),
+      orderNo,
+      orderDate: pick(o, ['orderDate', 'orderYmd', 'regDt', 'orderDt', 'order_date']),
+      // 관리자 화면 전용 — 마스킹하지 않은 원본 고객정보
+      ordererName: pick(o, ['orderName', 'ordererName', 'memNm', 'memName', 'buyerName', 'customerName'], ''),
+      receiverName: pick(o, ['receiverName', 'receiverNm', 'deliveryName', 'takeName', 'receiptName', 'rcvName'], ''),
+      phone: pick(o, ['receiverHp', 'receiverCellPhone', 'orderHp', 'orderCellPhone', 'ordererHp', 'customerPhone', 'hp', 'cellPhone'], ''),
+      address: pick(o, ['receiverAddress', 'orderAddress', 'receiverAddr', 'orderAddr', 'address', 'addr'], ''),
+      productName: pick(o, ['goodsNm', 'goodsName', 'productName', 'goods_name'], ''),
+      quantity: toInt(pick(o, ['goodsCnt', 'ea', 'orderCnt', 'quantity'], '1')),
+      productAmount,
+      deliveryFee,
+      totalAmount: totalAmount || productAmount + deliveryFee,
+      paymentMethod: pick(o, ['settleKindText', 'settleKind', 'settleMethodText', 'paymentMethod', 'payment'], ''),
+      paymentStatus: paymentStatus || '미결제',
+      deliveryStatus: deliveryStatus || '배송 전',
+      unpaid: isUnpaidStatus(paymentStatus || '미결제'),
+      undelivered: isUndeliveredStatus(deliveryStatus)
+    };
+  });
+};
+
 // ---- 매출(sales) 파생 ----
 // 공식 매출 endpoint를 임의로 만들지 않고, 주문 결과를 일자별로 집계한다.
 export interface SalesIntermediate extends Record<string, string> {
