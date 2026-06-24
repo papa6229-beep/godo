@@ -1,8 +1,12 @@
-import React, { useMemo, useEffect, useCallback } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
-import type { DailyOperationSummary, CalendarDayCell, CalendarMetricLevel } from '../types/calendar';
-import { buildDailyOperationSummaries } from '../utils/dailySummaryBuilder';
+import type { CalendarMetricLevel } from '../types/calendar';
+import { fetchRevenue, type RevenueResult } from '../services/departmentDataService';
 import './CalendarPanel.css';
+
+// Operation Calendar Revenue Binding v0
+// - 기존 /api/godomall/orders-revenue?includeSynthetic=true 데이터를 프론트에서 날짜별 집계
+// - 새 API/생성 로직 수정 없음. 실데이터가 쌓이면 같은 구조로 자동 반영.
 
 interface CalendarPanelProps {
   activeOperationsData: OperationsDataSnapshot;
@@ -14,8 +18,43 @@ interface CalendarPanelProps {
   onAddLog: (text: string, type: 'info' | 'success' | 'warning' | 'error' | 'agent', agentName?: string) => void;
 }
 
+// 카테고리 코드 → 표시명 (표시 전용, 상품팀 대시보드와 동일 컨셉)
+const CAT_NAMES: Record<string, string> = {
+  uncategorized: '미분류', '001': '생활가전', '003': '주방가전', '006': '공기·청정', '007': '계절가전',
+  C1: '생활가전', C2: '주방가전', C3: '공기·청정'
+};
+const catName = (c: string): string => CAT_NAMES[c] || (c === 'uncategorized' || !c ? '미분류' : c);
+const RISK_THRESHOLD = 20;
+
+interface DailyRev {
+  orderCount: number;
+  productRevenue: number;
+  deliveryFee: number;
+  totalAmount: number;
+  soldQty: number;
+  real: number;
+  synthetic: number;
+  catRev: Map<string, number>;
+  prodRev: Map<string, { name: string; revenue: number; qty: number }>;
+  riskGoods: Set<string>;
+}
+const emptyDaily = (): DailyRev => ({
+  orderCount: 0, productRevenue: 0, deliveryFee: 0, totalAmount: 0, soldQty: 0, real: 0, synthetic: 0,
+  catRev: new Map(), prodRev: new Map(), riskGoods: new Set()
+});
+
+interface RevCell {
+  date: string;
+  dayNumber: number;
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  level: CalendarMetricLevel;
+  daily?: DailyRev;
+}
+
+const won = (n: number): string => `₩${Math.round(n).toLocaleString('ko-KR')}`;
+
 export const CalendarPanel: React.FC<CalendarPanelProps> = ({
-  activeOperationsData,
   lastSelectedDate,
   setLastSelectedDate,
   lastViewedMonth,
@@ -23,321 +62,188 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
   setActiveTab,
   onAddLog
 }) => {
-  // 1. activeOperationsData를 기반으로 일일 요약 데이터 빌드
-  const dailySummaries = useMemo(() => {
-    return buildDailyOperationSummaries(activeOperationsData);
-  }, [activeOperationsData]);
-
-  // 2. 가장 최근 데이터 날짜를 찾는 헬퍼 함수
-  const getMostRecentDataDate = useCallback((): string => {
-    const dates = Array.from(dailySummaries.keys()).sort();
-    if (dates.length > 0) {
-      return dates[dates.length - 1];
-    }
-    return new Date().toISOString().split('T')[0];
-  }, [dailySummaries]);
-
-  // 3. 상태 초기화 및 동기화
+  // 1. revenue 데이터 fetch (운영일지 진입 시 1회)
+  const [revenue, setRevenue] = useState<RevenueResult | null>(null);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
-    // 선택 날짜가 비어있다면 가장 최근 데이터 날짜로 채워줌
-    if (!lastSelectedDate) {
-      const recent = getMostRecentDataDate();
-      setLastSelectedDate(recent);
-      
-      // 월 정보도 동기화
-      const monthPart = recent.substring(0, 7); // YYYY-MM
-      setLastViewedMonth(monthPart);
-    }
-  }, [lastSelectedDate, dailySummaries, getMostRecentDataDate, setLastSelectedDate, setLastViewedMonth]);
+    let active = true;
+    void fetchRevenue(true).then((r) => {
+      if (active) {
+        setRevenue(r);
+        setLoaded(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  // 4. 년-월 상태 추출
+  // 2. 날짜별 매출/주문 집계
+  const stockRiskCount = useMemo(
+    () => (revenue?.stockImpact ?? []).filter((s) => s.syntheticProjectedStock <= RISK_THRESHOLD).length,
+    [revenue]
+  );
+  const revByDate = useMemo(() => {
+    const map = new Map<string, DailyRev>();
+    const riskSet = new Set(
+      (revenue?.stockImpact ?? []).filter((s) => s.syntheticProjectedStock <= RISK_THRESHOLD).map((s) => s.productId)
+    );
+    for (const o of revenue?.orders ?? []) {
+      const d = o.orderDate.slice(0, 10);
+      if (d.length < 10) continue;
+      const b = map.get(d) || emptyDaily();
+      b.orderCount += 1;
+      b.deliveryFee += o.deliveryFee;
+      b.totalAmount += o.totalAmount;
+      if (o.sourceType === 'synthetic_test') b.synthetic += 1;
+      else b.real += 1;
+      for (const l of o.lines) {
+        b.productRevenue += l.lineRevenue;
+        b.soldQty += l.quantity;
+        b.catRev.set(l.categoryCode, (b.catRev.get(l.categoryCode) || 0) + l.lineRevenue);
+        const p = b.prodRev.get(l.goodsNo) || { name: l.goodsName, revenue: 0, qty: 0 };
+        p.revenue += l.lineRevenue;
+        p.qty += l.quantity;
+        b.prodRev.set(l.goodsNo, p);
+        if (riskSet.has(l.goodsNo)) b.riskGoods.add(l.goodsNo);
+      }
+      map.set(d, b);
+    }
+    return map;
+  }, [revenue]);
+
+  // 3. 최초 로드 시 가장 최근 매출 날짜로 기본 선택 (값 없을 때만)
+  useEffect(() => {
+    if (!loaded || lastSelectedDate) return;
+    const dates = Array.from(revByDate.keys()).sort();
+    const recent = dates.length ? dates[dates.length - 1] : new Date().toISOString().split('T')[0];
+    setLastSelectedDate(recent);
+    if (!lastViewedMonth) setLastViewedMonth(recent.substring(0, 7));
+  }, [loaded, lastSelectedDate, lastViewedMonth, revByDate, setLastSelectedDate, setLastViewedMonth]);
+
+  // 4. 년-월
   const [currentYear, currentMonth] = useMemo(() => {
     if (!lastViewedMonth) {
-      const today = new Date();
-      return [today.getFullYear(), today.getMonth() + 1];
+      const t = new Date();
+      return [t.getFullYear(), t.getMonth() + 1];
     }
     const [y, m] = lastViewedMonth.split('-').map(Number);
     return [y, m];
   }, [lastViewedMonth]);
 
-  // 5. 달력 이동 이벤트 핸들러
   const handlePrevMonth = () => {
-    let nextY = currentYear;
-    let nextM = currentMonth - 1;
-    if (nextM < 1) {
-      nextM = 12;
-      nextY -= 1;
-    }
-    const nextMonthStr = `${nextY}-${String(nextM).padStart(2, '0')}`;
-    setLastViewedMonth(nextMonthStr);
+    let y = currentYear;
+    let m = currentMonth - 1;
+    if (m < 1) { m = 12; y -= 1; }
+    setLastViewedMonth(`${y}-${String(m).padStart(2, '0')}`);
   };
-
   const handleNextMonth = () => {
-    let nextY = currentYear;
-    let nextM = currentMonth + 1;
-    if (nextM > 12) {
-      nextM = 1;
-      nextY += 1;
-    }
-    const nextMonthStr = `${nextY}-${String(nextM).padStart(2, '0')}`;
-    setLastViewedMonth(nextMonthStr);
+    let y = currentYear;
+    let m = currentMonth + 1;
+    if (m > 12) { m = 1; y += 1; }
+    setLastViewedMonth(`${y}-${String(m).padStart(2, '0')}`);
   };
-
   const handleGoToday = () => {
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    setLastSelectedDate(todayStr);
-    setLastViewedMonth(todayStr.substring(0, 7));
-    onAddLog(`[Calendar] 오늘 날짜(${todayStr})로 이동했습니다.`, 'info');
+    const t = new Date().toISOString().split('T')[0];
+    setLastSelectedDate(t);
+    setLastViewedMonth(t.substring(0, 7));
+    onAddLog(`[Calendar] 오늘 날짜(${t})로 이동했습니다.`, 'info');
   };
 
-  // 6. 월간 통계 계산 (현재 조회 중인 월 기준)
+  // 5. 월간 KPI
   const monthlyStats = useMemo(() => {
     let orderCount = 0;
-    let totalSales = 0;
-    let inquiryCount = 0;
-    let negativeReviewCount = 0;
-    let inventoryRiskCount = 0;
-    let dataDaysCount = 0;
-
-    dailySummaries.forEach((summary, dateStr) => {
+    let productRevenue = 0;
+    let totalAmount = 0;
+    let dataDays = 0;
+    revByDate.forEach((d, dateStr) => {
       if (dateStr.substring(0, 7) === lastViewedMonth) {
-        orderCount += summary.orderCount;
-        totalSales += summary.totalSales;
-        inquiryCount += summary.inquiryCount;
-        negativeReviewCount += summary.negativeReviewCount;
-        // 재고 위험은 중복 누적되지 않게 스냅샷 기점에 한 번만 카운트됨
-        inventoryRiskCount += summary.inventoryRiskCount;
-        if (summary.orderCount > 0 || summary.inquiryCount > 0 || summary.reviewCount > 0 || summary.totalSales > 0) {
-          dataDaysCount++;
-        }
+        orderCount += d.orderCount;
+        productRevenue += d.productRevenue;
+        totalAmount += d.totalAmount;
+        if (d.orderCount > 0) dataDays += 1;
       }
     });
+    return { orderCount, productRevenue, totalAmount, dataDays };
+  }, [revByDate, lastViewedMonth]);
 
-    return {
-      orderCount,
-      totalSales,
-      inquiryCount,
-      negativeReviewCount,
-      inventoryRiskCount,
-      dataDaysCount
-    };
-  }, [dailySummaries, lastViewedMonth]);
-
-  // 7. 캘린더 그리드 셀 생성 (월요일 시작 기준)
-  const calendarCells = useMemo((): CalendarDayCell[] => {
-    const cells: CalendarDayCell[] = [];
-
-    // 해당 월의 1일 날짜 객체
-    const firstDay = new Date(currentYear, currentMonth - 1, 1);
-    // 1일의 요일 (0: 일, 1: 월, ..., 6: 토)
-    const firstDayOfWeek = firstDay.getDay();
-    // 월요일 시작으로 변환 (월: 0, 화: 1, ..., 일: 6)
+  // 6. 캘린더 셀 (월요일 시작, 42칸)
+  const calendarCells = useMemo((): RevCell[] => {
+    const cells: RevCell[] = [];
+    const firstDayOfWeek = new Date(currentYear, currentMonth - 1, 1).getDay();
     const startOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
-
-    // 해당 월의 마지막 날짜
-    const lastDay = new Date(currentYear, currentMonth, 0);
-    const totalDays = lastDay.getDate();
-
-    // 이전 달의 마지막 날짜 정보 구하기
+    const totalDays = new Date(currentYear, currentMonth, 0).getDate();
     const prevMonthLastDay = new Date(currentYear, currentMonth - 1, 0).getDate();
-
-    // 1. 이전 달 날짜 채우기 (dim 처리)
-    for (let i = startOffset - 1; i >= 0; i--) {
-      const dayNum = prevMonthLastDay - i;
-      let prevM = currentMonth - 1;
-      let prevY = currentYear;
-      if (prevM < 1) {
-        prevM = 12;
-        prevY -= 1;
-      }
-      const dateStr = `${prevY}-${String(prevM).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-      
-      cells.push({
-        date: dateStr,
-        dayNumber: dayNum,
-        isCurrentMonth: false,
-        isToday: false,
-        hasData: dailySummaries.has(dateStr),
-        level: 'empty'
-      });
-    }
-
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // 2. 현재 달 날짜 채우기
+    for (let i = startOffset - 1; i >= 0; i--) {
+      const dayNum = prevMonthLastDay - i;
+      let pm = currentMonth - 1;
+      let py = currentYear;
+      if (pm < 1) { pm = 12; py -= 1; }
+      const dateStr = `${py}-${String(pm).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+      cells.push({ date: dateStr, dayNumber: dayNum, isCurrentMonth: false, isToday: false, level: 'empty' });
+    }
     for (let d = 1; d <= totalDays; d++) {
       const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const summary = dailySummaries.get(dateStr);
-      const hasData = !!summary;
-      const isToday = (dateStr === todayStr);
-
-      // 위험 레벨 판별 규칙
-      let level: CalendarMetricLevel = 'empty';
-      if (summary) {
-        const isCritical = 
-          summary.negativeReviewCount >= 3 || 
-          summary.unansweredInquiryCount >= 5 || 
-          summary.inventoryRiskCount >= 5 || 
-          summary.invoiceMissingCount >= 5;
-
-        const isWarning = 
-          summary.negativeReviewCount >= 1 || 
-          summary.unansweredInquiryCount >= 1 || 
-          summary.inventoryRiskCount >= 1 || 
-          summary.deliveryDelayedCount >= 1;
-
-        level = isCritical ? 'critical' : (isWarning ? 'warning' : 'normal');
-      }
-
-      cells.push({
-        date: dateStr,
-        dayNumber: d,
-        isCurrentMonth: true,
-        isToday,
-        hasData,
-        level,
-        summary
-      });
+      const daily = revByDate.get(dateStr);
+      const level: CalendarMetricLevel = daily ? (daily.riskGoods.size > 0 ? 'warning' : 'normal') : 'empty';
+      cells.push({ date: dateStr, dayNumber: d, isCurrentMonth: true, isToday: dateStr === todayStr, level, daily });
     }
-
-    // 3. 다음 달 날짜 채우기 (전체 42칸 유지)
-    const remainingCells = 42 - cells.length;
-    for (let d = 1; d <= remainingCells; d++) {
-      let nextM = currentMonth + 1;
-      let nextY = currentYear;
-      if (nextM > 12) {
-        nextM = 1;
-        nextY += 1;
-      }
-      const dateStr = `${nextY}-${String(nextM).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      
-      cells.push({
-        date: dateStr,
-        dayNumber: d,
-        isCurrentMonth: false,
-        isToday: false,
-        hasData: dailySummaries.has(dateStr),
-        level: 'empty'
-      });
+    const remaining = 42 - cells.length;
+    for (let d = 1; d <= remaining; d++) {
+      let nm = currentMonth + 1;
+      let ny = currentYear;
+      if (nm > 12) { nm = 1; ny += 1; }
+      const dateStr = `${ny}-${String(nm).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ date: dateStr, dayNumber: d, isCurrentMonth: false, isToday: false, level: 'empty' });
     }
-
     return cells;
-  }, [currentYear, currentMonth, dailySummaries]);
+  }, [currentYear, currentMonth, revByDate]);
 
-  // 8. 선택된 날짜의 요약
-  const selectedSummary = useMemo((): DailyOperationSummary | undefined => {
-    return dailySummaries.get(lastSelectedDate);
-  }, [dailySummaries, lastSelectedDate]);
+  // 7. 선택 날짜 일일 집계 (없으면 0)
+  const sel = revByDate.get(lastSelectedDate);
+  const selData = sel ?? emptyDaily();
+  const topCategories = useMemo(
+    () => Array.from(selData.catRev.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3),
+    [selData]
+  );
+  const topProducts = useMemo(
+    () => Array.from(selData.prodRev.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3),
+    [selData]
+  );
 
-  // 9. 날짜 셀 클릭 시 이벤트
-  const handleSelectDay = (cell: CalendarDayCell) => {
+  const handleSelectDay = (cell: RevCell) => {
     setLastSelectedDate(cell.date);
-    if (!cell.isCurrentMonth) {
-      setLastViewedMonth(cell.date.substring(0, 7));
-    }
-
-    const summary = dailySummaries.get(cell.date);
-    
-    // Activity Log 기록 남기기 (중복 호출 시 과도한 기록 방지는 부모 컴포넌트나 호출 기점을 고려)
-    onAddLog(`[Calendar] ${cell.date} 운영 요약을 열람했습니다.`, 'info');
-    if (summary) {
-      onAddLog(
-        `[Calendar] ${cell.date} 날짜에 주문 ${summary.orderCount}건, CS 문의 ${summary.inquiryCount}건, 재고 위험 ${summary.inventoryRiskCount}건이 집계되었습니다.`,
-        'info'
-      );
-    }
+    if (!cell.isCurrentMonth) setLastViewedMonth(cell.date.substring(0, 7));
+    const d = revByDate.get(cell.date);
+    onAddLog(
+      d
+        ? `[Calendar] ${cell.date} — 주문 ${d.orderCount}건, 상품매출 ${won(d.productRevenue)} 열람`
+        : `[Calendar] ${cell.date} — 매출 데이터 없음`,
+      'info'
+    );
   };
 
-  // 10. 타임라인 리스크 순서 목록 구성
-  const timelineEvents = useMemo(() => {
-    if (!selectedSummary) return [];
-    
-    const events: { time: string; agent: string; desc: string; type: string }[] = [];
-    
-    if (selectedSummary.orderCount > 0) {
-      events.push({
-        time: '09:00',
-        agent: '주문 확인 AI',
-        desc: selectedSummary.invoiceMissingCount > 0 
-          ? `송장 누락 건 ${selectedSummary.invoiceMissingCount}건이 발견되어 보완 처리를 지시했습니다.`
-          : `신규 주문 ${selectedSummary.orderCount}건을 오류 없이 검수 및 완료 처리했습니다.`,
-        type: selectedSummary.invoiceMissingCount > 0 ? 'warning' : 'normal'
-      });
-    }
-    
-    if (selectedSummary.inquiryCount > 0) {
-      events.push({
-        time: '10:30',
-        agent: 'CS 상담 AI',
-        desc: selectedSummary.unansweredInquiryCount > 0
-          ? `답변 대기 상태인 CS 문의 ${selectedSummary.unansweredInquiryCount}건을 유형 분류 완료했습니다.`
-          : `금일 접수된 문의 ${selectedSummary.inquiryCount}건에 대한 자동 답변을 처리했습니다.`,
-        type: selectedSummary.unansweredInquiryCount > 0 ? 'warning' : 'normal'
-      });
-    }
-    
-    if (selectedSummary.reviewCount > 0) {
-      events.push({
-        time: '13:20',
-        agent: '리뷰 답글 AI',
-        desc: selectedSummary.negativeReviewCount > 0
-          ? `저평점 부정 리뷰 ${selectedSummary.negativeReviewCount}건이 발생하여 특별 피드백 초안을 빌드했습니다.`
-          : `리뷰 ${selectedSummary.reviewCount}건에 대한 감사 답글 톤앤매너 매칭 처리를 마쳤습니다.`,
-        type: selectedSummary.negativeReviewCount > 0 ? 'danger' : 'normal'
-      });
-    }
-    
-    if (selectedSummary.inventoryRiskCount > 0) {
-      events.push({
-        time: '15:00',
-        agent: '재고 감시 AI',
-        desc: `재고 경고 항목 ${selectedSummary.inventoryRiskCount}건에 대해 공급망 거래처 알림 및 입고 조정을 안내했습니다.`,
-        type: 'danger'
-      });
-    } else if (selectedSummary.date === (activeOperationsData.importedAt?.split('T')[0])) {
-      events.push({
-        time: '15:00',
-        agent: '재고 감시 AI',
-        desc: `전체 SKU 재고 현황을 모니터링하여 안전 재고선을 안전하게 통과했음을 검증했습니다.`,
-        type: 'normal'
-      });
-    }
-
-    if (selectedSummary.totalSales > 0) {
-      events.push({
-        time: '17:00',
-        agent: '매출 분석 AI',
-        desc: `금일 총 매출 ${selectedSummary.totalSales.toLocaleString()}원, 주문 전환율 ${selectedSummary.totalSales > 0 ? 3.2 : 0}%를 요약하여 재무 대조표를 생성했습니다.`,
-        type: 'normal'
-      });
-    }
-
-    return events.sort((a, b) => a.time.localeCompare(b.time));
-  }, [selectedSummary, activeOperationsData]);
+  const sourceTag = selData.synthetic > 0 ? (selData.real > 0 ? 'SYNTHETIC+REAL' : 'SYNTHETIC') : selData.real > 0 ? 'REAL' : 'NO-DATA';
 
   return (
     <div className="calendar-panel-container">
-      {/* 1. 헤더 영역 */}
+      {/* 헤더 */}
       <div className="calendar-header-section">
         <div className="calendar-title-wrapper">
           <h2 className="calendar-main-title">📅 GODO OPERATION CALENDAR</h2>
           <span className="calendar-subtitle">
-            로컬 쇼핑몰 데이터 샌드박스를 날짜별로 매핑하여 일일 운영 지표 및 에이전트의 AI 자동화 처리 타임라인을 파악하는 운영 일지입니다.
+            최근 6개월 주문/매출(실데이터 + synthetic) 데이터를 날짜별로 매핑한 운영 일지입니다. (orders-revenue 기반)
           </span>
         </div>
-        
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button type="button" className="calendar-nav-btn" onClick={() => setActiveTab('data')}>
-            📡 Data Center
-          </button>
-          <button type="button" className="calendar-nav-btn" onClick={() => setActiveTab('office')}>
-            🏢 Office View
-          </button>
+          <button type="button" className="calendar-nav-btn" onClick={() => setActiveTab('data')}>📡 Data Center</button>
+          <button type="button" className="calendar-nav-btn" onClick={() => setActiveTab('office')}>🏢 Office View</button>
         </div>
       </div>
 
-      {/* 2. 상단 누적 요약 지표 */}
+      {/* 월간 KPI */}
       <div className="calendar-metrics-row">
         <div className="calendar-metric-box active-source">
           <span className="calendar-metric-lbl">조회 년월</span>
@@ -345,46 +251,46 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
         </div>
         <div className="calendar-metric-box">
           <span className="calendar-metric-lbl">데이터 일수</span>
-          <span className="calendar-metric-val">{monthlyStats.dataDaysCount}일</span>
+          <span className="calendar-metric-val">{monthlyStats.dataDays}일</span>
         </div>
         <div className="calendar-metric-box">
           <span className="calendar-metric-lbl">월간 총 주문</span>
-          <span className="calendar-metric-val">{monthlyStats.orderCount}건</span>
+          <span className="calendar-metric-val">{monthlyStats.orderCount.toLocaleString('ko-KR')}건</span>
         </div>
         <div className="calendar-metric-box">
           <span className="calendar-metric-lbl">월간 총 매출</span>
-          <span className="calendar-metric-val">
-            ₩{monthlyStats.totalSales.toLocaleString()}
-          </span>
+          <span className="calendar-metric-val">{won(monthlyStats.productRevenue)}</span>
         </div>
         <div className="calendar-metric-box">
           <span className="calendar-metric-lbl">월간 고객 문의</span>
-          <span className="calendar-metric-val">{monthlyStats.inquiryCount}건</span>
+          <span className="calendar-metric-val">0건<small className="cal-pending"> (미연동)</small></span>
         </div>
         <div className="calendar-metric-box">
           <span className="calendar-metric-lbl">부정 평점 리뷰</span>
-          <span className="calendar-metric-val" style={{ color: monthlyStats.negativeReviewCount > 0 ? '#ff4d4d' : 'inherit' }}>
-            {monthlyStats.negativeReviewCount}건
-          </span>
+          <span className="calendar-metric-val">0건<small className="cal-pending"> (미연동)</small></span>
         </div>
         <div className="calendar-metric-box">
           <span className="calendar-metric-lbl">재고 위험 상품</span>
-          <span className="calendar-metric-val" style={{ color: monthlyStats.inventoryRiskCount > 0 ? '#ffb300' : 'inherit' }}>
-            {monthlyStats.inventoryRiskCount}옵션
+          <span className="calendar-metric-val" style={{ color: stockRiskCount > 0 ? '#ffb300' : 'inherit' }}>
+            {stockRiskCount}개<small className="cal-pending"> (현재)</small>
           </span>
         </div>
       </div>
 
-      {/* 3. 메인 레이아웃 */}
+      {!loaded && <div className="empty-data-message" style={{ padding: '10px 0', color: 'var(--text-muted)' }}>매출 데이터를 불러오는 중…</div>}
+      {loaded && revenue?.source === 'unavailable' && (
+        <div className="empty-data-message" style={{ padding: '10px 0', color: 'var(--warning, #ffb300)' }}>
+          ※ 매출 데이터를 불러오지 못했습니다. (로컬 dev에서는 서버 라우트가 없을 수 있습니다 — 배포 환경에서 확인하세요.)
+        </div>
+      )}
+
+      {/* 메인 레이아웃 */}
       <div className="calendar-main-layout">
-        
-        {/* A. 좌측 캘린더 */}
+        {/* 좌측 캘린더 */}
         <div className="calendar-grid-area">
           <div className="calendar-nav-bar">
             <button className="calendar-nav-btn" onClick={handlePrevMonth}>◀ 이전 달</button>
-            <span className="calendar-month-title">
-              {currentYear}. {String(currentMonth).padStart(2, '0')}
-            </span>
+            <span className="calendar-month-title">{currentYear}. {String(currentMonth).padStart(2, '0')}</span>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button className="calendar-nav-btn" onClick={handleGoToday}>오늘</button>
               <button className="calendar-nav-btn" onClick={handleNextMonth}>다음 달 ▶</button>
@@ -393,20 +299,11 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
 
           <div className="calendar-grid-table">
             <div className="calendar-week-header">
-              <span className="calendar-weekday">월</span>
-              <span className="calendar-weekday">화</span>
-              <span className="calendar-weekday">수</span>
-              <span className="calendar-weekday">목</span>
-              <span className="calendar-weekday">금</span>
-              <span className="calendar-weekday">토</span>
-              <span className="calendar-weekday">일</span>
+              {['월', '화', '수', '목', '금', '토', '일'].map((w) => <span key={w} className="calendar-weekday">{w}</span>)}
             </div>
-
             <div className="calendar-cells-grid">
               {calendarCells.map((cell, idx) => {
-                const isSelected = (cell.date === lastSelectedDate);
-                const hasData = cell.hasData;
-
+                const isSelected = cell.date === lastSelectedDate;
                 return (
                   <div
                     key={idx}
@@ -415,32 +312,18 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
                   >
                     <div className="day-cell-header">
                       <span className="day-num">{cell.dayNumber}</span>
-                      {hasData && (
-                        <span className={`cell-level-dot ${cell.level}`}></span>
-                      )}
+                      {cell.daily && <span className={`cell-level-dot ${cell.level}`}></span>}
                     </div>
-
-                    {cell.summary && (
+                    {cell.daily && (
                       <div className="day-cell-badges">
-                        {cell.summary.orderCount > 0 && (
-                          <span className="cell-badge ord">
-                            <span>ORD</span> <span>{cell.summary.orderCount}</span>
-                          </span>
+                        {cell.daily.orderCount > 0 && (
+                          <span className="cell-badge ord"><span>ORD</span> <span>{cell.daily.orderCount}</span></span>
                         )}
-                        {cell.summary.totalSales > 0 && (
-                          <span className="cell-badge sales">
-                            <span>₩</span> <span>{Math.round(cell.summary.totalSales / 1000)}k</span>
-                          </span>
+                        {cell.daily.productRevenue > 0 && (
+                          <span className="cell-badge sales"><span>₩</span> <span>{Math.round(cell.daily.productRevenue / 1000)}k</span></span>
                         )}
-                        {cell.summary.inquiryCount > 0 && (
-                          <span className="cell-badge cs">
-                            <span>CS</span> <span>{cell.summary.inquiryCount}</span>
-                          </span>
-                        )}
-                        {cell.summary.inventoryRiskCount > 0 && (
-                          <span className="cell-badge stk">
-                            <span>STK</span> <span>{cell.summary.inventoryRiskCount}</span>
-                          </span>
+                        {cell.daily.riskGoods.size > 0 && (
+                          <span className="cell-badge stk"><span>STK</span> <span>{cell.daily.riskGoods.size}</span></span>
                         )}
                       </div>
                     )}
@@ -451,127 +334,83 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
           </div>
         </div>
 
-        {/* B. 우측 Daily Brief */}
+        {/* 우측 Daily Brief */}
         <div className="calendar-brief-area">
-          {selectedSummary ? (
-            <div className="brief-container">
-              <div className="brief-title-row">
-                <span className="brief-date">📅 {lastSelectedDate} 요약</span>
-                <span className={`brief-source-badge ${selectedSummary.dataSourceType}`}>
-                  {selectedSummary.dataSourceType.toUpperCase()}
-                </span>
-              </div>
+          <div className="brief-container">
+            <div className="brief-title-row">
+              <span className="brief-date">📅 {lastSelectedDate || '날짜 선택'} 요약</span>
+              <span className={`brief-source-badge ${selData.synthetic > 0 ? 'synthetic' : 'real'}`}>{sourceTag}</span>
+            </div>
 
-              {/* 통계 지표 카드 */}
-              <div className="brief-section-card">
-                <h4>📊 일일 통계 현황</h4>
-                <div className="brief-stats-grid">
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">총 매출액</span>
-                    <span className="brief-stat-val highlight">₩{selectedSummary.totalSales.toLocaleString()}</span>
-                  </div>
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">주문 건수</span>
-                    <span className="brief-stat-val">{selectedSummary.orderCount}건</span>
-                  </div>
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">고객 문의 수</span>
-                    <span className="brief-stat-val">{selectedSummary.inquiryCount}건</span>
-                  </div>
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">미답변 문의</span>
-                    <span className={`brief-stat-val ${selectedSummary.unansweredInquiryCount > 0 ? 'warning' : ''}`}>
-                      {selectedSummary.unansweredInquiryCount}건
-                    </span>
-                  </div>
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">부정 평점 리뷰</span>
-                    <span className={`brief-stat-val ${selectedSummary.negativeReviewCount > 0 ? 'danger' : ''}`}>
-                      {selectedSummary.negativeReviewCount}건
-                    </span>
-                  </div>
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">재고 위험 상품</span>
-                    <span className={`brief-stat-val ${selectedSummary.inventoryRiskCount > 0 ? 'danger' : ''}`}>
-                      {selectedSummary.inventoryRiskCount}옵션
-                    </span>
-                  </div>
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">송장 누락</span>
-                    <span className={`brief-stat-val ${selectedSummary.invoiceMissingCount > 0 ? 'danger' : ''}`}>
-                      {selectedSummary.invoiceMissingCount}건
-                    </span>
-                  </div>
-                  <div className="brief-stat-item">
-                    <span className="brief-stat-lbl">배송 지연 주문</span>
-                    <span className={`brief-stat-val ${selectedSummary.deliveryDelayedCount > 0 ? 'warning' : ''}`}>
-                      {selectedSummary.deliveryDelayedCount}건
-                    </span>
-                  </div>
+            {/* 매출/주문 통계 (실 synthetic revenue 기반) */}
+            <div className="brief-section-card">
+              <h4>📊 일일 매출 · 주문 현황</h4>
+              <div className="brief-stats-grid">
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">상품매출</span>
+                  <span className="brief-stat-val highlight">{won(selData.productRevenue)}</span>
+                </div>
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">총 주문금액</span>
+                  <span className="brief-stat-val">{won(selData.totalAmount)}</span>
+                </div>
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">주문 건수</span>
+                  <span className="brief-stat-val">{selData.orderCount}건</span>
+                </div>
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">배송비</span>
+                  <span className="brief-stat-val">{won(selData.deliveryFee)}</span>
+                </div>
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">판매수량</span>
+                  <span className="brief-stat-val">{selData.soldQty.toLocaleString('ko-KR')}개</span>
+                </div>
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">실제 · 가상</span>
+                  <span className="brief-stat-val">{selData.real} · {selData.synthetic}건</span>
+                </div>
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">재고 위험 상품</span>
+                  <span className={`brief-stat-val ${stockRiskCount > 0 ? 'danger' : ''}`}>{stockRiskCount}개</span>
+                </div>
+                <div className="brief-stat-item">
+                  <span className="brief-stat-lbl">당일 위험상품 거래</span>
+                  <span className={`brief-stat-val ${selData.riskGoods.size > 0 ? 'warning' : ''}`}>{selData.riskGoods.size}개</span>
                 </div>
               </div>
+            </div>
 
-              {/* 이슈 하이라이트 */}
-              <div className="brief-section-card">
-                <h4>⚠️ 주요 발생 이슈 (Highlights)</h4>
-                <ul className="bullet-list">
-                  {selectedSummary.issueHighlights.map((hl, i) => (
-                    <li key={i} className="bullet-item warning">
-                      <span className="icon">🚨</span> <span>{hl}</span>
-                    </li>
-                  ))}
-                  {selectedSummary.issueHighlights.length === 0 && (
-                    <li className="bullet-item" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      포착된 운영상 리스크가 없습니다.
-                    </li>
-                  )}
-                </ul>
-              </div>
-
-              {/* AI 운영 활동 요약 */}
-              <div className="brief-section-card">
-                <h4>🤖 AI 에이전트 운영 활동</h4>
-                <ul className="bullet-list">
-                  {selectedSummary.aiActivityHighlights.map((act, i) => (
-                    <li key={i} className="bullet-item">
-                      <span className="icon">⚡</span> <span>{act}</span>
-                    </li>
-                  ))}
-                  {selectedSummary.aiActivityHighlights.length === 0 && (
-                    <li className="bullet-item" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      해당 날짜에 기동된 AI 운영 프로세스가 없습니다.
-                    </li>
-                  )}
-                </ul>
-              </div>
-
-              {/* 타임라인 */}
-              <div className="brief-section-card">
-                <h4>🕒 AI Issue Timeline</h4>
-                {timelineEvents.length === 0 ? (
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                    타임라인에 기록된 일정이 없습니다.
-                  </span>
-                ) : (
-                  <div className="timeline-list">
-                    {timelineEvents.map((ev, i) => (
-                      <div key={i} className="timeline-item active">
-                        <span className="timeline-dot"></span>
-                        <span className="timeline-time">{ev.time} [{ev.agent}]</span>
-                        <span className="timeline-desc">{ev.desc}</span>
-                      </div>
+            {/* 카테고리 / 상위 상품 */}
+            <div className="brief-section-card">
+              <h4>🏷️ 주요 판매 카테고리 · 상위 상품</h4>
+              {selData.orderCount === 0 ? (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>해당 날짜 매출 데이터가 없습니다. (0원 / 0건)</span>
+              ) : (
+                <>
+                  <ul className="bullet-list">
+                    {topCategories.map(([code, rev]) => (
+                      <li key={code} className="bullet-item"><span className="icon">📦</span> <span>{catName(code)} — {won(rev)}</span></li>
                     ))}
-                  </div>
-                )}
-              </div>
+                  </ul>
+                  <ul className="bullet-list" style={{ marginTop: '6px' }}>
+                    {topProducts.map((p, i) => (
+                      <li key={i} className="bullet-item"><span className="icon">🏆</span> <span>{p.name || '(이름 없음)'} — {won(p.revenue)} · {p.qty}개</span></li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </div>
-          ) : (
-            <div className="empty-data-message" style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              선택한 날짜(${lastSelectedDate})에 로드된 쇼핑몰 적재 데이터가 없습니다. 캘린더에서 하이라이트 배지가 있는 날짜를 클릭해 주세요.
-            </div>
-          )}
-        </div>
 
+            {/* 런타임 미연동 영역 (placeholder 유지) */}
+            <div className="brief-section-card">
+              <h4>🤖 AI 운영 활동 · Issue Timeline</h4>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                에이전트 운영 활동/이슈 타임라인은 실제 런타임 데이터 연동 전 단계입니다. (매출·주문·재고는 실데이터 기반)
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
