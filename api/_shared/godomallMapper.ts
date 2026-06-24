@@ -167,8 +167,12 @@ export const mapOrderList = (orders: Raw[]): OrderIntermediate[] => {
 //   - 외부 AI 전송/공개 화면/로그용이 아니다. (그쪽은 기존 mapOrderList + maskRecordsList 사용)
 //   - type 별칭 → 서버 Record<string,unknown> 파이프라인 할당 호환.
 //
-// ⚠️ 필드명은 고도몰 Order_Search.php 응답의 추정 후보다. 첫 실응답 확인 후
-// candidate 배열만 보정하면 된다. (Products v0가 거쳐온 방식과 동일)
+// 실응답 구조(확인됨): data.return.order_data (단건이면 object) 안에
+//   상위: orderNo, orderDate, totalGoodsPrice, totalDeliveryCharge, settlePrice,
+//         settleKind, paymentDt, orderStatus, orderGoodsNm/Cnt(요약)
+//   중첩 orderInfoData: orderName, receiverName, orderCellPhone, receiverAddress(+Sub)
+//   중첩 orderGoodsData(object|array): goodsNm, goodsCnt, goodsPrice, goodsNo, goodsCd
+// mock(평문 customerName/productName/amount 등)도 fallback 후보로 함께 처리한다.
 export type StandardOrderAdmin = {
   orderId: string;
   orderNo: string;
@@ -189,56 +193,100 @@ export type StandardOrderAdmin = {
   undelivered: boolean;  // 배송 전(미배송)이면 true
 };
 
-// 결제상태 텍스트가 미결제/입금대기 계열인지
-const isUnpaidStatus = (s: string): boolean =>
-  /미결제|미입금|입금\s*대기|결제\s*대기|결제전|결제\s*전|입금전|unpaid|waiting/i.test(s);
+// 중첩 객체 안전 접근 (orderInfoData / orderGoodsData)
+const asRecord = (v: unknown): Raw | undefined =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Raw) : undefined;
 
-// 배송상태가 "아직 배송되지 않음"인지 (배송중/완료/발송이 아니면 미배송으로 간주)
-const isUndeliveredStatus = (s: string): boolean =>
-  !/배송\s*중|배송\s*완료|배송완료|발송\s*완료|발송완료|배송됨|출고완료|deliver|shipp/i.test(s);
+// orderGoodsData는 단일 object 또는 (상품 여러 개면) array 로 올 수 있다 → 첫 객체 반환
+const firstRecordOf = (v: unknown): Raw | undefined => {
+  if (Array.isArray(v)) return v.find((x) => asRecord(x)) as Raw | undefined;
+  return asRecord(v);
+};
+
+// 결제 여부 판단: 결제일시(paymentDt)가 유효하면 결제됨
+const hasPaymentDate = (s: string): boolean => {
+  const t = String(s || '').trim();
+  if (!t) return false;
+  if (/^0000[-/.]?0?0/.test(t)) return false; // 0000-00-00 류
+  return /[1-9]/.test(t); // 실제 날짜면 0이 아닌 숫자 포함
+};
+
+// orderStatus(코드/텍스트) 보조 판단 — 결제 이후 단계인지
+const isPaidStatus = (s: string): boolean => {
+  const t = String(s || '').trim().toLowerCase();
+  if (!t) return false;
+  if (/미결제|미입금|입금\s*대기|결제\s*대기|입금전|결제전/.test(t)) return false;
+  if (/결제완료|입금완료|배송|구매확정|deliver|paid/.test(t)) return true;
+  if (/^o\d/.test(t)) return false;        // o1: 입금대기(미결제)
+  return /^[pdgsf]\d/.test(t);             // p/d/g/s/f 단계: 결제 이후
+};
+
+// 배송상태 해석 (orderStatus 코드/텍스트 + 결제여부)
+const interpretDelivery = (s: string, paid: boolean): { deliveryStatus: string; undelivered: boolean } => {
+  const t = String(s || '').trim().toLowerCase();
+  if (/배송\s*완료|배송완료|구매확정/.test(t) || /^d2|^f\d|^g\d/.test(t)) {
+    return { deliveryStatus: '배송완료', undelivered: false };
+  }
+  if (/배송\s*중|발송/.test(t) || /^d1/.test(t)) {
+    return { deliveryStatus: '배송중', undelivered: false };
+  }
+  return { deliveryStatus: paid ? '배송 준비' : '배송 전', undelivered: true };
+};
 
 export const mapOrdersToAdmin = (orders: Raw[]): StandardOrderAdmin[] => {
   return orders.map((o) => {
-    const orderNo = pick(o, ['orderNo', 'orderId', 'orderCd', 'order_no', 'sno']);
-    const paymentStatus = pick(
-      o,
-      ['orderStatusText', 'orderStatus', 'settleKindText', 'paymentStatusText', 'paymentStatus', 'orderStep', 'settleStateText'],
-      ''
-    );
-    const deliveryStatus = pick(
-      o,
-      ['deliveryStatusText', 'deliveryStatus', 'delivStatusText', 'delivStatus', 'orderStepText', 'orderDeliveryStatus'],
-      ''
-    );
-    const productAmount = toNumber(
-      pick(o, ['totalGoodsPrice', 'orderGoodsPrice', 'settleGoodsPrice', 'goodsPrice', 'productAmount'], '0')
-    );
-    const deliveryFee = toNumber(
-      pick(o, ['deliveryCharge', 'delivCharge', 'sumDeliveryCharge', 'deliveryPrice', 'deliveryFee'], '0')
-    );
-    const totalAmount = toNumber(
-      pick(o, ['settlePrice', 'totalSettlePrice', 'totalPrice', 'orderPrice', 'totalAmount', 'amount'], '0')
-    );
+    // 중첩: 주문자/수령자 정보 + 상품 상세 (Order_Search 실응답 구조)
+    const info = asRecord(o['orderInfoData']) ?? {};
+    const goods = firstRecordOf(o['orderGoodsData']) ?? {};
+
+    const orderNo = pick(o, ['orderNo', 'orderId'], '');
+    const orderDate = pick(o, ['orderDate', 'orderYmd', 'regDt', 'order_date'], '');
+    const paymentDt = pick(o, ['paymentDt', 'paymentDate', 'settleDt'], '');
+    const orderStatus = pick(o, ['orderStatus', 'orderStatusText', 'orderStep'], '') || pick(goods, ['orderStatus'], '');
+    // 실응답(코드) 우선, 없으면 mock의 평문 상태 텍스트를 보조로 사용
+    const payHint = orderStatus || pick(o, ['paymentStatus', 'settleStateText'], '');
+    const delivHint = orderStatus || pick(o, ['deliveryStatus', 'deliveryStatusText'], '');
+
+    const productAmount = toNumber(pick(o, ['totalGoodsPrice', 'orderGoodsPrice', 'goodsPrice'], '0'));
+    const deliveryFee = toNumber(pick(o, ['totalDeliveryCharge', 'deliveryCharge', 'sumDeliveryCharge'], '0'));
+    const settle = toNumber(pick(o, ['settlePrice', 'totalSettlePrice', 'totalPrice', 'orderPrice', 'amount'], '0'));
+
+    // 상품 상세는 중첩 orderGoodsData.goodsNm 우선, 없으면 상위/평문 fallback
+    const productName = pick(goods, ['goodsNm', 'goodsName']) || pick(o, ['orderGoodsNm', 'goodsNm', 'productName', 'goods_name'], '');
+    const quantity = toInt(pick(goods, ['goodsCnt']) || pick(o, ['orderGoodsCnt', 'goodsCnt', 'quantity', 'ea'], '1'));
+
+    // 주문자/수령자 (orderInfoData) — 관리자 화면 전용, 마스킹하지 않은 원본.
+    // mock(평문 customerName 등)도 처리되도록 상위 o 도 fallback.
+    const ordererName = pick(info, ['orderName', 'ordererName']) || pick(o, ['orderName', 'ordererName', 'customerName', 'buyerName'], '');
+    const receiverName = pick(info, ['receiverName']) || pick(o, ['receiverName'], '');
+    const phone =
+      pick(info, ['orderCellPhone', 'orderPhone', 'orderHp']) ||
+      pick(o, ['orderCellPhone', 'orderHp', 'customerPhone', 'phone', 'hp'], '');
+    const addrMain = pick(info, ['receiverAddress', 'orderAddress']) || pick(o, ['receiverAddress', 'orderAddress', 'address', 'addr'], '');
+    const addrSub = pick(info, ['receiverAddressSub', 'orderAddressSub'], '');
+    const address = [addrMain, addrSub].filter((x) => x.length > 0).join(' ').trim();
+
+    const paid = hasPaymentDate(paymentDt) || isPaidStatus(payHint);
+    const { deliveryStatus, undelivered } = interpretDelivery(delivHint, paid);
 
     return {
-      orderId: pick(o, ['orderId', 'orderNo', 'orderCd', 'sno'], orderNo),
+      orderId: pick(o, ['orderId', 'orderNo'], orderNo),
       orderNo,
-      orderDate: pick(o, ['orderDate', 'orderYmd', 'regDt', 'orderDt', 'order_date']),
-      // 관리자 화면 전용 — 마스킹하지 않은 원본 고객정보
-      ordererName: pick(o, ['orderName', 'ordererName', 'memNm', 'memName', 'buyerName', 'customerName'], ''),
-      receiverName: pick(o, ['receiverName', 'receiverNm', 'deliveryName', 'takeName', 'receiptName', 'rcvName'], ''),
-      phone: pick(o, ['receiverHp', 'receiverCellPhone', 'orderHp', 'orderCellPhone', 'ordererHp', 'customerPhone', 'hp', 'cellPhone'], ''),
-      address: pick(o, ['receiverAddress', 'orderAddress', 'receiverAddr', 'orderAddr', 'address', 'addr'], ''),
-      productName: pick(o, ['goodsNm', 'goodsName', 'productName', 'goods_name'], ''),
-      quantity: toInt(pick(o, ['goodsCnt', 'ea', 'orderCnt', 'quantity'], '1')),
+      orderDate,
+      ordererName,
+      receiverName,
+      phone,
+      address,
+      productName,
+      quantity,
       productAmount,
       deliveryFee,
-      totalAmount: totalAmount || productAmount + deliveryFee,
-      paymentMethod: pick(o, ['settleKindText', 'settleKind', 'settleMethodText', 'paymentMethod', 'payment'], ''),
-      paymentStatus: paymentStatus || '미결제',
-      deliveryStatus: deliveryStatus || '배송 전',
-      unpaid: isUnpaidStatus(paymentStatus || '미결제'),
-      undelivered: isUndeliveredStatus(deliveryStatus)
+      totalAmount: settle || productAmount + deliveryFee,
+      paymentMethod: pick(o, ['settleKind', 'settleKindText', 'settleMethodText'], ''),
+      paymentStatus: paid ? '결제완료' : '미결제',
+      deliveryStatus,
+      unpaid: !paid,
+      undelivered
     };
   });
 };
