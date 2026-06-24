@@ -15,6 +15,7 @@ import { EnginePanel } from './EnginePanel';
 import { DataPanel } from './DataPanel';
 import { CalendarPanel } from './CalendarPanel';
 import { ApiBridgePanel } from './ApiBridgePanel';
+import { DepartmentWorkspacePanel } from './DepartmentWorkspacePanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
@@ -25,9 +26,9 @@ interface MainLayoutProps {
   tasks: OperationTask[];
   logs: LogEntry[];
   isSimulating: boolean;
-  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar';
+  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department';
   approvalQueue: ApprovalItem[];
-  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar') => void;
+  setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department') => void;
   onStartSimulation: () => void;
   onAddTask: (title: string, agentId: string) => void;
   onSelectAgent: (agent: Agent) => void;
@@ -212,6 +213,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               🏢 오늘의 운영
             </button>
             <button
+              className={`nav-tab-btn ${activeTab === 'department' ? 'active' : ''}`}
+              onClick={() => setActiveTab('department')}
+              title="팀별 업무 공간 — 부서를 선택해 업무를 확인하고 지시"
+            >
+              🗂️ 부서 업무 관장
+            </button>
+            <button
               className={`nav-tab-btn ${activeTab === 'agents' ? 'active' : ''}`}
               onClick={() => setActiveTab('agents')}
               title="AI 직원 현황"
@@ -277,9 +285,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       </header>
 
       {/* 메인 뷰포트 영역 */}
-      <div className={`main-viewport ${activeTab === 'office' ? 'office-tab-layout' : ''}`}>
-        {/* 좌측: 메인 채팅 제어 콘솔 (오늘의 운영 탭이 아닐 때만 렌더링) */}
-        {activeTab !== 'office' && (
+      <div className={`main-viewport ${activeTab === 'office' ? 'office-tab-layout' : ''}${activeTab === 'department' ? 'department-tab-layout' : ''}`}>
+        {/* 좌측: 메인 채팅 제어 콘솔 (오늘의 운영/부서 업무 관장 탭은 자체 레이아웃 사용) */}
+        {activeTab !== 'office' && activeTab !== 'department' && (
           <aside className="viewport-left">
             <ChatConsole
               activeOperationsData={activeOperationsData}
@@ -301,7 +309,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         <main 
           className="viewport-right" 
           tabIndex={-1} 
-          style={{ outline: 'none', padding: activeTab === 'office' ? '0' : '15px' }}
+          style={{ outline: 'none', padding: (activeTab === 'office' || activeTab === 'department') ? '0' : '15px' }}
         >
           {activeTab === 'office' && (
             <OfficeView
@@ -330,8 +338,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             />
           )}
 
+          {activeTab === 'department' && (
+            <DepartmentWorkspacePanel />
+          )}
+
           {activeTab === 'agents' && (
-            <AgentPanel 
+            <AgentPanel
               agents={agents} 
               onSelectAgent={onSelectAgent} 
               lastNativeAgentRun={lastNativeAgentRun}
