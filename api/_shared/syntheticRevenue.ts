@@ -17,23 +17,41 @@ import { deriveOrderState } from './godomallRevenue.js';
 
 // ── Synthetic Inventory Impact (가상 재고 영향) ──────────────────────────────
 // 고도몰 실제 재고는 절대 변경하지 않는다(Write 금지). 아래 값은 GODO 내부 synthetic
-// 계산값일 뿐이다. Products의 currentStock을 기준으로 6개월 전 초기재고를 역산해,
-// projectedStock이 currentStock과 일치하도록 맞춘다.
-export type StockMode = 'tracked' | 'unlimited' | 'unknown';
+// 계산값일 뿐이다.
+//
+// 방향(v0): 샘플몰의 임시 재고설정(stockEnabled=false/stock=0)을 그대로 따르지 않고,
+// "실제 운영 쇼핑몰처럼 6개월간 재고가 움직이는 가상 세계"를 만든다.
+//   - 모든 상품을 syntheticStockMode='tracked'로 처리
+//   - syntheticInitialStock = netSold + 안전재고(상품별 20~80, 결정적)
+//   - syntheticProjectedStock = initial - sold + restored  (항상 ≥ 0)
+//   - 샘플몰 원본값은 sourceStockEnabled/sourceStock로 "참고만" 보존
+export type SyntheticStockMode = 'tracked';
 
 export type SyntheticStockImpact = {
   productId: string;
   productCode?: string;
   productName: string;
-  currentStock: number | null;
-  syntheticInitialStock: number | null;
+  // 샘플몰 원본 참고값 (읽기 전용, 고도몰 재고 미변경)
+  sourceStockEnabled: boolean;
+  sourceStock: number;
+  // synthetic 가상 재고 세계
+  syntheticStockMode: SyntheticStockMode;
+  syntheticInitialStock: number;
   syntheticSoldQuantity: number;
   syntheticRestoredQuantity: number;
   syntheticNetSoldQuantity: number;
-  syntheticProjectedStock: number | null;
-  stockEnabled: boolean;
-  stockMode: StockMode;
+  syntheticProjectedStock: number;
   warning?: string;
+};
+
+// 상품별 안전재고(20~80) — productId 결정적 해시 (Math.random 미사용)
+const safetyStockFor = (productId: string): number => {
+  let h = 2166136261;
+  for (let i = 0; i < productId.length; i++) {
+    h ^= productId.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return 20 + (Math.abs(h | 0) % 61); // 20..80
 };
 
 export type SyntheticRevenueOptions = {
@@ -235,12 +253,12 @@ export const generateSyntheticRevenueOrders = (
   return orders;
 };
 
-// 상품별 가상 재고 영향 계산.
+// 상품별 가상 재고 영향 계산. (synthetic 전용 가상 재고 세계)
 //   차감 대상: 결제완료~구매확정(미취소) = state.paid && !state.canceled
 //   복구 대상: 취소/반품/환불 = state.canceled
 //   제외:     입금대기/미결제 = !state.paid
-// 공식(§3): initialStock = currentStock + netSold,
-//          projectedStock = initialStock - sold + restored  → currentStock 과 일치
+//   initial = max(0, netSold) + safety(20~80),  projected = initial - sold + restored  (≥ safety > 0)
+//   샘플몰 원본값은 sourceStockEnabled/sourceStock로 참고만 보존(읽기 전용).
 export const computeSyntheticStockImpact = (
   products: StandardProduct[],
   syntheticOrders: RevenueOrder[]
@@ -262,37 +280,26 @@ export const computeSyntheticStockImpact = (
     const soldQ = sold.get(p.productId) || 0;
     const restoredQ = restored.get(p.productId) || 0;
     const netSold = soldQ - restoredQ;
-    const stockMode: StockMode = p.stockEnabled ? 'tracked' : 'unlimited';
+    const safety = safetyStockFor(p.productId);
+    // 초기재고: 음의 netSold가 초기재고를 깎지 않도록 0으로 클램프 후 안전재고 가산
+    const initialStock = Math.max(0, netSold) + safety;
+    const projectedStock = initialStock - soldQ + restoredQ; // 항상 ≥ safety(>0)
+    const warning =
+      netSold < 0 ? '복구수량 > 판매수량 (synthetic 변동상 정상 — 재고 상향)' : undefined;
 
-    const head = {
+    return {
       productId: p.productId,
       productCode: p.productCode || undefined,
       productName: p.productName || 'unknown_product',
+      // 원본 참고값 (고도몰 재고 미변경 — 읽기 전용)
+      sourceStockEnabled: p.stockEnabled,
+      sourceStock: p.stock,
+      // synthetic 가상 재고
+      syntheticStockMode: 'tracked',
+      syntheticInitialStock: initialStock,
       syntheticSoldQuantity: soldQ,
       syntheticRestoredQuantity: restoredQ,
       syntheticNetSoldQuantity: netSold,
-      stockEnabled: p.stockEnabled,
-      stockMode
-    };
-
-    // unlimited(재고 무제한) — 수량은 참고값으로만 유지, 재고값은 null
-    if (stockMode !== 'tracked') {
-      return {
-        ...head,
-        currentStock: null,
-        syntheticInitialStock: null,
-        syntheticProjectedStock: null
-      };
-    }
-
-    const currentStock = p.stock;
-    const initialStock = currentStock + netSold;
-    const projectedStock = initialStock - soldQ + restoredQ; // === currentStock
-    const warning = initialStock < 0 ? 'syntheticInitialStock < 0 (복구수량 > 판매수량)' : undefined;
-    return {
-      ...head,
-      currentStock,
-      syntheticInitialStock: initialStock,
       syntheticProjectedStock: projectedStock,
       ...(warning ? { warning } : {})
     };
@@ -309,20 +316,18 @@ export type SyntheticStockSummary = {
 
 export const summarizeStockImpact = (impact: SyntheticStockImpact[]): SyntheticStockSummary => {
   let tracked = 0;
-  let unlimited = 0;
   let totalSold = 0;
   let totalRestored = 0;
   let totalNet = 0;
   for (const s of impact) {
-    if (s.stockMode === 'tracked') tracked++;
-    else if (s.stockMode === 'unlimited') unlimited++;
+    if (s.syntheticStockMode === 'tracked') tracked++;
     totalSold += s.syntheticSoldQuantity;
     totalRestored += s.syntheticRestoredQuantity;
     totalNet += s.syntheticNetSoldQuantity;
   }
   return {
     syntheticTrackedProductCount: tracked,
-    syntheticUnlimitedProductCount: unlimited,
+    syntheticUnlimitedProductCount: impact.length - tracked, // v0: 항상 0
     syntheticTotalSoldQuantity: totalSold,
     syntheticTotalRestoredQuantity: totalRestored,
     syntheticTotalNetSoldQuantity: totalNet
