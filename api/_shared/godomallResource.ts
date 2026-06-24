@@ -43,8 +43,9 @@ const ORDER_SEARCH_PATH = '/order/Order_Search.php';
 // 리스트 추출 후보 키 (실 응답 확인: Goods_Search 리스트는 data.return.goods_data)
 export const GOODS_LIST_KEYS = ['goods_data', 'goods', 'item', 'list', 'row', 'data'];
 export const ORDER_LIST_KEYS = ['order', 'item', 'list', 'row', 'data'];
-// 관리자 주문 리스트 추출 후보 (Order_Search 응답의 주문 리스트 노드)
-export const ADMIN_ORDER_LIST_KEYS = ['order', 'orderInfo', 'orderList', 'orderData', 'item', 'list', 'row', 'data'];
+// 관리자 주문 리스트 추출 후보 (Order_Search 실응답: data.return.order_data)
+// 실제 리스트 키 order_data 를 generic wrapper 'data'보다 앞에 둔다.
+export const ADMIN_ORDER_LIST_KEYS = ['order_data', 'order_list', 'order', 'orderInfo', 'orderList', 'orderData', 'item', 'list', 'row', 'data'];
 
 // 주문 조회 기본 기간 (최근 30일)
 const defaultOrderRange = (): { startDate: string; endDate: string } => {

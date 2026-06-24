@@ -75,6 +75,18 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     const list = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
     const firstRecord = list[0] as Record<string, unknown> | undefined;
 
+    // 실응답 경로 data.return.order_data 를 명시적으로 drill down
+    const asObj = (v: unknown): Record<string, unknown> | undefined =>
+      v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+    const dataNode = asObj(parsed.root.data);
+    const returnNode = asObj(dataNode?.return);
+    const orderDataRaw = returnNode?.order_data;
+    const orderDataIsArray = Array.isArray(orderDataRaw);
+    const orderDataFirst = orderDataIsArray
+      ? (orderDataRaw as unknown[]).find((x) => asObj(x))
+      : orderDataRaw;
+    const orderDataObj = asObj(orderDataFirst);
+
     sendOkResponse(res, {
       probe: 'orders',
       live: true,
@@ -83,9 +95,14 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
       msg: parsed.msg,
       // 응답 최상위 봉투 키 (구조 파악용)
       rootKeys: Object.keys(parsed.root),
+      returnKeys: returnNode ? Object.keys(returnNode) : [],
       // 배열로 접힌 노드들 (경로 + leafKey + 길이)
       arrayNodes: arrays.map((a) => ({ path: a.path, leafKey: a.leafKey, length: a.items.length })),
-      // orders-admin이 매핑하는 레코드의 구조 (필드 이름/타입/중첩 키만, 값 미포함)
+      // data.return.order_data 직접 검사 (값 미포함)
+      orderDataIsArray,
+      orderDataCount: orderDataIsArray ? (orderDataRaw as unknown[]).length : orderDataObj ? 1 : 0,
+      orderDataFields: orderDataObj ? describeRecord(orderDataObj) : [],
+      // extractList가 매핑 대상으로 잡는 레코드 (보정 후 일치해야 함)
       mappedRecordCount: list.length,
       mappedRecordFields: firstRecord ? describeRecord(firstRecord) : []
     });
