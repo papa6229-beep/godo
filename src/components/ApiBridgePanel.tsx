@@ -831,17 +831,19 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       {getPermissionLabel(apiState.providers[0].permissions.inventory).text}
                     </span>
                   </div>
-                  <p className="resource-desc">상품 SKU 옵션별 재고 현황 및 안전선 체크</p>
+                  <p className="resource-desc">Goods_Search.php 상품 데이터 기반 재고 파생 · 안전재고 체크 ({isLive ? '실연동 READ' : 'Mock'})</p>
                   <div className="resource-meta-info">
-                    <span>최종 동기화: {apiState.providers[0].lastSyncAt ? '완료' : '대기'}</span>
-                    <span>예상 데이터: 4 rows</span>
+                    <span>Endpoint: Goods_Search.php (derived)</span>
+                    <span>Source: {isLive ? 'DERIVED FROM PRODUCTS (REAL)' : 'Mock / Fallback'}</span>
                   </div>
                   <button
                     className="sync-card-btn"
                     onClick={() => handleSyncResource('inventory')}
                     disabled={syncingResource !== null}
                   >
-                    {syncingResource === 'inventory' ? '🔄 Syncing...' : 'Sync Mock Inventory'}
+                    {syncingResource === 'inventory'
+                      ? '🔄 Syncing...'
+                      : isLive ? 'Sync Inventory (Derived)' : 'Sync Mock Inventory'}
                   </button>
                 </div>
 

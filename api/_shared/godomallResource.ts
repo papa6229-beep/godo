@@ -7,7 +7,6 @@
 import { getGodomallConfig, isLiveMode, postGodomall } from './godomallOpenApiClient.js';
 import { parseGodomallXml, extractList } from './godomallXmlParser.js';
 import {
-  mapGoodsToInventory,
   mapGoodsToProducts,
   mapOrderList,
   mapOrdersToAdmin,
@@ -26,6 +25,7 @@ import {
   summarizeStockImpact
 } from './syntheticRevenue.js';
 import type { SyntheticStockImpact } from './syntheticRevenue.js';
+import { deriveInventoryFromProducts } from './godomallInventoryDerive.js';
 import { maskRecordsList } from './piiMaskGuard.js';
 import {
   getProxyMockOrders,
@@ -79,7 +79,9 @@ const fetchLiveRecords = async (
     const parsed = parseGodomallXml(res.xml);
     if (!parsed.ok) throw new Error(`Goods_Search error code ${parsed.code}: ${parsed.msg}`);
     const goods = extractList(parsed.root, GOODS_LIST_KEYS);
-    return resourceType === 'inventory' ? mapGoodsToInventory(goods) : mapGoodsToProducts(goods);
+    const products = mapGoodsToProducts(goods);
+    // inventory는 별도 API가 아니라 Products(REAL READ) 데이터에서 재고를 파생한다.
+    return resourceType === 'inventory' ? deriveInventoryFromProducts(products) : products;
   }
 
   if (resourceType === 'orders' || resourceType === 'sales') {
