@@ -20,6 +20,12 @@ import {
   summarizeRevenue
 } from './godomallRevenue.js';
 import type { RevenueOrder, RevenueSummary } from './godomallRevenue.js';
+import {
+  generateSyntheticRevenueOrders,
+  computeSyntheticStockImpact,
+  summarizeStockImpact
+} from './syntheticRevenue.js';
+import type { SyntheticStockImpact } from './syntheticRevenue.js';
 import { maskRecordsList } from './piiMaskGuard.js';
 import {
   getProxyMockOrders,
@@ -224,6 +230,7 @@ export interface ResolvedRevenue {
   orders: RevenueOrder[];
   count: number;
   summary: RevenueSummary;
+  stockImpact: SyntheticStockImpact[];
   source: ResourceSource;
   mode: 'real' | 'sandbox' | 'mock';
   live: boolean;
@@ -245,9 +252,15 @@ const fetchProductsForJoin = async (
   }
 };
 
-export const resolveOrdersRevenue = async (): Promise<ResolvedRevenue> => {
+export const resolveOrdersRevenue = async (
+  opts: { includeSynthetic?: boolean } = {}
+): Promise<ResolvedRevenue> => {
   const config = getGodomallConfig();
   let errorMessage: string | undefined;
+  let realOrders: RevenueOrder[] = [];
+  let products: StandardProduct[] = [];
+  let source: ResourceSource = 'api_mock_fallback';
+  let live = false;
 
   if (isLiveMode(config)) {
     try {
@@ -261,30 +274,39 @@ export const resolveOrdersRevenue = async (): Promise<ResolvedRevenue> => {
       const parsed = parseGodomallXml(res.xml);
       if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
       const rawOrders = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
-      const products = await fetchProductsForJoin(config);
-      const orders = mapOrdersToRevenue(rawOrders, buildProductIndex(products), 'real_godomall');
-      return {
-        orders,
-        count: orders.length,
-        summary: summarizeRevenue(orders),
-        source: config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox',
-        mode: config.mode,
-        live: true
-      };
+      products = await fetchProductsForJoin(config);
+      realOrders = mapOrdersToRevenue(rawOrders, buildProductIndex(products), 'real_godomall');
+      source = config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox';
+      live = true;
     } catch (err: unknown) {
       errorMessage = err instanceof Error ? err.message : String(err);
     }
   }
 
-  // mock fallback (Products 미조인 → uncategorized)
-  const orders = mapOrdersToRevenue(getProxyMockOrders(), buildProductIndex([]), 'real_godomall');
+  if (!live) {
+    // mock fallback (Products 미조인 → uncategorized)
+    realOrders = mapOrdersToRevenue(getProxyMockOrders(), buildProductIndex([]), 'real_godomall');
+  }
+
+  // 가상 매출 데이터 (옵션) — 실 Products 기반 생성, 실 주문과 동일 RevenueOrder 구조
+  const syntheticOrders = opts.includeSynthetic ? generateSyntheticRevenueOrders(products) : [];
+  const orders = [...realOrders, ...syntheticOrders];
+
+  // 가상 재고 영향 (옵션) — 실 Products 현재 재고 기준으로 역산 (고도몰 재고 미변경)
+  const stockImpact = opts.includeSynthetic ? computeSyntheticStockImpact(products, syntheticOrders) : [];
+  const summary: RevenueSummary = {
+    ...summarizeRevenue(orders),
+    ...(opts.includeSynthetic ? summarizeStockImpact(stockImpact) : {})
+  };
+
   return {
     orders,
     count: orders.length,
-    summary: summarizeRevenue(orders),
-    source: 'api_mock_fallback',
+    summary,
+    stockImpact,
+    source,
     mode: config.mode,
-    live: false,
+    live,
     errorMessage
   };
 };

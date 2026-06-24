@@ -74,6 +74,15 @@ export type RevenueSummary = {
   unpaidOrderCount: number;
   confirmedOrderCount: number;
   canceledOrderCount: number;
+  // 실/가상 구분 (synthetic 포함 시 활용, 기본도 채워짐)
+  realOrderCount: number;
+  syntheticOrderCount: number;
+  // 가상 재고 영향 요약 (includeSynthetic=true 일 때만 채워짐)
+  syntheticTrackedProductCount?: number;
+  syntheticUnlimitedProductCount?: number;
+  syntheticTotalSoldQuantity?: number;
+  syntheticTotalRestoredQuantity?: number;
+  syntheticTotalNetSoldQuantity?: number;
 };
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────
@@ -240,6 +249,8 @@ export const summarizeRevenue = (orders: RevenueOrder[]): RevenueSummary => {
   let unpaid = 0;
   let confirmed = 0;
   let canceled = 0;
+  let real = 0;
+  let synthetic = 0;
   for (const o of orders) {
     lineCount += o.lines.length;
     byHeader += o.productRevenueByHeader;
@@ -250,6 +261,8 @@ export const summarizeRevenue = (orders: RevenueOrder[]): RevenueSummary => {
     if (o.state.unpaid) unpaid++;
     if (o.state.confirmed) confirmed++;
     if (o.state.canceled) canceled++;
+    if (o.sourceType === 'synthetic_test') synthetic++;
+    else real++;
   }
   return {
     orderCount: orders.length,
@@ -261,6 +274,8 @@ export const summarizeRevenue = (orders: RevenueOrder[]): RevenueSummary => {
     paidOrderCount: paid,
     unpaidOrderCount: unpaid,
     confirmedOrderCount: confirmed,
-    canceledOrderCount: canceled
+    canceledOrderCount: canceled,
+    realOrderCount: real,
+    syntheticOrderCount: synthetic
   };
 };
