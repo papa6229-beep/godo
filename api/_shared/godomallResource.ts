@@ -13,7 +13,13 @@ import {
   mapOrdersToAdmin,
   deriveSalesFromOrders
 } from './godomallMapper.js';
-import type { StandardOrderAdmin } from './godomallMapper.js';
+import type { StandardOrderAdmin, StandardProduct } from './godomallMapper.js';
+import {
+  buildProductIndex,
+  mapOrdersToRevenue,
+  summarizeRevenue
+} from './godomallRevenue.js';
+import type { RevenueOrder, RevenueSummary } from './godomallRevenue.js';
 import { maskRecordsList } from './piiMaskGuard.js';
 import {
   getProxyMockOrders,
@@ -207,5 +213,78 @@ export const resolveOrdersAdmin = async (): Promise<ResolvedAdminOrders> => {
     live: false,
     errorMessage,
     ...summarizeAdminOrders(records)
+  };
+};
+
+// ── 매출 분석용 주문 조회 (RevenueOrder v0) ──────────────────────────────────
+// 상품관리팀 매출 대시보드 전용. orders-admin(표시용)과 별개의 매출 분석 구조를 반환한다.
+// Order_Search.php(주문) + Goods_Search.php(상품, 카테고리 조인) → RevenueOrder[].
+// 고객 개인정보 미포함(매출 분석용). READ 전용. live 실패/미설정 시 mock 폴백.
+export interface ResolvedRevenue {
+  orders: RevenueOrder[];
+  count: number;
+  summary: RevenueSummary;
+  source: ResourceSource;
+  mode: 'real' | 'sandbox' | 'mock';
+  live: boolean;
+  errorMessage?: string;
+}
+
+// Products 조인용 상품 목록 조회 (실패해도 매출조회는 진행 → uncategorized 처리)
+const fetchProductsForJoin = async (
+  config: ReturnType<typeof getGodomallConfig>
+): Promise<StandardProduct[]> => {
+  try {
+    const res = await postGodomall(GOODS_SEARCH_PATH, { page: 1, size: 100 }, config);
+    if (!res.ok || !res.xml) return [];
+    const parsed = parseGodomallXml(res.xml);
+    if (!parsed.ok) return [];
+    return mapGoodsToProducts(extractList(parsed.root, GOODS_LIST_KEYS));
+  } catch {
+    return [];
+  }
+};
+
+export const resolveOrdersRevenue = async (): Promise<ResolvedRevenue> => {
+  const config = getGodomallConfig();
+  let errorMessage: string | undefined;
+
+  if (isLiveMode(config)) {
+    try {
+      const { startDate, endDate } = defaultOrderRange();
+      const res = await postGodomall(
+        ORDER_SEARCH_PATH,
+        { dateType: 'order', startDate, endDate, page: 1, size: 50 },
+        config
+      );
+      if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
+      const parsed = parseGodomallXml(res.xml);
+      if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
+      const rawOrders = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
+      const products = await fetchProductsForJoin(config);
+      const orders = mapOrdersToRevenue(rawOrders, buildProductIndex(products), 'real_godomall');
+      return {
+        orders,
+        count: orders.length,
+        summary: summarizeRevenue(orders),
+        source: config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox',
+        mode: config.mode,
+        live: true
+      };
+    } catch (err: unknown) {
+      errorMessage = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // mock fallback (Products 미조인 → uncategorized)
+  const orders = mapOrdersToRevenue(getProxyMockOrders(), buildProductIndex([]), 'real_godomall');
+  return {
+    orders,
+    count: orders.length,
+    summary: summarizeRevenue(orders),
+    source: 'api_mock_fallback',
+    mode: config.mode,
+    live: false,
+    errorMessage
   };
 };
