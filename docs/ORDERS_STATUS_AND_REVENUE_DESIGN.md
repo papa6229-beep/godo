@@ -68,17 +68,36 @@ undelivered= !shipped && !delivered
 
 ---
 
-## 4. 매출 계산 기준 (설계 합의)
+## 4. 매출 계산 기준 (v0 확정)
 
-```
-상품매출(상품성과) = Σ(line.goodsPrice × line.goodsCnt)   ← 라인합 (헤더 totalGoodsPrice는 검증용 대조)
-배송비(별도)       = Σ totalDeliveryCharge                ← 상품매출에 미혼입
-총 주문금액        = settlePrice (또는 상품매출 + 배송비)
-```
-- **확정매출(메인)** = `confirmed(finishDt 있음)` 주문의 상품매출 → 취소/반품이 구조적으로 제외되어 가장 신뢰도 높음.
+### 4-1. 상품매출 (상품별/카테고리별 성과)
+- 상품별/카테고리별 성과 분석은 **주문 라인 기준**으로 계산한다.
+- 기본 공식: `lineRevenue = goodsPrice × goodsCnt`, 상품매출 = `Σ lineRevenue`.
+- ⚠️ **단, 현재 실주문이 수량 1건뿐이라 `goodsPrice`가 단가인지 라인합계인지 아직 확정되지 않았다**(111×1=111이라 구분 불가).
+- 따라서 **v0에서는 헤더 `totalGoodsPrice`를 주문 단위 상품매출 기준값으로 대조**한다(라인합과 불일치 시 플래그/로그).
+- 향후 **수량 2개 이상 주문**으로 `goodsPrice` 의미(단가 vs 라인합계)를 확인해 잠근다.
+
+### 4-2. 배송비 분리
+- 배송비(`totalDeliveryCharge` / `deliveryFee`)는 **상품매출에 절대 섞지 않는다.**
+- 배송비는 **배송/운영 지표로 별도 집계**한다.
+- **총 주문금액 = `settlePrice` / `totalAmount`** 기준으로 본다.
+
+### 4-3. 할인 / 쿠폰 / 적립
+- 할인·쿠폰·적립 사용 시 **`settlePrice ≠ totalGoodsPrice + totalDeliveryCharge`** 가 될 수 있다.
+- 따라서 **총상품매출 / 할인액 / 배송비 / 실결제금액을 구분**해야 한다.
+  - 총상품매출(gross) = `totalGoodsPrice` (또는 라인합)
+  - 배송비 = `totalDeliveryCharge`
+  - 실결제금액 = `settlePrice`
+  - 할인액 = `(총상품매출 + 배송비) − 실결제금액` 으로 근사 역산(전용 필드 확인 전까지)
+- v0는 **할인 없는 테스트 주문 기준**으로 시작한다.
+- **TODO**: 할인/쿠폰/적립 전용 필드(예: `totalDcPrice` / 쿠폰 / 적립금 등) 실응답 존재 여부 확인 후 정식 반영.
+
+### 4-4. 매출 기준 지표
+- **확정매출(메인)** = `confirmed(finishDt 있음)` 주문의 상품매출 → 취소/반품이 구조적으로 제외되어 신뢰도 최상.
 - **결제완료 총매출(보조)** = `paid && !canceled` 주문의 상품매출 → 선행지표("잠정매출"로 라벨).
-- **취소 차감** = `canceled` 주문 상품매출 별도 표기.
-- 상품 성과는 **라인 단위 `goodsPrice×goodsCnt`** 기준(헤더-라인 불일치/부분취소 대비). 배송비는 주문 단위 별도 합산.
+- **취소 차감** = `canceled(cancelDt 있음)` 주문 상품매출 별도 표기.
+- 상품 성과는 **라인 단위** 기준(부분취소·헤더/라인 불일치 대비), 배송비는 주문 단위 별도 합산.
+- gross / net(할인 후) 여부는 **대시보드 라벨에 명시**.
 
 > 미확인 리스크: 취소/환불 금액이 원주문 갱신(A)인지 별도 레코드(B)인지 아직 미검증. 1차는 **확정매출(finishDt) 기준**으로 우회. 해당 상태 실주문 발생 시 재검증.
 
@@ -97,7 +116,7 @@ interface RevenueOrderLine {
   goodsCd: string;        // ← Products.productCode 조인 키 (보조)
   goodsNm: string;
   goodsCnt: number;
-  goodsPrice: number;     // 단가
+  goodsPrice: number;     // 단가(추정) — 단가/라인합계 미확정, §4-1 참조
   lineOrderStatus: string;// orderGoodsData.orderStatus (예: o1)
   // 파생(런타임): lineRevenue = goodsPrice × goodsCnt, category(Products 조인)
 }
@@ -127,10 +146,23 @@ interface RevenueOrder {
 
 ### 설계 원칙
 1. `orderGoodsData` object|array **항상 array 정규화**(현 v0 firstRecordOf를 전체 라인 보존으로 확장).
-2. 카테고리별 매출 = `goodsNo → Products.categoryCode/allCategoryCode` 조인(주문 단독 불가, 키 존재 확인됨).
-3. 상품명 변경 내성 = `goodsNo`(불변) 기준 조인. `goodsNm` 텍스트 매칭 금지.
-4. 실/가상 = `sourceType`으로 분리, 집계 시 필터 가능. 가상은 고도몰 미등록(Write 금지), GODO 내부 전용.
-5. 상태 판별 = §3 날짜필드 우선 + 확정 코드(o1 등) 보조.
+2. **Products 조인**: 주문 라인 `goodsNo` → `Products.productId` 연결(1순위). `goodsCd` → `productCode` 보조키. 카테고리는 `Products.categoryCode/allCategoryCode`에서 가져온다(주문 단독 불가, 키 존재 확인됨).
+3. **상품명 기준 조인 금지** — `goodsNo`(불변) 기준. `goodsNm` 텍스트 매칭 사용 안 함.
+4. **Products 조인 실패 폴백**: `goodsNo`를 Products에서 못 찾으면 `category = 'uncategorized'`, 상품명 없으면 `'unknown_product'`로 처리.
+5. 실/가상 = `sourceType`으로 분리, 집계 시 필터 가능. 가상은 고도몰 미등록(Write 금지), GODO 내부 전용.
+6. **상태 판별 = §3 날짜필드 우선**, `orderStatus` 코드는 보조:
+   - `o1` = 입금대기/미결제 (확정)
+   - `paymentDt` 없음/`0000-00-00 00:00:00` → 미결제
+   - `finishDt` 있음 → 구매확정(확정매출 기준)
+   - `cancelDt` 있음 → 취소 계열
+   - 그 외 상태 코드는 실데이터 발생 시 추가 검증.
+7. **상태 파생은 단일 순수함수**(`deriveOrderState(order)`)로 계산(paid/shipped/delivered/confirmed/canceled) → 실/가상 동일 경로 보장.
+
+### 구현 방식 결정 (v0 = A안, 안전 우선)
+- **v0는 A안(분리) 채택**: 기존 `orders-admin` / `StandardOrderAdmin`은 **건드리지 않는다.**
+- 매출 분석용 `RevenueOrder` / `RevenueOrderLine` 타입과 매퍼/리졸버/라우트를 **별도로 신설**한다.
+- 이후 안정화되면 `RevenueOrder`를 canonical 기준으로 두고 `StandardOrderAdmin`을 그 **projection으로 파생**하는 **B안 통합을 검토**한다.
+- ⚠️ A안은 동일 데이터(Order_Search.php)를 표시용/매출용 **2회 fetch**할 수 있음 — v0 격리·안전을 우선해 수용, B안 통합 시 1회로 합침.
 
 ### 가상 데이터 생성 시 필요한 필드 (위 RevenueOrder 스키마와 동일)
 헤더: orderId, orderNo, orderDate, paymentDt, invoiceDt, deliveryDt, deliveryCompleteDt, finishDt, cancelDt, orderStatus, settleKind, settlePrice, totalGoodsPrice, totalDeliveryCharge, sourceType(`synthetic_test`)
@@ -138,9 +170,20 @@ interface RevenueOrder {
 
 ---
 
-## 6. 미해결/후속 확인 항목
+## 6. 미해결/후속 확인 항목 (TODO)
+- `goodsPrice` **단가 vs 라인합계** — 수량 2개 이상 주문으로 확인(§4-1). 그 전까지 헤더 `totalGoodsPrice` 대조 기준.
+- **할인/쿠폰/적립 전용 필드** — `totalDcPrice`/쿠폰/적립금 등 실응답 존재 여부 확인 후 §4-3 정식 반영.
 - 결제완료/배송/구매확정/취소/반품/환불 **코드 실값** — 해당 상태 실주문 발생 시 동일 probe로 확인해 §2 표 잠금.
 - 취소/환불 **금액 표현 방식(원주문 갱신 vs 별도 레코드)** — 취소 실주문 발생 시 검증. 그 전까지 확정매출(finishDt) 기준으로 우회.
 - 부분취소/부분반품 라인 단위 수량·금액 차감 — CS/주문관리팀 단계 과제.
+- **Products 페이징** — 상품 수가 100개를 넘으면 Products 단일 페이지 fetch로는 조인 누락 → 페이징 필요(현재 13개라 무방).
 
-*문서 끝. (작성: 2026-06-24)*
+## 7. v0 구현 범위 요약 (다음 단계 = feature/revenue-order-model)
+- A안: 기존 orders-admin/StandardOrderAdmin 무수정, `RevenueOrder`/`RevenueOrderLine` + 매퍼/리졸버/라우트 신설.
+- 상태: 날짜필드 우선 파생(`deriveOrderState`), o1=미결제 확정 코드 보조.
+- 매출: 라인합 상품매출(헤더 totalGoodsPrice 대조) + 배송비 별도 + 확정매출(finishDt) 메인.
+- 조인: `goodsNo→productId`(보조 `goodsCd→productCode`), 실패 시 uncategorized/unknown_product.
+- 실/가상: `sourceType`(real_godomall/synthetic_test) 동일 스키마, 가상은 내부 전용(Write 금지).
+- 할인/취소금액/코드 실값은 TODO(§6)로 남기고 v0는 무할인·미결제 기준에서 시작.
+
+*문서 끝. (작성: 2026-06-24 · 보완: 2026-06-24 설계검토 반영)*
