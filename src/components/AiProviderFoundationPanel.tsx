@@ -1,12 +1,13 @@
-// AI Provider Foundation + AI 연결 마법사 v0
+// AI Provider Foundation + 카드 인라인 연결 v0.1
 //
-// 구성:
-//  1) Provider 슬롯 개요(grid) — 상태 한눈에 보기. LM Studio는 로컬 dev에서 실연결 테스트.
-//  2) AI 모델 연결(마법사) — OpenAI / Gemini / Claude 연결 키를 붙여넣고 모델 선택 + 연결 확인.
-//  3) 모델 선택 채팅 테스트 — 사용할 AI를 골라 실제로 한 문장 받아보기.
+// 각 AI 카드 안에서 바로 연결한다:
+//  - OpenAI / Gemini / Claude: 카드 안에 연결 키 입력 + 모델 선택 + 연결 확인/저장/삭제 +
+//    접이식 "채팅 테스트". (별도 하단 섹션 없음)
+//  - LM Studio Local: 로컬 dev에서만 연결 테스트 + 접이식 채팅 테스트.
+//  - company_local_llm / gpt_subscription: 준비 중/실험 placeholder.
 //
-// 보안(조용한 안전장치): 키 입력은 password, 저장 키는 마스킹 표시, console.log 금지,
-//  응답/에러에 키 미포함. 실제 cloud 호출은 서버 route가 요청 단위로만 키를 사용(미저장).
+// 보안(조용한 안전장치): 키 입력 password, 저장 키 마스킹, console.log 금지,
+//  응답/에러에 키 미포함. cloud 호출은 서버 route가 요청 단위로만 키 사용(미저장).
 
 import React, { useState } from 'react';
 import type { LogEntry } from '../types';
@@ -39,13 +40,11 @@ const CONNECT_TEST_PROMPT = 'GODO AI OS 연결 확인입니다. 한 문장으로
 const DEFAULT_QUESTION = 'GODO AI OS 연결 테스트입니다. 한 문장으로 응답해 주세요.';
 const CUSTOM_MODEL = '__custom__';
 
-// 로컬 dev 환경 여부. dev 빌드이거나 localhost/127.0.0.1 호스트면 로컬로 본다.
 const isLocalDev: boolean =
   import.meta.env.DEV ||
   (typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 
-// 모델 id를 폭넓게 감지(특정 모델명 하드코딩 금지)
 const MODEL_KEYWORDS = ['supergemma', 'super-gemma', 'gemma', 'uncensored', 'google/gemma'];
 const detectModelId = (models: { id: string }[]): string | undefined => {
   if (models.length === 0) return undefined;
@@ -76,7 +75,6 @@ const errorKindMessage: Record<string, string> = {
   unknown: '연결 중 알 수 없는 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
 };
 
-// chatWithProvider/cloud 결과 errorKind → 사용자 친화 한국어
 const chatErrorMessage: Record<string, string> = {
   not_configured: '아직 연결되지 않았습니다. 연결 키를 붙여넣고 저장해 주세요.',
   provider_disabled: 'GODO에서 사용하는 정식 AI가 아니어서 호출하지 않습니다.',
@@ -95,6 +93,13 @@ const chatErrorMessage: Record<string, string> = {
   unknown: '알 수 없는 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
 };
 
+// cloud provider 카드에서 쓰는 짧은 설명
+const cloudTagline: Record<string, string> = {
+  openai_api: '고급 분석·전략용 AI',
+  gemini_api: '빠른 초안·요약용 AI',
+  claude_api: '기획·카피라이팅용 AI'
+};
+
 const placeholderNote = (p: AIProviderDefinition): string => {
   switch (p.type) {
     case 'gpt_subscription_experimental':
@@ -102,67 +107,45 @@ const placeholderNote = (p: AIProviderDefinition): string => {
     case 'company_local_llm':
       return '준비 중 · 회사 서버 연결 후 사용';
     default:
-      return '아래 “AI 모델 연결”에서 연결 키를 붙여넣어 사용하세요';
+      return '준비 중';
   }
 };
 
-// 연결 마법사에 노출할 cloud 카드 정의
-const CLOUD_CONNECT: { id: string; label: string; hint: string }[] = [
-  { id: 'openai_api', label: 'OpenAI 연결', hint: 'OpenAI 연결 키를 붙여넣으세요. 키는 비밀번호처럼 가려져 표시됩니다.' },
-  { id: 'gemini_api', label: 'Gemini 연결', hint: 'Gemini 연결 키를 붙여넣으세요.' },
-  { id: 'claude_api', label: 'Claude 연결', hint: 'Claude 연결 키를 붙여넣으세요.' }
-];
-
-// 채팅 테스트에서 고를 수 있는 AI 목록
-const CHAT_AIS: { id: string; label: string; isLocal: boolean }[] = [
-  { id: 'local_lmstudio', label: 'LM Studio Local', isLocal: true },
-  { id: 'openai_api', label: 'OpenAI', isLocal: false },
-  { id: 'gemini_api', label: 'Gemini', isLocal: false },
-  { id: 'claude_api', label: 'Claude', isLocal: false }
-];
-
-const aiDisplayName = (providerId: string): string =>
-  CHAT_AIS.find(a => a.id === providerId)?.label || providerId;
+const isCloud = (p: AIProviderDefinition): boolean =>
+  p.type === 'openai_api' || p.type === 'gemini_api' || p.type === 'claude_api';
 
 type ConnectFeedback = { status: 'idle' | 'testing' | 'connected' | 'error' | 'info'; message: string };
 
 export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps> = ({ onAddLog }) => {
   const providers: AIProviderDefinition[] = defaultAIProviders;
 
-  // --- 1) grid: LM Studio 실연결 테스트 상태 ---
+  // LM Studio 실연결 테스트
   const [testingId, setTestingId] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, AIProviderTestResult>>({});
   const setResult = (r: AIProviderTestResult) => setResults(prev => ({ ...prev, [r.providerId]: r }));
 
-  // --- 2) 연결 마법사 상태 ---
+  // cloud 카드 연결 입력
   const [keyInput, setKeyInput] = useState<Record<string, string>>({});
   const [modelChoice, setModelChoice] = useState<Record<string, string>>({});
   const [customModel, setCustomModel] = useState<Record<string, string>>({});
   const [connectFeedback, setConnectFeedback] = useState<Record<string, ConnectFeedback>>({});
   const [connectingId, setConnectingId] = useState<string | null>(null);
-  const [vaultVersion, setVaultVersion] = useState(0); // 저장/삭제 후 마스킹 재읽기용
+  const [vaultVersion, setVaultVersion] = useState(0);
   const bumpVault = () => setVaultVersion(v => v + 1);
 
-  // --- 3) 모델 선택 채팅 테스트 상태 ---
-  const [selectedAi, setSelectedAi] = useState<string>('local_lmstudio');
-  const [chatModelChoice, setChatModelChoice] = useState<Record<string, string>>({});
-  const [chatCustomModel, setChatCustomModel] = useState<Record<string, string>>({});
-  const [question, setQuestion] = useState<string>(DEFAULT_QUESTION);
-  const [runningChat, setRunningChat] = useState(false);
-  const [chatResult, setChatResult] = useState<ProviderChatResult | null>(null);
+  // 카드별 채팅 테스트 (접이식)
+  const [chatOpen, setChatOpen] = useState<Record<string, boolean>>({});
+  const [cardQuestion, setCardQuestion] = useState<Record<string, string>>({});
+  const [cardChatRunning, setCardChatRunning] = useState<string | null>(null);
+  const [cardChatResult, setCardChatResult] = useState<Record<string, ProviderChatResult>>({});
 
-  // 선택된 모델 해석 (preset 또는 직접 입력)
-  const resolveModel = (
-    providerId: string,
-    choiceMap: Record<string, string>,
-    customMap: Record<string, string>
-  ): string => {
-    const choice = choiceMap[providerId] ?? (getProviderModel(providerId) || getDefaultCloudModel(providerId));
-    if (choice === CUSTOM_MODEL) return (customMap[providerId] || '').trim();
+  const resolveModel = (providerId: string): string => {
+    const choice = modelChoice[providerId] ?? (getProviderModel(providerId) || getDefaultCloudModel(providerId));
+    if (choice === CUSTOM_MODEL) return (customModel[providerId] || '').trim();
     return choice;
   };
 
-  // ===== grid: LM Studio 실연결 테스트 =====
+  // ===== LM Studio 실연결 테스트 =====
   const handleTestLmStudio = async (provider: AIProviderDefinition) => {
     if (!isLocalDev) return;
     const endpoint = provider.defaultEndpoint;
@@ -210,9 +193,7 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
     }
   };
 
-  const effectiveStatus = (p: AIProviderDefinition): AIProviderStatus => results[p.id]?.status ?? p.status;
-
-  // ===== 연결 마법사 =====
+  // ===== cloud 카드 연결 =====
   const handleSaveKey = (providerId: string, label: string) => {
     const key = (keyInput[providerId] || '').trim();
     if (!key) {
@@ -220,9 +201,9 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
       return;
     }
     saveProviderKey(providerId, key);
-    const model = resolveModel(providerId, modelChoice, customModel);
+    const model = resolveModel(providerId);
     if (model) saveProviderModel(providerId, model);
-    setKeyInput(prev => ({ ...prev, [providerId]: '' })); // 입력창에서 원문 제거
+    setKeyInput(prev => ({ ...prev, [providerId]: '' }));
     bumpVault();
     setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'info', message: '저장되었습니다. 이 브라우저에서 다시 사용할 수 있습니다.' } }));
     onAddLog(`[AI Provider] ${label} 연결 키 저장됨 (브라우저 보관, 키 미노출)`, 'success', 'AI Provider');
@@ -242,7 +223,7 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
       setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'info', message: '연결 키를 먼저 붙여넣어 주세요.' } }));
       return;
     }
-    const model = resolveModel(providerId, modelChoice, customModel) || getDefaultCloudModel(providerId);
+    const model = resolveModel(providerId) || getDefaultCloudModel(providerId);
     setConnectingId(providerId);
     setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'testing', message: '연결을 확인하고 있습니다...' } }));
     onAddLog(`[AI Provider] ${label} 연결 확인 시작 (model: ${model})`, 'info', 'AI Provider');
@@ -255,7 +236,6 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
       messages: [{ role: 'user', content: CONNECT_TEST_PROMPT }]
     });
     setConnectingId(null);
-
     if (result.ok) {
       setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'connected', message: '연결되었습니다. 이 AI를 사용할 수 있습니다.' } }));
       onAddLog(`[AI Provider] ${label} 연결 확인 성공 · model:${result.modelId} · ${result.latencyMs ?? 0}ms`, 'success', 'AI Provider');
@@ -266,55 +246,55 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
     }
   };
 
-  // ===== 모델 선택 채팅 테스트 =====
-  const handleSendChat = async () => {
-    const ai = CHAT_AIS.find(a => a.id === selectedAi);
-    if (!ai) return;
-    if (ai.isLocal && !isLocalDev) return; // 로컬 AI는 dev에서만
-    const q = (question || '').trim();
+  // ===== 카드별 채팅 테스트 =====
+  const handleCardChat = async (provider: AIProviderDefinition) => {
+    const providerId = provider.id;
+    const local = provider.type === 'local_lmstudio';
+    if (local && !isLocalDev) return;
+    const q = (cardQuestion[providerId] ?? DEFAULT_QUESTION).trim();
     if (!q) return;
 
-    setRunningChat(true);
-    setChatResult(null);
-    const modelOverride = ai.isLocal ? undefined : (resolveModel(selectedAi, chatModelChoice, chatCustomModel) || getDefaultCloudModel(selectedAi));
-    onAddLog(`[AI Provider] 채팅 테스트 시작 · AI:${ai.label}${modelOverride ? ` · model:${modelOverride}` : ''}`, 'info', 'AI Provider');
+    setCardChatRunning(providerId);
+    setCardChatResult(prev => {
+      const next = { ...prev };
+      delete next[providerId];
+      return next;
+    });
+    const modelOverride = local ? undefined : (resolveModel(providerId) || getDefaultCloudModel(providerId));
+    onAddLog(`[AI Provider] 채팅 테스트 · AI:${provider.name}${modelOverride ? ` · model:${modelOverride}` : ''}`, 'info', 'AI Provider');
 
     const result = await chatWithProvider({
-      providerId: selectedAi,
+      providerId,
       purpose: 'chat_playground',
       modelIdOverride: modelOverride,
       messages: [{ role: 'user', content: q }]
     });
-    setRunningChat(false);
-    setChatResult(result);
-    if (result.ok) {
-      onAddLog(`[AI Provider] 채팅 테스트 성공 · AI:${ai.label} · model:${result.modelId} · ${result.latencyMs ?? 0}ms`, 'success', 'AI Provider');
-    } else {
-      onAddLog(`[AI Provider] 채팅 테스트 실패 [${result.errorKind ?? 'unknown'}] · AI:${ai.label}`, 'error', 'AI Provider');
-    }
+    setCardChatRunning(null);
+    setCardChatResult(prev => ({ ...prev, [providerId]: result }));
+    onAddLog(
+      result.ok
+        ? `[AI Provider] 채팅 테스트 성공 · AI:${provider.name} · ${result.latencyMs ?? 0}ms`
+        : `[AI Provider] 채팅 테스트 실패 [${result.errorKind ?? 'unknown'}] · AI:${provider.name}`,
+      result.ok ? 'success' : 'error',
+      'AI Provider'
+    );
   };
 
-  // 모델 select 렌더 헬퍼
-  const renderModelSelect = (
-    providerId: string,
-    choiceMap: Record<string, string>,
-    setChoice: React.Dispatch<React.SetStateAction<Record<string, string>>>,
-    customMap: Record<string, string>,
-    setCustom: React.Dispatch<React.SetStateAction<Record<string, string>>>
-  ) => {
+  // cloud 카드 status badge
+  const cloudStatus = (providerId: string): AIProviderStatus => {
+    void vaultVersion;
+    if (connectFeedback[providerId]?.status === 'connected') return 'connected';
+    return hasProviderKey(providerId) ? 'connected' : 'not_configured';
+  };
+
+  const renderModelSelect = (providerId: string) => {
     const options = CLOUD_MODEL_OPTIONS[providerId] || [];
-    const current = choiceMap[providerId] ?? (getProviderModel(providerId) || getDefaultCloudModel(providerId));
+    const current = modelChoice[providerId] ?? (getProviderModel(providerId) || getDefaultCloudModel(providerId));
     return (
       <div className="aip-field">
         <label className="aip-field-label">사용할 모델</label>
-        <select
-          className="aip-select"
-          value={current}
-          onChange={e => setChoice(prev => ({ ...prev, [providerId]: e.target.value }))}
-        >
-          {options.map(m => (
-            <option key={m} value={m}>{m}</option>
-          ))}
+        <select className="aip-select" value={current} onChange={e => setModelChoice(prev => ({ ...prev, [providerId]: e.target.value }))}>
+          {options.map(m => <option key={m} value={m}>{m}</option>)}
           <option value={CUSTOM_MODEL}>직접 입력</option>
         </select>
         {current === CUSTOM_MODEL && (
@@ -322,10 +302,164 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
             type="text"
             className="aip-text-input"
             placeholder="모델 이름을 직접 입력"
-            value={customMap[providerId] || ''}
-            onChange={e => setCustom(prev => ({ ...prev, [providerId]: e.target.value }))}
+            value={customModel[providerId] || ''}
+            onChange={e => setCustomModel(prev => ({ ...prev, [providerId]: e.target.value }))}
           />
         )}
+      </div>
+    );
+  };
+
+  const renderChatTest = (provider: AIProviderDefinition) => {
+    const providerId = provider.id;
+    const open = !!chatOpen[providerId];
+    const running = cardChatRunning === providerId;
+    const result = cardChatResult[providerId];
+    return (
+      <div className="aip-cardchat">
+        <button
+          type="button"
+          className="aip-chat-toggle"
+          onClick={() => setChatOpen(prev => ({ ...prev, [providerId]: !prev[providerId] }))}
+        >
+          {open ? '▾ 채팅 테스트 닫기' : '▸ 이 AI로 채팅 테스트'}
+        </button>
+        {open && (
+          <div className="aip-cardchat-body">
+            <textarea
+              className="aip-textarea"
+              rows={2}
+              value={cardQuestion[providerId] ?? DEFAULT_QUESTION}
+              onChange={e => setCardQuestion(prev => ({ ...prev, [providerId]: e.target.value }))}
+            />
+            <button type="button" className="aip-btn primary" disabled={running} onClick={() => handleCardChat(provider)}>
+              {running ? '⏳ 보내는 중...' : '▶ 보내기'}
+            </button>
+            {result && (
+              <div className={`aip-result ${result.ok ? 'result-connected' : 'result-error'}`}>
+                {result.ok ? (
+                  <>
+                    <div className="aip-result-line"><strong>응답 성공</strong></div>
+                    {result.modelId && <div className="aip-result-line mono">모델: {result.modelId}</div>}
+                    {typeof result.latencyMs === 'number' && <div className="aip-result-line">응답 시간: {(result.latencyMs / 1000).toFixed(1)}초</div>}
+                    {result.content && <div className="aip-result-line excerpt">응답: {result.content.trim().slice(0, 400)}</div>}
+                  </>
+                ) : (
+                  <div className="aip-result-line"><strong>응답 실패</strong>: {chatErrorMessage[result.errorKind ?? 'unknown'] || result.errorMessage || '실패'}</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ===== 카드 렌더 =====
+  const renderCloudCard = (p: AIProviderDefinition) => {
+    void vaultVersion;
+    const status = cloudStatus(p.id);
+    const fb = connectFeedback[p.id];
+    const savedMask = hasProviderKey(p.id) ? maskProviderKey(getProviderKey(p.id) || '') : '';
+    return (
+      <div key={p.id} className="aip-card is-connect">
+        <div className="aip-card-head">
+          <span className="aip-card-name">{p.name}</span>
+          <span className={`aip-status-badge status-${status}`}>{statusLabel[status]}</span>
+        </div>
+        <p className="aip-card-desc">{cloudTagline[p.type] || p.description}</p>
+
+        <div className="aip-field">
+          <label className="aip-field-label">연결 키</label>
+          <input
+            type="password"
+            className="aip-text-input"
+            placeholder={savedMask ? `저장됨: ${savedMask} (새 키 입력 시 교체)` : '연결 키를 붙여넣으세요'}
+            value={keyInput[p.id] || ''}
+            onChange={e => setKeyInput(prev => ({ ...prev, [p.id]: e.target.value }))}
+            autoComplete="off"
+          />
+        </div>
+
+        {renderModelSelect(p.id)}
+
+        <div className="aip-connect-actions">
+          <button type="button" className="aip-btn primary" disabled={connectingId === p.id} onClick={() => handleConnectCheck(p.id, p.name)}>
+            {connectingId === p.id ? '⏳ 연결 확인 중...' : '연결 확인'}
+          </button>
+          <button type="button" className="aip-btn ghost" onClick={() => handleSaveKey(p.id, p.name)}>저장</button>
+          <button type="button" className="aip-btn ghost danger" onClick={() => handleDeleteKey(p.id, p.name)}>삭제</button>
+        </div>
+
+        {fb && fb.status !== 'idle' && <div className={`aip-connect-feedback fb-${fb.status}`}>{fb.message}</div>}
+
+        {renderChatTest(p)}
+      </div>
+    );
+  };
+
+  const renderLmStudioCard = (p: AIProviderDefinition) => {
+    const status = results[p.id]?.status ?? p.status;
+    const result = results[p.id];
+    return (
+      <div key={p.id} className="aip-card is-local">
+        <div className="aip-card-head">
+          <span className="aip-card-name">{p.name}</span>
+          <span className={`aip-status-badge status-${status}`}>{isLocalDev ? statusLabel[status] : '개발 환경 전용'}</span>
+        </div>
+        <p className="aip-card-desc">{p.description}</p>
+        <div className="aip-meta-row">
+          <span className="aip-endpoint mono">{p.defaultEndpoint}</span>
+        </div>
+        <div className="aip-actions">
+          {isLocalDev && (
+            <p className="aip-coldstart-note">
+              SuperGemma4 26B 모델은 첫 호출 시 모델 로딩 때문에 1분 이상 걸릴 수 있습니다. 처음 실패하더라도 모델이 로드된 뒤 다시 시도해 주세요.
+            </p>
+          )}
+          <button
+            type="button"
+            className="aip-btn primary"
+            disabled={!isLocalDev || testingId !== null}
+            title={isLocalDev ? undefined : '운영 환경에서는 로컬 LM Studio 테스트를 사용할 수 없습니다.'}
+            onClick={() => handleTestLmStudio(p)}
+          >
+            {!isLocalDev ? '운영 환경에서는 테스트 불가 (Local dev 전용)' : testingId === p.id ? '⏳ 연결 테스트 중...' : '🔌 연결 확인'}
+          </button>
+        </div>
+        {result && (
+          <div className={`aip-result result-${result.status}`}>
+            {result.status === 'connected' ? (
+              <>
+                <div className="aip-result-line"><strong>연결 성공</strong>: {result.message}</div>
+                {result.detectedModel && <div className="aip-result-line mono">모델: {result.detectedModel}</div>}
+                {typeof result.latencyMs === 'number' && <div className="aip-result-line">지연시간: {result.latencyMs}ms</div>}
+              </>
+            ) : result.status === 'testing' ? (
+              <div className="aip-result-line">테스트 진행 중...</div>
+            ) : (
+              <div className="aip-result-line"><strong>연결 실패</strong>: {result.message}</div>
+            )}
+          </div>
+        )}
+        {isLocalDev && renderChatTest(p)}
+        {!isLocalDev && (
+          <p className="aip-connect-hint">다른 컴퓨터나 정식 도메인에서는 OpenAI, Gemini, Claude 연결을 사용하세요.</p>
+        )}
+      </div>
+    );
+  };
+
+  const renderPlaceholderCard = (p: AIProviderDefinition) => {
+    const status = p.status;
+    return (
+      <div key={p.id} className="aip-card is-placeholder">
+        <div className="aip-card-head">
+          <span className="aip-card-name">{p.name}</span>
+          <span className={`aip-status-badge status-${status}`}>{statusLabel[status]}</span>
+        </div>
+        <p className="aip-card-desc">{p.description}</p>
+        <div className="aip-placeholder-note">{placeholderNote(p)}</div>
       </div>
     );
   };
@@ -333,223 +467,25 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
   return (
     <div className="aip-pane">
       <div className="aip-intro">
-        <h3 className="aip-section-title">🧩 AI Provider Foundation</h3>
+        <h3 className="aip-section-title">🧩 AI 모델 연결</h3>
         <p className="aip-section-desc">
-          GODO에서 사용할 AI 두뇌(로컬/클라우드)를 연결하고 선택하는 곳입니다.
-          아래 <strong>AI 모델 연결</strong>에서 OpenAI·Gemini·Claude 연결 키를 붙여넣고, 원하는 AI로 바로 채팅 테스트할 수 있습니다.
+          GODO에서 사용할 AI를 카드에서 바로 연결하세요. OpenAI·Gemini·Claude는 연결 키를 붙여넣고 “연결 확인” →
+          “저장”을 누르면 됩니다. 연결 후 카드 안에서 바로 채팅 테스트를 할 수 있습니다.
         </p>
+        <p className="aip-privacy-note">🔒 연결 키는 현재 브라우저에 저장됩니다. 공용 PC에서는 사용 후 삭제하세요.</p>
         {!isLocalDev && (
           <p className="aip-env-banner">
-            ⚠️ 지금은 운영(배포) 환경입니다. OpenAI·Gemini·Claude는 그대로 사용할 수 있고,
-            LM Studio Local은 이 컴퓨터에서 <code>npm run dev</code>로 실행할 때만 사용할 수 있습니다.
+            ⚠️ 지금은 운영(배포) 환경입니다. OpenAI·Gemini·Claude는 그대로 사용할 수 있고, LM Studio Local은 이 컴퓨터에서 <code>npm run dev</code>로 실행할 때만 사용할 수 있습니다.
           </p>
         )}
       </div>
 
-      {/* 1) Provider 슬롯 개요 */}
       <div className="aip-grid">
         {providers.map(p => {
-          const status = effectiveStatus(p);
-          const result = results[p.id];
-          const isLmStudio = p.type === 'local_lmstudio';
-          return (
-            <div key={p.id} className={`aip-card ${isLmStudio ? 'is-local' : 'is-placeholder'}`}>
-              <div className="aip-card-head">
-                <span className="aip-card-name">{p.name}</span>
-                <span className={`aip-status-badge status-${status}`}>{statusLabel[status]}</span>
-              </div>
-              <p className="aip-card-desc">{p.description}</p>
-              <div className="aip-meta-row">
-                <span className={`aip-risk risk-${p.riskLevel}`}>RISK: {p.riskLevel.toUpperCase()}</span>
-                <span className="aip-prod">{p.isProductionSafe ? '운영 환경 사용 가능' : '운영 환경에서는 사용 안 함'}</span>
-                {p.defaultEndpoint && <span className="aip-endpoint mono">{p.defaultEndpoint}</span>}
-              </div>
-              {isLmStudio ? (
-                <div className="aip-actions">
-                  {isLocalDev && (
-                    <p className="aip-coldstart-note">
-                      SuperGemma4 26B 모델은 첫 호출 시 모델 로딩 때문에 1분 이상 걸릴 수 있습니다.
-                      처음 실패하더라도 모델이 로드된 뒤 다시 시도해 주세요.
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    className="aip-btn primary"
-                    disabled={!isLocalDev || testingId !== null}
-                    title={isLocalDev ? undefined : '운영 환경에서는 로컬 LM Studio 테스트를 사용할 수 없습니다.'}
-                    onClick={() => handleTestLmStudio(p)}
-                  >
-                    {!isLocalDev
-                      ? '운영 환경에서는 테스트 불가 (Local dev 전용)'
-                      : testingId === p.id
-                      ? '⏳ 연결 테스트 중...'
-                      : '🔌 Test Connection'}
-                  </button>
-                </div>
-              ) : (
-                <div className="aip-placeholder-note">{placeholderNote(p)}</div>
-              )}
-              {result && isLmStudio && (
-                <div className={`aip-result result-${result.status}`}>
-                  {result.status === 'connected' ? (
-                    <>
-                      <div className="aip-result-line"><strong>연결 성공</strong>: {result.message}</div>
-                      {result.detectedModel && <div className="aip-result-line mono">모델: {result.detectedModel}</div>}
-                      {typeof result.latencyMs === 'number' && <div className="aip-result-line">지연시간: {result.latencyMs}ms</div>}
-                      {result.responseExcerpt && <div className="aip-result-line excerpt">응답: {result.responseExcerpt}</div>}
-                    </>
-                  ) : result.status === 'testing' ? (
-                    <div className="aip-result-line">테스트 진행 중...</div>
-                  ) : (
-                    <div className="aip-result-line"><strong>연결 실패</strong>: {result.message}</div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
+          if (isCloud(p)) return renderCloudCard(p);
+          if (p.type === 'local_lmstudio') return renderLmStudioCard(p);
+          return renderPlaceholderCard(p);
         })}
-      </div>
-
-      {/* 2) AI 모델 연결 (마법사) */}
-      <div className="aip-wizard">
-        <h3 className="aip-section-title">🔑 AI 모델 연결</h3>
-        <p className="aip-section-desc">
-          OpenAI, Gemini, Claude 또는 로컬 LM Studio를 연결해 GODO에서 사용할 AI를 선택할 수 있습니다.
-          연결 키를 붙여넣고 “연결 확인”을 누르면 바로 테스트할 수 있습니다.
-        </p>
-        <p className="aip-privacy-note">🔒 연결 키는 현재 브라우저에 저장됩니다. 공용 PC에서는 사용 후 삭제하세요.</p>
-
-        <div className="aip-connect-grid">
-          {CLOUD_CONNECT.map(c => {
-            const saved = (() => { void vaultVersion; return hasProviderKey(c.id) ? maskProviderKey(getProviderKey(c.id) || '') : ''; })();
-            const fb = connectFeedback[c.id];
-            return (
-              <div key={c.id} className="aip-connect-card">
-                <div className="aip-connect-head">
-                  <span className="aip-card-name">{c.label}</span>
-                  {saved
-                    ? <span className="aip-status-badge status-connected">연결됨</span>
-                    : <span className="aip-status-badge status-not_configured">아직 연결 전</span>}
-                </div>
-                <p className="aip-connect-hint">{c.hint}</p>
-
-                <div className="aip-field">
-                  <label className="aip-field-label">연결 키</label>
-                  <input
-                    type="password"
-                    className="aip-text-input"
-                    placeholder={saved ? `저장됨: ${saved} (새 키 입력 시 교체)` : '연결 키를 붙여넣으세요'}
-                    value={keyInput[c.id] || ''}
-                    onChange={e => setKeyInput(prev => ({ ...prev, [c.id]: e.target.value }))}
-                    autoComplete="off"
-                  />
-                </div>
-
-                {renderModelSelect(c.id, modelChoice, setModelChoice, customModel, setCustomModel)}
-
-                <div className="aip-connect-actions">
-                  <button
-                    type="button"
-                    className="aip-btn primary"
-                    disabled={connectingId === c.id}
-                    onClick={() => handleConnectCheck(c.id, c.label)}
-                  >
-                    {connectingId === c.id ? '⏳ 연결 확인 중...' : '연결 확인'}
-                  </button>
-                  <button type="button" className="aip-btn ghost" onClick={() => handleSaveKey(c.id, c.label)}>저장</button>
-                  <button type="button" className="aip-btn ghost danger" onClick={() => handleDeleteKey(c.id, c.label)}>삭제</button>
-                </div>
-
-                {fb && fb.status !== 'idle' && (
-                  <div className={`aip-connect-feedback fb-${fb.status}`}>{fb.message}</div>
-                )}
-              </div>
-            );
-          })}
-
-          {/* LM Studio 안내 카드 */}
-          <div className="aip-connect-card aip-lms-note-card">
-            <div className="aip-connect-head">
-              <span className="aip-card-name">LM Studio Local</span>
-              <span className="aip-status-badge status-not_configured">개발 환경 전용</span>
-            </div>
-            <p className="aip-connect-hint">
-              LM Studio는 이 컴퓨터에서 직접 실행할 때만 사용할 수 있습니다.
-              다른 컴퓨터나 정식 도메인에서는 OpenAI, Gemini, Claude 연결을 사용하세요.
-            </p>
-            <p className="aip-connect-hint mono">연결 테스트는 위쪽 “LM Studio Local” 카드에서 할 수 있습니다.</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 3) 모델 선택 채팅 테스트 */}
-      <div className="aip-chattest-card">
-        <div className="aip-chattest-head">
-          <span className="aip-chattest-title">💬 모델 선택 채팅 테스트</span>
-        </div>
-        <p className="aip-chattest-desc">사용할 AI를 고르고 질문을 보내 실제 응답을 확인합니다. 연결 키가 저장된 AI만 응답합니다.</p>
-
-        <div className="aip-field">
-          <label className="aip-field-label">사용할 AI 선택</label>
-          <div className="aip-ai-choices">
-            {CHAT_AIS.map(a => (
-              <button
-                key={a.id}
-                type="button"
-                className={`aip-ai-chip ${selectedAi === a.id ? 'active' : ''}`}
-                onClick={() => setSelectedAi(a.id)}
-              >
-                {a.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {selectedAi !== 'local_lmstudio' ? (
-          renderModelSelect(selectedAi, chatModelChoice, setChatModelChoice, chatCustomModel, setChatCustomModel)
-        ) : (
-          <p className="aip-connect-hint mono">모델: 로컬에 로드된 모델 자동 감지 (supergemma4 등)</p>
-        )}
-
-        <div className="aip-field">
-          <label className="aip-field-label">질문</label>
-          <textarea
-            className="aip-textarea"
-            rows={2}
-            value={question}
-            onChange={e => setQuestion(e.target.value)}
-          />
-        </div>
-
-        {selectedAi === 'local_lmstudio' && !isLocalDev ? (
-          <button type="button" className="aip-btn primary" disabled title="운영 환경에서는 로컬 AI를 사용할 수 없습니다.">
-            로컬 AI는 개발 환경에서만 사용할 수 있습니다
-          </button>
-        ) : (
-          <button type="button" className="aip-btn primary" disabled={runningChat} onClick={handleSendChat}>
-            {runningChat ? '⏳ 보내는 중...' : '▶ 보내기'}
-          </button>
-        )}
-
-        {chatResult && (
-          <div className={`aip-result ${chatResult.ok ? 'result-connected' : 'result-error'}`}>
-            {chatResult.ok ? (
-              <>
-                <div className="aip-result-line"><strong>응답 성공</strong></div>
-                <div className="aip-result-line">AI: {aiDisplayName(chatResult.providerId)}</div>
-                {chatResult.modelId && <div className="aip-result-line mono">모델: {chatResult.modelId}</div>}
-                {typeof chatResult.latencyMs === 'number' && <div className="aip-result-line">응답 시간: {(chatResult.latencyMs / 1000).toFixed(1)}초</div>}
-                {chatResult.content && <div className="aip-result-line excerpt">응답: {chatResult.content.trim().slice(0, 400)}</div>}
-              </>
-            ) : (
-              <>
-                <div className="aip-result-line"><strong>응답 실패</strong></div>
-                <div className="aip-result-line">{chatErrorMessage[chatResult.errorKind ?? 'unknown'] || chatResult.errorMessage || '실패'}</div>
-                <div className="aip-result-line">AI: {aiDisplayName(chatResult.providerId)}</div>
-              </>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
