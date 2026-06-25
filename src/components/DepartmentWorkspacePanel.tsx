@@ -9,6 +9,7 @@ import {
 import { ProductTeamDashboard } from './ProductTeamDashboard';
 import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
 import { chatWithTeam } from '../services/departmentChatService';
+import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -173,8 +174,15 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'user', text }] }));
     setInput('');
     setSending(true);
-    const contextNote = teamId === 'product' ? buildProductContextNote() : undefined;
-    const res = await chatWithTeam(teamId, text, { contextNote });
+    // 상품관리팀: 질문 의도에 맞춰 코드가 계산한 facts + 답변 지침을 넘긴다(숫자 추측 방지).
+    let opts: { contextNote?: string; answerGuidance?: string } | undefined;
+    if (teamId === 'product') {
+      const facts = buildProductTeamChatFacts(text, productData.revenue);
+      opts = facts
+        ? { contextNote: facts.facts.join('\n'), answerGuidance: facts.answerGuidance }
+        : { contextNote: buildProductContextNote() }; // 데이터 미로드 시 요약 fallback
+    }
+    const res = await chatWithTeam(teamId, text, opts);
     setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: res.text }] }));
     setSending(false);
   };

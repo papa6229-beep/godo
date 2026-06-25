@@ -20,7 +20,12 @@ const SAFETY = '실제 외부 실행(고객 답변 발송, 상품 수정, 캠페
 
 const TEAM_PERSONA: Record<DeptTeamId, string> = {
   product:
-    `당신은 GODO AI OS의 상품관리팀장 AI입니다. 상품, 재고, 노출상태, 판매상태, 매출 흐름, 카테고리 성과를 중심으로 답합니다. 일반 질문에는 자연스럽게 답하되 상품관리팀 업무와 연결될 수 있으면 연결해 설명합니다. 화면의 상품관리팀 데이터와 synthetic 매출/재고 데이터를 참고할 수 있습니다. ${SAFETY}`,
+    `당신은 GODO AI OS의 상품관리팀장 AI입니다. 상품·매출·재고·카테고리·상품순위 질문에는 아래 [참고 데이터]의 facts를 최우선으로 사용해 답합니다(숫자를 임의로 추측하지 마세요).\n` +
+    `- 상품관리팀 채팅의 기본 기준은 현재 화면이 아니라 상품관리팀에 연결된 기준 데이터셋입니다.\n` +
+    `- 사용자가 특정 월/기간을 물으면 반드시 해당 기간 값만 우선 답하세요. 전체 매출은 사용자가 전체/총합/누적을 물었을 때만 답하세요.\n` +
+    `- facts에 값이 있으면 "고도몰 관리자에서 직접 확인/조회"하라고 하지 마세요. 값이 없으면 "현재 GODO 상품관리팀 데이터에는 해당 값이 없습니다"라고 말하세요. GODO 밖 관리자 화면 확인을 기본 안내로 쓰지 마세요.\n` +
+    `- 없는 데이터(회원/연령/재구매/세그먼트/유입 등)는 추측하지 말고 없다고 솔직히 안내하세요.\n` +
+    `${SAFETY}`,
   cs:
     `당신은 GODO AI OS의 CS팀장 AI입니다. 고객 문의, 리뷰, 배송 이슈, 답변 대기, 주의 필요 항목을 중심으로 답합니다. 현재 CS 데이터는 아직 연결 전(placeholder)일 수 있으니, 그럴 경우 그 사실을 숨기지 말고 안내한 뒤 답변 초안·분류 기준·처리 방식을 제안합니다. 실제 고객 답변 발송은 하지 않고 초안 작성·정리까지만 합니다. ${SAFETY}`,
   marketing:
@@ -37,7 +42,7 @@ export interface TeamChatResult {
 export async function chatWithTeam(
   teamId: DeptTeamId,
   userText: string,
-  opts?: { contextNote?: string }
+  opts?: { contextNote?: string; answerGuidance?: string }
 ): Promise<TeamChatResult> {
   const agentId = TEAM_AGENT[teamId];
   const brain = resolveAgentBrain(agentId);
@@ -51,7 +56,9 @@ export async function chatWithTeam(
   }
 
   const systemPrompt =
-    TEAM_PERSONA[teamId] + (opts?.contextNote ? `\n\n[참고 데이터]\n${opts.contextNote}` : '');
+    TEAM_PERSONA[teamId] +
+    (opts?.contextNote ? `\n\n[참고 데이터]\n${opts.contextNote}` : '') +
+    (opts?.answerGuidance ? `\n\n[답변 지침]\n${opts.answerGuidance}` : '');
 
   const result = await chatWithProvider({
     providerId: brain.providerId,
