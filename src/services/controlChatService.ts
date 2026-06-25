@@ -1,5 +1,6 @@
 import { chatWithProvider } from './aiProviderAdapter';
 import { getGlobalBrainSelection, isBrainConnected, providerLabel } from './aiBrainSettings';
+import { getProviderModel } from './aiKeyVault';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
@@ -145,7 +146,9 @@ function classifyIntent(text: string): ControlChatIntent {
 function buildSystemPrompt(
   activeOperationsData: OperationsDataSnapshot,
   tasks: OperationTask[],
-  approvalQueue: ApprovalItem[]
+  approvalQueue: ApprovalItem[],
+  brainLabel: string,
+  brainModel: string
 ): string {
   const ordersCount = activeOperationsData.orders.length;
   const pendingInquiriesCount = activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length;
@@ -154,26 +157,30 @@ function buildSystemPrompt(
   const pendingApprovalsCount = approvalQueue.filter(a => a.status === 'waiting').length;
   const pendingTasksCount = tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
 
-  const contextText = `현재 쇼핑몰 운영 현황:
-- 오늘 주문: ${ordersCount}건
-- 미답변 문의: ${pendingInquiriesCount}건
-- 리뷰 등록: ${reviewsCount}건
-- 재고 위험 상품: ${lowStockCount}건
-- 진행 중인 작업: ${pendingTasksCount}건
-- 승인 대기 중인 작업: ${pendingApprovalsCount}건`;
+  // 참고용 운영 데이터 — 사용자가 운영 현황을 "직접 물을 때만" 활용한다(평소엔 먼저 꺼내지 않음).
+  const contextText = `참고용 현재 운영 데이터(사용자가 운영 현황을 직접 물을 때만 활용): 오늘 주문 ${ordersCount}건, 미답변 문의 ${pendingInquiriesCount}건, 리뷰 ${reviewsCount}건, 재고 위험 상품 ${lowStockCount}건, 진행 중 작업 ${pendingTasksCount}건, 승인 대기 ${pendingApprovalsCount}건.`;
 
-  return `너는 GODO AI OS의 운영 보조 AI다.
-사용자는 쇼핑몰 운영자다.
-반드시 쉽고 짧은 한국어(구어체, 존댓말, ~요 체)로 친절하게 답한다.
-개발자 용어(API, Route, Hybrid, Local, Model, PII, Latency, Fallback, Mock 등)는 일반 운영자가 이해하기 어려우므로 절대 쓰지 않는다.
-실행 권한이 필요한 작업(가격 변경, 환불 처리, 쿠폰 발급, 고객 답변 직접 등록 등)은 AI가 임의로 직접 실행할 수 없다.
-"쿠폰을 발급했습니다" 또는 "가격을 수정했습니다" 처럼 직접 처리했다고 거짓말하거나 말하지 않는다.
-대신 "고객 답변 등록, 쿠폰 발급, 가격 변경, 환불, 상품 수정 등은 실제 고객과 쇼핑몰 매출에 영향을 미치므로 반드시 운영자님의 최종 승인이 필요합니다. AI가 초안이나 제안서를 만들 수 있으니 확인 후 승인해 주세요"라고 쉽고 안전하게 안내한다.
-현재 단계에서는 실제 고도몰에 자동 등록되거나 발송되지 않는다는 점을 알린다.
+  return `당신은 GODO AI OS의 HQ 매니저 비서입니다. 사용자(쇼핑몰 운영자)를 돕는 총괄 비서로서 한국어 존댓말로 자연스럽게 대화합니다.
 
-${contextText}
+[대화 원칙]
+- 사용자의 질문 의도를 먼저 파악하고, 질문에 직접 답하세요.
+- 일상 질문이나 일반 대화에는 평범한 비서처럼 자연스럽게 답합니다. (예: 인사, 잡담, 점심 추천 등)
+- 사용자가 요청하지 않았다면 미답변 문의·재고 위험·매출 현황 같은 운영 요약을 먼저 붙이지 마세요.
+- 사용자가 운영 현황/주문/문의/재고/승인 등을 직접 물을 때만 아래 참고 데이터를 활용해 요약합니다.
+- "내부 기술 구성은 안내드리기 어렵다"처럼 회피하지 마세요. 아는 범위에서 솔직하게 답합니다.
 
-응답은 친절하고, 3문장 이내로 짧고 명확하게 작성하며, 다음으로 무엇을 해야 하는지 구체적인 다음 행동 제안을 포함해야 한다.`;
+[연결된 AI 정보]
+- 지금 이 HQ 채팅의 기본 AI는 ${brainLabel}입니다. 선택된 모델은 ${brainModel || '미지정'}입니다.
+- 사용자가 "어떤 AI/모델로 연결돼 있어?" 등을 물으면 위 정보를 그대로 알려주세요.
+
+[GODO AI OS 맥락]
+- GODO AI OS는 고도몰 쇼핑몰 데이터를 읽어 운영을 돕는 AI 운영 보조 시스템입니다.
+- 프로젝트/구조를 물으면 이 맥락에서 설명하세요.
+
+[안전]
+- 가격 변경·환불·쿠폰 발급·고객 답변 등록 등 실제 영향이 있는 작업은 직접 실행하지 않으며, 운영자 승인이 필요하다고 안내합니다. 이미 처리했다고 거짓으로 말하지 않습니다.
+
+${contextText}`;
 }
 
 /**
@@ -713,7 +720,9 @@ export async function processControlChat(
   }
 
   try {
-    const systemPrompt = buildSystemPrompt(activeOperationsData, tasks, approvalQueue);
+    const brainLabel = brain.label || providerLabel(brain.providerId);
+    const brainModel = getProviderModel(brain.providerId) || brain.modelId || '';
+    const systemPrompt = buildSystemPrompt(activeOperationsData, tasks, approvalQueue, brainLabel, brainModel);
     const result = await chatWithProvider({
       providerId: brain.providerId,
       modelIdOverride: brain.modelId || undefined,
