@@ -9,6 +9,7 @@
 
 const KEYS_STORAGE = 'godo_ai_provider_keys_v0';
 const MODELS_STORAGE = 'godo_ai_provider_models_v0';
+const VERIFIED_STORAGE = 'godo_ai_provider_verified_v0';
 
 type StringMap = Record<string, string>;
 
@@ -58,10 +59,34 @@ export function deleteProviderKey(providerId: string): void {
     delete map[providerId];
     writeMap(KEYS_STORAGE, map);
   }
+  // 키를 지우면 연결 검증 상태도 함께 해제한다.
+  const vmap = readMap(VERIFIED_STORAGE);
+  if (providerId in vmap) {
+    delete vmap[providerId];
+    writeMap(VERIFIED_STORAGE, vmap);
+  }
 }
 
 export function hasProviderKey(providerId: string): boolean {
   return !!getProviderKey(providerId);
+}
+
+// --- 연결 검증 상태 (연결 확인 성공 = verified) ---
+// "키 저장됨"과 "연결 확인됨(실제 응답 확인)"을 구분하기 위한 플래그.
+export function markProviderConnected(providerId: string, modelId?: string): void {
+  const vmap = readMap(VERIFIED_STORAGE);
+  vmap[providerId] = 'y';
+  writeMap(VERIFIED_STORAGE, vmap);
+  if (modelId) saveProviderModel(providerId, modelId);
+}
+
+export function isProviderVerified(providerId: string): boolean {
+  return readMap(VERIFIED_STORAGE)[providerId] === 'y';
+}
+
+// 운영 채팅/직원이 실제로 쓸 수 있는 상태인지(키 보유 기준)
+export function hasUsableProvider(providerId: string): boolean {
+  return hasProviderKey(providerId);
 }
 
 // 원문을 그대로 보여주지 않기 위한 마스킹. 앞 3글자 + ••• + 뒤 4글자.

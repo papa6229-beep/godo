@@ -27,7 +27,9 @@ import {
   hasProviderKey,
   maskProviderKey,
   saveProviderModel,
-  getProviderModel
+  getProviderModel,
+  markProviderConnected,
+  isProviderVerified
 } from '../services/aiKeyVault';
 import {
   getGlobalBrainSelection,
@@ -256,8 +258,14 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
     });
     setConnectingId(null);
     if (result.ok) {
-      setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'connected', message: '연결되었습니다. 이 AI를 사용할 수 있습니다.' } }));
-      onAddLog(`[AI Provider] ${label} 연결 확인 성공 · model:${result.modelId} · ${result.latencyMs ?? 0}ms`, 'success', 'AI Provider');
+      // 연결 확인 성공 = 자동 저장 (key/model/검증상태). 저장 버튼을 따로 누르지 않아도 사용 가능.
+      saveProviderKey(providerId, keyToUse);
+      saveProviderModel(providerId, model);
+      markProviderConnected(providerId, model);
+      setKeyInput(prev => ({ ...prev, [providerId]: '' })); // 입력창에서 원문 제거
+      bumpVault();
+      setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'connected', message: '연결되었습니다. 이제 이 AI를 사용할 수 있습니다.' } }));
+      onAddLog(`[AI Provider] ${label} 연결 확인 성공·자동 저장 · model:${result.modelId} · ${result.latencyMs ?? 0}ms`, 'success', 'AI Provider');
     } else {
       const kind = result.errorKind || 'unknown';
       setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'error', message: chatErrorMessage[kind] || chatErrorMessage.unknown } }));
@@ -299,11 +307,12 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
     );
   };
 
-  // cloud 카드 status badge
-  const cloudStatus = (providerId: string): AIProviderStatus => {
+  // cloud 카드 status badge — 3단계: 아직 연결 전 / 연결 키 저장됨·연결 확인 필요 / 연결됨
+  const cloudStatus = (providerId: string): { cls: string; text: string } => {
     void vaultVersion;
-    if (connectFeedback[providerId]?.status === 'connected') return 'connected';
-    return hasProviderKey(providerId) ? 'connected' : 'not_configured';
+    if (!hasProviderKey(providerId)) return { cls: 'not_configured', text: '아직 연결 전' };
+    if (!isProviderVerified(providerId)) return { cls: 'no_model', text: '연결 키 저장됨 · 연결 확인 필요' };
+    return { cls: 'connected', text: '연결됨' };
   };
 
   const renderModelSelect = (providerId: string) => {
@@ -385,7 +394,7 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
       <div key={p.id} className="aip-card is-connect">
         <div className="aip-card-head">
           <span className="aip-card-name">{p.name}</span>
-          <span className={`aip-status-badge status-${status}`}>{statusLabel[status]}</span>
+          <span className={`aip-status-badge status-${status.cls}`}>{status.text}</span>
         </div>
         <p className="aip-card-desc">{cloudTagline[p.type] || p.description}</p>
 
@@ -415,14 +424,18 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
 
         {(() => {
           void brainVersion;
+          void vaultVersion;
           const isDefault = getGlobalBrainSelection().providerId === p.id;
-          return isDefault ? (
-            <div className="aip-default-badge">★ 기본 AI로 사용 중</div>
-          ) : (
-            <button type="button" className="aip-btn ghost" onClick={() => handleSetDefaultBrain(p.id, p.name)}>
-              이 AI를 기본으로 사용
-            </button>
-          );
+          if (!isDefault) {
+            return (
+              <button type="button" className="aip-btn ghost" onClick={() => handleSetDefaultBrain(p.id, p.name)}>
+                이 AI를 기본으로 사용
+              </button>
+            );
+          }
+          return hasProviderKey(p.id)
+            ? <div className="aip-default-badge">★ 기본 AI로 사용 중 · 연결됨</div>
+            : <div className="aip-default-badge warn">기본 AI로 지정됨 · 연결 키 필요</div>;
         })()}
 
         {renderChatTest(p)}
