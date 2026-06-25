@@ -354,15 +354,38 @@ export const normalizeInventoryItem = (
   const optionName = norm.optionName || '기본옵션';
   const stock = parseInt(norm.stock || '0', 10);
   const safetyStock = parseInt(norm.safetyStock || '5', 10);
-  
+
   if (!productName || isNaN(stock)) {
     errors.push(`[Row ${index + 1}] 재고 필수값 누락 (상품명, 재고수량 필수)`);
   }
 
   let status: 'ok' | 'warning' | 'danger' = 'ok';
   const riskFlags: string[] = [];
-  
-  if (stock === 0) {
+
+  // Inventory derived v0: Products(REAL READ) 파생 레코드는 soldOut/stockEnabled 신호를 갖는다.
+  // 이 신호가 있으면 고도몰 판매상태를 반영한 기준으로 재고 상태를 계산하고,
+  // 신호가 없는 CSV/JSON 업로드는 기존 로직을 그대로 유지한다.
+  const isYes = (v?: string): boolean => /^(y|1|true)$/i.test((v || '').trim());
+  const hasDerivedSignals = norm.stockEnabled !== undefined || norm.soldOut !== undefined;
+
+  if (hasDerivedSignals) {
+    const stockEnabled = isYes(norm.stockEnabled);
+    const soldOut = isYes(norm.soldOut);
+    if (soldOut) {
+      status = 'danger';
+      riskFlags.push('sold_out');
+      warnings.push(`[Row ${index + 1}] 상품이 품절(soldOut) 상태로 표시되어 있습니다.`);
+    } else if (stockEnabled && stock <= 0) {
+      status = 'danger';
+      riskFlags.push('out_of_stock');
+      warnings.push(`[Row ${index + 1}] 상품 재고가 완전히 소진되어 일시 품절되었습니다.`);
+    } else if (stockEnabled && stock <= safetyStock) {
+      status = 'warning';
+      riskFlags.push('low_stock');
+      riskFlags.push('below_safety_stock');
+      warnings.push(`[Row ${index + 1}] 상품 재고가 안전재고 수량(${safetyStock}개) 이하입니다.`);
+    }
+  } else if (stock === 0) {
     status = 'danger';
     riskFlags.push('out_of_stock');
     warnings.push(`[Row ${index + 1}] 상품 재고가 완전히 소진되어 일시 품절되었습니다.`);
