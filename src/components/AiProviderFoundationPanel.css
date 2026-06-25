@@ -1,7 +1,41 @@
 /* AI Provider Foundation v0 — panel styles (teal/slate theme tokens) */
 
 .aip-pane {
-  padding: 4px 2px;
+  padding: 4px 2px 24px;
+  /* 카드가 많아져도 하단이 잘리지 않도록 세로 스크롤 허용 (engine-content-body가 overflow:hidden) */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 연결 입력이 들어간 cloud 카드 */
+.aip-card.is-connect {
+  border-color: var(--accent-border);
+}
+
+/* 카드 내 접이식 채팅 테스트 */
+.aip-cardchat {
+  margin-top: 4px;
+  border-top: 1px dashed var(--card-border);
+  padding-top: 8px;
+}
+.aip-chat-toggle {
+  background: transparent;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.aip-chat-toggle:hover {
+  text-decoration: underline;
+}
+.aip-cardchat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .aip-intro {
