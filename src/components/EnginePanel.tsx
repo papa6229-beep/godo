@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule, EngineUsageLog } from '../types/engine';
 import type { PermissionMatrixItem } from '../types/studio';
 import type { LogEntry } from '../types';
-import { getModels } from '../services/lmsConnector';
+import { getModels, getChatCompletion } from '../services/lmsConnector';
+import { AiProviderFoundationPanel } from './AiProviderFoundationPanel';
 import './EnginePanel.css';
 
 interface EnginePanelProps {
@@ -35,7 +36,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   permissionMatrix,
   onAddLog
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'mode' | 'local' | 'cloud' | 'rules' | 'logs' | 'safety'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'mode' | 'providers' | 'local' | 'cloud' | 'rules' | 'logs' | 'safety'>('overview');
   
   // TS6133 방지용 매개변수 사용성 부여
   if (onUpdateEngineUsageLogs && typeof onUpdateEngineUsageLogs === 'function') {
@@ -124,37 +125,40 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
     const providerItem = engineProviders.find(p => p.id === id);
     
     if (id === 'lms_gemma_4') {
-      const startTime = Date.now();
-      onAddLog(`[Engine] 로컬 엔진 [${providerItem?.name}] LM Studio 연결 테스트를 시작합니다. (Endpoint: ${providerItem?.endpoint})`, 'info', 'Engine');
-      
-      const result = await getModels(providerItem?.endpoint);
-      const elapsed = Date.now() - startTime;
-      
+      const modelId = providerItem?.modelName || 'google/gemma-4-e4b';
+      onAddLog(`[Engine] 로컬 엔진 [${providerItem?.name}] LM Studio 연결 테스트를 시작합니다. (Endpoint: ${providerItem?.endpoint}, Model: ${modelId})`, 'info', 'Engine');
+
+      // 실제 chat completion 호출로 검증 (프롬프트 전문은 로그하지 않음)
+      const result = await getChatCompletion(
+        [{ role: 'user', content: 'ping' }],
+        modelId,
+        providerItem?.endpoint
+      );
+      const elapsed = result.latency ?? 0;
+
       setTestingLocalId(null);
-      
-      if (result.success && result.data) {
-        const models = result.data;
-        const targetModel = models.find(m => m.id === 'google/gemma-4-e4b' || m.id.includes('gemma-4-e4b') || m.id.includes('gemma-4'));
-        const detectedModelId = targetModel ? targetModel.id : (models[0]?.id || 'google/gemma-4-e4b');
-        const hasModel = models.length > 0;
-        
-        const finalStatus = hasModel ? ('connected' as const) : ('no_model' as const);
-        
-        const updated = engineProviders.map(p => {
-          if (p.id === id) {
-            return {
-              ...p,
-              status: finalStatus,
-              modelName: detectedModelId,
-              lastLatency: elapsed,
-              lastTestTime: new Date().toLocaleString()
-            };
-          }
-          return p;
-        });
+
+      // 디버그 라인: method / finalUrl / status / object type 만 기록
+      const objectType = result.debug.objectType ?? 'n/a';
+      onAddLog(
+        `[Engine] LM Studio 호출 → method: ${result.debug.method} | finalUrl: ${result.debug.finalUrl} | upstream: ${result.debug.upstreamUrl} | status: ${result.debug.status ?? 'N/A'} | object: ${objectType}`,
+        'info',
+        'Engine'
+      );
+
+      // 성공 기준: HTTP 200 && object === "chat.completion" && content 존재
+      const isChatCompletion = result.debug.objectType === 'chat.completion';
+      const ok = result.success && isChatCompletion && !!result.content;
+
+      if (ok) {
+        const updated = engineProviders.map(p =>
+          p.id === id
+            ? { ...p, status: 'connected' as const, modelName: modelId, lastLatency: elapsed, lastTestTime: new Date().toLocaleString() }
+            : p
+        );
         onUpdateEngineProviders(updated);
-        
-        const testLog = {
+
+        onUpdateEngineUsageLogs([...engineUsageLogs, {
           id: `usage-test-${Date.now()}`,
           timestamp: new Date().toTimeString().split(' ')[0],
           taskId: 'connection_test',
@@ -162,34 +166,36 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
           agentId: 'system',
           routeType: 'local' as const,
           providerId: 'lms_gemma_4',
-          modelName: detectedModelId,
-          reason: `[taskType: connection_test] [latency: ${elapsed}ms] [status: connected]`,
+          modelName: modelId,
+          reason: `[taskType: connection_test] [latency: ${elapsed}ms] [status: connected] [object: ${objectType}]`,
           status: 'completed' as const
-        };
-        onUpdateEngineUsageLogs([...engineUsageLogs, testLog]);
-        
-        if (finalStatus === 'connected') {
-          onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 성공! 감지된 모델 ID: ${detectedModelId} (지연시간: ${elapsed}ms)`, 'success', 'Engine');
-          showToast(`Gemma 4 E4B 연결 테스트 성공! (${elapsed}ms)`, 'success');
-        } else {
-          onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결되었으나 활성화된 모델이 없습니다.`, 'warning', 'Engine');
-          showToast(`Gemma 4 E4B 연결 성공 (모델 없음)`, 'warning');
-        }
+        }]);
+
+        onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 성공! (object: chat.completion, 지연시간: ${elapsed}ms)`, 'success', 'Engine');
+        showToast(`Gemma 4 E4B 연결 테스트 성공! (${elapsed}ms)`, 'success');
       } else {
-        const updated = engineProviders.map(p => {
-          if (p.id === id) {
-            return {
-              ...p,
-              status: 'error' as const,
-              lastLatency: undefined,
-              lastTestTime: new Date().toLocaleString()
-            };
-          }
-          return p;
-        });
+        // 실패 원인 세분화 메시지
+        const reasonByKind: Record<string, string> = {
+          endpoint_not_found: 'LM Studio chat endpoint path mismatch (404). baseUrl이 /v1 인지 확인하세요.',
+          server_off: 'LM Studio server off (연결 거부). 서버가 127.0.0.1:1234 에서 실행 중인지 확인하세요.',
+          model_not_found: `model id mismatch. 모델 [${modelId}] 이 LM Studio에 로드되어 있는지 확인하세요.`,
+          timeout: 'model response timeout (30s 초과).',
+          bad_response: result.success
+            ? `응답 형식 불일치 (object: ${objectType}). chat.completion 이 아닙니다.`
+            : `예상치 못한 HTTP 응답 (status: ${result.debug.status ?? 'N/A'}).`,
+          unknown: result.error || 'Unknown error'
+        };
+        const kind = result.errorKind || (result.success ? 'bad_response' : 'unknown');
+        const reason = reasonByKind[kind] || result.error || 'Unknown error';
+
+        const updated = engineProviders.map(p =>
+          p.id === id
+            ? { ...p, status: 'error' as const, lastLatency: undefined, lastTestTime: new Date().toLocaleString() }
+            : p
+        );
         onUpdateEngineProviders(updated);
-        
-        const testLog = {
+
+        onUpdateEngineUsageLogs([...engineUsageLogs, {
           id: `usage-test-${Date.now()}`,
           timestamp: new Date().toTimeString().split(' ')[0],
           taskId: 'connection_test',
@@ -197,14 +203,13 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
           agentId: 'system',
           routeType: 'local' as const,
           providerId: 'lms_gemma_4',
-          modelName: 'google/gemma-4-e4b',
-          reason: `[taskType: connection_test] [error: ${result.error || 'Unknown error'}] [status: error]`,
+          modelName: modelId,
+          reason: `[taskType: connection_test] [errorKind: ${kind}] [status: error]`,
           status: 'blocked' as const
-        };
-        onUpdateEngineUsageLogs([...engineUsageLogs, testLog]);
-        
-        onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 실패: ${result.error}`, 'error', 'Engine');
-        showToast(`Gemma 4 E4B 연결 테스트 실패: ${result.error}`, 'error');
+        }]);
+
+        onAddLog(`[Engine] 로컬 엔진 [Gemma 4 E4B] 연결 실패 [${kind}]: ${reason}`, 'error', 'Engine');
+        showToast(`Gemma 4 E4B 연결 실패: ${reason}`, 'error');
       }
     } else {
       setTimeout(() => {
@@ -509,6 +514,9 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
         <button className={`engine-tab-btn ${activeTab === 'mode' ? 'active' : ''}`} onClick={() => setActiveTab('mode')}>
           🌐 Engine Mode
         </button>
+        <button className={`engine-tab-btn ${activeTab === 'providers' ? 'active' : ''}`} onClick={() => setActiveTab('providers')}>
+          🧩 AI Providers
+        </button>
         <button className={`engine-tab-btn ${activeTab === 'local' ? 'active' : ''}`} onClick={() => setActiveTab('local')}>
           🖥️ Local Engines
         </button>
@@ -706,6 +714,11 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
               </div>
             </form>
           </div>
+        )}
+
+        {/* --- B-2. AI Provider Foundation --- */}
+        {activeTab === 'providers' && (
+          <AiProviderFoundationPanel onAddLog={onAddLog} />
         )}
 
         {/* --- C. Local Engines --- */}
