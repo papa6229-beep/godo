@@ -38,6 +38,13 @@
   margin-top: 8px;
 }
 
+/* 직접 입력 모델칸 강조 */
+.aip-custom-model {
+  margin-top: 6px;
+  border-color: var(--accent-border) !important;
+  background: var(--accent-soft) !important;
+}
+
 .aip-intro {
   margin-bottom: 18px;
 }

@@ -81,16 +81,16 @@ const chatErrorMessage: Record<string, string> = {
   server_off: 'LM Studio 서버에 연결할 수 없습니다. Local Server가 켜져 있는지 확인하세요.',
   endpoint_not_found: '연결 경로를 찾지 못했습니다. 설정을 다시 확인해 주세요.',
   no_model: NO_MODEL_MESSAGE,
-  model_not_found: NO_MODEL_MESSAGE,
   missing_key: '연결 키를 먼저 붙여넣어 주세요.',
-  invalid_key: '연결 키가 올바르지 않습니다. 복사한 키를 다시 확인해 주세요.',
-  rate_limited: '요청 한도에 도달했습니다. 잠시 후 다시 시도하거나 다른 AI를 선택해 주세요.',
-  quota_exceeded: '사용 한도를 모두 사용했습니다. 결제/한도를 확인하거나 다른 AI를 선택해 주세요.',
+  invalid_key: '연결 키가 올바르지 않습니다.',
+  model_not_found: '사용할 모델 이름이 맞지 않습니다. 다른 모델을 선택해 보세요.',
+  rate_limited: '요청 한도 또는 결제 설정을 확인해 주세요.',
+  quota_exceeded: '요청 한도 또는 결제 설정을 확인해 주세요.',
   timeout: '응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.',
-  bad_response: '응답을 받지 못했습니다. 모델 이름을 확인하고 다시 시도해 주세요.',
-  provider_error: 'AI 서버에서 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+  bad_response: 'AI 회사에서 예상과 다른 응답을 보냈습니다.',
+  provider_error: '연결에 실패했습니다. 키와 모델을 다시 확인해 주세요.',
   network_error: '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.',
-  unknown: '알 수 없는 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+  unknown: '연결에 실패했습니다. 키와 모델을 다시 확인해 주세요.'
 };
 
 // cloud provider 카드에서 쓰는 짧은 설명
@@ -300,10 +300,11 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
         {current === CUSTOM_MODEL && (
           <input
             type="text"
-            className="aip-text-input"
-            placeholder="모델 이름을 직접 입력"
+            className="aip-text-input aip-custom-model"
+            placeholder={`예: ${getDefaultCloudModel(providerId) || '모델 이름을 직접 입력'}`}
             value={customModel[providerId] || ''}
             onChange={e => setCustomModel(prev => ({ ...prev, [providerId]: e.target.value }))}
+            autoFocus
           />
         )}
       </div>

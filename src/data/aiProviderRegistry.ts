@@ -10,10 +10,11 @@ import type { AIProviderDefinition } from '../types/aiProvider';
 export const LMSTUDIO_DEFAULT_ENDPOINT = 'http://127.0.0.1:1234/v1';
 
 // cloud provider별 모델 후보 (UI 드롭다운 + 기본값). '직접 입력'은 UI에서 별도 처리.
+// 최신/현행 모델 우선. 구형 모델은 추천에서 제거(필요 시 '직접 입력'으로 사용).
 export const CLOUD_MODEL_OPTIONS: Record<string, string[]> = {
   openai_api: ['gpt-4.1-mini', 'gpt-4o-mini'],
-  gemini_api: ['gemini-1.5-flash', 'gemini-1.5-pro'],
-  claude_api: ['claude-3-5-sonnet-latest', 'claude-3-haiku-20240307']
+  gemini_api: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-flash-latest'],
+  claude_api: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-haiku-4-5']
 };
 
 export const getDefaultCloudModel = (providerId: string): string =>

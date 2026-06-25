@@ -117,6 +117,7 @@ export type AIChatRequest = {
 export type AIChatErrorKind =
   | 'missing_key'
   | 'invalid_key'
+  | 'model_not_found'
   | 'rate_limited'
   | 'quota_exceeded'
   | 'timeout'
