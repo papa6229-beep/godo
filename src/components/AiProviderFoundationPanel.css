@@ -23,6 +23,36 @@
   max-width: 880px;
 }
 
+.aip-env-banner {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  border-radius: 8px;
+}
+.aip-env-banner code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(127, 156, 170, 0.14);
+  color: var(--text-primary);
+}
+
+.aip-coldstart-note {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: rgba(90, 200, 250, 0.06);
+  border: 1px solid rgba(90, 200, 250, 0.18);
+  border-radius: 8px;
+}
+
 .aip-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
