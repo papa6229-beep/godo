@@ -59,3 +59,44 @@ export type AIProviderTestResult = {
   errorKind?: string;
   message: string;
 };
+
+// --- Provider Chat Bridge v0 ---
+// 에이전트 실행부가 provider를 통해 LLM에 chat을 요청하기 위한 공통 통로 타입.
+// (API key/secret 필드는 두지 않는다. cloud는 아직 실호출하지 않는다.)
+
+export type ProviderChatRole = 'system' | 'user' | 'assistant';
+
+export type ProviderChatMessage = {
+  role: ProviderChatRole;
+  content: string;
+};
+
+export type ProviderChatRequest = {
+  providerId: string;
+  messages: ProviderChatMessage[];
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
+  purpose?: 'agent_run' | 'connection_test' | 'cs_draft' | 'hq_brief' | 'analysis';
+};
+
+export type ProviderChatErrorKind =
+  | 'not_configured'
+  | 'server_off'
+  | 'endpoint_not_found'
+  | 'no_model'
+  | 'model_not_found'
+  | 'timeout'
+  | 'bad_response'
+  | 'provider_disabled'
+  | 'unknown';
+
+export type ProviderChatResult = {
+  ok: boolean;
+  providerId: string;
+  modelId?: string;
+  content?: string;
+  latencyMs?: number;
+  errorKind?: ProviderChatErrorKind;
+  errorMessage?: string;
+};
