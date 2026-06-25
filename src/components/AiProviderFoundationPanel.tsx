@@ -13,10 +13,12 @@ import type { LogEntry } from '../types';
 import type {
   AIProviderDefinition,
   AIProviderStatus,
-  AIProviderTestResult
+  AIProviderTestResult,
+  ProviderChatResult
 } from '../types/aiProvider';
 import { defaultAIProviders } from '../data/aiProviderRegistry';
 import { getModels, getChatCompletion } from '../services/lmsConnector';
+import { chatWithProvider } from '../services/aiProviderAdapter';
 import './AiProviderFoundationPanel.css';
 
 interface AiProviderFoundationPanelProps {
@@ -72,6 +74,26 @@ const errorKindMessage: Record<string, string> = {
 const NO_MODEL_MESSAGE =
   '사용 가능한 LM Studio 모델을 찾지 못했습니다. LM Studio에서 supergemma4-26b-uncensored-v2 모델을 로드했는지 확인하세요.';
 
+// Provider Chat Test 전용 내부 테스트 에이전트 (쇼핑몰 데이터 미포함, 연결 확인용)
+const TEST_AGENT_PROVIDER_ID = 'local_lmstudio';
+const TEST_AGENT_SYSTEM_PROMPT =
+  '너는 GODO AI OS의 내부 연결 테스트 에이전트다. 사용자의 쇼핑몰 데이터를 임의로 만들지 말고, 현재 연결 상태에 대해서만 짧게 보고한다.';
+const TEST_AGENT_USER_PROMPT =
+  'GODO AI OS의 AI Provider 연결 테스트입니다. 한 문장으로 정상 응답을 해주세요.';
+
+// ProviderChatResult.errorKind → 사용자 친화 한국어 안내
+const chatErrorMessage: Record<string, string> = {
+  not_configured: '아직 연결되지 않은 provider입니다. 서버 API 연결 전까지 호출하지 않습니다.',
+  provider_disabled: 'GODO runtime 정식 provider가 아니어서 호출하지 않습니다.',
+  server_off: 'LM Studio 서버에 연결할 수 없습니다. Local Server가 켜져 있는지 확인하세요.',
+  endpoint_not_found: 'LM Studio API 경로를 찾지 못했습니다. endpoint 형태를 확인하세요.',
+  no_model: NO_MODEL_MESSAGE,
+  model_not_found: NO_MODEL_MESSAGE,
+  timeout: '응답 시간이 초과되었습니다. SuperGemma4 26B는 첫 호출 로딩이 길 수 있으니 다시 시도해 주세요.',
+  bad_response: 'LM Studio에서 예상과 다른 응답을 받았습니다. 응답 형식 확인이 필요합니다.',
+  unknown: '연결 중 알 수 없는 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+};
+
 // placeholder provider별 안내 문구
 const placeholderNote = (p: AIProviderDefinition): string => {
   switch (p.type) {
@@ -90,8 +112,46 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
   const [testingId, setTestingId] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, AIProviderTestResult>>({});
 
+  // Provider Chat Test (provider.chat() 통로 실행 테스트)
+  const [runningChatTest, setRunningChatTest] = useState(false);
+  const [chatResult, setChatResult] = useState<ProviderChatResult | null>(null);
+
   const setResult = (r: AIProviderTestResult) =>
     setResults(prev => ({ ...prev, [r.providerId]: r }));
+
+  const handleRunProviderChatTest = async () => {
+    if (!isLocalDev) return; // Production에서는 실행하지 않음 (버튼도 비활성화)
+    setRunningChatTest(true);
+    setChatResult(null);
+    onAddLog(
+      `[AI Provider] Provider Chat Test 시작 (provider: ${TEST_AGENT_PROVIDER_ID}, agent: HQ Provider Test Agent)`,
+      'info',
+      'AI Provider'
+    );
+    const result = await chatWithProvider({
+      providerId: TEST_AGENT_PROVIDER_ID,
+      purpose: 'connection_test',
+      messages: [
+        { role: 'system', content: TEST_AGENT_SYSTEM_PROMPT },
+        { role: 'user', content: TEST_AGENT_USER_PROMPT }
+      ]
+    });
+    setRunningChatTest(false);
+    setChatResult(result);
+    if (result.ok) {
+      onAddLog(
+        `[AI Provider] Provider Chat Test 성공 · provider:${result.providerId} · model:${result.modelId} · latency:${result.latencyMs ?? 0}ms`,
+        'success',
+        'AI Provider'
+      );
+    } else {
+      onAddLog(
+        `[AI Provider] Provider Chat Test 실패 [${result.errorKind ?? 'unknown'}] · provider:${result.providerId}`,
+        'error',
+        'AI Provider'
+      );
+    }
+  };
 
   const handleTestLmStudio = async (provider: AIProviderDefinition) => {
     // Production 등 비-로컬 환경에서는 fetch 시도 자체를 막는다(버튼도 비활성화 상태).
@@ -281,6 +341,70 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
             </div>
           );
         })}
+      </div>
+
+      {/* Provider Chat Test — provider.chat() 통로 실행 테스트 (내부 테스트 에이전트) */}
+      <div className="aip-chattest-card">
+        <div className="aip-chattest-head">
+          <span className="aip-chattest-title">🧪 AI Provider 실행 테스트</span>
+          <span className="aip-chattest-tag">HQ Provider Test Agent</span>
+        </div>
+        <p className="aip-chattest-desc">
+          선택된 provider를 통해 내부 테스트 에이전트가 실제 응답을 생성합니다.
+          현재 단계에서는 <strong>local_lmstudio</strong>만 실제 호출됩니다.
+          Cloud provider는 서버 API 연결 전까지 호출하지 않습니다.
+        </p>
+
+        {isLocalDev ? (
+          <button
+            type="button"
+            className="aip-btn primary"
+            disabled={runningChatTest}
+            onClick={handleRunProviderChatTest}
+          >
+            {runningChatTest ? '⏳ 실행 중...' : '▶ Run Test (local_lmstudio)'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="aip-btn primary"
+            disabled
+            title="운영 환경에서는 로컬 provider 실행 테스트를 사용할 수 없습니다."
+          >
+            로컬 provider 실행 테스트는 개발 환경에서만 가능합니다
+          </button>
+        )}
+
+        {chatResult && (
+          <div className={`aip-result ${chatResult.ok ? 'result-connected' : 'result-error'}`}>
+            {chatResult.ok ? (
+              <>
+                <div className="aip-result-line"><strong>실행 성공</strong></div>
+                <div className="aip-result-line mono">provider: {chatResult.providerId}</div>
+                {chatResult.modelId && (
+                  <div className="aip-result-line mono">model: {chatResult.modelId}</div>
+                )}
+                {typeof chatResult.latencyMs === 'number' && (
+                  <div className="aip-result-line">지연시간: {chatResult.latencyMs}ms</div>
+                )}
+                {chatResult.content && (
+                  <div className="aip-result-line excerpt">응답: {chatResult.content.trim().slice(0, 200)}</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="aip-result-line">
+                  <strong>실행 실패</strong>
+                  {chatResult.errorKind ? ` [${chatResult.errorKind}]` : ''}
+                </div>
+                <div className="aip-result-line">
+                  {chatErrorMessage[chatResult.errorKind ?? 'unknown'] || chatResult.errorMessage || '실패'}
+                </div>
+                <div className="aip-result-line mono">provider: {chatResult.providerId}</div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
