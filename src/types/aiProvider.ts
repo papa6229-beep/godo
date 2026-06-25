@@ -77,7 +77,10 @@ export type ProviderChatRequest = {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
-  purpose?: 'agent_run' | 'connection_test' | 'cs_draft' | 'hq_brief' | 'analysis';
+  purpose?: 'agent_run' | 'connection_test' | 'cs_draft' | 'hq_brief' | 'analysis' | 'chat_playground';
+  // 연결 확인 등에서 아직 저장 전 키/모델을 직접 넘기고 싶을 때(override). 미지정 시 vault에서 읽음.
+  apiKeyOverride?: string;
+  modelIdOverride?: string;
 };
 
 export type ProviderChatErrorKind =
@@ -89,7 +92,47 @@ export type ProviderChatErrorKind =
   | 'timeout'
   | 'bad_response'
   | 'provider_disabled'
+  // cloud(서버 route) 경유 시 추가되는 종류
+  | 'missing_key'
+  | 'invalid_key'
+  | 'rate_limited'
+  | 'quota_exceeded'
+  | 'provider_error'
+  | 'network_error'
   | 'unknown';
+
+// --- /api/ai/chat 서버 route 공통 타입 (cloud provider 전용) ---
+export type AICloudProviderId = 'openai_api' | 'gemini_api' | 'claude_api';
+
+export type AIChatRequest = {
+  providerId: AICloudProviderId;
+  apiKey: string;
+  modelId: string;
+  messages: ProviderChatMessage[];
+  temperature?: number;
+  maxTokens?: number;
+  purpose?: 'connection_test' | 'chat_playground' | 'agent_run';
+};
+
+export type AIChatErrorKind =
+  | 'missing_key'
+  | 'invalid_key'
+  | 'rate_limited'
+  | 'quota_exceeded'
+  | 'timeout'
+  | 'bad_response'
+  | 'provider_error'
+  | 'unknown';
+
+export type AIChatResponse = {
+  ok: boolean;
+  providerId: string;
+  modelId?: string;
+  content?: string;
+  latencyMs?: number;
+  errorKind?: AIChatErrorKind;
+  errorMessage?: string;
+};
 
 export type ProviderChatResult = {
   ok: boolean;

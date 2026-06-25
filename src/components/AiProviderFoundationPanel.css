@@ -277,3 +277,148 @@
   color: var(--text-primary);
   font-style: italic;
 }
+
+/* === AI 연결 마법사 + 모델 선택 채팅 (v0) === */
+.aip-wizard {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--card-border);
+}
+.aip-privacy-note {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  margin: 6px 0 14px;
+  padding: 8px 10px;
+  background: var(--card-hover);
+  border-radius: 8px;
+}
+.aip-connect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+.aip-connect-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.aip-connect-card.aip-lms-note-card {
+  border-style: dashed;
+  opacity: 0.9;
+}
+.aip-connect-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.aip-connect-hint {
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.aip-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.aip-field-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.aip-text-input,
+.aip-select,
+.aip-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+.aip-textarea {
+  resize: vertical;
+}
+.aip-text-input:focus,
+.aip-select:focus,
+.aip-textarea:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+
+.aip-connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+.aip-btn.ghost {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+}
+.aip-btn.ghost:hover:not(:disabled) {
+  background: var(--card-hover);
+}
+.aip-btn.ghost.danger {
+  color: var(--danger);
+  border-color: rgba(255, 77, 109, 0.3);
+}
+
+.aip-connect-feedback {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.aip-connect-feedback.fb-connected {
+  color: var(--text-secondary);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+.aip-connect-feedback.fb-error {
+  color: var(--text-secondary);
+  background: rgba(255, 77, 109, 0.08);
+  border: 1px solid rgba(255, 77, 109, 0.25);
+}
+.aip-connect-feedback.fb-info,
+.aip-connect-feedback.fb-testing {
+  color: var(--text-secondary);
+  background: rgba(90, 200, 250, 0.07);
+  border: 1px solid rgba(90, 200, 250, 0.2);
+}
+
+.aip-ai-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.aip-ai-chip {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.aip-ai-chip:hover {
+  background: var(--card-hover);
+}
+.aip-ai-chip.active {
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}

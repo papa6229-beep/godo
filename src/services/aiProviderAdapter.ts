@@ -12,10 +12,13 @@ import type {
   AIProviderDefinition,
   ProviderChatRequest,
   ProviderChatResult,
-  ProviderChatErrorKind
+  ProviderChatErrorKind,
+  AIChatResponse,
+  AICloudProviderId
 } from '../types/aiProvider';
-import { defaultAIProviders } from '../data/aiProviderRegistry';
+import { defaultAIProviders, getDefaultCloudModel } from '../data/aiProviderRegistry';
 import { getModels, getChatCompletion } from './lmsConnector';
+import { getProviderKey, getProviderModel } from './aiKeyVault';
 
 // 모델 id를 폭넓게 감지한다(특정 모델명 하드코딩 금지). AiProviderFoundationPanel과 동일 규칙.
 const MODEL_KEYWORDS = ['supergemma', 'super-gemma', 'gemma', 'uncensored', 'google/gemma'];
@@ -79,8 +82,61 @@ const chatWithLmStudio = async (
   };
 };
 
+// cloud provider 실호출 — 서버 route(/api/ai/chat) 경유. key는 vault(또는 override)에서 읽어
+// 요청 body로만 전달한다(브라우저에 노출/로그하지 않음).
+const chatWithCloud = async (
+  provider: AIProviderDefinition,
+  request: ProviderChatRequest
+): Promise<ProviderChatResult> => {
+  const apiKey = request.apiKeyOverride || getProviderKey(provider.id) || '';
+  if (!apiKey) {
+    return fail(provider.id, 'missing_key', '연결 키를 먼저 붙여넣어 주세요.');
+  }
+  const modelId =
+    request.modelIdOverride || getProviderModel(provider.id) || getDefaultCloudModel(provider.id);
+  if (!modelId) {
+    return fail(provider.id, 'bad_response', '사용할 모델을 먼저 선택해 주세요.');
+  }
+
+  try {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerId: provider.id as AICloudProviderId,
+        apiKey,
+        modelId,
+        messages: request.messages,
+        temperature: request.temperature,
+        maxTokens: request.maxTokens,
+        purpose: request.purpose === 'connection_test' ? 'connection_test' : 'chat_playground'
+      })
+    });
+    const data = (await res.json()) as AIChatResponse;
+    if (data.ok) {
+      return {
+        ok: true,
+        providerId: provider.id,
+        modelId: data.modelId || modelId,
+        content: data.content,
+        latencyMs: data.latencyMs
+      };
+    }
+    return {
+      ok: false,
+      providerId: provider.id,
+      modelId: data.modelId || modelId,
+      latencyMs: data.latencyMs,
+      errorKind: (data.errorKind || 'unknown') as ProviderChatErrorKind,
+      errorMessage: data.errorMessage
+    };
+  } catch {
+    return fail(provider.id, 'network_error', '서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
+  }
+};
+
 /**
- * providerId 기반 chat 통로. local_lmstudio만 실호출, 나머지는 안전 fallback.
+ * providerId 기반 chat 통로. local_lmstudio + cloud(openai/gemini/claude) 실호출, 나머지는 안전 fallback.
  */
 export async function chatWithProvider(
   request: ProviderChatRequest
@@ -108,11 +164,13 @@ export async function chatWithProvider(
     case 'openai_api':
     case 'gemini_api':
     case 'claude_api':
+      return chatWithCloud(provider, request);
+
     case 'company_local_llm':
       return fail(
         provider.id,
         'not_configured',
-        '서버 API key 연결이 필요합니다. 이번 단계에서는 호출하지 않습니다.'
+        '아직 준비 중입니다. 회사 서버 연결은 다음 단계에서 지원됩니다.'
       );
 
     case 'gpt_subscription_experimental':
