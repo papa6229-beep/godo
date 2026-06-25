@@ -5,6 +5,7 @@ import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import type { ControlChatMessage, ControlTaskCandidate } from '../types/controlChat';
 import { processControlChat } from '../services/controlChatService';
+import { getGlobalBrainSelection, providerLabel } from '../services/aiBrainSettings';
 import './ChatConsole.css';
 
 function generateMessageId(prefix: string): string {
@@ -491,6 +492,9 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             총괄 매니저 콘솔 | 운영 지시, 승인, 에이전트 호출을 이곳에서 처리합니다.
           </span>
         </div>
+        <span className="chat-header-ai" style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--accent-primary, #31d6c4)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+          사용 중인 AI: {getGlobalBrainSelection().label || providerLabel(getGlobalBrainSelection().providerId)}
+        </span>
       </div>
 
       <div className="chat-3d-container">

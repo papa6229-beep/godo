@@ -101,6 +101,27 @@ export type ProviderChatErrorKind =
   | 'network_error'
   | 'unknown';
 
+// --- Agent Brain Routing (어떤 AI를 어떤 직원이 쓸지) ---
+export type BrainProviderId =
+  | 'claude_api'
+  | 'openai_api'
+  | 'gemini_api'
+  | 'local_lmstudio'
+  | 'company_local_llm';
+
+export type BrainSelection = {
+  providerId: BrainProviderId;
+  modelId: string;
+  label?: string;
+};
+
+export type AgentBrainConfig = {
+  agentId: string;
+  useGlobalDefault: boolean;
+  brain?: BrainSelection;
+  taskOverrides?: Record<string, BrainSelection>;
+};
+
 // --- /api/ai/chat 서버 route 공통 타입 (cloud provider 전용) ---
 export type AICloudProviderId = 'openai_api' | 'gemini_api' | 'claude_api';
 

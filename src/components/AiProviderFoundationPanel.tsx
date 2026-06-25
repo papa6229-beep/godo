@@ -29,6 +29,13 @@ import {
   saveProviderModel,
   getProviderModel
 } from '../services/aiKeyVault';
+import {
+  getGlobalBrainSelection,
+  setGlobalBrainSelection,
+  makeBrainSelection,
+  providerLabel
+} from '../services/aiBrainSettings';
+import type { BrainProviderId } from '../types/aiProvider';
 import './AiProviderFoundationPanel.css';
 
 interface AiProviderFoundationPanelProps {
@@ -132,6 +139,18 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [vaultVersion, setVaultVersion] = useState(0);
   const bumpVault = () => setVaultVersion(v => v + 1);
+  const [brainVersion, setBrainVersion] = useState(0);
+
+  const handleSetDefaultBrain = (providerId: string, label: string) => {
+    if (!hasProviderKey(providerId)) {
+      setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'info', message: '먼저 이 AI를 연결(키 저장)해 주세요.' } }));
+      return;
+    }
+    setGlobalBrainSelection(makeBrainSelection(providerId as BrainProviderId, resolveModel(providerId)));
+    setBrainVersion(v => v + 1);
+    setConnectFeedback(prev => ({ ...prev, [providerId]: { status: 'connected', message: `기본 AI가 ${label}(으)로 설정되었습니다.` } }));
+    onAddLog(`[AI Provider] 기본 AI → ${label}`, 'success', 'AI Provider');
+  };
 
   // 카드별 채팅 테스트 (접이식)
   const [chatOpen, setChatOpen] = useState<Record<string, boolean>>({});
@@ -394,6 +413,18 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
 
         {fb && fb.status !== 'idle' && <div className={`aip-connect-feedback fb-${fb.status}`}>{fb.message}</div>}
 
+        {(() => {
+          void brainVersion;
+          const isDefault = getGlobalBrainSelection().providerId === p.id;
+          return isDefault ? (
+            <div className="aip-default-badge">★ 기본 AI로 사용 중</div>
+          ) : (
+            <button type="button" className="aip-btn ghost" onClick={() => handleSetDefaultBrain(p.id, p.name)}>
+              이 AI를 기본으로 사용
+            </button>
+          );
+        })()}
+
         {renderChatTest(p)}
       </div>
     );
@@ -474,6 +505,16 @@ export const AiProviderFoundationPanel: React.FC<AiProviderFoundationPanelProps>
           “저장”을 누르면 됩니다. 연결 후 카드 안에서 바로 채팅 테스트를 할 수 있습니다.
         </p>
         <p className="aip-privacy-note">🔒 연결 키는 현재 브라우저에 저장됩니다. 공용 PC에서는 사용 후 삭제하세요.</p>
+        {(() => {
+          void brainVersion;
+          const b = getGlobalBrainSelection();
+          return (
+            <p className="aip-default-brain">
+              🧠 현재 기본 AI: <strong>{b.label || providerLabel(b.providerId)}</strong>
+              <span className="aip-default-sub"> — GODO가 기본으로 사용할 AI입니다. 나중에 직원별로 다르게 바꿀 수 있습니다.</span>
+            </p>
+          );
+        })()}
         {!isLocalDev && (
           <p className="aip-env-banner">
             ⚠️ 지금은 운영(배포) 환경입니다. OpenAI·Gemini·Claude는 그대로 사용할 수 있고, LM Studio Local은 이 컴퓨터에서 <code>npm run dev</code>로 실행할 때만 사용할 수 있습니다.

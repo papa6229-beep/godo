@@ -796,3 +796,20 @@
 [data-theme='light'] .modal-right-column::-webkit-scrollbar-track { background: transparent; }
 [data-theme='light'] .modal-left-column::-webkit-scrollbar-thumb,
 [data-theme='light'] .modal-right-column::-webkit-scrollbar-thumb { background: var(--line-subtle); }
+
+/* 이 직원이 사용할 AI 셀렉트 */
+.agent-brain-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border, rgba(49,214,196,0.2));
+  background: var(--bg-surface, #0a1015);
+  color: var(--text-primary, #eaf2f5);
+  font-size: 0.85rem;
+}
+.agent-brain-help {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted, #6e8794);
+}

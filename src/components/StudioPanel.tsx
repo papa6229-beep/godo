@@ -5,7 +5,28 @@ import type { Agent, LogEntry } from '../types';
 import type { SkillItem, ToolItem, PermissionMatrixItem } from '../types/studio';
 import type { TaskPermission, TaskRiskLevel } from '../types/task';
 import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule } from '../types/engine';
+import type { BrainProviderId } from '../types/aiProvider';
+import {
+  getAgentBrainChoice,
+  setAgentBrainChoice,
+  getGlobalBrainSelection,
+  providerLabel,
+  isBrainConnected
+} from '../services/aiBrainSettings';
 import './StudioPanel.css';
+
+const STUDIO_BRAIN_OPTIONS: { value: 'global' | BrainProviderId; label: string }[] = [
+  { value: 'global', label: '기본 AI 사용' },
+  { value: 'claude_api', label: 'Claude' },
+  { value: 'openai_api', label: 'OpenAI' },
+  { value: 'gemini_api', label: 'Gemini' },
+  { value: 'local_lmstudio', label: 'LM Studio Local' }
+];
+
+const studioBrainIsLocalDev: boolean =
+  import.meta.env.DEV ||
+  (typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 
 interface StudioPanelProps {
   brainKnowledge: BrainKnowledgeItem[];
@@ -78,6 +99,22 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
   // 2. Agent Editor States
   const [activeAgentId, setActiveAgentId] = useState<string>('');
   const [agentForm, setAgentForm] = useState<Partial<Agent>>({});
+  const [agentBrainTick, setAgentBrainTick] = useState(0);
+  const [agentBrainMsg, setAgentBrainMsg] = useState('');
+
+  const handleAgentBrainChange = (agentId: string, value: 'global' | BrainProviderId) => {
+    if (value === 'local_lmstudio' && !studioBrainIsLocalDev) {
+      setAgentBrainMsg('LM Studio는 개발 환경 전용입니다.');
+      return;
+    }
+    if (value !== 'global' && value !== 'local_lmstudio' && !isBrainConnected(value)) {
+      setAgentBrainMsg('먼저 해당 AI를 연결해 주세요. (AI Providers에서 연결 키 저장)');
+      return;
+    }
+    setAgentBrainChoice(agentId, value);
+    setAgentBrainTick(v => v + 1);
+    setAgentBrainMsg('저장되었습니다.');
+  };
   const [memoryText, setMemoryText] = useState<string>('');
 
   // 3. Skill Registry States
@@ -772,6 +809,25 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
                       onChange={e => setAgentForm({ ...agentForm, role: e.target.value })}
                     />
                   </div>
+                </div>
+
+                <div className="form-group full-width">
+                  <label>사용할 AI</label>
+                  <select
+                    value={(() => { void agentBrainTick; return getAgentBrainChoice(agentForm.id || ''); })()}
+                    onChange={e => handleAgentBrainChange(agentForm.id || '', e.target.value as 'global' | BrainProviderId)}
+                  >
+                    {STUDIO_BRAIN_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>
+                        {o.value === 'global'
+                          ? `기본 AI 사용 (${getGlobalBrainSelection().label || providerLabel(getGlobalBrainSelection().providerId)})`
+                          : o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="field-hint" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    {agentBrainMsg || '이 직원이 생각하고 답변할 때 사용할 AI입니다. 아직 정하지 않았다면 기본 AI 사용을 선택하세요.'}
+                  </span>
                 </div>
 
                 <div className="form-group full-width">
