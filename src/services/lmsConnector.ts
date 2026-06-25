@@ -49,6 +49,10 @@ export interface LmsCallDebug {
 
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:1234/v1';
 const TIMEOUT_MS = 30000;
+// 모델 목록 조회는 가벼우므로 짧게.
+const MODELS_TIMEOUT_MS = 12000;
+// SuperGemma4 26B 등 대형 모델은 cold start 시 첫 응답이 1분 이상 걸릴 수 있어 길게.
+const CHAT_TIMEOUT_MS = 90000;
 
 /**
  * endpoint 문자열로부터 fetch용 base와 실제 upstream base를 안전하게 조립한다.
@@ -109,7 +113,7 @@ export async function getModels(
   const debug: LmsCallDebug = { method: 'GET', finalUrl, upstreamUrl };
 
   try {
-    const response = await fetchWithTimeout(finalUrl, { method: 'GET', headers: { Accept: 'application/json' } });
+    const response = await fetchWithTimeout(finalUrl, { method: 'GET', headers: { Accept: 'application/json' } }, MODELS_TIMEOUT_MS);
     debug.status = response.status;
 
     if (!response.ok) {
@@ -153,7 +157,7 @@ export async function getChatCompletion(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ model: modelId, messages, temperature: 0.7 })
-    });
+    }, CHAT_TIMEOUT_MS);
     debug.status = response.status;
 
     if (!response.ok) {
