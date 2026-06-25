@@ -9,6 +9,16 @@ import type { AIProviderDefinition } from '../types/aiProvider';
 // LM Studio 로컬 기본 endpoint (OpenAI 호환 base). lmsConnector.resolveLmsBase와 일치.
 export const LMSTUDIO_DEFAULT_ENDPOINT = 'http://127.0.0.1:1234/v1';
 
+// cloud provider별 모델 후보 (UI 드롭다운 + 기본값). '직접 입력'은 UI에서 별도 처리.
+export const CLOUD_MODEL_OPTIONS: Record<string, string[]> = {
+  openai_api: ['gpt-4.1-mini', 'gpt-4o-mini'],
+  gemini_api: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+  claude_api: ['claude-3-5-sonnet-latest', 'claude-3-haiku-20240307']
+};
+
+export const getDefaultCloudModel = (providerId: string): string =>
+  CLOUD_MODEL_OPTIONS[providerId]?.[0] || '';
+
 export const defaultAIProviders: AIProviderDefinition[] = [
   {
     id: 'local_lmstudio',
