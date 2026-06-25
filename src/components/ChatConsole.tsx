@@ -5,7 +5,7 @@ import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import type { ControlChatMessage, ControlTaskCandidate } from '../types/controlChat';
 import { processControlChat } from '../services/controlChatService';
-import { getGlobalBrainSelection, providerLabel } from '../services/aiBrainSettings';
+import { getGlobalBrainSelection, providerLabel, isBrainConnected } from '../services/aiBrainSettings';
 import './ChatConsole.css';
 
 function generateMessageId(prefix: string): string {
@@ -45,7 +45,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     {
       id: 'welcome',
       role: 'system',
-      content: 'Godo AI Operating Center에 오신 것을 환영합니다. 원하시는 운영 지시를 입력하거나 아래 추천 명령 템플릿을 선택하십시오. 로컬 Gemma AI가 안전 감시 레이어와 함께 상시 대기 중입니다.',
+      content: 'Godo AI Operating Center에 오신 것을 환영합니다. 원하시는 운영 지시를 입력하거나 아래 추천 명령 템플릿을 선택하십시오. 현재 기본 AI를 통해 운영 지시와 질문에 답변합니다.',
       createdAt: new Date().toLocaleTimeString('ko-KR', { hour12: false })
     }
   ]);
@@ -492,9 +492,19 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             총괄 매니저 콘솔 | 운영 지시, 승인, 에이전트 호출을 이곳에서 처리합니다.
           </span>
         </div>
-        <span className="chat-header-ai" style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--accent-primary, #31d6c4)', fontWeight: 700, whiteSpace: 'nowrap' }}>
-          사용 중인 AI: {getGlobalBrainSelection().label || providerLabel(getGlobalBrainSelection().providerId)}
-        </span>
+        {(() => {
+          const b = getGlobalBrainSelection();
+          const label = b.label || providerLabel(b.providerId);
+          const usable = isBrainConnected(b.providerId);
+          return (
+            <span
+              className="chat-header-ai"
+              style={{ marginLeft: 'auto', fontSize: '0.68rem', color: usable ? 'var(--accent-primary, #31d6c4)' : 'var(--warning, #fbbf24)', fontWeight: 700, whiteSpace: 'nowrap' }}
+            >
+              {usable ? `사용 중인 AI: ${label}` : `기본 AI: ${label} · 연결 키 필요`}
+            </span>
+          );
+        })()}
       </div>
 
       <div className="chat-3d-container">

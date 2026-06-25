@@ -486,3 +486,9 @@
   padding: 6px 10px;
   text-align: center;
 }
+
+.aip-default-badge.warn {
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+}

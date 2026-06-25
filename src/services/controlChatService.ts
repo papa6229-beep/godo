@@ -1,5 +1,5 @@
 import { chatWithProvider } from './aiProviderAdapter';
-import { getGlobalBrainSelection, isBrainConnected } from './aiBrainSettings';
+import { getGlobalBrainSelection, isBrainConnected, providerLabel } from './aiBrainSettings';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
@@ -703,9 +703,10 @@ export async function processControlChat(
 
   // 사용 가능 여부 사전 확인 (cloud는 연결 키 필요)
   if (!isBrainConnected(brain.providerId)) {
+    const label = brain.label || providerLabel(brain.providerId);
     return {
       role: 'assistant',
-      content: '먼저 사용할 AI를 연결해 주세요. 관리자 설정 → AI 연결에서 Claude, OpenAI, Gemini 중 하나를 연결할 수 있습니다.',
+      content: `${label} 연결 키를 먼저 연결해 주세요. 관리자 설정 → AI 연결에서 ${label} 연결 키를 붙여넣고 연결 확인을 눌러주세요.`,
       intent,
       createdAt: currentTimeString
     };

@@ -16,11 +16,11 @@ import {
 import './StudioPanel.css';
 
 const STUDIO_BRAIN_OPTIONS: { value: 'global' | BrainProviderId; label: string }[] = [
-  { value: 'global', label: '기본 AI 사용' },
-  { value: 'claude_api', label: 'Claude' },
-  { value: 'openai_api', label: 'OpenAI' },
-  { value: 'gemini_api', label: 'Gemini' },
-  { value: 'local_lmstudio', label: 'LM Studio Local' }
+  { value: 'global', label: '전체 기본 AI 따라가기' },
+  { value: 'claude_api', label: 'Claude로 고정' },
+  { value: 'openai_api', label: 'OpenAI로 고정' },
+  { value: 'gemini_api', label: 'Gemini로 고정' },
+  { value: 'local_lmstudio', label: 'LM Studio로 고정' }
 ];
 
 const studioBrainIsLocalDev: boolean =
@@ -103,17 +103,16 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
   const [agentBrainMsg, setAgentBrainMsg] = useState('');
 
   const handleAgentBrainChange = (agentId: string, value: 'global' | BrainProviderId) => {
-    if (value === 'local_lmstudio' && !studioBrainIsLocalDev) {
-      setAgentBrainMsg('LM Studio는 개발 환경 전용입니다.');
-      return;
-    }
-    if (value !== 'global' && value !== 'local_lmstudio' && !isBrainConnected(value)) {
-      setAgentBrainMsg('먼저 해당 AI를 연결해 주세요. (AI Providers에서 연결 키 저장)');
-      return;
-    }
+    // 선택은 항상 허용(저장)하고, 연결 필요 여부만 상태로 안내한다.
     setAgentBrainChoice(agentId, value);
     setAgentBrainTick(v => v + 1);
-    setAgentBrainMsg('저장되었습니다.');
+    if (value !== 'global' && value !== 'local_lmstudio' && !isBrainConnected(value)) {
+      setAgentBrainMsg(`저장됨 · ${providerLabel(value)} 연결 키가 필요합니다. (AI Providers에서 연결)`);
+    } else if (value === 'local_lmstudio' && !studioBrainIsLocalDev) {
+      setAgentBrainMsg('저장됨 · LM Studio는 개발 환경 전용입니다.');
+    } else {
+      setAgentBrainMsg('저장되었습니다.');
+    }
   };
   const [memoryText, setMemoryText] = useState<string>('');
 
@@ -820,7 +819,7 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
                     {STUDIO_BRAIN_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>
                         {o.value === 'global'
-                          ? `기본 AI 사용 (${getGlobalBrainSelection().label || providerLabel(getGlobalBrainSelection().providerId)})`
+                          ? `전체 기본 AI 따라가기: ${getGlobalBrainSelection().label || providerLabel(getGlobalBrainSelection().providerId)}`
                           : o.label}
                       </option>
                     ))}
