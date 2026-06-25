@@ -9,7 +9,7 @@
 *   **프로젝트명**: GODO AI OS
 *   **목적**: NHN 고도몰(GodoMall) 기반 쇼핑몰의 반복적이고 복잡한 운영 업무(주문, CS, 리뷰, 재고, 매출, 마케팅 등)를 다중 AI 에이전트 협업 체계를 통해 보조하고 자동화하는 통합 AI 운영센터입니다.
 *   **핵심 메시지**: **"AI 직원들이 실무(수집, 분석, 요약, 초안 작성)를 담당하고, 사람은 최종 검토, 의사결정 및 승인(Human-in-the-loop)을 수행한다."**
-*   **현재 상태**: 샌드박스형 운영센터 1차 MVP 및 데이터 연동 인프라(Data Connector, API Bridge, Secure Proxy) 개발이 완료되었으며, 실제 고도몰 API 및 상용 LLM 서버에 연결하기 전의 안전한 시뮬레이션 환경이 구축된 상태입니다.
+*   **현재 상태 (2026-06-25 기준, main HEAD `7965df1`)**: 샌드박스 MVP를 넘어, 고도몰 Products/Orders **REAL READ** + RevenueOrder/Synthetic 매출·재고 파이프라인이 main에 반영되었고, **실제 AI 두뇌(Claude/OpenAI/Gemini 클라우드 + LM Studio 로컬)를 GODO 화면에서 연결**해 운영 채팅·AI 직원·부서 팀장 채팅이 그 두뇌로 실제 대화하는 단계까지 도달했습니다. 기본 AI는 Claude. 상품관리팀 채팅은 데이터 기반(facts) 응답, 상품 대시보드 매출 추이 필터도 정리 완료. 클라우드 키는 서버 route(`/api/ai/chat`) 경유·미저장 원칙. **상세·다음 작업은 `docs/PROJECT_HANDOFF_2026-06-25.md` 참조.**
 
 ---
 
