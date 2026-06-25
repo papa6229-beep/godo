@@ -463,3 +463,26 @@
   background: var(--accent-soft);
   border-color: var(--accent-border);
 }
+
+/* 기본 AI 표시/뱃지 */
+.aip-default-brain {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 8px 0 14px;
+  padding: 8px 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+}
+.aip-default-brain strong { color: var(--accent-primary); }
+.aip-default-sub { color: var(--text-muted); font-weight: 400; }
+.aip-default-badge {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  text-align: center;
+}

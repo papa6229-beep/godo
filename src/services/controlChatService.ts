@@ -1,4 +1,5 @@
-import { getChatCompletion, getModels } from './lmsConnector';
+import { chatWithProvider } from './aiProviderAdapter';
+import { getGlobalBrainSelection, isBrainConnected } from './aiBrainSettings';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
@@ -8,9 +9,6 @@ import type {
   ActionPlan,
   AgentDelegationResult
 } from '../types/controlChat';
-
-const DEFAULT_MODEL = 'google/gemma-4-e4b';
-const DEFAULT_ENDPOINT = 'http://localhost:1234/v1';
 
 /**
  * 룰 기반 1차 의도(Intent) 분석 및 분류
@@ -699,34 +697,42 @@ export async function processControlChat(
   }
 
   // ==========================================
-  // Gemma 로컬 LLM 호출 (일상 대화, 복잡한 질문 요약 등)
+  // 기본 AI(global brain) 호출 — 연결된 AI(Claude 등)로 응답
   // ==========================================
+  const brain = getGlobalBrainSelection();
+
+  // 사용 가능 여부 사전 확인 (cloud는 연결 키 필요)
+  if (!isBrainConnected(brain.providerId)) {
+    return {
+      role: 'assistant',
+      content: '먼저 사용할 AI를 연결해 주세요. 관리자 설정 → AI 연결에서 Claude, OpenAI, Gemini 중 하나를 연결할 수 있습니다.',
+      intent,
+      createdAt: currentTimeString
+    };
+  }
+
   try {
-    const modelsResult = await getModels(DEFAULT_ENDPOINT);
-    const activeModel = (modelsResult.success && modelsResult.data && modelsResult.data.length > 0)
-      ? modelsResult.data[0].id
-      : DEFAULT_MODEL;
-
     const systemPrompt = buildSystemPrompt(activeOperationsData, tasks, approvalQueue);
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
-    ];
+    const result = await chatWithProvider({
+      providerId: brain.providerId,
+      modelIdOverride: brain.modelId || undefined,
+      purpose: 'agent_run',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ]
+    });
 
-    const response = await getChatCompletion(messages, activeModel, DEFAULT_ENDPOINT);
-
-    if (response.success && response.content) {
+    if (result.ok && result.content) {
       return {
         role: 'assistant',
-        content: response.content.trim(),
+        content: result.content.trim(),
         intent,
         createdAt: currentTimeString
       };
-    } else {
-      throw new Error(response.error || '응답 본문이 비어있습니다.');
     }
+    throw new Error(result.errorMessage || '응답 본문이 비어있습니다.');
   } catch {
-    // Gemma 연결 오류 시 운영자 맞춤 Fallback 응답
     if (intent === 'small_talk') {
       return {
         role: 'assistant',
@@ -737,7 +743,7 @@ export async function processControlChat(
     }
     return {
       role: 'assistant',
-      content: '로컬 AI가 잠시 응답하지 않습니다. LM Studio가 켜져 있는지 확인해 주세요.',
+      content: 'AI 응답에 실패했습니다. 연결 키와 사용할 모델을 확인해 주세요.',
       intent,
       createdAt: currentTimeString
     };

@@ -465,3 +465,14 @@
   color: #ffffff;
   box-shadow: 0 2px 6px rgba(0, 168, 120, 0.25);
 }
+
+/* 카드 사용 AI 표시 */
+.card-brain-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.7rem;
+}
+.card-brain-label { color: var(--text-muted, #6e8794); font-weight: 600; }
+.card-brain-value { color: var(--accent-primary, #31d6c4); font-weight: 700; }

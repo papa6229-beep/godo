@@ -1,6 +1,27 @@
 import React, { useState } from 'react';
 import type { Agent } from '../types';
+import type { BrainProviderId } from '../types/aiProvider';
+import {
+  getAgentBrainChoice,
+  setAgentBrainChoice,
+  getGlobalBrainSelection,
+  providerLabel,
+  isBrainConnected
+} from '../services/aiBrainSettings';
 import './AgentDetailModal.css';
+
+const BRAIN_OPTIONS: { value: 'global' | BrainProviderId; label: string }[] = [
+  { value: 'global', label: '기본 AI 사용' },
+  { value: 'claude_api', label: 'Claude' },
+  { value: 'openai_api', label: 'OpenAI' },
+  { value: 'gemini_api', label: 'Gemini' },
+  { value: 'local_lmstudio', label: 'LM Studio Local' }
+];
+
+const brainIsLocalDev: boolean =
+  import.meta.env.DEV ||
+  (typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 
 interface AgentDetailModalProps {
   agent: Agent;
@@ -43,6 +64,22 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
 }) => {
   const [instruction, setInstruction] = useState('');
   const [showPrompt, setShowPrompt] = useState(false);
+  const [brainChoice, setBrainChoice] = useState<'global' | BrainProviderId>(() => getAgentBrainChoice(agent.id));
+  const [brainMsg, setBrainMsg] = useState('');
+
+  const handleBrainChange = (value: 'global' | BrainProviderId) => {
+    if (value === 'local_lmstudio' && !brainIsLocalDev) {
+      setBrainMsg('LM Studio는 개발 환경 전용입니다.');
+      return;
+    }
+    if (value !== 'global' && value !== 'local_lmstudio' && !isBrainConnected(value)) {
+      setBrainMsg('먼저 해당 AI를 연결해 주세요. (관리자 설정 → AI 연결)');
+      return;
+    }
+    setAgentBrainChoice(agent.id, value);
+    setBrainChoice(value);
+    setBrainMsg('저장되었습니다.');
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,6 +164,27 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
                   <span className="stats-value">Lv.{stats.level}</span>
                 </div>
               </div>
+            </div>
+
+            {/* 이 직원이 사용할 AI */}
+            <div className="modal-section sub-panel">
+              <h3 className="section-title">🧠 이 직원이 사용할 AI</h3>
+              <select
+                className="agent-brain-select"
+                value={brainChoice}
+                onChange={(e) => handleBrainChange(e.target.value as 'global' | BrainProviderId)}
+              >
+                {BRAIN_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>
+                    {o.value === 'global'
+                      ? `기본 AI 사용 (${getGlobalBrainSelection().label || providerLabel(getGlobalBrainSelection().providerId)})`
+                      : o.label}
+                  </option>
+                ))}
+              </select>
+              <p className="agent-brain-help">
+                {brainMsg || '아직 정하지 않았다면 “기본 AI 사용”을 선택하세요. 나중에 직원별로 바꿀 수 있습니다.'}
+              </p>
             </div>
 
             {/* 보유 기능 */}

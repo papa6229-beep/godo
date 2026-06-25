@@ -1,7 +1,17 @@
 import React from 'react';
 import type { Agent } from '../types';
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
+import { getAgentBrainChoice, getGlobalBrainSelection, providerLabel } from '../services/aiBrainSettings';
 import './AgentPanel.css';
+
+const agentBrainLabel = (agentId: string): string => {
+  const choice = getAgentBrainChoice(agentId);
+  if (choice === 'global') {
+    const g = getGlobalBrainSelection();
+    return `기본 AI (${g.label || providerLabel(g.providerId)})`;
+  }
+  return providerLabel(choice);
+};
 
 interface AgentPanelProps {
   agents: Agent[];
@@ -75,6 +85,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ agents, onSelectAgent })
         <div className="card-task-preview">
           <span className="task-label">CURRENT TASK:</span>
           <span className="task-text">{agent.currentTask}</span>
+        </div>
+
+        <div className="card-brain-row">
+          <span className="card-brain-label">사용 AI:</span>
+          <span className="card-brain-value">{agentBrainLabel(agent.id)}</span>
         </div>
 
         {agent.skills && agent.skills.length > 0 && (
