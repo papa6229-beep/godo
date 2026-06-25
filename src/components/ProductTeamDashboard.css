@@ -196,3 +196,16 @@
   .ptd-kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .ptd-row { grid-template-columns: 1fr; }
 }
+
+/* v0.8: 직접(custom) 집계 단위 토글 */
+.ptd-custom-gran {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+}
+.ptd-custom-gran-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-right: 2px;
+}

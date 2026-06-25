@@ -67,6 +67,10 @@ const periodKey = (dateStr: string, period: Period): string => {
 };
 const periodLabel = (key: string, period: Period): string => {
   if (period === 'month') return `${parseInt(key.slice(5, 7), 10)}월`;
+  if (period === 'week') {
+    const end = new Date(Date.parse(key) + 6 * 86400000);
+    return `${parseInt(key.slice(5, 7), 10)}/${parseInt(key.slice(8, 10), 10)}~${end.getMonth() + 1}/${end.getDate()}`;
+  }
   return `${parseInt(key.slice(5, 7), 10)}/${parseInt(key.slice(8, 10), 10)}`;
 };
 
@@ -507,12 +511,11 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const [category, setCategory] = useState('all');
   const [dataSrc, setDataSrc] = useState<'all' | 'real' | 'synthetic'>('all');
   // ★ 공통 기간 기준 (shared) — KPI/매출추이/도넛/상품순위가 모두 이 하나를 공유
+  // timeMode = 집계 단위(전체/월별/주간별/일별/직접). 기간은 공유 날짜 범위(rangeStart~rangeEnd).
   const [timeMode, setTimeMode] = useState<'all' | 'month' | 'week' | 'day' | 'custom'>('all');
-  const [pickMonth, setPickMonth] = useState('');
-  const [pickWeek, setPickWeek] = useState('');
-  const [pickDay, setPickDay] = useState('');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
+  const [customGran, setCustomGran] = useState<Period>('day');
   const [rankOpen, setRankOpen] = useState(false);
   const [allOpen, setAllOpen] = useState(false);
 
@@ -532,59 +535,42 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     return Array.from(m.keys()).sort().map((code) => ({ code, label: code }));
   }, [orders]);
 
-  // 기간 모드별 선택 옵션 (실데이터 기반)
-  const monthOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const o of orders) if (o.orderDate.length >= 7) s.add(o.orderDate.slice(0, 7));
-    return Array.from(s).sort();
+  // 데이터 전체 기간(최소~최대 주문일, YYYY-MM-DD)
+  const dataRange = useMemo(() => {
+    let min = '';
+    let max = '';
+    for (const o of orders) {
+      const d = o.orderDate.slice(0, 10);
+      if (d.length < 10) continue;
+      if (!min || d < min) min = d;
+      if (!max || d > max) max = d;
+    }
+    return { min, max };
   }, [orders]);
-  const weekOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const o of orders) if (o.orderDate.length >= 10) s.add(periodKey(o.orderDate, 'week'));
-    return Array.from(s).sort();
-  }, [orders]);
-  const dayOptions = useMemo(() => {
-    const s = new Set<string>();
-    for (const o of orders) if (o.orderDate.length >= 10) s.add(o.orderDate.slice(0, 10));
-    return Array.from(s).sort();
-  }, [orders]);
-  // 선택값 미지정 시 가장 최근 것을 기본값으로
-  const effMonth = pickMonth || (monthOptions.length ? monthOptions[monthOptions.length - 1] : '');
-  const effWeek = pickWeek || (weekOptions.length ? weekOptions[weekOptions.length - 1] : '');
-  const effDay = pickDay || (dayOptions.length ? dayOptions[dayOptions.length - 1] : '');
 
-  // ★ 공통 기간 기준으로 orders 필터 → KPI/추이/도넛/순위가 모두 같은 기준 공유
+  // 적용 기간: 전체는 데이터 전체, 그 외는 선택 범위(미지정 시 데이터 전체)
+  const effStart = timeMode === 'all' ? dataRange.min : (rangeStart || dataRange.min);
+  const effEnd = timeMode === 'all' ? dataRange.max : (rangeEnd || dataRange.max);
+
+  // ★ 공통 기간 기준으로 orders 필터 → KPI/추이/도넛/순위가 모두 같은 기준(기간 범위) 공유
   const ordersFiltered = useMemo(() => {
-    const sMs = timeMode === 'custom' && customStart ? Date.parse(customStart) : null;
-    const eMs = timeMode === 'custom' && customEnd ? Date.parse(customEnd) : null;
     return orders.filter((o) => {
       if (dataSrc === 'real' && o.sourceType !== 'real_godomall') return false;
       if (dataSrc === 'synthetic' && o.sourceType !== 'synthetic_test') return false;
       const d10 = o.orderDate.slice(0, 10);
-      if (timeMode === 'month') return o.orderDate.slice(0, 7) === effMonth;
-      if (timeMode === 'week') return periodKey(o.orderDate, 'week') === effWeek;
-      if (timeMode === 'day') return d10 === effDay;
-      if (timeMode === 'custom') {
-        const ms = Date.parse(d10);
-        if (sMs != null && ms < sMs) return false;
-        if (eMs != null && ms > eMs) return false;
-      }
+      if (effStart && d10 < effStart) return false;
+      if (effEnd && d10 > effEnd) return false;
       return true;
     });
-  }, [orders, dataSrc, timeMode, effMonth, effWeek, effDay, customStart, customEnd]);
+  }, [orders, dataSrc, effStart, effEnd]);
 
-  // 매출 추이 집계 단위는 기간 모드에서 파생 (전체→월, 월/주/일→일, 직접→기간 길이 기준)
+  // 매출 추이 집계 단위 = 선택한 모드 (전체·월별→월, 주간별→주, 일별→일, 직접→사용자 선택 단위)
   const trendGran: Period = useMemo(() => {
-    if (timeMode === 'all') return 'month';
-    if (timeMode === 'custom') {
-      if (customStart && customEnd) {
-        const span = (Date.parse(customEnd) - Date.parse(customStart)) / 86400000;
-        return span <= 62 ? 'day' : 'month';
-      }
-      return 'day';
-    }
-    return 'day';
-  }, [timeMode, customStart, customEnd]);
+    if (timeMode === 'all' || timeMode === 'month') return 'month';
+    if (timeMode === 'week') return 'week';
+    if (timeMode === 'day') return 'day';
+    return customGran;
+  }, [timeMode, customGran]);
 
   const relevantOrders = useMemo(
     () => (category === 'all' ? ordersFiltered : ordersFiltered.filter((o) => o.lines.some((l) => l.categoryCode === category))),
@@ -670,52 +656,45 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     setCategory('all');
     setDataSrc('all');
     setTimeMode('all');
-    setPickMonth('');
-    setPickWeek('');
-    setPickDay('');
-    setCustomStart('');
-    setCustomEnd('');
+    setRangeStart('');
+    setRangeEnd('');
+    setCustomGran('day');
   };
 
-  // 현재 기간 기준 표시용 라벨
-  const weekRangeLabel = (wk: string): string => {
-    if (!wk) return '주간별';
-    const end = new Date(Date.parse(wk) + 6 * 86400000);
-    return `${wk} ~ ${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  // 표시용: 집계 단위 + 기간
+  const granLabel = trendGran === 'month' ? '월별' : trendGran === 'week' ? '주간별' : '일별';
+  const periodText = timeMode === 'all' ? '전체 기간' : `${effStart || '…'} ~ ${effEnd || '…'}`;
+  const periodBasisLabel = `${granLabel} · ${periodText}`;
+
+  // 모드 전환 시, 범위가 비어 있으면 데이터 전체 기간을 기본값으로 채운다.
+  const selectMode = (mode: 'all' | 'month' | 'week' | 'day' | 'custom') => {
+    setTimeMode(mode);
+    if (mode !== 'all' && !rangeStart && !rangeEnd) {
+      setRangeStart(dataRange.min);
+      setRangeEnd(dataRange.max);
+    }
   };
-  const periodBasisLabel =
-    timeMode === 'all' ? '전체 기간'
-    : timeMode === 'month' ? (effMonth ? `${effMonth.slice(0, 4)}년 ${parseInt(effMonth.slice(5, 7), 10)}월` : '월별')
-    : timeMode === 'week' ? weekRangeLabel(effWeek)
-    : timeMode === 'day' ? (effDay || '일별')
-    : `${customStart || '…'} ~ ${customEnd || '…'}`;
 
   // 추이/도넛 카드가 공유하는 기간 기준 컨트롤 (양쪽에서 렌더 → 같은 state)
   const renderPeriodControl = () => (
     <div className="ptd-period-ctl">
       {([['all', '전체'], ['month', '월별'], ['week', '주간별'], ['day', '일별'], ['custom', '직접']] as const).map(([v, l]) => (
-        <button key={v} type="button" className={`ptd-seg ${timeMode === v ? 'active' : ''}`} onClick={() => setTimeMode(v)}>{l}</button>
+        <button key={v} type="button" className={`ptd-seg ${timeMode === v ? 'active' : ''}`} onClick={() => selectMode(v)}>{l}</button>
       ))}
-      {timeMode === 'month' && (
-        <select className="ptd-period-select" value={effMonth} onChange={(e) => setPickMonth(e.target.value)} aria-label="월 선택">
-          {monthOptions.map((m) => <option key={m} value={m}>{`${m.slice(0, 4)}년 ${parseInt(m.slice(5, 7), 10)}월`}</option>)}
-        </select>
-      )}
-      {timeMode === 'week' && (
-        <select className="ptd-period-select" value={effWeek} onChange={(e) => setPickWeek(e.target.value)} aria-label="주 선택">
-          {weekOptions.map((w) => <option key={w} value={w}>{`${w} 주`}</option>)}
-        </select>
-      )}
-      {timeMode === 'day' && (
-        <select className="ptd-period-select" value={effDay} onChange={(e) => setPickDay(e.target.value)} aria-label="일 선택">
-          {dayOptions.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
+      {timeMode !== 'all' && (
+        <span className="ptd-daterange">
+          <input type="date" className="ptd-date-input" value={rangeStart} max={rangeEnd || undefined} onChange={(e) => setRangeStart(e.target.value)} aria-label="시작일" />
+          <span className="ptd-date-sep">~</span>
+          <input type="date" className="ptd-date-input" value={rangeEnd} min={rangeStart || undefined} onChange={(e) => setRangeEnd(e.target.value)} aria-label="종료일" />
+          <button type="button" className="ptd-seg" onClick={() => { setRangeStart(''); setRangeEnd(''); }}>초기화</button>
+        </span>
       )}
       {timeMode === 'custom' && (
-        <span className="ptd-daterange">
-          <input type="date" className="ptd-date-input" value={customStart} max={customEnd || undefined} onChange={(e) => setCustomStart(e.target.value)} aria-label="시작일" />
-          <span className="ptd-date-sep">~</span>
-          <input type="date" className="ptd-date-input" value={customEnd} min={customStart || undefined} onChange={(e) => setCustomEnd(e.target.value)} aria-label="종료일" />
+        <span className="ptd-custom-gran">
+          <span className="ptd-custom-gran-label">단위</span>
+          {([['month', '월'], ['week', '주'], ['day', '일']] as const).map(([v, l]) => (
+            <button key={v} type="button" className={`ptd-seg ${customGran === v ? 'active' : ''}`} onClick={() => setCustomGran(v)}>{l}</button>
+          ))}
         </span>
       )}
     </div>
