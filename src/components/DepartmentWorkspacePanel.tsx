@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './DepartmentWorkspacePanel.css';
 import {
   fetchAdminProducts,
@@ -7,6 +7,8 @@ import {
   type RevenueResult
 } from '../services/departmentDataService';
 import { ProductTeamDashboard } from './ProductTeamDashboard';
+import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
+import { chatWithTeam } from '../services/departmentChatService';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -110,21 +112,19 @@ const PLACEHOLDER_CARDS = [
   { key: 'pending', label: '대기 중인 요청', icon: '⏳' }
 ];
 
-interface ChatMessage {
-  role: 'user' | 'system';
-  text: string;
-}
+type ChatMessage = DeptChatMessage;
 
 
 export const DepartmentWorkspacePanel: React.FC = () => {
   const [selectedTeamId, setSelectedTeamId] = useState<TeamId>('hq');
-  const [chatLog, setChatLog] = useState<Record<TeamId, ChatMessage[]>>({
-    hq: [],
-    product: [],
-    cs: [],
-    marketing: []
-  });
+  // 팀별 채팅 기록 — localStorage에서 복원(탭 이동/새로고침 유지, 팀별 분리)
+  const [chatLog, setChatLog] = useState<Record<TeamId, ChatMessage[]>>(() => loadDeptChatLog());
   const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    saveDeptChatLog(chatLog);
+  }, [chatLog]);
 
   // 상품관리팀 대시보드 데이터 (Products 13개 + orders-revenue?includeSynthetic=true)
   const [productData, setProductData] = useState<{
@@ -151,25 +151,38 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const team = TEAMS.find((t) => t.id === selectedTeamId) as TeamConfig;
   const messages = chatLog[selectedTeamId];
 
-  // 우측 명령 전송 — 실제 AI/API 호출 없음. 미리보기 안내 응답만 추가한다.
-  const handleSend = () => {
+  // 상품관리팀 매출/재고 데이터를 AI 참고용 요약으로 변환 (로드된 경우에만)
+  const buildProductContextNote = (): string | undefined => {
+    const s = productData.revenue?.summary;
+    if (!s) return undefined;
+    return (
+      `상품관리팀 매출 요약(실 ${s.realOrderCount}건 + 가상 ${s.syntheticOrderCount}건): ` +
+      `상품매출 ${s.productRevenueByLines.toLocaleString()}원, 배송비 ${s.deliveryFeeTotal.toLocaleString()}원, ` +
+      `총주문금액 ${s.totalAmount.toLocaleString()}원, 결제완료 ${s.paidOrderCount} / 미결제 ${s.unpaidOrderCount} / ` +
+      `구매확정 ${s.confirmedOrderCount} / 취소 ${s.canceledOrderCount}. ` +
+      `재고추적 ${s.syntheticTrackedProductCount}종, 순판매 ${s.syntheticTotalNetSoldQuantity}개. ` +
+      `(실 고도몰 상품 + synthetic 매출/재고 기준)`
+    );
+  };
+
+  // 우측 명령 전송 — 선택된 팀의 AI 팀장(기본 AI 경유)에게 실제 질의한다.
+  const handleSend = async () => {
     const text = input.trim();
-    if (!text) return;
-    const reply: ChatMessage = {
-      role: 'system',
-      text: `이 영역은 다음 단계에서 ${team.name}의 데이터와 연결됩니다. (현재는 미리보기 화면으로, 실제 AI/API 호출은 하지 않습니다.)`
-    };
-    setChatLog((prev) => ({
-      ...prev,
-      [selectedTeamId]: [...prev[selectedTeamId], { role: 'user', text }, reply]
-    }));
+    if (!text || sending) return;
+    const teamId = selectedTeamId;
+    setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'user', text }] }));
     setInput('');
+    setSending(true);
+    const contextNote = teamId === 'product' ? buildProductContextNote() : undefined;
+    const res = await chatWithTeam(teamId, text, { contextNote });
+    setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: res.text }] }));
+    setSending(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
@@ -296,7 +309,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       <aside className="dept-col dept-col-right">
         <div className="dept-col-head">
           <h3>{team.chatTitle}</h3>
-          <p className="dept-col-sub">선택한 팀에게 업무를 지시하는 자리입니다.</p>
+          <p className="dept-col-sub">선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.</p>
         </div>
 
         <div className="dept-chat-log">
@@ -312,6 +325,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
               </div>
             ))
           )}
+          {sending && <div className="dept-chat-msg system">작성 중…</div>}
         </div>
 
         <div className="dept-chat-input-row">
@@ -326,14 +340,14 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           <button
             type="button"
             className="dept-chat-send"
-            onClick={handleSend}
-            disabled={!input.trim()}
+            onClick={() => void handleSend()}
+            disabled={!input.trim() || sending}
           >
-            지시 전송
+            {sending ? '전송 중…' : '지시 전송'}
           </button>
         </div>
         <p className="dept-chat-disclaimer">
-          ※ 미리보기 단계 — 메시지를 보내도 실제 AI/API를 호출하지 않습니다.
+          ※ 분석·정리·초안까지만 제공하며, 실제 발송·수정·캠페인 실행은 승인 전 하지 않습니다.
         </p>
       </aside>
     </div>
