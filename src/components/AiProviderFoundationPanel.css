@@ -1,0 +1,209 @@
+/* AI Provider Foundation v0 — panel styles (teal/slate theme tokens) */
+
+.aip-pane {
+  padding: 4px 2px;
+}
+
+.aip-intro {
+  margin-bottom: 18px;
+}
+
+.aip-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px;
+}
+
+.aip-section-desc {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 880px;
+}
+
+.aip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.aip-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aip-card.is-local {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 1px var(--accent-glow) inset;
+}
+
+.aip-card.is-placeholder {
+  opacity: 0.92;
+}
+
+.aip-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.aip-card-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.aip-status-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.aip-status-badge.status-connected {
+  color: var(--success);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+.aip-status-badge.status-testing {
+  color: var(--info);
+  background: rgba(90, 200, 250, 0.1);
+  border-color: rgba(90, 200, 250, 0.3);
+}
+.aip-status-badge.status-not_configured,
+.aip-status-badge.status-disconnected {
+  color: var(--text-muted);
+  background: rgba(127, 156, 170, 0.1);
+  border-color: rgba(127, 156, 170, 0.2);
+}
+.aip-status-badge.status-no_model {
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.aip-status-badge.status-error {
+  color: var(--danger);
+  background: rgba(255, 77, 109, 0.1);
+  border-color: rgba(255, 77, 109, 0.3);
+}
+
+.aip-card-desc {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.aip-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.aip-meta-row > span {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.aip-risk {
+  font-weight: 700;
+}
+.aip-risk.risk-low { color: var(--success); }
+.aip-risk.risk-medium { color: var(--info); }
+.aip-risk.risk-high { color: var(--warning); }
+.aip-risk.risk-experimental { color: var(--danger); }
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.aip-notes {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--card-hover);
+  border-radius: 8px;
+}
+
+.aip-actions {
+  margin-top: auto;
+}
+
+.aip-btn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.aip-btn.primary:hover:not(:disabled) {
+  background: var(--accent-glow);
+}
+.aip-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.aip-placeholder-note {
+  margin-top: auto;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border: 1px dashed var(--card-border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.aip-result {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.aip-result.result-connected {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--text-secondary);
+}
+.aip-result.result-error,
+.aip-result.result-disconnected {
+  background: rgba(255, 77, 109, 0.08);
+  border: 1px solid rgba(255, 77, 109, 0.25);
+  color: var(--text-secondary);
+}
+.aip-result.result-no_model,
+.aip-result.result-testing {
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.22);
+  color: var(--text-secondary);
+}
+
+.aip-result-line strong {
+  color: var(--text-primary);
+}
+.aip-result-line.excerpt {
+  color: var(--text-primary);
+  font-style: italic;
+}

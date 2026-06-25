@@ -4,6 +4,7 @@ import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule, E
 import type { PermissionMatrixItem } from '../types/studio';
 import type { LogEntry } from '../types';
 import { getModels, getChatCompletion } from '../services/lmsConnector';
+import { AiProviderFoundationPanel } from './AiProviderFoundationPanel';
 import './EnginePanel.css';
 
 interface EnginePanelProps {
@@ -35,7 +36,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   permissionMatrix,
   onAddLog
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'mode' | 'local' | 'cloud' | 'rules' | 'logs' | 'safety'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'mode' | 'providers' | 'local' | 'cloud' | 'rules' | 'logs' | 'safety'>('overview');
   
   // TS6133 방지용 매개변수 사용성 부여
   if (onUpdateEngineUsageLogs && typeof onUpdateEngineUsageLogs === 'function') {
@@ -513,6 +514,9 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
         <button className={`engine-tab-btn ${activeTab === 'mode' ? 'active' : ''}`} onClick={() => setActiveTab('mode')}>
           🌐 Engine Mode
         </button>
+        <button className={`engine-tab-btn ${activeTab === 'providers' ? 'active' : ''}`} onClick={() => setActiveTab('providers')}>
+          🧩 AI Providers
+        </button>
         <button className={`engine-tab-btn ${activeTab === 'local' ? 'active' : ''}`} onClick={() => setActiveTab('local')}>
           🖥️ Local Engines
         </button>
@@ -710,6 +714,11 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
               </div>
             </form>
           </div>
+        )}
+
+        {/* --- B-2. AI Provider Foundation --- */}
+        {activeTab === 'providers' && (
+          <AiProviderFoundationPanel onAddLog={onAddLog} />
         )}
 
         {/* --- C. Local Engines --- */}
