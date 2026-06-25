@@ -27,6 +27,7 @@ export interface AiChatServerRequest {
 export type AiChatServerErrorKind =
   | 'missing_key'
   | 'invalid_key'
+  | 'model_not_found'
   | 'rate_limited'
   | 'quota_exceeded'
   | 'timeout'
@@ -56,8 +57,11 @@ const fail = (
 ): AiChatServerResponse => ({ ok: false, providerId, modelId, errorKind, errorMessage, latencyMs });
 
 // HTTP status → errorKind (응답 본문 내용은 키 노출 위험이 있으므로 사용하지 않는다)
+//  401/403 → 키 문제, 404 → 모델 이름 문제(provider가 모델 미존재 시 404),
+//  429 → 한도/쿼터, 그 외 → 일반 provider 오류
 const statusToErrorKind = (status: number): AiChatServerErrorKind => {
   if (status === 401 || status === 403) return 'invalid_key';
+  if (status === 404) return 'model_not_found';
   if (status === 429) return 'rate_limited';
   return 'provider_error';
 };
