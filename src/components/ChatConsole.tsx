@@ -6,6 +6,7 @@ import type { ApprovalItem } from '../types/approval';
 import type { ControlChatMessage, ControlTaskCandidate } from '../types/controlChat';
 import { processControlChat } from '../services/controlChatService';
 import { getGlobalBrainSelection, providerLabel, isBrainConnected } from '../services/aiBrainSettings';
+import { loadHqMessages, saveHqMessages } from '../services/hqChatMemory';
 import './ChatConsole.css';
 
 function generateMessageId(prefix: string): string {
@@ -41,14 +42,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   isLarge = false,
   isSimulating = false
 }) => {
-  const [messages, setMessages] = useState<ControlChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'system',
-      content: 'Godo AI Operating Center에 오신 것을 환영합니다. 원하시는 운영 지시를 입력하거나 아래 추천 명령 템플릿을 선택하십시오. 현재 기본 AI를 통해 운영 지시와 질문에 답변합니다.',
-      createdAt: new Date().toLocaleTimeString('ko-KR', { hour12: false })
-    }
-  ]);
+  // 탭 이동/새로고침 후에도 유지되도록 localStorage에서 복원 (없으면 환영 메시지)
+  const [messages, setMessages] = useState<ControlChatMessage[]>(() => loadHqMessages());
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -345,6 +340,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
+
+  // HQ 채팅 기록 영속화 (탭 이동/새로고침 유지). 최근 메시지만 저장.
+  useEffect(() => {
+    saveHqMessages(messages);
+  }, [messages]);
 
   const handleSend = async (text: string) => {
     if (!text.trim() || isTyping) return;
