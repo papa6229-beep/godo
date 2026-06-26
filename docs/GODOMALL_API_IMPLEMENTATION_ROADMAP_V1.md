@@ -15,7 +15,7 @@
 - 0건/에러 응답 가드(완료) 회귀 유지.
 
 ## Phase 2 — 공통코드 / 카테고리 / 브랜드 READ
-- **code_search**(p1, 우선): `code_type`(scm/delivery/claimCode/claimBank/deliveryCompany 등) 동적 조회 → 코드표 하드코딩 제거·동기화.
+- **code_search**(p1, 우선) ✅ **v0 완료** — `code_type` 13종 동적 조회(real bridge `codes.ts`/`godomallCodes.ts`, 라이브 검증). `docs/GODOMALL_CODE_SEARCH_READ_V0.md`. 다음: 정적 enum과 비교·병합.
 - **category_search**(p1): cateCd→cateNm 라벨 → RevenueOrder/대시보드 카테고리 한글화.
 - **brand_search**(p2), **goods_add_search**(p2) 필요 시.
 

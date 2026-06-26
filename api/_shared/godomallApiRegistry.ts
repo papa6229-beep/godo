@@ -311,11 +311,7 @@ export const GODOMALL_API_CAPABILITIES: GodomallApiCapability[] = [
     sandboxPath: '/order/Order_Search.php',
     accessMode: 'read',
     implementationStatus: 'partial',
-    currentRoutes: [
-      'api/godomall/orders-revenue.ts',
-      'api/godomall/orders-admin.ts',
-      'api/godomall/order-search-raw-audit.ts'
-    ],
+    currentRoutes: ['api/godomall/orders-revenue.ts', 'api/godomall/orders-admin.ts'],
     currentSharedFiles: [
       'api/_shared/godomallRevenue.ts',
       'api/_shared/godomallOrderTypes.ts',
@@ -585,7 +581,9 @@ export const GODOMALL_API_CAPABILITIES: GodomallApiCapability[] = [
     realPath: '/common/Code_Search.php',
     sandboxPath: '/common/Code_Search.php',
     accessMode: 'read',
-    implementationStatus: 'not_started',
+    implementationStatus: 'partial',
+    currentRoutes: ['api/godomall/codes.ts'],
+    currentSharedFiles: ['api/_shared/godomallCodes.ts'],
     usedByDepartments: ['hq', 'product', 'order', 'delivery'],
     requiresApproval: false,
     writeLocked: false,
@@ -593,8 +591,8 @@ export const GODOMALL_API_CAPABILITIES: GodomallApiCapability[] = [
     rateLimitSensitive: true,
     businessPriority: 'p1',
     nextAction:
-      '우선순위 높음 — 코드표 하드코딩 대신 고도몰 기준 코드 동기화. code_type: scm/imagePath/memberGroup/delivery/deliveryInfo/asInfo/refundInfo/exchangeInfo/claimCode/claimPayment/claimBank/deliveryCompany/iconInfo.',
-    notes: 'Request: code_type/scmNo. godomallOrderCodes.ts(주문상태/결제수단/채널/정렬/상점)와 중복 정의 주의 — Code_Search는 동적 동기화용.'
+      'real READ bridge v0 완료(codes.ts/godomallCodes.ts). 13 code_type allowlist 정규화. 다음: 라이브 응답으로 code_type별 실데이터 잠그기 + 하드코딩 코드표(godomallOrderCodes) 비교.',
+    notes: 'Request: code_type/scmNo. allowlist 13종(§7.2). godomallOrderCodes.ts(정적 enum)와 역할 분리 — Code_Search는 운영자설정 동적코드(공급사/배송/클레임은행/택배사/아이콘 등). code_type별 code/label 필드 상이(godomallCodes.CODE_FIELD_MAP).'
   },
 
   // ── 레거시 참고(legacy_reference, enamoo 2022) — 고도몰5에서 Board로 통합됨 ──
