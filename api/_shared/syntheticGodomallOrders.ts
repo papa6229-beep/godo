@@ -37,6 +37,9 @@ export interface SyntheticGodomallOrderOptions {
   endDate?: string; // 윈도우 종료일(YYYY-MM-DD). 기본: 호출 시점
   includeClaims?: boolean; // 취소/반품/교환 클레임 포함. 기본 true
   includeMembers?: boolean; // 회원/비회원 혼합. 기본 true(false면 전부 비회원)
+  // 수치 필드를 문자열로 emit(기본 true). 실 고도몰 XML은 parseTagValue=false로 파싱되어
+  // 모든 값이 문자열로 내려온다(godomallXmlParser). raw 충실도를 위해 기본 true.
+  numericAsString?: boolean;
 }
 
 const DEFAULTS = {
@@ -44,7 +47,20 @@ const DEFAULTS = {
   orderCount: 480,
   seed: 20260626,
   includeClaims: true,
-  includeMembers: true
+  includeMembers: true,
+  numericAsString: true
+};
+
+// 깊은 숫자→문자열 변환 (실 XML 파싱 결과 충실도). 날짜/플래그/이름은 이미 문자열.
+const deepStringifyNumbers = (value: unknown): unknown => {
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.map(deepStringifyNumbers);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = deepStringifyNumbers(v);
+    return out;
+  }
+  return value;
 };
 
 // ── 결정적 PRNG (숫자 seed → mulberry32). Math.random 미사용. ──
@@ -181,6 +197,7 @@ export function buildSyntheticGodomallOrderSearchResponse(
   const seed = options.seed ?? DEFAULTS.seed;
   const includeClaims = options.includeClaims ?? DEFAULTS.includeClaims;
   const includeMembers = options.includeMembers ?? DEFAULTS.includeMembers;
+  const numericAsString = options.numericAsString ?? DEFAULTS.numericAsString;
 
   const base = products.filter((p) => p.productId);
   if (base.length === 0) {
@@ -348,7 +365,14 @@ export function buildSyntheticGodomallOrderSearchResponse(
     orderRows.push(order);
   }
 
-  return { code: 200, msg: 'success', order_data: orderRows };
+  // 실 XML 파싱 충실도: 수치 필드를 문자열로(기본). mapper(num/int)가 동일하게 해석.
+  const rows = numericAsString
+    ? (orderRows.map((o) => deepStringifyNumbers(o)) as GodomallRawOrderData[])
+    : orderRows;
+
+  // 실 응답 충실도: 주문 1건이면 order_data는 단일 객체, 다건이면 배열.
+  const order_data: GodomallRawOrderData | GodomallRawOrderData[] = rows.length === 1 ? rows[0] : rows;
+  return { code: 200, msg: 'success', order_data };
 }
 
 // ── Bridge: synthetic raw → RevenueOrder[] (기존 mapOrdersToRevenue 재사용) ──
