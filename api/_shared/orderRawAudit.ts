@@ -65,12 +65,13 @@ export interface RawShapeReport {
 }
 
 // raw 응답(또는 파싱 root)에서 order_data를 안전 추출
-const pickOrderData = (resp: unknown): unknown => {
-  if (!isObj(resp)) return undefined;
+// 파싱 root 어디에 있든 order_data를 깊이 우선으로 탐색(예: data.return.order_data).
+const pickOrderData = (resp: unknown, depth = 0): unknown => {
+  if (depth > 8 || !isObj(resp)) return undefined;
   if ('order_data' in resp) return resp['order_data'];
-  // 파싱 root가 한 단계 감싸진 경우 방어적 탐색(예: body.return.order_data)
   for (const v of Object.values(resp)) {
-    if (isObj(v) && 'order_data' in v) return (v as Record<string, unknown>)['order_data'];
+    const found = pickOrderData(v, depth + 1);
+    if (found !== undefined) return found;
   }
   return undefined;
 };
