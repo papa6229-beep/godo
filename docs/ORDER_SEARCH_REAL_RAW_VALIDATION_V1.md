@@ -33,15 +33,18 @@
 - **2차 시도(Execution v1)**: 재확인 시에도 여전히 미인증. 작업지시서 §3-1대로 **Claude 단독 완료 불가**.
 - 작업지시서 §3-2에 따라 **env pull 불가**로 판단하고 중단. **키 원문을 요청하지 않았다.**
 - **준비 완료**: `scripts/audit-order-search-raw.mjs`에 `.env.local` 최소 로더를 추가(Node는 .env 자동 로드 안 함). 기존 `process.env` 값 우선·키 값 미출력. 이제 사용자가 인증·pull만 하면 audit이 즉시 키를 읽는다(`GODOMALL_API_MODE=sandbox` 로컬 .env.local로 로더 동작 확인, 키 없어 네트워크 호출 미발생).
-- → **사용자 액션 필요**: 세션 프롬프트에서
-  ```
-  ! npx vercel login
-  ! npx vercel link        # 기존 godo-psi/현재 repo 연결 프로젝트 선택, 새 프로젝트 생성 금지
-  ! npx vercel env pull .env.local --environment=production
-  ```
-  완료 후 알리면 `node scripts/audit-order-search-raw.mjs --days=365 --size=3` 실행하여 본 문서 §3~§5 실측 컬럼을 채운다.
+- **3차 시도(Execution v1, 인증 후)**: 사용자가 `vercel login` 완료 → `vercel link --yes --project godo`로 기존 프로젝트 `taejuns-projects-e5fc4e75/godo`(URL `godo-psi.vercel.app`) 링크 → `vercel env pull .env.local --environment=production` 성공.
+  - **그러나 키 평문 로컬 취득 불가**: pull된 `.env.local`의 `GODOMALL_*` 5개 값이 **전부 빈 문자열**. `vercel env ls`상 모두 **Encrypted**(Sensitive, 쓰기전용·복호화 불가) → `vercel env pull`이 값을 내려주지 못함(빈 값). 이는 "API Key 프론트 영구 격리" 보안 정책과 일치하는 의도된 동작.
+  - **배포 Production은 정상 작동 확인**: `GET https://godo-psi.vercel.app/api/godomall/health` → `mode:"real"`, `hasPartnerKey:true`, `hasUserKey:true`, `productionLocked:true`. 즉 키는 **서버(배포)에는 존재·작동**하나 **로컬로는 가져올 수 없다**.
+  - 빈 값 `.env.local`은 로더 mode를 빈값으로 강제하므로 제거(gitignore 유지). `.vercel` 링크는 보존.
+- → **결론**: 인증/링크/pull은 해결됐으나, **Sensitive 변수라 로컬 실 audit은 여전히 불가**. 키를 노출/요청하지 않는다.
 
-→ 실측은 보류하고, ① 공식 스펙 기반 shape 분석, ② mapper 호환 검증(픽스처), ③ 키 도착 시 즉시 실행 가능한 안전 audit 도구 + 합성 generator 보정으로 대체했다.
+#### 키를 노출하지 않고 실 audit을 완료하는 안전 옵션 (사용자 선택)
+1. **(권장) 샌드박스/로컬 .env.local 직접 작성**: 사용자가 gitignore된 `.env.local`에 실 키를 직접 붙여넣고(`GODOMALL_API_MODE=sandbox` 권장 — 실 고객 PII 회피) 알려주면, 내가 `node scripts/audit-order-search-raw.mjs` 실행(키는 채팅/커밋에 미노출, 출력은 마스킹).
+2. **셸 환경변수로 1회 실행**: 사용자가 자신의 셸에서 키를 export 후 `! node scripts/audit-order-search-raw.mjs --days=365 --size=3` 실행(키가 명령 echo에 노출될 수 있어 비권장).
+3. **Vercel 변수 비-Sensitive 재설정**: 권장하지 않음(보안 정책 약화).
+
+→ 위가 정해지기 전까지 실측은 보류하고, ① 공식 스펙 기반 shape 분석, ② mapper 호환 검증(픽스처), ③ 즉시 실행 가능한 안전 audit 도구(.env.local 로더 포함)로 대체한다.
 
 ### 실 호출에 필요한 것 (사용자 제공)
 ```

@@ -36,3 +36,4 @@ dist
 
 # Local screenshots / scratch
 shot/
+.env*.local
