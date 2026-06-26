@@ -257,10 +257,15 @@ const fetchProductsForJoin = async (
   }
 };
 
-// syntheticSource: 가상 매출 생성 소스 선택(옵션, 기본 'legacy').
-//   - 'legacy'  : 기존 syntheticRevenue.ts (곧장 RevenueOrder) — 기본 동작, 무변경.
-//   - 'godoRaw' : Order_Search raw 시뮬레이터 → mapOrdersToRevenue 통과(공식 스펙 기반).
+// syntheticSource: 가상 매출 생성 소스 선택(옵션). **기본값 'godoRaw'** (Commerce Data Contract v0).
+//   - 'godoRaw' : Order_Search raw 시뮬레이터 → mapOrdersToRevenue 통과(real과 같은 통로). 기본.
+//   - 'legacy'  : 기존 syntheticRevenue.ts (곧장 RevenueOrder, mapper 우회) — 명시 옵션으로 유지(삭제 안 함).
+// ⚠️ 기본이 legacy→godoRaw로 바뀌며 대시보드/채팅 수치가 일부 달라질 수 있다(의도된 변경 — real 전환 재사용성).
 export type SyntheticSource = 'legacy' | 'godoRaw';
+
+// 기본 source 해석: 명시적으로 'legacy'를 요청한 경우만 legacy, 그 외 godoRaw.
+export const pickSyntheticSource = (source?: SyntheticSource): SyntheticSource =>
+  source === 'legacy' ? 'legacy' : 'godoRaw';
 
 export const resolveOrdersRevenue = async (
   opts: { includeSynthetic?: boolean; syntheticSource?: SyntheticSource } = {}
@@ -299,14 +304,18 @@ export const resolveOrdersRevenue = async (
     realOrders = mapOrdersToRevenue(normalizeOrderData(getProxyMockOrders()), buildProductIndex([]), 'real_godomall');
   }
 
-  // 가상 매출 데이터 (옵션) — 실 Products 기반 생성, 실 주문과 동일 RevenueOrder 구조.
-  // syntheticSource='godoRaw'이면 Order_Search raw 시뮬레이터 경로(공식 스펙 기반)를,
-  // 그 외(기본 'legacy')는 기존 generateSyntheticRevenueOrders를 사용한다.
+  // 가상 매출 데이터 (옵션). 기본 godoRaw(real과 같은 mapper 통로), 명시 'legacy'만 legacy.
+  const chosen = pickSyntheticSource(opts.syntheticSource);
   const syntheticOrders = opts.includeSynthetic
-    ? opts.syntheticSource === 'godoRaw'
-      ? buildSyntheticRevenueOrdersFromGodomallRaw(products)
-      : generateSyntheticRevenueOrders(products)
+    ? chosen === 'legacy'
+      ? generateSyntheticRevenueOrders(products)
+      : buildSyntheticRevenueOrdersFromGodomallRaw(products)
     : [];
+  // syntheticSource 메타데이터 stamp (legacy는 mapper를 안 타 dataKind 미설정 → 보강).
+  for (const o of syntheticOrders) {
+    o.syntheticSource = chosen;
+    if (!o.dataKind) o.dataKind = 'synthetic';
+  }
   const orders = [...realOrders, ...syntheticOrders];
 
   // 가상 재고 영향 (옵션) — 실 Products 현재 재고 기준으로 역산 (고도몰 재고 미변경)

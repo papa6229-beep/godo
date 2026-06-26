@@ -13,16 +13,17 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only GET is accepted.', 405);
   }
 
-  // ?includeSynthetic=true 일 때만 가상 매출 데이터 포함 (기본 false = 기존 동작 유지)
-  // ?syntheticSource=godoRaw 면 Order_Search raw 시뮬레이터 경로 사용 (기본 'legacy' = 기존 동작)
+  // ?includeSynthetic=true 일 때만 가상 매출 데이터 포함 (기본 false)
+  // ?syntheticSource= : 미지정/godoRaw → godoRaw(기본), legacy → legacy (Commerce Data Contract v0)
   let includeSynthetic = false;
-  let syntheticSource: SyntheticSource = 'legacy';
+  let syntheticSource: SyntheticSource | undefined;
   try {
     const url = new URL(req.url || '', 'http://localhost');
     includeSynthetic = url.searchParams.get('includeSynthetic') === 'true';
-    if (url.searchParams.get('syntheticSource') === 'godoRaw') syntheticSource = 'godoRaw';
+    const src = url.searchParams.get('syntheticSource');
+    if (src === 'legacy' || src === 'godoRaw') syntheticSource = src;
   } catch {
-    // 파싱 실패 시 기본값 유지
+    // 파싱 실패 시 기본값(godoRaw) 유지 — resolveOrdersRevenue가 결정
   }
 
   try {
