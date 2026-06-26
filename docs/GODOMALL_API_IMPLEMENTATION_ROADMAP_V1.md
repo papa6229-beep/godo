@@ -28,6 +28,9 @@
 - 라이브 검증: 기본 826 / godoRaw 480 / legacy 240. `docs/SYNTHETIC_COMMERCE_UNIVERSE_ACTIVATION_V0.md`. smoke 10/10.
 - 다음: Department Facts Routing v0(customers/reviews/inquiries/CS facts를 부서 채팅에 연결).
 
+## Product Team Chat Data Grounding Fix v0 ✅
+- 상품팀 채팅 facts가 대시보드와 같은 Universe revenue 기준으로 기간을 해석하도록 수정. 신규 `monthly_range` intent + `parseRequestedMonthRange`(YYYY년 M월~M월, 최근 N개월) + availableMonthRange 기반 "데이터 없음" 판단. `docs/PRODUCT_TEAM_CHAT_DATA_GROUNDING_FIX_V0.md`. smoke 13/13. (UI/소스 무변경)
+
 ## Product Dashboard Trend Chart Fix v0 ✅
 - 매출추이 버킷을 선택 기간(effStart~effEnd) 연속 생성으로 수정(`productDashboardTrendBuckets.ts`) — 빈 구간 0 채움, 기간 밖 제외, x축 라벨 정책(month≤18 전부). KPI "가상 현재 재고"→"재고 위험 상품". `docs/PRODUCT_DASHBOARD_TREND_CHART_FIX_V0.md`. smoke 10/10. (UI 차트 로직만, 데이터 소스 무변경)
 

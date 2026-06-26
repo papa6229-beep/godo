@@ -53,6 +53,68 @@ function aggregateMonthly(revenue: RevenueResult): MonthAgg[] {
   return [...map.values()].sort((a, b) => a.ym.localeCompare(b.ym));
 }
 
+// ── 기간(월 범위) 파싱/집계 — 대시보드와 같은 데이터 기준으로 grounding ──
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+const ymYearLabel = (ym: string): string => `${ym.slice(0, 4)}년 ${parseInt(ym.slice(5, 7), 10)}월`;
+const ymAdd = (ym: string, delta: number): string => {
+  const y = parseInt(ym.slice(0, 4), 10);
+  const m0 = parseInt(ym.slice(5, 7), 10) - 1 + delta;
+  const ny = y + Math.floor(m0 / 12);
+  const nm = ((m0 % 12) + 12) % 12;
+  return `${ny}-${pad2(nm + 1)}`;
+};
+const enumerateMonths = (startYm: string, endYm: string): string[] => {
+  const out: string[] = [];
+  if (!startYm || !endYm || startYm > endYm) return out;
+  let cur = startYm;
+  let guard = 0;
+  while (cur <= endYm && guard < 240) { out.push(cur); cur = ymAdd(cur, 1); guard += 1; }
+  return out;
+};
+// 보유 데이터의 월 범위(min~max)
+export const availableMonthRange = (monthly: MonthAgg[]): { min: string; max: string } | null =>
+  monthly.length ? { min: monthly[0].ym, max: monthly[monthly.length - 1].ym } : null;
+
+// "YYYY(년) M월 ~ YYYY(년) M월" / "부터~까지" / "최근 N개월" 파싱
+export const parseRequestedMonthRange = (
+  userText: string,
+  monthly: MonthAgg[]
+): { startYm: string; endYm: string } | null => {
+  const m = userText.match(/(\d{4})\s*년?\s*(\d{1,2})\s*월[\s\S]*?(\d{4})\s*년?\s*(\d{1,2})\s*월/);
+  if (m) {
+    const a = `${m[1]}-${pad2(parseInt(m[2], 10))}`;
+    const b = `${m[3]}-${pad2(parseInt(m[4], 10))}`;
+    return a <= b ? { startYm: a, endYm: b } : { startYm: b, endYm: a };
+  }
+  const r = userText.match(/최근\s*(\d{1,2})\s*개\s*월/);
+  if (r) {
+    const avail = availableMonthRange(monthly);
+    if (!avail) return null;
+    const n = Math.max(1, parseInt(r[1], 10));
+    return { startYm: ymAdd(avail.max, -(n - 1)), endYm: avail.max };
+  }
+  return null;
+};
+
+// 요청 범위를 보유 범위로 클램프 후 월별 매출/주문 라인 생성(전월 대비 포함)
+const deriveMonthlyRangeLines = (monthly: MonthAgg[], startYm: string, endYm: string): string[] => {
+  const map = new Map(monthly.map((x) => [x.ym, x]));
+  const avail = availableMonthRange(monthly);
+  const start = avail && startYm < avail.min ? avail.min : startYm;
+  const end = avail && endYm > avail.max ? avail.max : endYm;
+  const lines: string[] = [];
+  let prev: number | null = null;
+  for (const ym of enumerateMonths(start, end)) {
+    const agg = map.get(ym);
+    const rev = agg?.revenue ?? 0;
+    const ord = agg?.orders ?? 0;
+    const mom = prev !== null && prev > 0 ? `${(((rev - prev) / prev) * 100).toFixed(1)}%` : '-';
+    lines.push(`${ymYearLabel(ym)}: 매출 ${won(rev)}, 주문 ${ord}건 (전월 대비 ${mom})`);
+    prev = rev;
+  }
+  return lines;
+};
+
 function aggregateCategory(revenue: RevenueResult, catalog?: ProductTeamCatalogLookup): { label: string; revenue: number }[] {
   const map = new Map<string, number>();
   for (const o of revenue.orders) {
@@ -151,6 +213,41 @@ export function buildProductTeamChatFacts(
       ],
       answerGuidance:
         '현재 화면의 필터 상태는 채팅에서 직접 읽을 수 없다고 솔직히 안내하라. 대신 전체 데이터셋 기준 값을 알려주고, 특정 월/카테고리를 말해주면 그 기준으로 계산해 답하겠다고 제안하라. 고도몰 관리자 확인을 권하지 마라.'
+    };
+  }
+
+  // 1.5) 기간 범위 질문 (YYYY년 M월~YYYY년 M월 / 최근 N개월) — 단일 월 매칭보다 먼저!
+  const monthlyAll = aggregateMonthly(revenue);
+  const reqRange = parseRequestedMonthRange(userText, monthlyAll);
+  if (reqRange) {
+    const avail = availableMonthRange(monthlyAll);
+    const wantOrders = t.includes('주문');
+    const rangeLabel = `${ymYearLabel(reqRange.startYm)} ~ ${ymYearLabel(reqRange.endYm)}`;
+    // 요청 범위가 보유 데이터와 전혀 겹치지 않을 때만 "없음"
+    if (avail && (reqRange.endYm < avail.min || reqRange.startYm > avail.max)) {
+      return {
+        intent: 'monthly_range',
+        periodLabel: rangeLabel,
+        facts: [
+          `사용자는 ${rangeLabel} 기간을 질문했다.`,
+          `데이터셋 보유 기간: ${ymYearLabel(avail.min)} ~ ${ymYearLabel(avail.max)} (${monthlyAll.length}개월).`,
+          '요청 기간이 보유 기간과 겹치지 않는다.',
+          baseFact
+        ],
+        answerGuidance: `요청 기간이 보유 데이터(${ymYearLabel(avail.min)}~${ymYearLabel(avail.max)})와 겹치지 않으면 그 사실만 안내하고 보유 기간을 알려줘라. 전체 값을 요청 기간 값처럼 답하지 마라.`
+      };
+    }
+    const lines = deriveMonthlyRangeLines(monthlyAll, reqRange.startYm, reqRange.endYm);
+    return {
+      intent: 'monthly_range',
+      periodLabel: rangeLabel,
+      facts: [
+        `사용자는 ${rangeLabel} 월별 ${wantOrders ? '주문 수' : '매출'}을 질문했다.`,
+        `데이터셋 보유 기간: ${avail ? `${ymYearLabel(avail.min)} ~ ${ymYearLabel(avail.max)}` : '없음'} (요청 기간 중 보유분만 집계).`,
+        ...lines,
+        baseFact
+      ],
+      answerGuidance: `각 월 값을 표/목록으로 정리하라(${wantOrders ? '주문 수' : '매출'} 우선, 둘 다 제공됨). 제공된 월별 값만 사용하라. 보유 기간 내 데이터가 있으므로 "데이터 없음"이라고 단정하지 마라. 일부 월만 보고 전체 기간을 판단하지 마라. 고도몰 관리자 확인을 권하지 마라.`
     };
   }
 
