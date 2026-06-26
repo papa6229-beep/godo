@@ -29,9 +29,17 @@
 키는 보안 원칙상 Vercel 환경변수(서버 전용)에만 존재하므로 로컬/dev에서 실주문 raw를 받을 수 없다. 작업지시서 §8에 따라 **우회하지 않았다**(키 하드코딩·세션/쿠키·브라우저 직접 호출·public debug route 모두 미사용).
 
 ### 실 audit 시도 로그 (2026-06-26)
-- `vercel env pull .env.local --environment=production` 시도 → **Vercel CLI 미인증**(`No existing credentials found`, `.vercel` 링크 없음). 모든 `vercel` 명령이 대화형 device-auth(브라우저 OAuth)를 요구하여 자동화 환경에서 완료 불가.
+- **1차 시도**: `vercel env pull` → **Vercel CLI 미인증**(`No existing credentials found`, `.vercel` 링크 없음). 모든 `vercel` 명령이 대화형 device-auth(브라우저 OAuth)를 요구하여 자동화 환경에서 완료 불가.
+- **2차 시도(Execution v1)**: 재확인 시에도 여전히 미인증. 작업지시서 §3-1대로 **Claude 단독 완료 불가**.
 - 작업지시서 §3-2에 따라 **env pull 불가**로 판단하고 중단. **키 원문을 요청하지 않았다.**
-- → 사용자가 직접 인증해야 한다: 세션 프롬프트에서 `! npx vercel login` 후 `! vercel env pull .env.local --environment=production` 실행(또는 `.env.local`에 키 직접 작성). 이후 `node scripts/audit-order-search-raw.mjs` 실행 시 본 문서 §3~§5 실측 컬럼을 채울 수 있다.
+- **준비 완료**: `scripts/audit-order-search-raw.mjs`에 `.env.local` 최소 로더를 추가(Node는 .env 자동 로드 안 함). 기존 `process.env` 값 우선·키 값 미출력. 이제 사용자가 인증·pull만 하면 audit이 즉시 키를 읽는다(`GODOMALL_API_MODE=sandbox` 로컬 .env.local로 로더 동작 확인, 키 없어 네트워크 호출 미발생).
+- → **사용자 액션 필요**: 세션 프롬프트에서
+  ```
+  ! npx vercel login
+  ! npx vercel link        # 기존 godo-psi/현재 repo 연결 프로젝트 선택, 새 프로젝트 생성 금지
+  ! npx vercel env pull .env.local --environment=production
+  ```
+  완료 후 알리면 `node scripts/audit-order-search-raw.mjs --days=365 --size=3` 실행하여 본 문서 §3~§5 실측 컬럼을 채운다.
 
 → 실측은 보류하고, ① 공식 스펙 기반 shape 분석, ② mapper 호환 검증(픽스처), ③ 키 도착 시 즉시 실행 가능한 안전 audit 도구 + 합성 generator 보정으로 대체했다.
 
@@ -135,7 +143,7 @@ node scripts/audit-order-search-raw.mjs --startDate=2026-06-01 --endDate=2026-06
 | 파일 | 역할 |
 |---|---|
 | `api/_shared/orderRawAudit.ts` | PII-안전 구조 감사(`auditOrderSearchRawShape`, 값 미포함) + Order_Search 전용 PII 마스킹(`maskOrderSearchPii`, piiMaskGuard 원시함수 재사용) |
-| `scripts/audit-order-search-raw.mjs` | **로컬 전용** 실 raw 감사 도구. 환경변수 키로 POST → 파싱 → PII 마스킹된 구조 요약만 출력. public route 아님, raw PII/전체 JSON 미출력. 키 미설정 시 안내 후 종료. |
+| `scripts/audit-order-search-raw.mjs` | **로컬 전용** 실 raw 감사 도구. 환경변수 키로 POST → 파싱 → PII 마스킹된 구조 요약만 출력. public route 아님, raw PII/전체 JSON 미출력. 키 미설정 시 안내 후 종료. **`.env.local` 최소 로더**(vercel env pull 자동 반영, 기존 env 우선, 키 미출력) + 조회옵션(`--days`/`--size`/`--startDate`/`--endDate`) 내장. |
 
 ### PII 마스킹 규칙
 이름→`홍*동`, 전화→`010-****-5678`, 이메일→`ch****@x.com`, 주소→`시 구 ****`, IP/통관번호/환불계좌→`[MASKED]`. 적용 키: orderName/receiverName/orderEmail/orderPhone/orderCellPhone/receiverPhone/receiverCellPhone/orderAddress(+Sub)/receiverAddress(+Sub)/orderIp/customIdNumber/receiverSafeNumber/depositor/accountNumber/bankName/ehRefund*.

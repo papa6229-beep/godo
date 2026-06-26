@@ -23,6 +23,34 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
+import { readFileSync, existsSync } from 'node:fs';
+
+// ── .env.local 최소 로더 (새 의존성 없음) ────────────────────────────────────
+// `vercel env pull .env.local` 결과를 자동 반영한다. Node는 .env를 자동 로드하지 않으므로
+// 필요. 원칙: 이미 process.env에 있는 값은 덮어쓰지 않는다. 키 값은 절대 출력하지 않는다.
+const loadEnvLocal = (path = '.env.local') => {
+  if (!existsSync(path)) return;
+  let raw = '';
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    return;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq <= 0) continue;
+    const key = t.slice(0, eq).trim();
+    if (process.env[key] !== undefined && process.env[key] !== '') continue; // 기존값 우선
+    let val = t.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    process.env[key] = val;
+  }
+};
+loadEnvLocal();
 
 // ── 환경 설정 ────────────────────────────────────────────────────────────────
 const mode = (process.env.GODOMALL_API_MODE || 'mock').trim().toLowerCase();
