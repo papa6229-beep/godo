@@ -52,7 +52,7 @@
 ### 공통 (common) — 1
 | id | API | endpoint | R/W | status | 부서 | PII | P |
 |---|---|---|---|---|---|---|---|
-| code_search | 공통코드조회 | /common/Code_Search.php | R | not_started | hq/product/order/delivery | none | p1 |
+| code_search | 공통코드조회 | /common/Code_Search.php | R | **partial** | hq/product/order/delivery | none | p1 |
 
 ## 5. e나무 참고 여부 (legacy_reference)
 - `legacy_goods_qna_search` (Goods_Qna_Search) → **고도몰5 board_list(bdId=goodsqa)로 대체**. reference_only.
@@ -66,8 +66,8 @@
 
 ## 7. 구현 상태
 - **done**: goods_search.
-- **partial**: order_search (core READ + RevenueOrder + raw audit + empty guard 완료 / edge: claimData·multi-shipping·partial cancel·return·exchange pending).
-- **not_started(READ)**: category_search·brand_search·goods_add_search·board_inventory·board_list·code_search.
+- **partial**: order_search (core READ + RevenueOrder + raw audit + empty guard 완료 / edge pending) · **code_search** (real READ bridge v0, 13 code_type 라이브 검증 완료 — `docs/GODOMALL_CODE_SEARCH_READ_V0.md`).
+- **not_started(READ)**: category_search·brand_search·goods_add_search·board_inventory·board_list.
 - **write_locked**: 15개 WRITE.
 - **reference_only**: 2개 레거시.
 
@@ -92,7 +92,8 @@
 
 ## 11. 현재 완료된 API
 - **상품조회(goods_search)**: `api/godomall/products.ts` + `godomallMapper.ts`(mapGoodsToProducts) + `godomallResource.ts`.
-- **주문조회(order_search)**: `orders-revenue.ts`/`orders-admin.ts`/`order-search-raw-audit.ts` + `godomallRevenue.ts`/`godomallOrderTypes.ts`/`godomallOrderCodes.ts`/`godomallOrderNormalize.ts`/`syntheticGodomallOrders.ts`/`orderRawAudit.ts`.
+- **주문조회(order_search)**: `orders-revenue.ts`/`orders-admin.ts` + `godomallRevenue.ts`/`godomallOrderTypes.ts`/`godomallOrderCodes.ts`/`godomallOrderNormalize.ts`/`syntheticGodomallOrders.ts`/`orderRawAudit.ts`. (일회성 `order-search-raw-audit.ts` route는 Hobby 12-함수 한도 확보 위해 제거; 실측 결과는 `ORDER_SEARCH_REAL_RAW_VALIDATION_V1.md` 보존.)
+- **공통코드조회(code_search)**: `api/godomall/codes.ts` + `godomallCodes.ts` (real READ v0).
 
 ## 12. 다음 구현 후보
 1. **code_search**(p1) — 코드 동적 동기화(하드코딩 제거).
