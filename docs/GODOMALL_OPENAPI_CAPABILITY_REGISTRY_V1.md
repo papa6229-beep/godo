@@ -19,8 +19,8 @@
 | id | API | endpoint | R/W | status | 부서 | PII | P |
 |---|---|---|---|---|---|---|---|
 | goods_search | 상품조회 | /goods/Goods_Search.php | R | **done** | product/marketing/stock | low | p0 |
-| category_search | 카테고리조회 | /goods/Category_Search.php | R | not_started | product/marketing | none | p1 |
-| brand_search | 브랜드조회 | /goods/Brand_Search.php | R | not_started | product/marketing | none | p2 |
+| category_search | 카테고리조회 | /goods/Category_Search.php | R | **partial** | product/marketing | none | p1 |
+| brand_search | 브랜드조회 | /goods/Brand_Search.php | R | **partial** | product/marketing | none | p2 |
 | goods_add_search | 추가상품조회 | /goods/Goods_Add_Search.php | R | not_started | product | low | p2 |
 | goods_stock | 재고변경 | /goods/Goods_Stock.php | W | write_locked | product/stock | none | p2 |
 | goods_soldout_status | 품절상태변경 | /goods/Goods_Soldout_Status.php | W | write_locked | product/stock | none | p2 |
@@ -66,8 +66,8 @@
 
 ## 7. 구현 상태
 - **done**: goods_search.
-- **partial**: order_search (core READ + RevenueOrder + raw audit + empty guard 완료 / edge pending) · **code_search** (real READ bridge v0, 13 code_type 라이브 검증 완료 — `docs/GODOMALL_CODE_SEARCH_READ_V0.md`).
-- **not_started(READ)**: category_search·brand_search·goods_add_search·board_inventory·board_list.
+- **partial**: order_search (core READ + RevenueOrder + raw audit + empty guard) · **code_search** (real READ v0, 13 code_type 라이브 검증) · **category_search·brand_search** (Catalog Taxonomy READ v0, 게이트웨이 핸들러, 라이브 검증 — `docs/GODOMALL_CATALOG_TAXONOMY_READ_V0.md`).
+- **not_started(READ)**: goods_add_search·board_inventory·board_list.
 - **write_locked**: 15개 WRITE.
 - **reference_only**: 2개 레거시.
 

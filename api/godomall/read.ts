@@ -11,6 +11,14 @@ import {
   normalizeCommonCodes,
   getMockCommonCodes
 } from '../_shared/godomallCodes.js';
+import {
+  CATEGORY_LIST_KEYS,
+  BRAND_LIST_KEYS,
+  normalizeCategories,
+  normalizeBrands,
+  getMockCategories,
+  getMockBrands
+} from '../_shared/godomallCatalog.js';
 
 // GET /api/godomall/read?capability=<id>&...  — 고도몰 READ API 통합 게이트웨이 v1.
 //
@@ -91,9 +99,67 @@ const handleCodeSearch: ReadHandler = async (_req, res, url, config) => {
   });
 };
 
-// 구현된 READ 핸들러 레지스트리. (category_search/brand_search/board_* 등은 미구현 → 501)
+// ── capability=category_search 핸들러 (Category_Search.php) ──────────────────
+const CATEGORY_SEARCH_PATH = '/goods/Category_Search.php';
+const handleCategorySearch: ReadHandler = async (_req, res, url, config) => {
+  const cateCd = (url.searchParams.get('cateCd') || '').trim();
+  if (isLiveMode(config)) {
+    try {
+      const params: Record<string, string | number> = {};
+      if (cateCd) params.cateCd = cateCd;
+      const apiRes = await postGodomall(CATEGORY_SEARCH_PATH, params, config);
+      if (apiRes.ok && apiRes.xml) {
+        const parsed = parseGodomallXml(apiRes.xml);
+        if (parsed.ok) {
+          const items = normalizeCategories(extractList(parsed.root, CATEGORY_LIST_KEYS));
+          return sendOkResponse(res, { capability: 'category_search', mode: config.mode, total: items.length, items, source: 'real' });
+        }
+        return sendOkResponse(res, {
+          capability: 'category_search', mode: config.mode, total: 0, items: [], source: 'real',
+          apiSuccess: false, apiCode: parsed.code, apiMsg: parsed.msg
+        });
+      }
+    } catch {
+      // mock fallback
+    }
+  }
+  const mock = getMockCategories();
+  return sendOkResponse(res, { capability: 'category_search', mode: 'mock_fallback', total: mock.length, items: mock, source: 'mock' });
+};
+
+// ── capability=brand_search 핸들러 (Brand_Search.php) ────────────────────────
+const BRAND_SEARCH_PATH = '/goods/Brand_Search.php';
+const handleBrandSearch: ReadHandler = async (_req, res, url, config) => {
+  const cateCd = (url.searchParams.get('cateCd') || '').trim();
+  if (isLiveMode(config)) {
+    try {
+      const params: Record<string, string | number> = {};
+      if (cateCd) params.cateCd = cateCd;
+      const apiRes = await postGodomall(BRAND_SEARCH_PATH, params, config);
+      if (apiRes.ok && apiRes.xml) {
+        const parsed = parseGodomallXml(apiRes.xml);
+        if (parsed.ok) {
+          const items = normalizeBrands(extractList(parsed.root, BRAND_LIST_KEYS));
+          return sendOkResponse(res, { capability: 'brand_search', mode: config.mode, total: items.length, items, source: 'real' });
+        }
+        return sendOkResponse(res, {
+          capability: 'brand_search', mode: config.mode, total: 0, items: [], source: 'real',
+          apiSuccess: false, apiCode: parsed.code, apiMsg: parsed.msg
+        });
+      }
+    } catch {
+      // mock fallback
+    }
+  }
+  const mock = getMockBrands();
+  return sendOkResponse(res, { capability: 'brand_search', mode: 'mock_fallback', total: mock.length, items: mock, source: 'mock' });
+};
+
+// 구현된 READ 핸들러 레지스트리. (board_* 등은 미구현 → 501)
 const READ_HANDLERS: Record<string, ReadHandler> = {
-  code_search: handleCodeSearch
+  code_search: handleCodeSearch,
+  category_search: handleCategorySearch,
+  brand_search: handleBrandSearch
 };
 
 export default async function handler(req: IncomingMessage, res: VercelResponse) {

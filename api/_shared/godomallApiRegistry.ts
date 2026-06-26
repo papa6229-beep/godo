@@ -115,15 +115,17 @@ export const GODOMALL_API_CAPABILITIES: GodomallApiCapability[] = [
     realPath: '/goods/Category_Search.php',
     sandboxPath: '/goods/Category_Search.php',
     accessMode: 'read',
-    implementationStatus: 'not_started',
+    implementationStatus: 'partial',
+    currentRoutes: ['api/godomall/read.ts?capability=category_search'],
+    currentSharedFiles: ['api/_shared/godomallCatalog.ts'],
     usedByDepartments: ['product', 'marketing'],
     requiresApproval: false,
     writeLocked: false,
     piiRisk: 'none',
     rateLimitSensitive: true,
     businessPriority: 'p1',
-    nextAction: 'cateCd→cateNm 라벨 매핑 READ 구현. 현재 RevenueOrder 카테고리는 코드만 → 한글명 보강.',
-    notes: 'Request: cateCd. Response: cateCd/cateNm/cateDisplayFl/cateDisplayMobileFl.'
+    nextAction: 'READ v0 완료(게이트웨이 + godomallCatalog.normalizeCategories). 다음: RevenueOrder 카테고리 코드→cateNm 한글 라벨 조인.',
+    notes: 'Request: cateCd(선택). Response: cateCd/cateNm/cateDisplayFl/cateDisplayMobileFl. 게이트웨이 capability=category_search.'
   },
   {
     id: 'brand_search',
@@ -137,14 +139,17 @@ export const GODOMALL_API_CAPABILITIES: GodomallApiCapability[] = [
     realPath: '/goods/Brand_Search.php',
     sandboxPath: '/goods/Brand_Search.php',
     accessMode: 'read',
-    implementationStatus: 'not_started',
+    implementationStatus: 'partial',
+    currentRoutes: ['api/godomall/read.ts?capability=brand_search'],
+    currentSharedFiles: ['api/_shared/godomallCatalog.ts'],
     usedByDepartments: ['product', 'marketing'],
     requiresApproval: false,
     writeLocked: false,
     piiRisk: 'none',
     rateLimitSensitive: true,
     businessPriority: 'p2',
-    nextAction: '브랜드 라벨 필요 시 READ 구현.'
+    nextAction: 'READ v0 완료(게이트웨이 + godomallCatalog.normalizeBrands). PDF 추출 필드 불확실 → 실응답으로 brandCd/brandNm 확정 권장.',
+    notes: 'Brand_Search PDF 텍스트는 Category와 레이아웃 bleed → 실응답 기준 확정. normalize는 brandCd/brandNm + 일반 *Cd/*Nm fallback. 게이트웨이 capability=brand_search.'
   },
   {
     id: 'goods_add_search',
