@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 import { resolveOrdersRevenue } from '../_shared/godomallResource.js';
+import type { SyntheticSource } from '../_shared/godomallResource.js';
 
 // GET /api/godomall/orders-revenue — 매출 분석용 주문 조회 (RevenueOrder v0).
 //
@@ -13,16 +14,19 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
   }
 
   // ?includeSynthetic=true 일 때만 가상 매출 데이터 포함 (기본 false = 기존 동작 유지)
+  // ?syntheticSource=godoRaw 면 Order_Search raw 시뮬레이터 경로 사용 (기본 'legacy' = 기존 동작)
   let includeSynthetic = false;
+  let syntheticSource: SyntheticSource = 'legacy';
   try {
     const url = new URL(req.url || '', 'http://localhost');
     includeSynthetic = url.searchParams.get('includeSynthetic') === 'true';
+    if (url.searchParams.get('syntheticSource') === 'godoRaw') syntheticSource = 'godoRaw';
   } catch {
-    // 파싱 실패 시 false 유지
+    // 파싱 실패 시 기본값 유지
   }
 
   try {
-    const resolved = await resolveOrdersRevenue({ includeSynthetic });
+    const resolved = await resolveOrdersRevenue({ includeSynthetic, syntheticSource });
     sendOkResponse(res, {
       mode: resolved.mode,
       live: resolved.live,
