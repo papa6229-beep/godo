@@ -99,6 +99,62 @@ export const fetchAdminProducts = async (): Promise<AdminProductsResult> => {
   }
 };
 
+// ── 카탈로그 taxonomy (category_search/brand_search → 코드 라벨 lookup) ───────
+// 게이트웨이로 카테고리/브랜드를 병렬 조회해 productTeamChatFacts에 넘길 lookup을 만든다.
+// 실패해도 상품팀 채팅이 깨지지 않도록 빈 lookup으로 안전 폴백한다.
+export interface CatalogLookupResult {
+  categoriesByCode: Record<string, { cateCd: string; cateNm?: string }>;
+  brandsByCode: Record<string, { brandCd: string; brandNm?: string }>;
+  source: DataSourceTag;
+  categoryCount: number;
+  brandCount: number;
+}
+
+export const fetchCatalog = async (): Promise<CatalogLookupResult> => {
+  const empty: CatalogLookupResult = {
+    categoriesByCode: {},
+    brandsByCode: {},
+    source: 'unavailable',
+    categoryCount: 0,
+    brandCount: 0
+  };
+  try {
+    const [catRes, brandRes] = await Promise.all([
+      fetch('/api/godomall/read?capability=category_search'),
+      fetch('/api/godomall/read?capability=brand_search')
+    ]);
+    const cat = catRes.ok ? await catRes.json() : {};
+    const brand = brandRes.ok ? await brandRes.json() : {};
+
+    const categoriesByCode: CatalogLookupResult['categoriesByCode'] = {};
+    for (const it of (cat.items || []) as Record<string, unknown>[]) {
+      const code = str(it.cateCd);
+      if (code) categoriesByCode[code] = { cateCd: code, cateNm: str(it.cateNm) || undefined };
+    }
+    const brandsByCode: CatalogLookupResult['brandsByCode'] = {};
+    for (const it of (brand.items || []) as Record<string, unknown>[]) {
+      const code = str(it.brandCd);
+      if (code) brandsByCode[code] = { brandCd: code, brandNm: str(it.brandNm) || undefined };
+    }
+    // 둘 중 하나라도 real이면 real, 둘 다 mock이면 mock, 그 외 unavailable.
+    const src: DataSourceTag =
+      cat.source === 'real' || brand.source === 'real'
+        ? 'real'
+        : cat.source === 'mock' || brand.source === 'mock'
+          ? 'mock'
+          : 'unavailable';
+    return {
+      categoriesByCode,
+      brandsByCode,
+      source: src,
+      categoryCount: Object.keys(categoriesByCode).length,
+      brandCount: Object.keys(brandsByCode).length
+    };
+  } catch {
+    return empty;
+  }
+};
+
 export const fetchAdminOrders = async (): Promise<AdminOrdersResult> => {
   try {
     const res = await fetch('/api/godomall/orders-admin');

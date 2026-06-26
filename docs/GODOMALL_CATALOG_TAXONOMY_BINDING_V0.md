@@ -61,7 +61,7 @@ unresolved: { categoryCodes:['999'], brandCodes:[] }
 Products READ route / Orders READ route / orders-revenue 응답 필드명 / RevenueOrder 필드명 / ProductTeamDashboard props / syntheticRevenue / syntheticGodomallOrders / mockProxyData — **변경/삭제 없음**. 새 route 파일 없음(함수 12개 유지). 유일한 가산: `StandardProduct.brandCode`(신규 필드), `buildProductTeamChatFacts` 선택 파라미터.
 
 ## 10. 남은 이슈 / 다음
-- **프론트 wiring**: departmentDataService가 category/brand를 fetch해 `catalog`를 facts에 전달(상품팀 채팅에서 카테고리 한글 라벨·브랜드 facts 실사용).
+- **프론트 wiring** ✅ **완료(v0)**: `departmentDataService.fetchCatalog()`가 게이트웨이로 category/brand를 병렬 fetch → `DepartmentWorkspacePanel`이 catalog를 `buildProductTeamChatFacts`에 전달. `docs/PRODUCT_TEAM_CATALOG_FACTS_WIRING_V0.md`.
 - **카테고리 계층 트리**: 현재 평면 + 마지막-depth. 부모-자식 트리 필요 시 allCateCd 파싱 확장.
 - **브랜드 라인 매출**: 합성/실주문 상품에 brandCode 채워지면 byBrand 정밀도 향상.
 - 다음: RevenueOrder 카테고리 한글화를 orders-revenue 또는 facts wiring으로 실제 노출.

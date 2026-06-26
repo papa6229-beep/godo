@@ -17,7 +17,8 @@
 ## Phase 2 — 공통코드 / 카테고리 / 브랜드 READ
 - **code_search**(p1, 우선) ✅ **v0 완료** — `code_type` 13종 동적 조회(real bridge `codes.ts`/`godomallCodes.ts`, 라이브 검증). `docs/GODOMALL_CODE_SEARCH_READ_V0.md`. 다음: 정적 enum과 비교·병합.
 - **category_search**(p1) ✅ **v0 완료** + **brand_search**(p2) ✅ **v0 완료** — Catalog Taxonomy READ(게이트웨이 `?capability=category_search`/`brand_search`, `godomallCatalog.ts`, 라이브 검증). `docs/GODOMALL_CATALOG_TAXONOMY_READ_V0.md`.
-- **Catalog Taxonomy Binding** ✅ **v0 완료** — `godomallCatalogBinding.ts`(코드→라벨 해석, 매출 카테고리/브랜드 분해, taxonomy facts) + `StandardProduct.brandCode` 가산 + productTeamChatFacts catalog 옵션. `docs/GODOMALL_CATALOG_TAXONOMY_BINDING_V0.md`. 다음: 프론트 facts wiring(카테고리 한글 라벨 실노출).
+- **Catalog Taxonomy Binding** ✅ **v0 완료** — `godomallCatalogBinding.ts`(코드→라벨 해석, 매출 카테고리/브랜드 분해, taxonomy facts) + `StandardProduct.brandCode` 가산 + productTeamChatFacts catalog 옵션. `docs/GODOMALL_CATALOG_TAXONOMY_BINDING_V0.md`.
+- **Product Team Catalog Facts Wiring** ✅ **v0 완료** — `departmentDataService.fetchCatalog()`(게이트웨이 병렬 fetch) → `DepartmentWorkspacePanel` → `buildProductTeamChatFacts` catalog 전달. 상품팀 채팅 카테고리 한글 라벨 실사용. `docs/PRODUCT_TEAM_CATALOG_FACTS_WIRING_V0.md`.
 - **goods_add_search**(p2) 필요 시.
 
 ## Phase 3 — CS / 게시판 READ
