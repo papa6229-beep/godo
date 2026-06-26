@@ -28,6 +28,11 @@
 - 라이브 검증: 기본 826 / godoRaw 480 / legacy 240. `docs/SYNTHETIC_COMMERCE_UNIVERSE_ACTIVATION_V0.md`. smoke 10/10.
 - 다음: Department Facts Routing v0(customers/reviews/inquiries/CS facts를 부서 채팅에 연결).
 
+## Analytics Query Engine v0 ✅
+- `src/services/analyticsQueryEngine.ts`: 61-metric registry + QuerySpec + `runAnalyticsQuery(dataset, spec)` (기간필터/groupBy/compareTo/supportLevel/chartHint, PII 제외). Tier1/2 실계산, Tier3 requires_external_data.
+- `RevenueOrderLite`에 Contract v0 분석필드(memberKey/paymentMethodCode/orderChannel/claim) 가산(프론트 엔진 주입 준비). `docs/ANALYTICS_QUERY_ENGINE_V0.md`. smoke 25/25.
+- 채팅 연결은 Department Facts Routing v0로 보류(모듈 해상도 + 데이터흐름 정리).
+
 ## Product Team Chat Data Grounding Fix v0 ✅
 - 상품팀 채팅 facts가 대시보드와 같은 Universe revenue 기준으로 기간을 해석하도록 수정. 신규 `monthly_range` intent + `parseRequestedMonthRange`(YYYY년 M월~M월, 최근 N개월) + availableMonthRange 기반 "데이터 없음" 판단. `docs/PRODUCT_TEAM_CHAT_DATA_GROUNDING_FIX_V0.md`. smoke 13/13. (UI/소스 무변경)
 
