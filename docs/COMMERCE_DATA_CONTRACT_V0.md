@@ -68,9 +68,10 @@ Synthetic godoRaw raw  ┘
 ```
 → 진짜 쇼핑몰 API로 갈아끼워도 동일 통로·동일 계약 → 테스트 기능 재사용.
 
-## 12. 다음 단계(Synthetic Commerce Universe v1)와의 관계
+## 12. 다음 단계(Synthetic Commerce Universe v1)와의 관계 ✅ 완료
 - v0는 **계약·통로**를 확정했다. v1은 이 계약 위에 **1년치 주문/고객/재구매/취소·환불/리뷰/문의/fake PII**를 일관된 가상 세계로 생성한다.
 - v1 생성기는 godoRaw raw를 만들고(이미 통로 통일), CS Contact는 `commerceContactContract` 타입으로 fake PII를 채운다.
+- → **완료**: `api/_shared/syntheticCommerceUniverse.ts` + `syntheticCommerceFacts.ts`. `docs/SYNTHETIC_COMMERCE_UNIVERSE_V1.md`.
 
 ## 13. 남은 이슈
 - Code_Search 라벨 연결: paymentMethodLabel·claimReasonLabel·claimBankLabel은 현재 undefined → claimBank/claimPayment/deliveryCompany 코드 라벨 fetch 연결(다음).
