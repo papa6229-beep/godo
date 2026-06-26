@@ -93,7 +93,7 @@
 ## 11. 현재 완료된 API
 - **상품조회(goods_search)**: `api/godomall/products.ts` + `godomallMapper.ts`(mapGoodsToProducts) + `godomallResource.ts`.
 - **주문조회(order_search)**: `orders-revenue.ts`/`orders-admin.ts` + `godomallRevenue.ts`/`godomallOrderTypes.ts`/`godomallOrderCodes.ts`/`godomallOrderNormalize.ts`/`syntheticGodomallOrders.ts`/`orderRawAudit.ts`. (일회성 `order-search-raw-audit.ts` route는 Hobby 12-함수 한도 확보 위해 제거; 실측 결과는 `ORDER_SEARCH_REAL_RAW_VALIDATION_V1.md` 보존.)
-- **공통코드조회(code_search)**: `api/godomall/codes.ts` + `godomallCodes.ts` (real READ v0).
+- **공통코드조회(code_search)**: **통합 READ 게이트웨이** `api/godomall/read.ts?capability=code_search` + `godomallCodes.ts` (real READ v0). 구 `codes.ts`는 함수 한도 회수 위해 게이트웨이로 이전·제거. 향후 모든 고도몰 READ는 게이트웨이로 확장 — `docs/GODOMALL_ROUTE_BUDGET_POLICY_V1.md`.
 
 ## 12. 다음 구현 후보
 1. **code_search**(p1) — 코드 동적 동기화(하드코딩 제거).

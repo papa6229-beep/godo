@@ -582,7 +582,7 @@ export const GODOMALL_API_CAPABILITIES: GodomallApiCapability[] = [
     sandboxPath: '/common/Code_Search.php',
     accessMode: 'read',
     implementationStatus: 'partial',
-    currentRoutes: ['api/godomall/codes.ts'],
+    currentRoutes: ['api/godomall/read.ts?capability=code_search'],
     currentSharedFiles: ['api/_shared/godomallCodes.ts'],
     usedByDepartments: ['hq', 'product', 'order', 'delivery'],
     requiresApproval: false,
@@ -591,8 +591,8 @@ export const GODOMALL_API_CAPABILITIES: GodomallApiCapability[] = [
     rateLimitSensitive: true,
     businessPriority: 'p1',
     nextAction:
-      'real READ bridge v0 완료(codes.ts/godomallCodes.ts). 13 code_type allowlist 정규화. 다음: 라이브 응답으로 code_type별 실데이터 잠그기 + 하드코딩 코드표(godomallOrderCodes) 비교.',
-    notes: 'Request: code_type/scmNo. allowlist 13종(§7.2). godomallOrderCodes.ts(정적 enum)와 역할 분리 — Code_Search는 운영자설정 동적코드(공급사/배송/클레임은행/택배사/아이콘 등). code_type별 code/label 필드 상이(godomallCodes.CODE_FIELD_MAP).'
+      'real READ bridge v0 완료. 통합 READ 게이트웨이(read.ts)로 이전. 다음: 라이브 응답으로 code_type별 실데이터 잠그기 + 하드코딩 코드표(godomallOrderCodes) 비교.',
+    notes: 'Code_Search READ v0 migrated to unified READ gateway v1 (api/godomall/read.ts?capability=code_search) due to Vercel Hobby 12-function limit. 향후 모든 고도몰 READ API는 read.ts 게이트웨이로 확장(파일 수 고정). allowlist 13종(§7.2), godomallCodes.CODE_FIELD_MAP.'
   },
 
   // ── 레거시 참고(legacy_reference, enamoo 2022) — 고도몰5에서 Board로 통합됨 ──

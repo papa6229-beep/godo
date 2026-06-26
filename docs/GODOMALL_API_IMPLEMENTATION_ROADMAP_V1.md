@@ -40,3 +40,4 @@
 ## 비고
 - 전 구간 READ-only 우선, WRITE는 Human-in-the-loop. 키는 서버 환경변수 전용.
 - Rate Limit: Sync All 계열 throttle은 Phase 1~2 사이 도입 검토(`ratelimit-available-level` 관찰).
+- **Route budget(중요)**: Vercel Hobby 함수 12개 한도 도달. 모든 고도몰 READ는 **통합 게이트웨이 `api/godomall/read.ts?capability=<id>`**로 확장(파일 수 고정). 새 READ는 route 파일이 아니라 게이트웨이 핸들러로 추가. WRITE route는 Approval Runtime 전까지 금지. 상세: `docs/GODOMALL_ROUTE_BUDGET_POLICY_V1.md`.
