@@ -11,7 +11,7 @@
 ## 2. Endpoint / 요청 방식
 - `POST {base}/common/Code_Search.php` (서버 전용, 키는 환경변수)
 - Request: `code_type`(필수), `scmNo`(선택, 숫자)
-- 프론트 호출: `GET /api/godomall/codes?codeType=<type>[&scmNo=N]`
+- 프론트 호출: **`GET /api/godomall/read?capability=code_search&codeType=<type>[&scmNo=N]`** (통합 READ 게이트웨이 v1로 이전. 구 `/api/godomall/codes`는 제거됨 — `docs/GODOMALL_ROUTE_BUDGET_POLICY_V1.md`)
 - 응답: 정규화된 code list만(raw XML/키 미반환). 공통코드 = PII none.
 
 ## 3. allowlist code_type (PDF §7.2 확정 13종)

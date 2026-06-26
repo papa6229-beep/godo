@@ -74,7 +74,7 @@ ok('mock fallback 존재 & 표시', Array.isArray(mock));
 // 6. Registry 연결
 const cap = registry.getGodomallApiCapability('code_search');
 ok('registry code_search status=partial', !!cap && cap.implementationStatus === 'partial');
-ok('registry code_search → codes.ts 연결', !!cap && (cap.currentRoutes || []).some((r) => r.includes('codes.ts')));
+ok('registry code_search → read.ts gateway 연결', !!cap && (cap.currentRoutes || []).some((r) => r.includes('read.ts') && r.includes('code_search')));
 ok('registry code_search → godomallCodes.ts 연결', !!cap && (cap.currentSharedFiles || []).some((f) => f.includes('godomallCodes')));
 
 console.log(`\n=== 결과: ${pass} pass / ${fail} fail ===`);
