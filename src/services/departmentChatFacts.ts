@@ -40,8 +40,87 @@ const basisOf = (bundle: DepartmentFactsBundle): string =>
   `기준 데이터: ${bundle.meta.syntheticSource || bundle.meta.sourceType}` +
   (bundle.meta.generatedAt ? ` (${bundle.meta.generatedAt})` : '');
 
+// ── CS safe inquiry/review detail shortlist (PII 없음, universeAux 기반) ───────
+export interface SafeInquiryChatItem {
+  inquiryId?: string;
+  createdAt?: string;
+  status?: string;
+  urgency?: string;
+  topic?: string;
+  goodsNo?: string;
+  productId?: string;
+  title?: string;
+  excerpt?: string;
+}
+export interface SafeReviewChatItem {
+  reviewId?: string;
+  createdAt?: string;
+  rating?: number;
+  sentiment?: string;
+  topic?: string;
+  goodsNo?: string;
+  productId?: string;
+  excerpt?: string;
+}
+// CS 채팅 detail 입력(universeAux의 safe inquiries/reviews + goodsNo→상품명). contact 원본은 절대 미포함.
+export interface CsChatDetailInput {
+  inquiries?: SafeInquiryChatItem[];
+  reviews?: SafeReviewChatItem[];
+  goodsNames?: Record<string, string>;
+}
+
+const byCreatedDesc = (a: { createdAt?: string }, b: { createdAt?: string }): number =>
+  (b.createdAt || '').localeCompare(a.createdAt || '');
+const isUnansweredStatus = (s?: string): boolean => !!s && /unanswered|pending|open|미답변|needs_human/i.test(s);
+const isUrgent = (u?: string): boolean => !!u && /high|urgent|긴급/i.test(u);
+const statusKo = (s?: string): string =>
+  /needs_human/i.test(s || '') ? '담당자 확인 필요' : /unanswered|pending|open|미답변/i.test(s || '') ? '미답변' : /answered/i.test(s || '') ? '답변완료' : (s || '미상');
+const urgencyKo = (u?: string): string =>
+  /high|urgent|긴급/i.test(u || '') ? '높음' : /medium/i.test(u || '') ? '중간' : /low/i.test(u || '') ? '낮음' : (u || '보통');
+const prodName = (goodsNo?: string, productId?: string, names?: Record<string, string>): string =>
+  (goodsNo && names?.[goodsNo]) || (productId && names?.[productId]) || goodsNo || productId || '상품미상';
+
+const CS_SHORTLIST_MAX = 5;
+const inqLine = (q: SafeInquiryChatItem, i: number, names?: Record<string, string>): string =>
+  `${i + 1}. [${urgencyKo(q.urgency)} · ${q.topic || '기타'}] ${prodName(q.goodsNo, q.productId, names)} — 접수 ${q.createdAt || '?'} · 상태 ${statusKo(q.status)} · 제목 ${q.title || '문의'} · 요약 ${q.excerpt || ''}`;
+const revLine = (r: SafeReviewChatItem, i: number, names?: Record<string, string>): string =>
+  `${i + 1}. ${prodName(r.goodsNo, r.productId, names)} — 평점 ${r.rating ?? '?'}점 · ${r.sentiment || ''} · 주제 ${r.topic || ''} · 요약 ${r.excerpt || ''}`;
+
+// CS detail 섹션 문자열 생성(없으면 빈 문자열). 모든 항목은 safe fields만(연락처/이름 없음).
+const buildCsDetailSections = (detail: CsChatDetailInput | undefined, csIssuePacketRows: { key: string; label: string; value: number }[], names?: Record<string, string>): string => {
+  const inquiries = (detail?.inquiries || []).filter((q) => (q.createdAt || q.inquiryId));
+  const reviews = detail?.reviews || [];
+  const sorted = [...inquiries].sort(byCreatedDesc);
+  const unanswered = sorted.filter((q) => isUnansweredStatus(q.status)).slice(0, CS_SHORTLIST_MAX);
+  const urgent = sorted.filter((q) => isUrgent(q.urgency)).slice(0, CS_SHORTLIST_MAX);
+  const recent = sorted.slice(0, CS_SHORTLIST_MAX);
+  const lowReviews = [...reviews]
+    .filter((r) => (typeof r.rating === 'number' && r.rating <= 2) || /negative|부정/i.test(r.sentiment || ''))
+    .sort(byCreatedDesc)
+    .slice(0, CS_SHORTLIST_MAX);
+
+  const sec = (title: string, lines: string[], emptyMsg: string): string =>
+    `\n[${title}]\n${lines.length ? lines.join('\n') : emptyMsg}`;
+
+  const issueProducts = csIssuePacketRows.slice(0, CS_SHORTLIST_MAX)
+    .map((r, i) => `${i + 1}. ${names?.[r.key] || r.label || r.key} — 문의/이슈 ${r.value}건`);
+
+  return (
+    sec('최근 미답변 문의 목록', unanswered.map((q, i) => inqLine(q, i, names)), '- (현재 safe 미답변 문의 없음 — 전체/미답변/긴급 수는 위 요약 참고)') +
+    sec('긴급 문의 목록', urgent.map((q, i) => inqLine(q, i, names)), '- (현재 safe 긴급 문의 없음)') +
+    sec('최근 문의 목록', recent.map((q, i) => inqLine(q, i, names)), '- (현재 safe 문의 없음)') +
+    sec('저평점/부정 리뷰 목록', lowReviews.map((r, i) => revLine(r, i, names)), '- (현재 safe 저평점/부정 리뷰 없음)') +
+    sec('CS 이슈 상품', issueProducts, '- (CS 이슈 상품 데이터 없음)')
+  );
+};
+
 // 팀별 context. bundle/슬라이스가 없으면 null(호출부 fallback).
-export function buildDepartmentChatContext(team: ChatTeam, bundle: DepartmentFactsBundle | null): DepartmentChatContext | null {
+// csDetail: CS팀 전용 safe inquiry/review shortlist(universeAux 기반). 다른 팀은 무시.
+export function buildDepartmentChatContext(
+  team: ChatTeam,
+  bundle: DepartmentFactsBundle | null,
+  csDetail?: CsChatDetailInput
+): DepartmentChatContext | null {
   if (!bundle) return null;
 
   if (team === 'product') {
@@ -60,18 +139,29 @@ export function buildDepartmentChatContext(team: ChatTeam, bundle: DepartmentFac
   if (team === 'cs') {
     const b = bundle.csTeam;
     if (!b) return null;
+    // CS 이슈 상품 packet rows(csIssueTopProducts) 재사용 → 상품명 해석.
+    const issuePkt = b.customerIssuePacket.find((p) => p.metric === 'csIssueTopProducts');
+    const issueRows = (issuePkt?.rows || []).map((r) => ({ key: r.key, label: r.label, value: r.value }));
+    const detailSections = buildCsDetailSections(csDetail, issueRows, csDetail?.goodsNames);
     const contactNote = b.fakeContacts?.length
       ? `\n[응대용 가상 고객 contact] ${b.fakeContacts.length}건 보유 — 모두 synthetic(isFakePii=true · piiType=fake · syntheticProfile=commerce_universe_v1). ` +
-        `응대 초안에 사용할 수 있으나 반드시 "synthetic mode 가상 고객 정보"임을 명시하라.`
+        `이 patch의 문의/리뷰 목록에는 contact 원본을 넣지 않는다. 연락처는 응대 시뮬레이션 기능에서만 사용한다.`
       : '';
     return {
       contextNote:
-        `${basisOf(bundle)}\n[CS팀 문의/리뷰/클레임 이슈]\n${packetLines(b.customerIssuePacket)}${contactNote}`,
+        `${basisOf(bundle)}\n현재 CS팀은 Commerce Universe 기준 safe 문의/리뷰/클레임 데이터를 봅니다. ` +
+        `개별 문의/리뷰는 아래 safe 목록(개인정보 제외)으로 답하세요. 고객명/전화/주소/이메일/계좌/배송메모는 표시하지 마세요.\n` +
+        `[CS팀 문의/리뷰/클레임 요약]\n${packetLines(b.customerIssuePacket)}` +
+        detailSections +
+        contactNote,
       answerGuidance:
-        'CS팀은 문의/리뷰/클레임/주문 이슈 "공급자"다. 제공된 facts로 고객 이슈를 정리해 답하라. ' +
-        '마케팅 전략/프로모션/캠페인/광고를 제안하지 마라. 고객 연락처(가상)는 응대 초안이 필요한 경우에만 쓰고, ' +
-        '쓸 때는 "가상 고객 정보(synthetic/fake)"임을 반드시 표시하라. ' +
-        '필요하면 "이 CS 이슈는 마케팅팀에 전달할 수 있습니다"라고만 덧붙여라. 숫자를 추측하지 마라.'
+        'CS팀은 문의/리뷰/클레임/주문 이슈 "공급자"다. 제공된 facts와 safe 목록으로 고객 이슈를 정리해 답하라. ' +
+        '사용자가 "가장 최근 미답변 문의", "최근 문의", "긴급 문의", "미답변 목록"을 물으면 위 [최근 미답변 문의 목록]/[최근 문의 목록]/[긴급 문의 목록]을 기준으로 개별 항목을 답하라. ' +
+        '"리뷰 평점 낮은 상품"을 물으면 [저평점/부정 리뷰 목록]을 기준으로 답하라. ' +
+        'safe 목록이 context에 있으면 "조회할 수 없다"·"고도몰 CS 관리자에서 직접 확인해 주세요"를 1차 답변으로 쓰지 마라. ' +
+        '목록이 비어 있을 때만 "조건에 맞는 문의를 찾지 못했습니다"라고 안내하고 요약 수치를 제시하라. ' +
+        '맨 아래 보조로만 "이 목록은 Commerce Universe synthetic safe data 기준이며 실제 고도몰 실시간 CS 원장은 별도 확인이 필요합니다"를 덧붙일 수 있다. ' +
+        '마케팅 전략/프로모션/캠페인/광고를 제안하지 마라. 고객명/전화/주소/이메일/계좌는 절대 표시하지 마라. 숫자를 추측하지 마라.'
     };
   }
 

@@ -28,6 +28,9 @@
 - 라이브 검증: 기본 826 / godoRaw 480 / legacy 240. `docs/SYNTHETIC_COMMERCE_UNIVERSE_ACTIVATION_V0.md`. smoke 10/10.
 - 다음: Department Facts Routing v0(customers/reviews/inquiries/CS facts를 부서 채팅에 연결).
 
+## CS Chat Inquiry Detail Context Patch v0 ✅
+- CS 채팅이 summary 숫자뿐 아니라 safe inquiry/review **개별 항목**으로 답하도록 `buildDepartmentChatContext('cs', bundle, csDetail)` 추가 — 최근 미답변/긴급/최근 문의 + 저평점 리뷰 + CS 이슈 상품 shortlist(각 5건, createdAt desc, PII 없음). "조회 불가/관리자 확인" fallback 제거. `docs/CS_CHAT_INQUIRY_DETAIL_CONTEXT_PATCH_V0.md`. smoke 15/15.
+
 ## Department Chat Wiring v0 ✅
 - DepartmentFactsBundle을 부서 채팅에 실연결: `departmentChatFacts.ts`(`buildDepartmentChatContext`)가 팀 슬라이스를 역할 경계 context+지침으로 변환. `DepartmentWorkspacePanel`이 `buildDepartmentFactsBundleFromUniverse`로 번들 생성(공용 데이터 1회 로드, includeCsFakeContacts 포함) → 상품/CS/마케팅/총괄 각자 슬라이스만 사용.
 - 상품팀=통계, CS=이슈+가상contact(표식), 마케팅=분석/제안+requiredData, 총괄=요약+승인(실행 안 함). 상품/마케팅/총괄 context PII 없음. `docs/DEPARTMENT_CHAT_WIRING_V0.md`. smoke 16/16.

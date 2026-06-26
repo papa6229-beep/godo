@@ -161,6 +161,15 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     }
   };
 
+  // goodsNo → 상품명 (CS 문의/리뷰 detail에서 상품명 표시용; PII 아님).
+  const goodsNameMap = useMemo<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const o of productData.revenue?.orders || []) {
+      for (const l of o.lines) if (l.goodsNo && l.goodsName && !m[l.goodsNo]) m[l.goodsNo] = l.goodsName;
+    }
+    return m;
+  }, [productData.revenue]);
+
   // DepartmentFactsBundle — orders + universeAux로 부서별 슬라이스 생성(역할 경계 유지).
   // fake contact는 buildDepartmentFactsBundleFromUniverse가 csTeam.fakeContacts에만 배치.
   const departmentFactsBundle = useMemo<DepartmentFactsBundle | null>(() => {
@@ -224,7 +233,14 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       }
     } else {
       // CS/마케팅/총괄: DepartmentFactsBundle의 자기 슬라이스만 사용.
-      const ctx = buildDepartmentChatContext(toChatTeam(teamId), departmentFactsBundle);
+      const chatTeam = toChatTeam(teamId);
+      // CS: safe inquiry/review detail shortlist를 함께 전달(개별 문의/리뷰 질문 응답용, PII 없음).
+      const rev = productData.revenue;
+      const csDetail =
+        chatTeam === 'cs' && rev?.universeAux
+          ? { inquiries: rev.universeAux.inquiries, reviews: rev.universeAux.reviews, goodsNames: goodsNameMap }
+          : undefined;
+      const ctx = buildDepartmentChatContext(chatTeam, departmentFactsBundle, csDetail);
       opts = ctx ?? {
         answerGuidance:
           '현재 부서별 facts가 아직 준비되지 않았습니다. 사용자에게 "데이터를 불러오는 중이니 잠시 후 다시 시도하거나 새로고침해 주세요"라고 안내하세요. 숫자를 추측하지 마세요.'

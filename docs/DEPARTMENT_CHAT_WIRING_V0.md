@@ -53,6 +53,7 @@ DepartmentWorkspacePanel
 - 총괄: "전체 상황 요약", "마케팅 제안 우선순위", "승인 후보" → 요약 + 승인 후보, 실행 안 함.
 
 ## 10. 다음 단계
+- ✅ **CS Chat Inquiry Detail Context Patch v0 완료** — CS 채팅이 safe inquiry/review 개별 항목으로 답변(`buildDepartmentChatContext(team, bundle, csDetail)`, `docs/CS_CHAT_INQUIRY_DETAIL_CONTEXT_PATCH_V0.md`).
 - **CS Workspace Response Simulation v0**: csTeam.fakeContacts로 응대 초안 생성(가상 표시).
 - **Analytics Result Modal v0**: chartHint 기반 그래프 팝업.
 - **Approval Queue 실연결**: 마케팅 제안 → 사람 승인 → 실행(Human-in-the-loop).
