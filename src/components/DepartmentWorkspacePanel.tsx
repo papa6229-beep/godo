@@ -3,8 +3,10 @@ import './DepartmentWorkspacePanel.css';
 import {
   fetchAdminProducts,
   fetchRevenue,
+  fetchCatalog,
   type AdminProductsResult,
-  type RevenueResult
+  type RevenueResult,
+  type CatalogLookupResult
 } from '../services/departmentDataService';
 import { ProductTeamDashboard } from './ProductTeamDashboard';
 import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
@@ -131,14 +133,20 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [productData, setProductData] = useState<{
     products: AdminProductsResult | null;
     revenue: RevenueResult | null;
+    catalog: CatalogLookupResult | null;
     loading: boolean;
     loaded: boolean;
-  }>({ products: null, revenue: null, loading: false, loaded: false });
+  }>({ products: null, revenue: null, catalog: null, loading: false, loaded: false });
 
   const loadProductTeamData = async () => {
     setProductData((prev) => ({ ...prev, loading: true }));
-    const [products, revenue] = await Promise.all([fetchAdminProducts(), fetchRevenue(true)]);
-    setProductData({ products, revenue, loading: false, loaded: true });
+    // catalog는 실패해도 채팅이 깨지지 않도록 fetchCatalog가 빈 lookup으로 폴백한다.
+    const [products, revenue, catalog] = await Promise.all([
+      fetchAdminProducts(),
+      fetchRevenue(true),
+      fetchCatalog()
+    ]);
+    setProductData({ products, revenue, catalog, loading: false, loaded: true });
   };
 
   // 팀 선택 — 상품관리팀을 처음 선택하면 1회 자동 로드 (이벤트 핸들러에서 트리거)
@@ -177,7 +185,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     // 상품관리팀: 질문 의도에 맞춰 코드가 계산한 facts + 답변 지침을 넘긴다(숫자 추측 방지).
     let opts: { contextNote?: string; answerGuidance?: string } | undefined;
     if (teamId === 'product') {
-      const facts = buildProductTeamChatFacts(text, productData.revenue);
+      // catalog가 로드됐으면 cateCd→cateNm 등 라벨 해석에 사용(없으면 기존 동작).
+      const facts = buildProductTeamChatFacts(text, productData.revenue, productData.catalog ?? undefined);
       opts = facts
         ? { contextNote: facts.facts.join('\n'), answerGuidance: facts.answerGuidance }
         : { contextNote: buildProductContextNote() }; // 데이터 미로드 시 요약 fallback
