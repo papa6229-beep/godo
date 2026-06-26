@@ -114,14 +114,24 @@ export const normalizeLines = (v: unknown): Raw[] => {
 };
 
 // ── 상태 판단 (날짜필드 우선, orderStatus 보조) — 실/가상 공통 순수함수 ──
+// 날짜필드 위치(공식 스펙): paymentDt는 order_data 헤더, invoice/delivery/finish/cancel은
+// orderGoodsData(라인)에 위치한다. 따라서 헤더에서 먼저 찾고, 없으면 첫 주문상품 라인에서
+// 보강한다(순수 가산 폴백 — 헤더에 값이 있으면 기존 동작 그대로, 라인 전용일 때만 추가 해석).
+// 부분취소 등 라인별 상태 상이 케이스는 v0에서 "첫 라인" 대표값을 쓴다(주문 단위 granularity).
 export const deriveOrderState = (order: Raw): RevenueOrderState => {
-  const orderStatus = str(order['orderStatus']);
+  const firstLine: Raw | undefined = normalizeLines(order['orderGoodsData'])[0];
+  // 헤더 우선, 없으면 첫 라인에서 동일 키 보강
+  const dateOf = (key: string): unknown => {
+    if (isValidDate(order[key])) return order[key];
+    return firstLine ? firstLine[key] : undefined;
+  };
+  const orderStatus = str(order['orderStatus']) || (firstLine ? str(firstLine['orderStatus']) : '');
   // o1(입금대기/미결제, 실측 확정)이면 결제완료로 보지 않는다. 그 외엔 paymentDt 유효성 기준.
-  const paid = isValidDate(order['paymentDt']) && orderStatus !== 'o1';
-  const shipped = isValidDate(order['invoiceDt']) || isValidDate(order['deliveryDt']);
-  const delivered = isValidDate(order['deliveryCompleteDt']);
-  const confirmed = isValidDate(order['finishDt']);
-  const canceled = isValidDate(order['cancelDt']);
+  const paid = isValidDate(dateOf('paymentDt')) && orderStatus !== 'o1';
+  const shipped = isValidDate(dateOf('invoiceDt')) || isValidDate(dateOf('deliveryDt'));
+  const delivered = isValidDate(dateOf('deliveryCompleteDt'));
+  const confirmed = isValidDate(dateOf('finishDt'));
+  const canceled = isValidDate(dateOf('cancelDt'));
   return {
     paid,
     unpaid: !paid,
