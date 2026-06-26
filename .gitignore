@@ -37,3 +37,4 @@ dist
 # Local screenshots / scratch
 shot/
 .env*.local
+docs/*.pdf
