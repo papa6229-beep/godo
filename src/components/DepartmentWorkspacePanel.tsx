@@ -160,17 +160,26 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const team = TEAMS.find((t) => t.id === selectedTeamId) as TeamConfig;
   const messages = chatLog[selectedTeamId];
 
+  // 가상 소스 표기(배지/요약용). 기본 Commerce Universe.
+  const synSourceLabel = (): string => {
+    const src = productData.revenue?.syntheticSource;
+    if (src === 'commerce_universe_v1') return 'Commerce Universe';
+    if (src === 'godoRaw') return 'godoRaw';
+    if (src === 'legacy') return 'legacy';
+    return 'synthetic';
+  };
+
   // 상품관리팀 매출/재고 데이터를 AI 참고용 요약으로 변환 (로드된 경우에만)
   const buildProductContextNote = (): string | undefined => {
     const s = productData.revenue?.summary;
     if (!s) return undefined;
     return (
-      `상품관리팀 매출 요약(실 ${s.realOrderCount}건 + 가상 ${s.syntheticOrderCount}건): ` +
+      `상품관리팀 매출 요약(실 ${s.realOrderCount}건 + ${synSourceLabel()} 가상 ${s.syntheticOrderCount}건): ` +
       `상품매출 ${s.productRevenueByLines.toLocaleString()}원, 배송비 ${s.deliveryFeeTotal.toLocaleString()}원, ` +
       `총주문금액 ${s.totalAmount.toLocaleString()}원, 결제완료 ${s.paidOrderCount} / 미결제 ${s.unpaidOrderCount} / ` +
       `구매확정 ${s.confirmedOrderCount} / 취소 ${s.canceledOrderCount}. ` +
       `재고추적 ${s.syntheticTrackedProductCount}종, 순판매 ${s.syntheticTotalNetSoldQuantity}개. ` +
-      `(실 고도몰 상품 + synthetic 매출/재고 기준)`
+      `(실 고도몰 상품 + ${synSourceLabel()} synthetic 매출/재고 기준)`
     );
   };
 

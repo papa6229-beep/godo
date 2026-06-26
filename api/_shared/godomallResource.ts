@@ -26,6 +26,7 @@ import {
 } from './syntheticRevenue.js';
 import type { SyntheticStockImpact } from './syntheticRevenue.js';
 import { buildSyntheticRevenueOrdersFromGodomallRaw } from './syntheticGodomallOrders.js';
+import { buildSyntheticCommerceUniverse } from './syntheticCommerceUniverse.js';
 import { normalizeOrderData } from './godomallOrderNormalize.js';
 import { deriveInventoryFromProducts } from './godomallInventoryDerive.js';
 import { maskRecordsList } from './piiMaskGuard.js';
@@ -257,15 +258,16 @@ const fetchProductsForJoin = async (
   }
 };
 
-// syntheticSource: 가상 매출 생성 소스 선택(옵션). **기본값 'godoRaw'** (Commerce Data Contract v0).
-//   - 'godoRaw' : Order_Search raw 시뮬레이터 → mapOrdersToRevenue 통과(real과 같은 통로). 기본.
-//   - 'legacy'  : 기존 syntheticRevenue.ts (곧장 RevenueOrder, mapper 우회) — 명시 옵션으로 유지(삭제 안 함).
-// ⚠️ 기본이 legacy→godoRaw로 바뀌며 대시보드/채팅 수치가 일부 달라질 수 있다(의도된 변경 — real 전환 재사용성).
-export type SyntheticSource = 'legacy' | 'godoRaw';
+// syntheticSource: 가상 매출 생성 소스 선택(옵션). **기본값 'commerce_universe_v1'** (Activation v0).
+//   - 'commerce_universe_v1' : Synthetic Commerce Universe(고객/주문/리뷰/문의 일관 세계)의 주문. 기본·운영 시뮬레이션용.
+//   - 'godoRaw' : Order_Search raw 시뮬레이터 → mapOrdersToRevenue 통과(raw mapper 통로 검증용). 명시 옵션.
+//   - 'legacy'  : 기존 syntheticRevenue.ts (곧장 RevenueOrder, mapper 우회) — 과거 비교/후퇴용. 명시 옵션.
+// ⚠️ 기본이 godoRaw→commerce_universe_v1로 바뀌며 대시보드/채팅 수치가 달라진다(의도된 변경 — Universe 활성화).
+export type SyntheticSource = 'legacy' | 'godoRaw' | 'commerce_universe_v1';
 
-// 기본 source 해석: 명시적으로 'legacy'를 요청한 경우만 legacy, 그 외 godoRaw.
+// 기본 source 해석: 명시적으로 legacy/godoRaw를 요청한 경우만 그것, 그 외 commerce_universe_v1.
 export const pickSyntheticSource = (source?: SyntheticSource): SyntheticSource =>
-  source === 'legacy' ? 'legacy' : 'godoRaw';
+  source === 'legacy' || source === 'godoRaw' ? source : 'commerce_universe_v1';
 
 export const resolveOrdersRevenue = async (
   opts: { includeSynthetic?: boolean; syntheticSource?: SyntheticSource } = {}
@@ -304,12 +306,14 @@ export const resolveOrdersRevenue = async (
     realOrders = mapOrdersToRevenue(normalizeOrderData(getProxyMockOrders()), buildProductIndex([]), 'real_godomall');
   }
 
-  // 가상 매출 데이터 (옵션). 기본 godoRaw(real과 같은 mapper 통로), 명시 'legacy'만 legacy.
+  // 가상 매출 데이터 (옵션). 기본 commerce_universe_v1, 명시 godoRaw/legacy만 그 경로.
   const chosen = pickSyntheticSource(opts.syntheticSource);
   const syntheticOrders = opts.includeSynthetic
     ? chosen === 'legacy'
       ? generateSyntheticRevenueOrders(products)
-      : buildSyntheticRevenueOrdersFromGodomallRaw(products)
+      : chosen === 'godoRaw'
+        ? buildSyntheticRevenueOrdersFromGodomallRaw(products)
+        : buildSyntheticCommerceUniverse(products).orders // commerce_universe_v1 (기본)
     : [];
   // syntheticSource 메타데이터 stamp (legacy는 mapper를 안 타 dataKind 미설정 → 보강).
   for (const o of syntheticOrders) {
