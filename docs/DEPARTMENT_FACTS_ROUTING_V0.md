@@ -53,6 +53,7 @@ CS Team Facts ─────(handoffToMarketing)──┘
 smoke 10항목(역할 경계·핸드오프·제안 단독·승인 전달·PII 경계) + 외부데이터 안내 + 결정성 = 12/12.
 
 ## 9. 다음 단계
-- Universe customers/reviews/inquiries를 프론트/부서 채팅에 공급(데이터 라우팅) → 마케팅/CS 채팅 실연결.
+- ✅ **Commerce Universe Aux Data Routing v0 완료** — `buildDepartmentFactsBundleFromUniverse(input)`로 aux(customers/reviews/inquiries + CS 전용 contacts)를 주입해 번들 생성(`docs/COMMERCE_UNIVERSE_AUX_DATA_ROUTING_V0.md`).
+- 다음: Department Chat Wiring v0 — 보관한 universeAux를 CS/마케팅/총괄 채팅 facts에 실연결.
 - Analytics Result Modal(chartHint 기반).
 - Approval Queue 실연결(마케팅 제안 → 사람 승인 → 실행).

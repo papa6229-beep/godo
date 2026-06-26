@@ -11,7 +11,8 @@
 
 import {
   runAnalyticsQuery, getAnalyticsMetric,
-  type AnalyticsDataset, type AnalyticsMetric, type AnalyticsGroupBy, type AnalyticsRow, type AnalyticsQueryResult, type MetricSupportLevel
+  type AnalyticsDataset, type AnalyticsMetric, type AnalyticsGroupBy, type AnalyticsRow, type AnalyticsQueryResult, type MetricSupportLevel,
+  type AnalyticsOrder, type AnalyticsCustomer, type AnalyticsReview, type AnalyticsInquiry, type AnalyticsCatalog
 } from './analyticsQueryEngine';
 
 export type DeptTeam = 'product' | 'cs' | 'marketing' | 'manager';
@@ -54,7 +55,13 @@ export type FakeContactForCsOnly = {
   customerName: string;
   phone: string;
   address: string;
-  origin: { isSynthetic: boolean; isFakePii: boolean; piiType: 'fake' };
+  origin: { isSynthetic: boolean; isFakePii: boolean; piiType: 'fake' | 'real'; sourceType?: string; syntheticProfile?: string };
+  // 추가 fake PII 필드(있을 수 있음 — CS 전용)
+  receiverName?: string;
+  email?: string;
+  deliveryMemo?: string;
+  refundBank?: string;
+  refundAccount?: string;
 };
 
 export type DepartmentFactsBundle = {
@@ -234,4 +241,29 @@ export function buildTeamFactsPackets(team: DeptTeam, dataset: AnalyticsDataset,
   if (team === 'cs') return runPack('cs', dataset, CS_TEAM_PACK, opts);
   if (team === 'marketing') return runPack('marketing', dataset, MARKETING_DIRECT_PACK, opts);
   return runPack('manager', dataset, MANAGER_SUMMARY_PACK, opts);
+}
+
+// Universe aux 입력으로 번들 생성 (orders + customers/reviews/inquiries + CS 전용 contacts).
+// contactsForCsOnly는 csTeam.fakeContacts로만 전달(분석 packet엔 PII 미포함).
+export function buildDepartmentFactsBundleFromUniverse(
+  input: {
+    orders: AnalyticsOrder[];
+    customers?: AnalyticsCustomer[];
+    reviews?: AnalyticsReview[];
+    inquiries?: AnalyticsInquiry[];
+    contactsForCsOnly?: FakeContactForCsOnly[];
+    catalog?: AnalyticsCatalog;
+    source?: AnalyticsDataset['source'];
+  },
+  opts: { teams?: DeptTeam[]; startDate?: string; endDate?: string; compareTo?: { startDate: string; endDate: string }; generatedAt?: string } = {}
+): DepartmentFactsBundle {
+  const dataset: AnalyticsDataset = {
+    orders: input.orders,
+    customers: input.customers,
+    reviews: input.reviews,
+    inquiries: input.inquiries,
+    catalog: input.catalog,
+    source: input.source
+  };
+  return buildDepartmentFactsBundle(dataset, { ...opts, fakeContacts: input.contactsForCsOnly });
 }
