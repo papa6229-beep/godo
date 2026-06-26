@@ -28,6 +28,10 @@
 - 라이브 검증: 기본 826 / godoRaw 480 / legacy 240. `docs/SYNTHETIC_COMMERCE_UNIVERSE_ACTIVATION_V0.md`. smoke 10/10.
 - 다음: Department Facts Routing v0(customers/reviews/inquiries/CS facts를 부서 채팅에 연결).
 
+## Department Facts Routing v0 ✅
+- `src/services/departmentFactsRouting.ts`: 역할 구조(상품/CS=통계공급→마케팅 handoff, 마케팅=분석/제안, 총괄=승인/우선순위). `buildDepartmentFactsBundle` + 팀별 metric pack(역할 경계) + rule-based 마케팅 제안 + approvalQueueCandidates. 분석 제안은 마케팅팀만, fake PII는 CS팀만. `docs/DEPARTMENT_FACTS_ROUTING_V0.md`. smoke 12/12.
+- 채팅 실연결은 Universe customers/reviews/inquiries 프론트 라우팅 후 다음 단계.
+
 ## Analytics Query Engine v0 ✅
 - `src/services/analyticsQueryEngine.ts`: 61-metric registry + QuerySpec + `runAnalyticsQuery(dataset, spec)` (기간필터/groupBy/compareTo/supportLevel/chartHint, PII 제외). Tier1/2 실계산, Tier3 requires_external_data.
 - `RevenueOrderLite`에 Contract v0 분석필드(memberKey/paymentMethodCode/orderChannel/claim) 가산(프론트 엔진 주입 준비). `docs/ANALYTICS_QUERY_ENGINE_V0.md`. smoke 25/25.
