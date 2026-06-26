@@ -57,7 +57,7 @@
 주문은 godoRaw 흐름이라 real Order_Search로 갈아끼워도 같은 `RevenueOrder`+facts를 쓴다. 리뷰/문의는 v1은 synthetic 도메인이며, 추후 `board_list` READ + board mapper로 같은 facts 형태에 real 데이터를 흘려보내면 동일 helper 재사용.
 
 ## 11. 제한사항
-- **UI 미연결**(다음 단계). universe/facts는 generator·helper로만 존재(route/대시보드 미연결).
+- **UI 연결됨(Activation v0)**: orders-revenue 기본 source가 commerce_universe_v1로 승격 → 상품팀 대시보드/채팅이 Universe 주문 사용. `docs/SYNTHETIC_COMMERCE_UNIVERSE_ACTIVATION_V0.md`. (reviews/inquiries/customers facts 라우팅은 다음 단계)
 - 리뷰/문의는 synthetic 도메인(board_list real READ 전).
 - claim 라벨(claimReasonLabel 등)은 Code_Search 연결 전 undefined.
 - 카테고리/브랜드 라벨은 catalogLookup 제공 시에만 해석.

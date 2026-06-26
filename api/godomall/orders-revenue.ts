@@ -14,16 +14,16 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
   }
 
   // ?includeSynthetic=true 일 때만 가상 매출 데이터 포함 (기본 false)
-  // ?syntheticSource= : 미지정/godoRaw → godoRaw(기본), legacy → legacy (Commerce Data Contract v0)
+  // ?syntheticSource= : 미지정 → commerce_universe_v1(기본), legacy/godoRaw/commerce_universe_v1 명시 가능
   let includeSynthetic = false;
   let syntheticSource: SyntheticSource | undefined;
   try {
     const url = new URL(req.url || '', 'http://localhost');
     includeSynthetic = url.searchParams.get('includeSynthetic') === 'true';
     const src = url.searchParams.get('syntheticSource');
-    if (src === 'legacy' || src === 'godoRaw') syntheticSource = src;
+    if (src === 'legacy' || src === 'godoRaw' || src === 'commerce_universe_v1') syntheticSource = src;
   } catch {
-    // 파싱 실패 시 기본값(godoRaw) 유지 — resolveOrdersRevenue가 결정
+    // 파싱 실패 시 기본값(commerce_universe_v1) 유지 — resolveOrdersRevenue가 결정
   }
 
   try {

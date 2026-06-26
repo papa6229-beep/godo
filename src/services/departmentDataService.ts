@@ -263,6 +263,9 @@ export interface RevenueOrderLite {
   lines: RevenueLineLite[];
 }
 
+// 가상 매출 소스 (Universe 활성화 v0). 기본 commerce_universe_v1.
+export type SyntheticSourceTag = 'commerce_universe_v1' | 'godoRaw' | 'legacy';
+
 export interface RevenueResult {
   count: number;
   source: DataSourceTag;
@@ -270,6 +273,7 @@ export interface RevenueResult {
   summary: RevenueSummary | null;
   stockImpact: StockImpactItem[];
   orders: RevenueOrderLite[];
+  syntheticSource?: SyntheticSourceTag; // 요청한 가상 소스(배지 표기용)
   errorMessage?: string;
 }
 
@@ -302,9 +306,14 @@ const parseSummary = (s: Record<string, unknown> | undefined): RevenueSummary | 
   };
 };
 
-export const fetchRevenue = async (includeSynthetic = true): Promise<RevenueResult> => {
+export const fetchRevenue = async (
+  includeSynthetic = true,
+  syntheticSource: SyntheticSourceTag = 'commerce_universe_v1'
+): Promise<RevenueResult> => {
   try {
-    const res = await fetch(`/api/godomall/orders-revenue?includeSynthetic=${includeSynthetic ? 'true' : 'false'}`);
+    const res = await fetch(
+      `/api/godomall/orders-revenue?includeSynthetic=${includeSynthetic ? 'true' : 'false'}&syntheticSource=${syntheticSource}`
+    );
     if (!res.ok) throw new Error(`orders-revenue HTTP ${res.status}`);
     const data = await res.json();
     const stockImpactRaw = (data.stockImpact || []) as Record<string, unknown>[];
@@ -353,6 +362,7 @@ export const fetchRevenue = async (includeSynthetic = true): Promise<RevenueResu
       summary: parseSummary(data.summary as Record<string, unknown> | undefined),
       stockImpact,
       orders,
+      syntheticSource: includeSynthetic ? syntheticSource : undefined,
       errorMessage: data.errorMessage
     };
   } catch (err: unknown) {

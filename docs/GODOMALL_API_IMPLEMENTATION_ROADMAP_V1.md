@@ -22,6 +22,12 @@
 - Analytics(가명 memberKey)/CS Contact(fake PII) 분리, fake PII 표식 부착. `docs/SYNTHETIC_COMMERCE_UNIVERSE_V1.md`. smoke 26/26.
 - 기존 syntheticRevenue/godoRaw/Contract 무영향, route/UI 미변경(다음: Facts Routing/Board READ).
 
+## Synthetic Commerce Universe Activation v0 ✅
+- orders-revenue 기본 synthetic source를 godoRaw → **commerce_universe_v1**로 승격(`pickSyntheticSource`). legacy/godoRaw는 명시 옵션 유지.
+- 상품팀 대시보드/채팅이 Universe ~826건 기준으로 자동 계산(대시보드 로직 무변경). PII는 contacts에만, orders-revenue엔 없음.
+- 라이브 검증: 기본 826 / godoRaw 480 / legacy 240. `docs/SYNTHETIC_COMMERCE_UNIVERSE_ACTIVATION_V0.md`. smoke 10/10.
+- 다음: Department Facts Routing v0(customers/reviews/inquiries/CS facts를 부서 채팅에 연결).
+
 ## Phase 1 — READ API 안정화 (진행/직후)
 - **order_search**: edge case 잠그기(claimData/multi-shipping/partial cancel/return/exchange). 테스트몰 다양한 주문 생성 후 `order-search-raw-audit` 재실행.
 - **goods_search**: 100개 초과 페이징 보강(현재 size=100 단일).
