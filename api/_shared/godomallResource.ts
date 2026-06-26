@@ -25,6 +25,7 @@ import {
   summarizeStockImpact
 } from './syntheticRevenue.js';
 import type { SyntheticStockImpact } from './syntheticRevenue.js';
+import { buildSyntheticRevenueOrdersFromGodomallRaw } from './syntheticGodomallOrders.js';
 import { deriveInventoryFromProducts } from './godomallInventoryDerive.js';
 import { maskRecordsList } from './piiMaskGuard.js';
 import {
@@ -254,8 +255,13 @@ const fetchProductsForJoin = async (
   }
 };
 
+// syntheticSource: 가상 매출 생성 소스 선택(옵션, 기본 'legacy').
+//   - 'legacy'  : 기존 syntheticRevenue.ts (곧장 RevenueOrder) — 기본 동작, 무변경.
+//   - 'godoRaw' : Order_Search raw 시뮬레이터 → mapOrdersToRevenue 통과(공식 스펙 기반).
+export type SyntheticSource = 'legacy' | 'godoRaw';
+
 export const resolveOrdersRevenue = async (
-  opts: { includeSynthetic?: boolean } = {}
+  opts: { includeSynthetic?: boolean; syntheticSource?: SyntheticSource } = {}
 ): Promise<ResolvedRevenue> => {
   const config = getGodomallConfig();
   let errorMessage: string | undefined;
@@ -290,8 +296,14 @@ export const resolveOrdersRevenue = async (
     realOrders = mapOrdersToRevenue(getProxyMockOrders(), buildProductIndex([]), 'real_godomall');
   }
 
-  // 가상 매출 데이터 (옵션) — 실 Products 기반 생성, 실 주문과 동일 RevenueOrder 구조
-  const syntheticOrders = opts.includeSynthetic ? generateSyntheticRevenueOrders(products) : [];
+  // 가상 매출 데이터 (옵션) — 실 Products 기반 생성, 실 주문과 동일 RevenueOrder 구조.
+  // syntheticSource='godoRaw'이면 Order_Search raw 시뮬레이터 경로(공식 스펙 기반)를,
+  // 그 외(기본 'legacy')는 기존 generateSyntheticRevenueOrders를 사용한다.
+  const syntheticOrders = opts.includeSynthetic
+    ? opts.syntheticSource === 'godoRaw'
+      ? buildSyntheticRevenueOrdersFromGodomallRaw(products)
+      : generateSyntheticRevenueOrders(products)
+    : [];
   const orders = [...realOrders, ...syntheticOrders];
 
   // 가상 재고 영향 (옵션) — 실 Products 현재 재고 기준으로 역산 (고도몰 재고 미변경)
