@@ -261,6 +261,11 @@ export interface RevenueOrderLite {
   confirmed: boolean;
   canceled: boolean;
   lines: RevenueLineLite[];
+  // ── Commerce Data Contract v0 분석 필드(가산, optional) — Analytics Query Engine 입력용 ──
+  memberKey?: string;
+  paymentMethodCode?: string;
+  orderChannel?: string;
+  claim?: { hasClaim: boolean; claimTypes: string[]; claimAmount?: number };
 }
 
 // 가상 매출 소스 (Universe 활성화 v0). 기본 commerce_universe_v1.
@@ -345,6 +350,20 @@ export const fetchRevenue = async (
         unpaid: bool(st.unpaid),
         confirmed: bool(st.confirmed),
         canceled: bool(st.canceled),
+        // Contract v0 분석 필드(있으면 그대로 — PII 아님)
+        memberKey: str(o.memberKey) || undefined,
+        paymentMethodCode: str(o.paymentMethodCode) || str(o.settleKind) || undefined,
+        orderChannel: str(o.orderChannel) || undefined,
+        claim: o.claimSummary
+          ? (() => {
+              const c = o.claimSummary as Record<string, unknown>;
+              return {
+                hasClaim: bool(c.hasClaim),
+                claimTypes: Array.isArray(c.claimTypes) ? (c.claimTypes as unknown[]).map((x) => str(x)) : [],
+                claimAmount: c.claimAmount !== undefined ? num(c.claimAmount) : undefined
+              };
+            })()
+          : undefined,
         lines: linesRaw.map((l) => ({
           goodsNo: str(l.goodsNo),
           goodsName: str(l.goodsName),
