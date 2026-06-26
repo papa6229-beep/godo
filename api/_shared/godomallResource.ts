@@ -26,6 +26,7 @@ import {
 } from './syntheticRevenue.js';
 import type { SyntheticStockImpact } from './syntheticRevenue.js';
 import { buildSyntheticRevenueOrdersFromGodomallRaw } from './syntheticGodomallOrders.js';
+import { normalizeOrderData } from './godomallOrderNormalize.js';
 import { deriveInventoryFromProducts } from './godomallInventoryDerive.js';
 import { maskRecordsList } from './piiMaskGuard.js';
 import {
@@ -197,7 +198,8 @@ export const resolveOrdersAdmin = async (): Promise<ResolvedAdminOrders> => {
       if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
       const parsed = parseGodomallXml(res.xml);
       if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
-      const rawOrders = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
+      // 0건 응답 phantom 가드: 의미 있는 주문만 남긴다(빈 래퍼/{} 제거).
+      const rawOrders = normalizeOrderData(extractList(parsed.root, ADMIN_ORDER_LIST_KEYS));
       const records = mapOrdersToAdmin(rawOrders);
       return {
         records,
@@ -281,7 +283,8 @@ export const resolveOrdersRevenue = async (
       if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
       const parsed = parseGodomallXml(res.xml);
       if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
-      const rawOrders = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
+      // 0건 응답 phantom 가드: 의미 있는 주문만 남긴다(빈 래퍼/{} 제거).
+      const rawOrders = normalizeOrderData(extractList(parsed.root, ADMIN_ORDER_LIST_KEYS));
       products = await fetchProductsForJoin(config);
       realOrders = mapOrdersToRevenue(rawOrders, buildProductIndex(products), 'real_godomall');
       source = config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox';
@@ -292,8 +295,8 @@ export const resolveOrdersRevenue = async (
   }
 
   if (!live) {
-    // mock fallback (Products 미조인 → uncategorized)
-    realOrders = mapOrdersToRevenue(getProxyMockOrders(), buildProductIndex([]), 'real_godomall');
+    // mock fallback (Products 미조인 → uncategorized). mock 주문도 동일 가드 적용(모두 orderNo 보유 → 유지).
+    realOrders = mapOrdersToRevenue(normalizeOrderData(getProxyMockOrders()), buildProductIndex([]), 'real_godomall');
   }
 
   // 가상 매출 데이터 (옵션) — 실 Products 기반 생성, 실 주문과 동일 RevenueOrder 구조.
