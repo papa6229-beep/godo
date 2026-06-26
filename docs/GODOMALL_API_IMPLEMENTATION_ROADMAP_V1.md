@@ -9,6 +9,13 @@
 - `godomallApiRegistry.ts` + 3종 문서 + smoke(13/13) 완료.
 - 산출: 23 capability(+레거시 2), READ/WRITE/부서/PII/RateLimit 분류.
 
+## Commerce Data Contract v0 ✅ (Phase 1과 병행 완료)
+- `RevenueOrder` 가산 확장(memberKey·settleKind·orderChannel·claimSummary·isFirstPurchase·dataKind·syntheticSource) — 하위호환.
+- synthetic 기본 경로 **legacy→godoRaw 전환**(real과 동일 mapper 통로). legacy는 `?syntheticSource=legacy` 유지.
+- memberKey 가명화(real=해시/synthetic=syn_member_*), PII 미노출, claimData 축약(claimSummary).
+- CS Contact Contract 타입 초안(`commerceContactContract.ts`) + fake PII 정책. `docs/COMMERCE_DATA_CONTRACT_V0.md`. (라이브 검증: 기본 godoRaw 480건·memberKey 350)
+- 다음: Synthetic Commerce Universe v1(1년치 주문/고객/리뷰/문의/fake PII).
+
 ## Phase 1 — READ API 안정화 (진행/직후)
 - **order_search**: edge case 잠그기(claimData/multi-shipping/partial cancel/return/exchange). 테스트몰 다양한 주문 생성 후 `order-search-raw-audit` 재실행.
 - **goods_search**: 100개 초과 페이징 보강(현재 size=100 단일).

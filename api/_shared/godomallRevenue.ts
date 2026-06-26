@@ -38,6 +38,21 @@ export type RevenueOrderLine = {
   productMatched: boolean;
 };
 
+// 클레임 요약 (Commerce Data Contract v0) — raw claimData를 그대로 노출하지 않고 축약한다.
+export type RevenueClaimType = 'cancel' | 'refund' | 'return' | 'exchange';
+export type RevenueClaimSummary = {
+  hasClaim: boolean;
+  claimTypes: RevenueClaimType[];
+  claimAmount?: number; // 환불/클레임 금액 합(있을 때)
+  // 코드/라벨: raw에 코드가 없거나 Code_Search 미연결이면 undefined (다음 단계 라벨 연결)
+  claimReasonCode?: string;
+  claimReasonLabel?: string;
+  claimPaymentCode?: string;
+  claimPaymentLabel?: string;
+  claimBankCode?: string;
+  claimBankLabel?: string;
+};
+
 export type RevenueOrder = {
   orderId: string;
   orderNo: string;
@@ -61,6 +76,18 @@ export type RevenueOrder = {
   sourceType: RevenueDataSource;
   state: RevenueOrderState;
   lines: RevenueOrderLine[];
+  // ── 분석용 가산 필드 (Commerce Data Contract v0, 전부 optional·하위호환) ──
+  // PII(이름/전화/이메일/주소)는 절대 싣지 않는다. 고객 식별은 가명 memberKey만.
+  memberKey?: string;             // 가명 분석키 (real=해시, synthetic=syn_member_*)
+  isFirstPurchase?: boolean;      // firstSaleFl 기반
+  settleKind?: string;            // 결제수단 코드 원본 (settleKind)
+  paymentMethodCode?: string;     // = settleKind (명시 별칭)
+  paymentMethodLabel?: string;    // Code_Search 연결 전이면 undefined
+  orderChannel?: string;          // 주문채널 코드 (orderChannelFl)
+  orderChannelLabel?: string;     // 연결 전이면 undefined
+  claimSummary?: RevenueClaimSummary;
+  dataKind?: 'real' | 'synthetic' | 'mock';                 // sourceType 파생(표기용)
+  syntheticSource?: 'legacy' | 'godoRaw' | 'commerce_universe_v1'; // 생성 경로(resolver가 stamp)
 };
 
 export type RevenueSummary = {
@@ -205,6 +232,55 @@ const mapLine = (orderNo: string, g: Raw, index: ProductIndex): RevenueOrderLine
   };
 };
 
+// ── 분석용 가명 식별키 (memNo/memId 원문 비노출) ──────────────────────────────
+// real: 안정적 해시(real_member_*), synthetic: 식별 가능한 syn_member_*. 빈값이면 undefined.
+const fnv1a = (s: string): string => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+};
+export const buildMemberKey = (rawId: string, sourceType: RevenueDataSource): string | undefined => {
+  const id = str(rawId);
+  if (!id || id === '0') return undefined; // 비회원/식별불가
+  if (sourceType === 'synthetic_test') return `syn_member_${id}`;
+  return `real_member_${fnv1a(id)}`; // real은 가명 해시 (원문 미노출)
+};
+
+// handleMode 코드 → 클레임 타입
+const CLAIM_MODE_MAP: Record<string, RevenueClaimType> = { c: 'cancel', r: 'refund', b: 'return', e: 'exchange', z: 'exchange' };
+
+// raw claimData(라인 내부) + cancelDt → claimSummary 축약 (raw 전체는 노출하지 않음)
+const deriveClaimSummary = (order: Raw, lines: Raw[]): RevenueClaimSummary | undefined => {
+  const types = new Set<RevenueClaimType>();
+  let claimAmount = 0;
+  let sawClaim = false;
+  for (const g of lines) {
+    for (const c of normalizeLines(g['claimData'])) {
+      sawClaim = true;
+      const mode = str(c['handleMode']).toLowerCase();
+      const t = CLAIM_MODE_MAP[mode];
+      if (t) types.add(t);
+      const amt = num(c['refundPrice']);
+      if (amt) claimAmount += amt;
+    }
+  }
+  // 주문 헤더 취소일자도 취소 클레임으로 본다
+  if (isValidDate(order['cancelDt'])) {
+    types.add('cancel');
+    sawClaim = true;
+  }
+  if (!sawClaim && types.size === 0) return undefined;
+  return {
+    hasClaim: sawClaim || types.size > 0,
+    claimTypes: [...types],
+    ...(claimAmount > 0 ? { claimAmount } : {})
+    // claimReason/Payment/Bank 코드·라벨: raw에 코드 없음/Code_Search 미연결 → undefined (다음 단계)
+  };
+};
+
 // Order_Search 주문 레코드[] → RevenueOrder[]
 export const mapOrdersToRevenue = (
   orders: Raw[],
@@ -216,6 +292,15 @@ export const mapOrdersToRevenue = (
     let lines = normalizeLines(o['orderGoodsData']);
     if (lines.length === 0) lines = [o]; // flat(mock) 폴백: 상위 평문으로 단일 라인
     const revLines = lines.map((g) => mapLine(orderNo, g, index));
+
+    // ── 분석용 가산 필드 (raw에서 파생, PII 비노출) ──
+    const memberKey = buildMemberKey(str(o['memNo']) || str(o['memId']), sourceType);
+    const firstSaleRaw = str(o['firstSaleFl']);
+    const isFirstPurchase = 'firstSaleFl' in o ? firstSaleRaw.toLowerCase() === 'y' : undefined;
+    const settleKind = str(o['settleKind']) || undefined;
+    const orderChannel = str(o['orderChannelFl']) || undefined;
+    const claimSummary = deriveClaimSummary(o, lines);
+    const dataKind: 'real' | 'synthetic' | 'mock' = sourceType === 'synthetic_test' ? 'synthetic' : 'real';
 
     const productRevenueByLines = revLines.reduce((s, l) => s + l.lineRevenue, 0);
     const productRevenueByHeader = num(o['totalGoodsPrice'] ?? o['amount'] ?? '0');
@@ -244,7 +329,14 @@ export const mapOrdersToRevenue = (
       revenueMismatch,
       sourceType,
       state: deriveOrderState(o),
-      lines: revLines
+      lines: revLines,
+      // 분석용 가산 (optional)
+      ...(memberKey ? { memberKey } : {}),
+      ...(isFirstPurchase !== undefined ? { isFirstPurchase } : {}),
+      ...(settleKind ? { settleKind, paymentMethodCode: settleKind } : {}),
+      ...(orderChannel ? { orderChannel } : {}),
+      ...(claimSummary ? { claimSummary } : {}),
+      dataKind
     };
   });
 };
