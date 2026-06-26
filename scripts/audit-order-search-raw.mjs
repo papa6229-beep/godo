@@ -34,6 +34,22 @@ const activeBase = mode === 'sandbox' ? sandboxBase : realBase;
 
 const configured = (mode === 'real' || mode === 'sandbox') && partnerKey.length > 0 && userKey.length > 0;
 
+// ── CLI 옵션 (조회 0건 시 기간/건수 조정용) ──────────────────────────────────
+//   --days=N | --size=N | --startDate=YYYY-MM-DD | --endDate=YYYY-MM-DD
+// startDate/endDate가 주어지면 그 범위를, 아니면 days(기본 90)로 역산한다.
+const argOf = (name) => {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : undefined;
+};
+const optDays = Number.parseInt(argOf('days') || '', 10);
+const optSize = Number.parseInt(argOf('size') || '', 10);
+const opt = {
+  days: Number.isFinite(optDays) && optDays > 0 ? optDays : 90,
+  size: Number.isFinite(optSize) && optSize > 0 ? optSize : 3,
+  startDate: argOf('startDate'),
+  endDate: argOf('endDate')
+};
+
 if (!configured) {
   console.log('[audit] 실제 Order_Search 호출 불가 — 환경변수 미설정.');
   console.log('[audit] 필요한 환경변수:');
@@ -81,6 +97,15 @@ const EMAIL_KEYS = new Set(['orderEmail']);
 const ADDRESS_KEYS = new Set(['orderAddress', 'orderAddressSub', 'receiverAddress', 'receiverAddressSub', 'visitAddress']);
 const REDACT_KEYS = new Set(['orderIp', 'customIdNumber', 'accountNumber', 'bankName', 'ehRefundBankName', 'ehRefundBankAccountNumber', 'ehSettleBankAccountInfo']);
 
+// 주문번호 부분 마스킹 (앞4 + 가운데 * + 뒤4). 회원ID는 통째로 가린다.
+const maskOrderNo = (v) => {
+  const s = String(v ?? '');
+  if (s.length <= 8) return s.replace(/.(?=.)/g, '*');
+  return s.slice(0, 4) + '*'.repeat(s.length - 8) + s.slice(-4);
+};
+const ORDERNO_KEYS = new Set(['orderNo']);
+const ID_REDACT_KEYS = new Set(['memId']);
+
 const maskPii = (value) => {
   if (Array.isArray(value)) return value.map(maskPii);
   if (isObj(value)) {
@@ -91,6 +116,8 @@ const maskPii = (value) => {
       else if (EMAIL_KEYS.has(k)) out[k] = maskEmail(v);
       else if (ADDRESS_KEYS.has(k)) out[k] = maskAddress(v);
       else if (REDACT_KEYS.has(k)) out[k] = '[MASKED]';
+      else if (ORDERNO_KEYS.has(k)) out[k] = maskOrderNo(v);
+      else if (ID_REDACT_KEYS.has(k)) out[k] = v ? '[MASKED_ID]' : v;
       else out[k] = maskPii(v);
     }
     return out;
@@ -112,21 +139,21 @@ const pickOrderData = (node, depth = 0) => {
 // ── 실행 ─────────────────────────────────────────────────────────────────────
 const fmt = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const endDate = new Date();
-const startDate = new Date(endDate.getTime() - 90 * 24 * 60 * 60 * 1000);
+const startStr = opt.startDate || fmt(new Date(Date.now() - opt.days * 24 * 60 * 60 * 1000));
+const endStr = opt.endDate || fmt(new Date());
 
 const url = activeBase.replace(/\/+$/, '') + '/order/Order_Search.php';
 const form = new URLSearchParams();
 form.set('partner_key', partnerKey);
 form.set('key', userKey);
 form.set('dateType', 'order');
-form.set('startDate', fmt(startDate));
-form.set('endDate', fmt(endDate));
-form.set('size', '3');
+form.set('startDate', startStr);
+form.set('endDate', endStr);
+form.set('size', String(opt.size));
 form.set('sort', 'orderNo desc');
 
 console.log(`[audit] mode=${mode} base=${activeBase} (키는 출력하지 않음)`);
-console.log(`[audit] 조회: dateType=order ${fmt(startDate)}~${fmt(endDate)} size=3 sort='orderNo desc'`);
+console.log(`[audit] 조회: dateType=order ${startStr}~${endStr} size=${opt.size} sort='orderNo desc'`);
 
 try {
   const controller = new AbortController();

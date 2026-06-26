@@ -28,6 +28,11 @@
 
 키는 보안 원칙상 Vercel 환경변수(서버 전용)에만 존재하므로 로컬/dev에서 실주문 raw를 받을 수 없다. 작업지시서 §8에 따라 **우회하지 않았다**(키 하드코딩·세션/쿠키·브라우저 직접 호출·public debug route 모두 미사용).
 
+### 실 audit 시도 로그 (2026-06-26)
+- `vercel env pull .env.local --environment=production` 시도 → **Vercel CLI 미인증**(`No existing credentials found`, `.vercel` 링크 없음). 모든 `vercel` 명령이 대화형 device-auth(브라우저 OAuth)를 요구하여 자동화 환경에서 완료 불가.
+- 작업지시서 §3-2에 따라 **env pull 불가**로 판단하고 중단. **키 원문을 요청하지 않았다.**
+- → 사용자가 직접 인증해야 한다: 세션 프롬프트에서 `! npx vercel login` 후 `! vercel env pull .env.local --environment=production` 실행(또는 `.env.local`에 키 직접 작성). 이후 `node scripts/audit-order-search-raw.mjs` 실행 시 본 문서 §3~§5 실측 컬럼을 채울 수 있다.
+
 → 실측은 보류하고, ① 공식 스펙 기반 shape 분석, ② mapper 호환 검증(픽스처), ③ 키 도착 시 즉시 실행 가능한 안전 audit 도구 + 합성 generator 보정으로 대체했다.
 
 ### 실 호출에 필요한 것 (사용자 제공)
@@ -58,6 +63,13 @@ size     : 3
 sort     : orderNo desc
 ```
 주문 0건이면 스크립트가 "수기 주문 1건 생성 후 재시도 또는 기간 확대"를 안내한다.
+
+### 조회 옵션 (0건 시 기간/건수 조정 — public route 없이 CLI 인자만)
+```
+node scripts/audit-order-search-raw.mjs --days=365 --size=3
+node scripts/audit-order-search-raw.mjs --startDate=2026-06-01 --endDate=2026-06-26 --size=3
+```
+`startDate`/`endDate`가 주어지면 그 범위를, 아니면 `--days`(기본 90)로 역산. 어떤 옵션에서도 API 키·raw JSON·PII 원문은 출력하지 않는다. 출력 샘플의 `orderNo`는 부분 마스킹(`2506********1234`), `memId`는 `[MASKED_ID]`.
 
 ---
 
