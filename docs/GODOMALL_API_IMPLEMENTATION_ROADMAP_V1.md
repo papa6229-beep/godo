@@ -16,6 +16,12 @@
 - CS Contact Contract 타입 초안(`commerceContactContract.ts`) + fake PII 정책. `docs/COMMERCE_DATA_CONTRACT_V0.md`. (라이브 검증: 기본 godoRaw 480건·memberKey 350)
 - 다음: Synthetic Commerce Universe v1(1년치 주문/고객/리뷰/문의/fake PII).
 
+## Synthetic Commerce Universe v1 ✅ (Phase 1 데이터 기반 완료)
+- `syntheticCommerceUniverse.ts`: 1년치 고객(320)/주문(~800)/리뷰/문의/CS contact(fake PII) 일관 생성(결정적, godoRaw 흐름 → RevenueOrder+Contract v0).
+- `syntheticCommerceFacts.ts`: 재구매율·객단가·결제수단/채널 분포·취소/환불/반품/교환율·카테고리/브랜드 매출·리뷰 평점·CS 이슈 facts(PII 없음, 숫자는 helper 계산).
+- Analytics(가명 memberKey)/CS Contact(fake PII) 분리, fake PII 표식 부착. `docs/SYNTHETIC_COMMERCE_UNIVERSE_V1.md`. smoke 26/26.
+- 기존 syntheticRevenue/godoRaw/Contract 무영향, route/UI 미변경(다음: Facts Routing/Board READ).
+
 ## Phase 1 — READ API 안정화 (진행/직후)
 - **order_search**: edge case 잠그기(claimData/multi-shipping/partial cancel/return/exchange). 테스트몰 다양한 주문 생성 후 `order-search-raw-audit` 재실행.
 - **goods_search**: 100개 초과 페이징 보강(현재 size=100 단일).
