@@ -16,8 +16,8 @@
 
 ## Phase 2 — 공통코드 / 카테고리 / 브랜드 READ
 - **code_search**(p1, 우선) ✅ **v0 완료** — `code_type` 13종 동적 조회(real bridge `codes.ts`/`godomallCodes.ts`, 라이브 검증). `docs/GODOMALL_CODE_SEARCH_READ_V0.md`. 다음: 정적 enum과 비교·병합.
-- **category_search**(p1): cateCd→cateNm 라벨 → RevenueOrder/대시보드 카테고리 한글화.
-- **brand_search**(p2), **goods_add_search**(p2) 필요 시.
+- **category_search**(p1) ✅ **v0 완료** + **brand_search**(p2) ✅ **v0 완료** — Catalog Taxonomy READ(게이트웨이 `?capability=category_search`/`brand_search`, `godomallCatalog.ts`, 라이브 검증). `docs/GODOMALL_CATALOG_TAXONOMY_READ_V0.md`. 다음: cateNm→RevenueOrder 카테고리 한글화.
+- **goods_add_search**(p2) 필요 시.
 
 ## Phase 3 — CS / 게시판 READ
 - **board_inventory**(게시판 목록) → **board_list**(bdId=goodsqa/goodsreview) READ v0.

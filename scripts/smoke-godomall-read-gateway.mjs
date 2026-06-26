@@ -33,8 +33,8 @@ try {
 }
 const reg = await import(pathToFileURL(path.join(tmp, 'godomallApiRegistry.js')).href);
 
-// read.ts READ_HANDLERS 키와 일치(현재 code_search만 구현).
-const IMPLEMENTED = new Set(['code_search']);
+// read.ts READ_HANDLERS 키와 일치(code_search/category_search/brand_search 구현).
+const IMPLEMENTED = new Set(['code_search', 'category_search', 'brand_search']);
 
 // read.ts 분기 정책 미러
 const decide = (capability) => {
@@ -60,8 +60,9 @@ ok('빈 capability → 400', decide(''), 'MISSING_CAPABILITY/400');
 ok('미존재 capability → 400', decide('nonexistent_cap'), 'UNKNOWN_CAPABILITY/400');
 // 2. 구현된 READ → serve
 ok('code_search(구현 READ) → serve', decide('code_search'), 'SERVE/200');
+ok('category_search(구현 READ) → serve', decide('category_search'), 'SERVE/200');
+ok('brand_search(구현 READ) → serve', decide('brand_search'), 'SERVE/200');
 // 3. 미구현 READ → 501
-ok('category_search(미구현 READ) → 501', decide('category_search'), 'NOT_IMPLEMENTED/501');
 ok('board_list(미구현 READ) → 501', decide('board_list'), 'NOT_IMPLEMENTED/501');
 ok('goods_search(게이트웨이 미연결 READ) → 501', decide('goods_search'), 'NOT_IMPLEMENTED/501');
 // 4. WRITE/writeLocked → 403
