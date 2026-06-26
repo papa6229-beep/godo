@@ -6,6 +6,7 @@ import type {
   RevenueOrderLite,
   StockImpactItem
 } from '../services/departmentDataService';
+import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
 
 // 상품관리팀 매출/재고 대시보드 v1.1
 // - 데이터: /api/godomall/orders-revenue?includeSynthetic=true (orders/summary/stockImpact)
@@ -53,26 +54,8 @@ type StockLevel = 'danger' | 'warn' | 'ok';
 const stockLevel = (p: number): StockLevel => (p <= 20 ? 'danger' : p <= 40 ? 'warn' : 'ok');
 const levelKo = (l: StockLevel): string => (l === 'danger' ? '위험' : l === 'warn' ? '주의' : '정상');
 
+// 매출추이 단위 (버킷 생성은 productDashboardTrendBuckets.ts로 분리)
 type Period = 'month' | 'week' | 'day';
-
-// 기간 키/라벨
-const periodKey = (dateStr: string, period: Period): string => {
-  const d = dateStr.slice(0, 10);
-  if (period === 'month') return d.slice(0, 7);
-  if (period === 'day') return d;
-  const dt = new Date(`${d}T00:00:00`);
-  const off = (dt.getDay() + 6) % 7; // 0 = Monday
-  dt.setDate(dt.getDate() - off);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-};
-const periodLabel = (key: string, period: Period): string => {
-  if (period === 'month') return `${parseInt(key.slice(5, 7), 10)}월`;
-  if (period === 'week') {
-    const end = new Date(Date.parse(key) + 6 * 86400000);
-    return `${parseInt(key.slice(5, 7), 10)}/${parseInt(key.slice(8, 10), 10)}~${end.getMonth() + 1}/${end.getDate()}`;
-  }
-  return `${parseInt(key.slice(5, 7), 10)}/${parseInt(key.slice(8, 10), 10)}`;
-};
 
 const niceCeil = (v: number): number => {
   if (v <= 0) return 1;
@@ -184,7 +167,8 @@ const TrendChart: React.FC<{ data: PeriodBucket[]; period: Period }> = ({ data, 
   const line = smoothPath(pts);
   const area = `${line} L${pts[n - 1].x.toFixed(1)},${(padT + innerH).toFixed(1)} L${pts[0].x.toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
   const barW = Math.max(3, Math.min(14, innerW / n / 2.2));
-  const labelStep = Math.max(1, Math.ceil(n / 8));
+  // 라벨 표시 간격: 단위별 정책(버킷은 유지, 라벨만 축약). month≤18·week≤20·day≤14 → 전부 표시.
+  const labelStep = labelStepFor(period, n);
   const sig = `${period}:${data.map((d) => d.key).join(',')}`;
 
   return (
@@ -598,6 +582,10 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         else if (o.paid) sold += l.quantity;
       }
     }
+    // 재고 위험: danger(≤20) / warn(21~40) / 최저재고 상품
+    const lowest = filteredStock.length
+      ? [...filteredStock].sort((a, b) => a.syntheticProjectedStock - b.syntheticProjectedStock)[0]
+      : null;
     return {
       revenue: rev,
       orderCount: relevantOrders.length,
@@ -608,26 +596,18 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
       net: sold - restored,
       virtualStock: filteredStock.reduce((s, x) => s + x.syntheticProjectedStock, 0),
       trackedCount: filteredStock.length,
-      riskCount: filteredStock.filter((x) => x.syntheticProjectedStock <= 20).length
+      riskCount: filteredStock.filter((x) => x.syntheticProjectedStock <= 20).length,
+      warnCount: filteredStock.filter((x) => x.syntheticProjectedStock > 20 && x.syntheticProjectedStock <= 40).length,
+      lowestName: lowest?.productName ?? '',
+      lowestStock: lowest?.syntheticProjectedStock ?? 0
     };
   }, [relevantOrders, filteredStock, category]);
 
-  const trend = useMemo<PeriodBucket[]>(() => {
-    const m = new Map<string, PeriodBucket>();
-    for (const o of relevantOrders) {
-      if (o.orderDate.length < 10) continue;
-      const key = periodKey(o.orderDate, trendGran);
-      const b = m.get(key) || { key, label: periodLabel(key, trendGran), revenue: 0, orders: 0, deliveryFee: 0, totalAmount: 0 };
-      b.orders += 1;
-      b.deliveryFee += o.deliveryFee;
-      b.totalAmount += o.totalAmount;
-      for (const l of o.lines) if (category === 'all' || l.categoryCode === category) b.revenue += l.lineRevenue;
-      m.set(key, b);
-    }
-    let arr = Array.from(m.values()).sort((a, b) => a.key.localeCompare(b.key));
-    if (trendGran === 'day') arr = arr.slice(-62);
-    return arr;
-  }, [relevantOrders, trendGran, category]);
+  // 선택 기간(effStart~effEnd) + 단위로 "연속" 버킷 생성(빈 구간 0, 기간 밖 제외). 막대·꺾은선 공유.
+  const trend = useMemo<PeriodBucket[]>(
+    () => buildTrendBuckets(relevantOrders, { start: effStart, end: effEnd, granularity: trendGran, category }),
+    [relevantOrders, effStart, effEnd, trendGran, category]
+  );
 
   const categoryData = useMemo(() => {
     const m = new Map<string, { code: string; revenue: number }>();
@@ -746,7 +726,18 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
             <KpiCard icon="💰" label="상품매출" value={kpi.revenue} money sub="배송비 제외 (라인합)" accent={KPI_ACCENT[0]} />
             <KpiCard icon="🧾" label="총 주문" value={kpi.orderCount} unit="건" sub={`실제 ${kpi.real} · 가상 ${kpi.synth}`} accent={KPI_ACCENT[1]} />
             <KpiCard icon="📈" label="판매수량" value={kpi.sold} unit="개" sub={`복구 ${kpi.restored} · 순판매 ${kpi.net}`} accent={KPI_ACCENT[2]} />
-            <KpiCard icon="🏬" label="가상 현재 재고" value={kpi.virtualStock} unit="개" sub={`관리 상품 ${kpi.trackedCount}개`} accent={KPI_ACCENT[3]} riskBadge={kpi.riskCount} />
+            <KpiCard
+              icon="📦"
+              label="재고 위험 상품"
+              value={kpi.riskCount}
+              unit="개"
+              sub={
+                `주의 ${kpi.warnCount}개 · 관리 상품 ${kpi.trackedCount}개` +
+                (kpi.lowestName ? ` · 최저 ${kpi.lowestName} ${kpi.lowestStock}개` : '')
+              }
+              accent={KPI_ACCENT[3]}
+              riskBadge={kpi.riskCount}
+            />
           </div>
 
           <div className="ptd-row">
