@@ -93,6 +93,7 @@ export type StandardProduct = {
   sellMobile: boolean;     // goodsSellMobileFl
   categoryCode: string;    // cateCd
   allCategoryCode: string; // allCateCd
+  brandCode: string;       // brandCd (브랜드조회 Brand_Search 라벨 조인용)
   registeredAt: string;    // regDt
   modifiedAt: string;      // modDt
   makerName: string;       // makerNm
@@ -116,6 +117,7 @@ export const mapGoodsToProducts = (goods: Raw[]): StandardProduct[] => {
     sellMobile: toBool(pick(g, ['goodsSellMobileFl'], '')),
     categoryCode: pick(g, ['cateCd']),
     allCategoryCode: pick(g, ['allCateCd']),
+    brandCode: pick(g, ['brandCd']),
     registeredAt: pick(g, ['regDt']),
     modifiedAt: pick(g, ['modDt']),
     makerName: pick(g, ['makerNm']),

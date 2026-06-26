@@ -39,5 +39,5 @@
 
 ## 7. 남은 이슈 / 다음
 - 카테고리 계층(부모-자식): 현재 평면 리스트. `cateCd=상위코드`로 하위 조회 가능(파라미터 지원). 트리 구성은 필요 시 다음.
-- **다음 활용**: RevenueOrder의 `categoryCode`(코드) → `cateNm` 한글 라벨 조인(상품팀/운영일지 카테고리 한글화). 브랜드별 분석은 주문 라인에 brandCd 연결 가능성 확인 후.
+- **다음 활용** ✅ **Binding v0 완료**: `cateCd→cateNm` 라벨 조인 + `goodsNo→brandCd` 역참조 매출 분해를 `api/_shared/godomallCatalogBinding.ts`로 구현(`docs/GODOMALL_CATALOG_TAXONOMY_BINDING_V0.md`). 다음: 프론트 facts wiring(departmentDataService가 catalog fetch→전달).
 - 본 작업은 분류축 READ만. 카테고리별 매출/브랜드별 재구매율 등 facts는 후속(Synthetic Commerce Universe / 마케팅 facts 단계).
