@@ -37,14 +37,10 @@
   - **그러나 키 평문 로컬 취득 불가**: pull된 `.env.local`의 `GODOMALL_*` 5개 값이 **전부 빈 문자열**. `vercel env ls`상 모두 **Encrypted**(Sensitive, 쓰기전용·복호화 불가) → `vercel env pull`이 값을 내려주지 못함(빈 값). 이는 "API Key 프론트 영구 격리" 보안 정책과 일치하는 의도된 동작.
   - **배포 Production은 정상 작동 확인**: `GET https://godo-psi.vercel.app/api/godomall/health` → `mode:"real"`, `hasPartnerKey:true`, `hasUserKey:true`, `productionLocked:true`. 즉 키는 **서버(배포)에는 존재·작동**하나 **로컬로는 가져올 수 없다**.
   - 빈 값 `.env.local`은 로더 mode를 빈값으로 강제하므로 제거(gitignore 유지). `.vercel` 링크는 보존.
-- → **결론**: 인증/링크/pull은 해결됐으나, **Sensitive 변수라 로컬 실 audit은 여전히 불가**. 키를 노출/요청하지 않는다.
+- → **로컬 한계**: 인증/링크/pull은 해결됐으나 Sensitive 변수라 **로컬** 실 audit은 불가.
+- **4차(해결)**: 사용자 지시로 **서버 route 방식**으로 전환 — Vercel 서버 환경변수(테스트몰 키)를 그대로 쓰는 READ 전용 route `api/godomall/order-search-raw-audit.ts`를 Production에 배포해 호출. **실측 성공**(§3). 테스트몰=구조검증용이라 키 자체는 보안 차단 사유 아님(사용자 정정).
 
-#### 키를 노출하지 않고 실 audit을 완료하는 안전 옵션 (사용자 선택)
-1. **(권장) 샌드박스/로컬 .env.local 직접 작성**: 사용자가 gitignore된 `.env.local`에 실 키를 직접 붙여넣고(`GODOMALL_API_MODE=sandbox` 권장 — 실 고객 PII 회피) 알려주면, 내가 `node scripts/audit-order-search-raw.mjs` 실행(키는 채팅/커밋에 미노출, 출력은 마스킹).
-2. **셸 환경변수로 1회 실행**: 사용자가 자신의 셸에서 키를 export 후 `! node scripts/audit-order-search-raw.mjs --days=365 --size=3` 실행(키가 명령 echo에 노출될 수 있어 비권장).
-3. **Vercel 변수 비-Sensitive 재설정**: 권장하지 않음(보안 정책 약화).
-
-→ 위가 정해지기 전까지 실측은 보류하고, ① 공식 스펙 기반 shape 분석, ② mapper 호환 검증(픽스처), ③ 즉시 실행 가능한 안전 audit 도구(.env.local 로더 포함)로 대체한다.
+> **결론**: 실 raw 구조 audit **완료**. 로컬 `scripts/audit-order-search-raw.mjs`(+`.env.local` 로더)는 키를 로컬에 둘 때를 위해 보존하나, 이번 실측은 서버 route로 수행했다.
 
 ### 실 호출에 필요한 것 (사용자 제공)
 ```
@@ -84,9 +80,44 @@ node scripts/audit-order-search-raw.mjs --startDate=2026-06-01 --endDate=2026-06
 
 ---
 
-## 3. 실제 raw shape 요약 (공식 스펙 기준 — 실측 대기)
+## 3. 실제 raw shape 요약 ✅ 실측 완료 (2026-06-26, 서버 route audit)
 
-`docs/godomall_order_search_spec.md`에서 확정 가능한 사실:
+> **실측 방법**: 로컬 Sensitive 변수 제약을 우회해, Vercel 서버 환경변수(테스트몰 키)를 그대로 쓰는 **READ 전용 서버 route** `GET /api/godomall/order-search-raw-audit`로 Order_Search를 호출하고 **구조 요약(PII·raw 미포함)만** 반환받아 확인했다. (테스트몰 = 구조검증용, 실서비스 아님.)
+> **조회**: dateType=order, 최근 30일(2026-05-27~06-26), size=3, sort='orderNo desc'. (Order_Search는 **조회기간 최대 30일** 제한 — 초과 시 code 201 "주문조회 기간은 30일을 초과할 수 없습니다".)
+> **표본**: 테스트몰 전체에서 **주문 1건**(최근 30일, **미결제 unpaid**). 그 외 과거 5개월 윈도우는 0건.
+
+### 실측 raw shape (주문 1건 기준)
+| 항목 | 실측값 | 스펙/합성 일치 |
+|---|---|---|
+| 응답 envelope | `code`/`msg` 존재, `lastOrder` 없음(size 지정했으나 미반환) | ✅ |
+| `order_data` | **단일 객체**(주문 1건) | ✅ 합성 보정(1건→객체)과 일치 |
+| `orderGoodsData` | **단일 객체**(라인 1개) | ✅ |
+| `orderInfoData` | 단일 객체 | ✅ |
+| `orderDeliveryData` | 단일 객체 | ✅ |
+| `claimData` | 헤더/라인 모두 **missing**(클레임 없는 주문) | — (클레임 주문 표본 없음) |
+| **날짜필드 위치** | `paymentDt`=**both(헤더+라인)**, `invoiceDt`/`deliveryDt`/`deliveryCompleteDt`/`finishDt`/`cancelDt`=**line only(라인 전용)** | ✅ **중대 발견 실증** |
+| 수치필드 표현형 | 헤더(settlePrice/totalGoodsPrice/totalDeliveryCharge/orderGoodsCnt/memNo)·라인(goodsNo/goodsCnt/goodsPrice) **전부 string** | ✅ `numericAsString` 일치 |
+
+### 실측 mapper 호환 (같은 주문)
+| 항목 | 실측값 |
+|---|---|
+| rawOrder→RevenueOrder | 1 → 1 |
+| 상품 매칭 | 라인 1/1 (Products 13개 조인 성공) |
+| 상태 판정 | unpaid 1 / paid 0 / confirmed 0 / canceled 0 (날짜필드 기반, 미결제 정확 판정) |
+| 매출 | byHeader=byLines=111 (불일치 0), 배송비 2500 분리(상품매출 미혼입), 총액 2611 |
+| 배송비 분리 | ✅ |
+
+> **핵심 결론**: 날짜필드가 `paymentDt` 외 **전부 라인 전용**임이 실데이터로 확인됐다. 기존 `deriveOrderState`(헤더만 읽음)였다면 결제완료/배송/확정/취소 상태를 **전부 놓쳤을 것**이다. → §6의 **라인 폴백 보정이 실데이터에서 필수**임이 실증됨. 수치 전부 string·단건 객체화도 실측 일치.
+>
+> **관측 못한 것(표본 한계)**: 테스트몰에 미결제 1건만 있어 **배열 형태(다건/다라인), 결제완료·배송·확정 주문의 라인 날짜 값, claimData(취소/반품/교환) 실구조**는 미관측. → §7 추가 샘플 필요.
+>
+> **부수 발견**: Order_Search **0건** 응답 시 `extractList(ADMIN_ORDER_LIST_KEYS)`가 래퍼를 주문 1건(phantom, unpaid·unmatched)으로 오인하는 기존 동작 확인. rawShape audit은 0건을 정확히 보고하나 매퍼 경로는 phantom 1건 생성 → 빈 응답 처리 보정은 §8 후속 과제.
+
+---
+
+## 3-스펙. 공식 스펙 기준 대조표 (참고)
+
+`docs/godomall_order_search_spec.md`에서 확정 가능한 사실(위 실측과 일치):
 
 | 항목 | 스펙 기준 |
 |---|---|
@@ -145,30 +176,35 @@ node scripts/audit-order-search-raw.mjs --startDate=2026-06-01 --endDate=2026-06
 ### 신규 파일
 | 파일 | 역할 |
 |---|---|
-| `api/_shared/orderRawAudit.ts` | PII-안전 구조 감사(`auditOrderSearchRawShape`, 값 미포함) + Order_Search 전용 PII 마스킹(`maskOrderSearchPii`, piiMaskGuard 원시함수 재사용) |
-| `scripts/audit-order-search-raw.mjs` | **로컬 전용** 실 raw 감사 도구. 환경변수 키로 POST → 파싱 → PII 마스킹된 구조 요약만 출력. public route 아님, raw PII/전체 JSON 미출력. 키 미설정 시 안내 후 종료. **`.env.local` 최소 로더**(vercel env pull 자동 반영, 기존 env 우선, 키 미출력) + 조회옵션(`--days`/`--size`/`--startDate`/`--endDate`) 내장. |
+| `api/_shared/orderRawAudit.ts` | PII-안전 구조 감사(`auditOrderSearchRawShape`, 값 미포함) + Order_Search 전용 PII 마스킹(`maskOrderSearchPii`, piiMaskGuard 원시함수 재사용). `pickOrderData`를 **깊은 탐색**으로 보강(실 파싱 트리에서 `order_data` 위치 무관 탐색). |
+| `api/godomall/order-search-raw-audit.ts` | **서버 route(READ 전용)** — Vercel 서버 환경변수 키로 Order_Search 호출 → **구조 요약만 반환**(raw JSON/XML·PII·키 미반환). Order_Search 30일 제한 대응(`days` clamp ≤30, 기본 30). 1회성 진단용(필요 시 제거 가능). 이번 실측(§3)에 사용. |
+| `scripts/audit-order-search-raw.mjs` | **로컬 전용** 실 raw 감사 도구. 환경변수 키로 POST → 파싱 → PII 마스킹된 구조 요약만 출력. public route 아님, raw PII/전체 JSON 미출력. 키 미설정 시 안내 후 종료. **`.env.local` 최소 로더**(vercel env pull 자동 반영, 기존 env 우선, 키 미출력) + 조회옵션(`--days`/`--size`/`--startDate`/`--endDate`) 내장. (로컬 키 보유 시 대안 경로로 보존) |
 
 ### PII 마스킹 규칙
 이름→`홍*동`, 전화→`010-****-5678`, 이메일→`ch****@x.com`, 주소→`시 구 ****`, IP/통관번호/환불계좌→`[MASKED]`. 적용 키: orderName/receiverName/orderEmail/orderPhone/orderCellPhone/receiverPhone/receiverCellPhone/orderAddress(+Sub)/receiverAddress(+Sub)/orderIp/customIdNumber/receiverSafeNumber/depositor/accountNumber/bankName/ehRefund*.
 
 ---
 
-## 7. 아직 실측 불가한 항목
+## 7. 아직 실측 못한 항목 (표본 한계 — 테스트몰에 미결제 1건만 존재)
 
-키 도착 후 `scripts/audit-order-search-raw.mjs`로 확인 필요:
-1. `order_data` 단건 시 실제로 단일 객체인지(파서 동작 실측).
-2. invoice/delivery/finish/cancel 날짜필드가 **정말 라인 전용인지**, 헤더에도 일부 존재하는지.
-3. `claimData`가 객체인지 배열인지(다중 클레임 시).
-4. 부분취소 주문에서 라인별 `orderStatus`가 헤더와 어떻게 다른지.
-5. 수치필드가 전부 문자열인지(파서 가정 실측 확인).
-6. `addField`/`multiShippingFl=y`/`giftData`/`addGoodsData` 실구조.
+추가 테스트 주문 생성 후 재-audit 필요:
+1. **배열 형태**: 주문 다건 시 `order_data` 배열, 라인 다개 시 `orderGoodsData` 배열 (단건만 관측됨 → 단일 객체만 확인).
+2. **결제완료/배송/확정 주문**의 라인 날짜필드 실값(현재 미결제라 invoiceDt/deliveryDt/finishDt 등은 라인에 "존재"하나 값은 비어있음 추정).
+3. **claimData(취소/반품/교환/환불)** 객체/배열/빈값 실구조 + `handleMode`/`refundPrice` 실값.
+4. **부분취소** 주문에서 라인별 `orderStatus`가 헤더와 어떻게 다른지.
+5. `addField`/`multiShippingFl=y`/`giftData`/`addGoodsData` 실구조.
+6. **0건 응답 phantom**: `extractList`가 빈 응답을 주문 1건으로 오인하는 케이스(§3 부수발견) — empty-guard 보정.
+
+> 재현: 테스트몰에 결제완료/배송/취소/반품 주문을 1건씩 만든 뒤
+> `GET /api/godomall/order-search-raw-audit?days=30&size=5` (또는 `?startDate=&endDate=`) 재호출.
 
 ---
 
 ## 8. 다음 단계 제안
 
-1. **실 키로 audit 1회 실행** → §7 항목 잠그고 본 문서 §3/§4 "실측" 컬럼 채우기.
-2. 실측 결과 라인 전용 날짜필드 확정 시, `mapOrdersToRevenue`의 라인 폴백이 충분한지(부분취소 라인 granularity) 재검토.
+1. **테스트 주문 다양화 후 재-audit** → §7 미관측 항목(배열/결제완료/클레임/부분취소) 잠그기.
+2. **0건 응답 phantom 보정**: `extractList`(또는 호출부)가 빈 Order_Search 응답에서 phantom 주문을 만들지 않도록 empty-guard 추가(real revenue 경로에도 영향).
 3. foundation의 `syntheticSource=godoRaw` 경로를 실 raw와 1:1 비교(같은 mapper 통과) → 합성/실 동등성 확정.
 4. 할인/쿠폰/마일리지 필드를 `RevenueOrder` 순매출로 확장(클레임 `refundPrice` 포함).
 5. 안정화 후에만 대시보드 토글(legacy ↔ godoRaw) 노출 검토.
+6. 진단용 `order-search-raw-audit` route는 1회성 — 운영 안정화 시 제거 검토(현재는 테스트몰 구조검증 위해 유지).
