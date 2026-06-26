@@ -6,6 +6,7 @@ import { parseGodomallXml, extractList } from '../_shared/godomallXmlParser.js';
 import { mapGoodsToProducts } from '../_shared/godomallMapper.js';
 import { buildProductIndex, mapOrdersToRevenue, summarizeRevenue } from '../_shared/godomallRevenue.js';
 import { auditOrderSearchRawShape } from '../_shared/orderRawAudit.js';
+import { normalizeOrderData } from '../_shared/godomallOrderNormalize.js';
 import { ADMIN_ORDER_LIST_KEYS, GOODS_LIST_KEYS } from '../_shared/godomallResource.js';
 
 // GET /api/godomall/order-search-raw-audit — Order_Search 실 raw "구조 감사"(서버 전용, READ).
@@ -88,7 +89,9 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     const shape = auditOrderSearchRawShape({ code: parsed.code, msg: parsed.msg, ...parsed.root });
 
     // 3) mapper 호환: Products 조인 후 mapOrdersToRevenue → 요약
-    const rawOrders = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
+    // 0건 응답 phantom 가드: extractList 후보 중 "의미 있는 주문"만 매핑한다.
+    const candidates = extractList(parsed.root, ADMIN_ORDER_LIST_KEYS);
+    const rawOrders = normalizeOrderData(candidates);
     let products: ReturnType<typeof mapGoodsToProducts> = [];
     try {
       const goodsRes = await postGodomall(GOODS_SEARCH_PATH, { page: 1, size: 100 }, config);
@@ -115,6 +118,12 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
       query: { dateType: 'order', startDate: start, endDate: end, size, sort: 'orderNo desc' },
       // ── raw 구조 요약 (PII 미포함) ──
       rawShape: shape,
+      // ── 0건 응답 가드 요약 ──
+      emptyGuard: {
+        rawOrderCandidateCount: candidates.length, // extractList가 뽑은 후보 수
+        meaningfulOrderCount: rawOrders.length, // 의미 있는 주문 수
+        droppedEmptyCandidateCount: candidates.length - rawOrders.length // phantom으로 제거된 수
+      },
       // ── mapper 호환 요약 ──
       mapper: {
         rawOrderCount: rawOrders.length,

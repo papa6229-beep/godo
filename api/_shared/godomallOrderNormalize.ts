@@ -45,3 +45,45 @@ export function toStringValue(value: unknown, fallback = ''): string {
   const s = String(value).trim();
   return s.length > 0 ? s : fallback;
 }
+
+// ── Order_Search 0건 응답 가드 (Empty Response Guard) ────────────────────────
+// 배경: extractList(태그명 비의존 추출)는 0건 응답에서 generic 래퍼({code,msg,lastOrder}
+// 또는 빈 {})를 "주문 1건"으로 오인할 수 있다(phantom). 아래 가드로 "의미 있는 주문"만 남긴다.
+
+// 주문 후보로 인정하는 최소 키 — 하나 이상 유효해야 실제 주문으로 본다.
+const MEANINGFUL_ORDER_KEYS = [
+  'orderNo',
+  'orderGoodsData',
+  'orderGoodsNm',
+  'settlePrice',
+  'totalGoodsPrice',
+  'orderStatus'
+] as const;
+
+// 값 존재 판정: 빈문자열/빈배열/빈객체/null/undefined는 "없음"으로 본다.
+const hasValue = (v: unknown): boolean => {
+  if (v === undefined || v === null) return false;
+  if (typeof v === 'string') return v.trim().length > 0;
+  if (typeof v === 'number') return Number.isFinite(v);
+  if (typeof v === 'boolean') return true;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as Record<string, unknown>).length > 0;
+  return Boolean(v);
+};
+
+// 단일 order_data 객체가 "의미 있는 주문"인지 판정.
+// 객체가 아니거나(문자열/배열/null), 후보 키가 모두 비어 있으면 false.
+export function isMeaningfulGodoOrderData(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const rec = value as Record<string, unknown>;
+  return MEANINGFUL_ORDER_KEYS.some((k) => hasValue(rec[k]));
+}
+
+// order_data(단일/배열/빈값/메타-only 래퍼) → "의미 있는 주문" 배열로 정규화.
+//   missing / null / '' / {} / 메타-only({code,msg,lastOrder}) → []
+//   { orderNo ... } → [그 객체]
+//   [{ orderNo }, {}] → [{ orderNo }]  (빈 후보 제거)
+// 입력은 raw order_data 값이거나, 이미 extractList로 추출된 배열 모두 허용.
+export function normalizeOrderData(value: unknown): Record<string, unknown>[] {
+  return asArray<unknown>(value).filter(isMeaningfulGodoOrderData) as Record<string, unknown>[];
+}
