@@ -15,19 +15,25 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
 
   // ?includeSynthetic=true 일 때만 가상 매출 데이터 포함 (기본 false)
   // ?syntheticSource= : 미지정 → commerce_universe_v1(기본), legacy/godoRaw/commerce_universe_v1 명시 가능
+  // ?includeUniverseAux=true : commerce_universe_v1일 때만 customers/reviews/inquiries(safe, PII 없음) 추가
+  // ?includeCsFakeContacts=true : (+aux) synthetic일 때만 CS 전용 fake contact 추가 — 기본/실데이터엔 절대 없음
   let includeSynthetic = false;
   let syntheticSource: SyntheticSource | undefined;
+  let includeUniverseAux = false;
+  let includeCsFakeContacts = false;
   try {
     const url = new URL(req.url || '', 'http://localhost');
     includeSynthetic = url.searchParams.get('includeSynthetic') === 'true';
     const src = url.searchParams.get('syntheticSource');
     if (src === 'legacy' || src === 'godoRaw' || src === 'commerce_universe_v1') syntheticSource = src;
+    includeUniverseAux = url.searchParams.get('includeUniverseAux') === 'true';
+    includeCsFakeContacts = url.searchParams.get('includeCsFakeContacts') === 'true';
   } catch {
     // 파싱 실패 시 기본값(commerce_universe_v1) 유지 — resolveOrdersRevenue가 결정
   }
 
   try {
-    const resolved = await resolveOrdersRevenue({ includeSynthetic, syntheticSource });
+    const resolved = await resolveOrdersRevenue({ includeSynthetic, syntheticSource, includeUniverseAux, includeCsFakeContacts });
     sendOkResponse(res, {
       mode: resolved.mode,
       live: resolved.live,
@@ -35,7 +41,8 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
       orders: resolved.orders,
       summary: resolved.summary,
       stockImpact: resolved.stockImpact,
-      errorMessage: resolved.errorMessage
+      errorMessage: resolved.errorMessage,
+      ...(resolved.universeAux ? { universeAux: resolved.universeAux } : {})
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);

@@ -271,6 +271,69 @@ export interface RevenueOrderLite {
 // 가상 매출 소스 (Universe 활성화 v0). 기본 commerce_universe_v1.
 export type SyntheticSourceTag = 'commerce_universe_v1' | 'godoRaw' | 'legacy';
 
+// ── Commerce Universe Auxiliary Data (safe, PII 없음) — 서버 commerceUniverseAux.ts 미러 ──
+export interface SafeSyntheticCustomer {
+  memberKey: string;
+  segment: string;
+  firstOrderDate: string;
+  lastOrderDate: string;
+  orderCount: number;
+  totalRevenue: number;
+  totalPaidAmount: number; // analyticsQueryEngine 입력 호환
+  averageOrderValue: number;
+  claimCount: number;
+  reviewCount: number;
+  inquiryCount: number;
+}
+export interface SafeSyntheticReview {
+  reviewId: string;
+  orderNo: string;
+  goodsNo: string;
+  productId: string;
+  categoryCode?: string;
+  brandCode?: string;
+  rating: number;
+  sentiment: string;
+  topic: string;
+  createdAt: string;
+  excerpt: string;
+}
+export interface SafeSyntheticInquiry {
+  inquiryId: string;
+  orderNo?: string;
+  goodsNo?: string;
+  productId?: string;
+  categoryCode?: string;
+  brandCode?: string;
+  topic: string;
+  status: string;
+  urgency: string;
+  createdAt: string;
+  title: string;
+  excerpt: string;
+}
+// CS 전용 fake contact (fake PII, origin 표식 유지) — csTeam에서만 사용
+export interface CsFakeContact {
+  customerId: string;
+  memberKey: string;
+  customerName: string;
+  receiverName?: string;
+  phone: string;
+  email?: string;
+  address: string;
+  deliveryMemo?: string;
+  refundBank?: string;
+  refundAccount?: string;
+  origin: { isSynthetic: boolean; isFakePii: boolean; piiType: 'fake' | 'real'; sourceType?: string; syntheticProfile?: string };
+}
+export interface UniverseAux {
+  customers: SafeSyntheticCustomer[];
+  reviews: SafeSyntheticReview[];
+  inquiries: SafeSyntheticInquiry[];
+  csOnlyFakeContacts?: CsFakeContact[];
+  meta: { syntheticProfile: string; seed?: number; generatedAt?: string };
+}
+
 export interface RevenueResult {
   count: number;
   source: DataSourceTag;
@@ -279,7 +342,13 @@ export interface RevenueResult {
   stockImpact: StockImpactItem[];
   orders: RevenueOrderLite[];
   syntheticSource?: SyntheticSourceTag; // 요청한 가상 소스(배지 표기용)
+  universeAux?: UniverseAux; // includeUniverseAux 요청 시에만(commerce_universe_v1)
   errorMessage?: string;
+}
+
+export interface FetchRevenueOptions {
+  includeUniverseAux?: boolean;
+  includeCsFakeContacts?: boolean;
 }
 
 // revenue route는 sourceType 대신 mode/live 를 반환 → 태그로 변환
@@ -313,11 +382,15 @@ const parseSummary = (s: Record<string, unknown> | undefined): RevenueSummary | 
 
 export const fetchRevenue = async (
   includeSynthetic = true,
-  syntheticSource: SyntheticSourceTag = 'commerce_universe_v1'
+  syntheticSource: SyntheticSourceTag = 'commerce_universe_v1',
+  options: FetchRevenueOptions = {}
 ): Promise<RevenueResult> => {
   try {
+    const auxQuery =
+      (options.includeUniverseAux ? '&includeUniverseAux=true' : '') +
+      (options.includeCsFakeContacts ? '&includeCsFakeContacts=true' : '');
     const res = await fetch(
-      `/api/godomall/orders-revenue?includeSynthetic=${includeSynthetic ? 'true' : 'false'}&syntheticSource=${syntheticSource}`
+      `/api/godomall/orders-revenue?includeSynthetic=${includeSynthetic ? 'true' : 'false'}&syntheticSource=${syntheticSource}${auxQuery}`
     );
     if (!res.ok) throw new Error(`orders-revenue HTTP ${res.status}`);
     const data = await res.json();
@@ -374,6 +447,8 @@ export const fetchRevenue = async (
         }))
       };
     });
+    // universeAux는 서버가 safe하게 구성(PII 없음, csOnlyFakeContacts만 fake) → 형태 신뢰하고 전달.
+    const universeAux = data.universeAux ? (data.universeAux as UniverseAux) : undefined;
     return {
       count: num(data.count),
       source: tagFromModeLive(data.mode, data.live),
@@ -382,6 +457,7 @@ export const fetchRevenue = async (
       stockImpact,
       orders,
       syntheticSource: includeSynthetic ? syntheticSource : undefined,
+      ...(universeAux ? { universeAux } : {}),
       errorMessage: data.errorMessage
     };
   } catch (err: unknown) {

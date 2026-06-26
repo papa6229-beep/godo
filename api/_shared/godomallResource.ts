@@ -27,6 +27,9 @@ import {
 import type { SyntheticStockImpact } from './syntheticRevenue.js';
 import { buildSyntheticRevenueOrdersFromGodomallRaw } from './syntheticGodomallOrders.js';
 import { buildSyntheticCommerceUniverse } from './syntheticCommerceUniverse.js';
+import type { SyntheticCommerceUniverse } from './syntheticCommerceUniverse.js';
+import { buildUniverseAux } from './commerceUniverseAux.js';
+import type { UniverseAux } from './commerceUniverseAux.js';
 import { normalizeOrderData } from './godomallOrderNormalize.js';
 import { deriveInventoryFromProducts } from './godomallInventoryDerive.js';
 import { maskRecordsList } from './piiMaskGuard.js';
@@ -241,6 +244,8 @@ export interface ResolvedRevenue {
   mode: 'real' | 'sandbox' | 'mock';
   live: boolean;
   errorMessage?: string;
+  // commerce_universe_v1 + includeUniverseAux일 때만. 기본 응답엔 없음(PII 미포함).
+  universeAux?: UniverseAux;
 }
 
 // Products 조인용 상품 목록 조회 (실패해도 매출조회는 진행 → uncategorized 처리)
@@ -270,7 +275,7 @@ export const pickSyntheticSource = (source?: SyntheticSource): SyntheticSource =
   source === 'legacy' || source === 'godoRaw' ? source : 'commerce_universe_v1';
 
 export const resolveOrdersRevenue = async (
-  opts: { includeSynthetic?: boolean; syntheticSource?: SyntheticSource } = {}
+  opts: { includeSynthetic?: boolean; syntheticSource?: SyntheticSource; includeUniverseAux?: boolean; includeCsFakeContacts?: boolean } = {}
 ): Promise<ResolvedRevenue> => {
   const config = getGodomallConfig();
   let errorMessage: string | undefined;
@@ -308,12 +313,13 @@ export const resolveOrdersRevenue = async (
 
   // 가상 매출 데이터 (옵션). 기본 commerce_universe_v1, 명시 godoRaw/legacy만 그 경로.
   const chosen = pickSyntheticSource(opts.syntheticSource);
+  let universe: SyntheticCommerceUniverse | undefined; // aux 공급용으로 전체 세계 보관(commerce_universe_v1만)
   const syntheticOrders = opts.includeSynthetic
     ? chosen === 'legacy'
       ? generateSyntheticRevenueOrders(products)
       : chosen === 'godoRaw'
         ? buildSyntheticRevenueOrdersFromGodomallRaw(products)
-        : buildSyntheticCommerceUniverse(products).orders // commerce_universe_v1 (기본)
+        : (universe = buildSyntheticCommerceUniverse(products)).orders // commerce_universe_v1 (기본)
     : [];
   // syntheticSource 메타데이터 stamp (legacy는 mapper를 안 타 dataKind 미설정 → 보강).
   for (const o of syntheticOrders) {
@@ -329,6 +335,12 @@ export const resolveOrdersRevenue = async (
     ...(opts.includeSynthetic ? summarizeStockImpact(stockImpact) : {})
   };
 
+  // Auxiliary data 공급: commerce_universe_v1 + includeUniverseAux일 때만(기본 응답엔 PII/aux 없음).
+  // csOnlyFakeContacts는 includeCsFakeContacts 명시 시에만(synthetic universe라 fake 보장).
+  const universeAux = opts.includeUniverseAux && opts.includeSynthetic && chosen === 'commerce_universe_v1' && universe
+    ? buildUniverseAux(universe, { includeCsFakeContacts: !!opts.includeCsFakeContacts })
+    : undefined;
+
   return {
     orders,
     count: orders.length,
@@ -337,6 +349,7 @@ export const resolveOrdersRevenue = async (
     source,
     mode: config.mode,
     live,
-    errorMessage
+    errorMessage,
+    ...(universeAux ? { universeAux } : {})
   };
 };

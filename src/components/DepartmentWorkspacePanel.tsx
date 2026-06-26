@@ -141,9 +141,11 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const loadProductTeamData = async () => {
     setProductData((prev) => ({ ...prev, loading: true }));
     // catalog는 실패해도 채팅이 깨지지 않도록 fetchCatalog가 빈 lookup으로 폴백한다.
+    // includeUniverseAux: customers/reviews/inquiries(safe, PII 없음)를 받아 부서 facts 라우팅에 사용.
+    // CS 전용 fake contact(includeCsFakeContacts)는 공유 product 로드엔 싣지 않는다(PII 격리, CS 연결 시 별도).
     const [products, revenue, catalog] = await Promise.all([
       fetchAdminProducts(),
-      fetchRevenue(true),
+      fetchRevenue(true, 'commerce_universe_v1', { includeUniverseAux: true }),
       fetchCatalog()
     ]);
     setProductData({ products, revenue, catalog, loading: false, loaded: true });
