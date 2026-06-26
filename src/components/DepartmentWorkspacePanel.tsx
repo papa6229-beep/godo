@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import './DepartmentWorkspacePanel.css';
 import {
   fetchAdminProducts,
@@ -12,6 +12,8 @@ import { ProductTeamDashboard } from './ProductTeamDashboard';
 import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
 import { chatWithTeam } from '../services/departmentChatService';
 import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
+import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } from '../services/departmentFactsRouting';
+import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -138,26 +140,42 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     loaded: boolean;
   }>({ products: null, revenue: null, catalog: null, loading: false, loaded: false });
 
+  // Commerce Universe 공용 데이터 로드 — 모든 부서 채팅이 공유(상품 대시보드 + facts bundle).
+  // includeUniverseAux: customers/reviews/inquiries(safe, PII 없음).
+  // includeCsFakeContacts: CS 응대 시뮬레이션용 fake contact — bundle이 csTeam에만 격리 배치.
   const loadProductTeamData = async () => {
     setProductData((prev) => ({ ...prev, loading: true }));
-    // catalog는 실패해도 채팅이 깨지지 않도록 fetchCatalog가 빈 lookup으로 폴백한다.
-    // includeUniverseAux: customers/reviews/inquiries(safe, PII 없음)를 받아 부서 facts 라우팅에 사용.
-    // CS 전용 fake contact(includeCsFakeContacts)는 공유 product 로드엔 싣지 않는다(PII 격리, CS 연결 시 별도).
     const [products, revenue, catalog] = await Promise.all([
       fetchAdminProducts(),
-      fetchRevenue(true, 'commerce_universe_v1', { includeUniverseAux: true }),
+      fetchRevenue(true, 'commerce_universe_v1', { includeUniverseAux: true, includeCsFakeContacts: true }),
       fetchCatalog()
     ]);
     setProductData({ products, revenue, catalog, loading: false, loaded: true });
   };
 
-  // 팀 선택 — 상품관리팀을 처음 선택하면 1회 자동 로드 (이벤트 핸들러에서 트리거)
+  // 팀 선택 — 어느 팀이든 처음 선택하면 공용 데이터 1회 로드(부서별 facts bundle 재료).
   const handleSelectTeam = (id: TeamId) => {
     setSelectedTeamId(id);
-    if (id === 'product' && !productData.loaded && !productData.loading) {
+    if (!productData.loaded && !productData.loading) {
       void loadProductTeamData();
     }
   };
+
+  // DepartmentFactsBundle — orders + universeAux로 부서별 슬라이스 생성(역할 경계 유지).
+  // fake contact는 buildDepartmentFactsBundleFromUniverse가 csTeam.fakeContacts에만 배치.
+  const departmentFactsBundle = useMemo<DepartmentFactsBundle | null>(() => {
+    const rev = productData.revenue;
+    if (!rev || !rev.orders.length) return null;
+    return buildDepartmentFactsBundleFromUniverse({
+      orders: rev.orders,
+      customers: rev.universeAux?.customers,
+      reviews: rev.universeAux?.reviews,
+      inquiries: rev.universeAux?.inquiries,
+      contactsForCsOnly: rev.universeAux?.csOnlyFakeContacts,
+      catalog: productData.catalog ?? undefined,
+      source: { dataKind: 'synthetic', syntheticSource: rev.syntheticSource }
+    });
+  }, [productData.revenue, productData.catalog]);
 
   const team = TEAMS.find((t) => t.id === selectedTeamId) as TeamConfig;
   const messages = chatLog[selectedTeamId];
@@ -193,14 +211,24 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'user', text }] }));
     setInput('');
     setSending(true);
-    // 상품관리팀: 질문 의도에 맞춰 코드가 계산한 facts + 답변 지침을 넘긴다(숫자 추측 방지).
+    // 각 팀은 자기 facts만 본다(역할 경계). 숫자는 코드가 계산한 facts만 근거.
     let opts: { contextNote?: string; answerGuidance?: string } | undefined;
     if (teamId === 'product') {
-      // catalog가 로드됐으면 cateCd→cateNm 등 라벨 해석에 사용(없으면 기존 동작).
+      // 상품팀: 기존 grounding facts(기간 파싱 등)를 우선, 미로드 시 bundle/요약 fallback.
       const facts = buildProductTeamChatFacts(text, productData.revenue, productData.catalog ?? undefined);
-      opts = facts
-        ? { contextNote: facts.facts.join('\n'), answerGuidance: facts.answerGuidance }
-        : { contextNote: buildProductContextNote() }; // 데이터 미로드 시 요약 fallback
+      if (facts) {
+        opts = { contextNote: facts.facts.join('\n'), answerGuidance: facts.answerGuidance };
+      } else {
+        const ctx = buildDepartmentChatContext('product', departmentFactsBundle);
+        opts = ctx ?? { contextNote: buildProductContextNote() };
+      }
+    } else {
+      // CS/마케팅/총괄: DepartmentFactsBundle의 자기 슬라이스만 사용.
+      const ctx = buildDepartmentChatContext(toChatTeam(teamId), departmentFactsBundle);
+      opts = ctx ?? {
+        answerGuidance:
+          '현재 부서별 facts가 아직 준비되지 않았습니다. 사용자에게 "데이터를 불러오는 중이니 잠시 후 다시 시도하거나 새로고침해 주세요"라고 안내하세요. 숫자를 추측하지 마세요.'
+      };
     }
     const res = await chatWithTeam(teamId, text, opts);
     setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: res.text }] }));

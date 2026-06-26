@@ -28,6 +28,11 @@
 - 라이브 검증: 기본 826 / godoRaw 480 / legacy 240. `docs/SYNTHETIC_COMMERCE_UNIVERSE_ACTIVATION_V0.md`. smoke 10/10.
 - 다음: Department Facts Routing v0(customers/reviews/inquiries/CS facts를 부서 채팅에 연결).
 
+## Department Chat Wiring v0 ✅
+- DepartmentFactsBundle을 부서 채팅에 실연결: `departmentChatFacts.ts`(`buildDepartmentChatContext`)가 팀 슬라이스를 역할 경계 context+지침으로 변환. `DepartmentWorkspacePanel`이 `buildDepartmentFactsBundleFromUniverse`로 번들 생성(공용 데이터 1회 로드, includeCsFakeContacts 포함) → 상품/CS/마케팅/총괄 각자 슬라이스만 사용.
+- 상품팀=통계, CS=이슈+가상contact(표식), 마케팅=분석/제안+requiredData, 총괄=요약+승인(실행 안 함). 상품/마케팅/총괄 context PII 없음. `docs/DEPARTMENT_CHAT_WIRING_V0.md`. smoke 16/16.
+- 다음: CS Workspace Response Simulation / Analytics Result Modal.
+
 ## Commerce Universe Aux Data Routing v0 ✅
 - orders-revenue 확장(`?includeUniverseAux=true`/`&includeCsFakeContacts=true`) — commerce_universe_v1일 때만 safe customers/reviews/inquiries(PII 없음) 공급, CS fake contact는 명시 시에만 격리 공급. `commerceUniverseAux.ts`(safe 매핑) + fetchRevenue options + RevenueResult.universeAux + `buildDepartmentFactsBundleFromUniverse`. 새 route 없음(12개 유지). `docs/COMMERCE_UNIVERSE_AUX_DATA_ROUTING_V0.md`. smoke 18/18 + 라이브(aux 320/167/141, csContacts 320 fake).
 - 다음: Department Chat Wiring v0(universeAux → CS/마케팅/총괄 채팅 실연결).
