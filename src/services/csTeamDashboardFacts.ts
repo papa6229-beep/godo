@@ -630,6 +630,11 @@ export interface CsResolvedItem {
   handledBy?: string; // 담당직원(데이터 없으면 undefined → UI에서 '미기록')
   order?: CsDetailOrderBlock;
   customer?: CsDetailCustomerBlock;
+  // ── local 완료 이력(CS Work Completion Flow v0)일 때만 ──
+  answerText?: string; // 실제 처리한 답변 원문(placeholder 대신 표시)
+  localCompleted?: boolean;
+  completionMethod?: string;
+  writeStatus?: string;
 }
 
 const orderMemberKeyMap = (orders: GroundingOrder[]): Map<string, string> => {
