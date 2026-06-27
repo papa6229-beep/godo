@@ -236,9 +236,10 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       const chatTeam = toChatTeam(teamId);
       // CS: safe inquiry/review detail shortlist를 함께 전달(개별 문의/리뷰 질문 응답용, PII 없음).
       const rev = productData.revenue;
+      // CS 전용: safe inquiry/review + 연결 주문 대조용 orders(RevenueOrderLite, PII 없음). 타 팀엔 미전달.
       const csDetail =
         chatTeam === 'cs' && rev?.universeAux
-          ? { inquiries: rev.universeAux.inquiries, reviews: rev.universeAux.reviews, goodsNames: goodsNameMap }
+          ? { inquiries: rev.universeAux.inquiries, reviews: rev.universeAux.reviews, orders: rev.orders, goodsNames: goodsNameMap }
           : undefined;
       const ctx = buildDepartmentChatContext(chatTeam, departmentFactsBundle, csDetail);
       opts = ctx ?? {
