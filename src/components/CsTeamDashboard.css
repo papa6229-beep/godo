@@ -1,0 +1,128 @@
+/* CS Team Dashboard v0 — 처리판. 부서 업무 관장 다크 청록/슬레이트 톤 재사용. */
+.cs-dash {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.cs-dash-head { display: flex; flex-direction: column; gap: 4px; }
+
+.cs-dash-kpi-grid { grid-template-columns: repeat(4, 1fr); }
+.cs-dash-kpi { border-top: 2px solid var(--line-subtle); }
+
+.cs-dash-subkpi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cs-dash-subkpi b { color: var(--text-muted); font-size: 14px; margin-left: 2px; }
+
+.cs-dash-section {
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.cs-dash-section-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.cs-dash-muted { color: var(--text-secondary); font-size: 13px; margin: 4px 0; }
+
+.cs-dash-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* 우선 처리 문의 */
+.cs-dash-pri-list, .cs-dash-rev-list, .cs-dash-issue-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.cs-dash-pri-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+.cs-dash-pri-item.is-risk { border-color: #5B7DB1; box-shadow: inset 3px 0 0 #5B7DB1; }
+.cs-dash-pri-rank {
+  flex: 0 0 24px;
+  height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: rgba(49, 214, 196, 0.15);
+  color: #31D6C4;
+  font-weight: 700;
+  font-size: 13px;
+}
+.cs-dash-pri-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cs-dash-pri-title { font-size: 14px; font-weight: 600; color: var(--text-muted); }
+.cs-dash-pri-meta { font-size: 12px; color: var(--text-secondary); }
+.cs-dash-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+
+/* 배지 */
+.cs-badge {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-subtle);
+  color: var(--text-secondary);
+  background: var(--bg-app);
+}
+.cs-badge.ok { color: #31D6C4; border-color: rgba(49, 214, 196, 0.4); }
+.cs-badge.muted { color: var(--text-secondary); opacity: 0.8; }
+.cs-badge.warn { color: #FBBF24; border-color: rgba(251, 191, 36, 0.4); }
+.cs-badge.risk-high { color: #FB7185; border-color: rgba(251, 113, 133, 0.45); }
+.cs-badge.risk-medium { color: #FBBF24; border-color: rgba(251, 191, 36, 0.4); }
+.cs-badge.risk-low { color: var(--text-secondary); }
+
+/* 리뷰 */
+.cs-dash-rev-item { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid var(--line-subtle); border-radius: 8px; }
+.cs-dash-rev-rating { color: #FBBF24; font-size: 12px; white-space: nowrap; }
+.cs-dash-rev-num { color: var(--text-secondary); margin-left: 4px; }
+.cs-dash-rev-body { flex: 1; min-width: 0; }
+.cs-dash-rev-prod { font-size: 13px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cs-dash-rev-topic { font-size: 11px; color: var(--text-secondary); }
+.cs-dash-rev-excerpt { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.cs-dash-rev-date { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+
+/* 이슈 상품 */
+.cs-dash-issue-item { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--line-subtle); border-radius: 8px; }
+.cs-dash-issue-prod { font-size: 13px; font-weight: 600; color: var(--text-muted); flex: 0 0 38%; min-width: 0; }
+.cs-dash-issue-meta { font-size: 12px; color: var(--text-secondary); flex: 1; }
+
+/* 채팅 힌트 */
+.cs-dash-hint {
+  border: 1px dashed var(--line-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cs-dash-hint-label { font-size: 12px; color: var(--text-secondary); }
+.cs-dash-hint-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.cs-dash-hint-chip {
+  font-size: 12px;
+  color: #31D6C4;
+  background: rgba(49, 214, 196, 0.1);
+  border: 1px solid rgba(49, 214, 196, 0.3);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.cs-dash-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 16px; color: var(--text-secondary); }
+
+@media (max-width: 1100px) {
+  .cs-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .cs-dash-two-col { grid-template-columns: 1fr; }
+}

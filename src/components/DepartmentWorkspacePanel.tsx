@@ -9,6 +9,7 @@ import {
   type CatalogLookupResult
 } from '../services/departmentDataService';
 import { ProductTeamDashboard } from './ProductTeamDashboard';
+import { CsTeamDashboard } from './CsTeamDashboard';
 import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
 import { chatWithTeam } from '../services/departmentChatService';
 import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
@@ -296,6 +297,31 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     );
   };
 
+  // CS팀 처리판 대시보드 — 이미 로드된 revenue(universeAux) 재사용(새 API 호출 없음).
+  const renderCsData = () => {
+    const { revenue, loading, loaded } = productData;
+    if (!loaded && loading) {
+      return <div className="dept-data-loading">데이터를 불러오는 중…</div>;
+    }
+    if (!loaded) {
+      return (
+        <div className="dept-data-loading">
+          <button type="button" className="dept-refresh-btn" onClick={() => void loadProductTeamData()}>
+            데이터 불러오기
+          </button>
+        </div>
+      );
+    }
+    return (
+      <CsTeamDashboard
+        revenue={revenue}
+        goodsNames={goodsNameMap}
+        loading={loading}
+        onRefresh={() => void loadProductTeamData()}
+      />
+    );
+  };
+
   return (
     <div className="dept-workspace">
       {/* ── 좌측: 부서 선택 / 팀 정보 ── */}
@@ -350,9 +376,11 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       </aside>
 
       {/* ── 중앙: 팀별 업무 대시보드 ── */}
-      <section className={`dept-col dept-col-center ${team.id === 'product' ? 'dept-col-center-dashboard' : ''}`}>
+      <section className={`dept-col dept-col-center ${team.id === 'product' || team.id === 'cs' ? 'dept-col-center-dashboard' : ''}`}>
         {team.id === 'product' ? (
           renderProductData()
+        ) : team.id === 'cs' ? (
+          renderCsData()
         ) : (
           <>
             <div className="dept-col-head">
