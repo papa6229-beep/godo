@@ -42,7 +42,7 @@ ok('9. 좌측 비율 축소(.wide 좌측 0.85fr)', /\.cs-pop-body\.wide\s*{[^}]*
 ok('10. 우측 비율 확대(.wide 우측 1.35fr)', /\.cs-pop-body\.wide\s*{[^}]*minmax\(420px,\s*1\.35fr\)/.test(CSS));
 const wideCount = (TSX.match(/className="cs-pop-body wide"/g) || []).length;
 const custCount = (TSX.match(/className="cs-pop-body cs-pop-body-cust"/g) || []).length;
-ok('11~13. 미처리/처리완료/AI함 3개 팝업에 .wide 적용', wideCount === 2 /* CsItemPopup(미처리·AI함 공유) + CsResolvedPopup */);
+ok('11~13. 미처리/처리완료/AI함 팝업에 .wide 적용(+승인큐)', wideCount >= 2 /* CsItemPopup(미처리·AI함) + CsResolvedPopup (+ CsApprovalQueuePopup) */);
 ok('14. 고객관리 팝업은 .wide 아님(전용 cs-pop-body-cust) + 구조 불변', custCount === 1 && /CsCustomerProfilePopup/.test(TSX) && /블랙리스트 후보/.test(TSX));
 
 // 안전
