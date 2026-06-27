@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import './CsTeamDashboard.css';
 import type { RevenueResult } from '../services/departmentDataService';
 import { composeCsDraftFromOrders } from '../services/csDraftComposer';
@@ -31,6 +31,7 @@ import {
   type CsApprovalStatus,
   type CsApprovalMethod
 } from '../services/csApprovalQueueBridge';
+import { loadCsPersistedState, saveCsPersistedState, clearCsPersistedState } from '../services/csLocalStatePersistence';
 import {
   buildCompletedWorkItem,
   addCompletedWorkItems,
@@ -140,13 +141,16 @@ const CsItemPopup: React.FC<{
   onRequestApproval?: (item: CsKpiItem, payload: { answerText: string; assignee?: string; method: CsCompletionMethod }) => void;
   onRequestApprovalBatch?: (entries: Array<{ item: CsKpiItem; draft: string }>) => void;
   approvalStatus?: Record<string, CsApprovalStatus>;
-}> = ({ title, items, tabs, allowDraft, allowRegister, orders, contacts, goodsNames, onClose, onCompleteItem, onCompleteBatch, onRequestApproval, onRequestApprovalBatch, approvalStatus }) => {
+  assigneeByItem: Record<string, string>;
+  setAssigneeByItem: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  memoByItem: Record<string, string>;
+  setMemoByItem: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}> = ({ title, items, tabs, allowDraft, allowRegister, orders, contacts, goodsNames, onClose, onCompleteItem, onCompleteBatch, onRequestApproval, onRequestApprovalBatch, approvalStatus, assigneeByItem, setAssigneeByItem, memoByItem, setMemoByItem }) => {
   const [activeTab, setActiveTab] = useState(tabs[0]?.key || 'all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [memo, setMemo] = useState<Record<string, string>>({});
+  const memo = memoByItem; const setMemo = setMemoByItem;
   const [stageByItem, setStageByItem] = useState<Record<string, string>>({});
-  const [assigneeByItem, setAssigneeByItem] = useState<Record<string, string>>({});
   const [replyByItem, setReplyByItem] = useState<Record<string, string>>({});
   const [draftOpen, setDraftOpen] = useState(false);
   const [regenDraft, setRegenDraft] = useState<string | null>(null);
@@ -461,7 +465,13 @@ const kv = (label: string, value: React.ReactNode): React.ReactNode => <div><dt>
 const opt = (v: React.ReactNode): React.ReactNode => (v === undefined || v === null || v === '' ? <span className="cs-dash-muted">미연동</span> : v);
 const optBool = (v?: boolean): React.ReactNode => (v === undefined ? <span className="cs-dash-muted">미연동</span> : v ? '허용' : '미허용');
 
-const CsCustomerProfilePopup: React.FC<{ items: CsCustomerProfileHubItem[]; onClose: () => void }> = ({ items, onClose }) => {
+const CsCustomerProfilePopup: React.FC<{
+  items: CsCustomerProfileHubItem[];
+  memo: Record<string, string>; setMemo: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  watchTag: Record<string, boolean>; setWatchTag: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  blackTag: Record<string, boolean>; setBlackTag: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  onClose: () => void;
+}> = ({ items, memo, setMemo, watchTag, setWatchTag, blackTag, setBlackTag, onClose }) => {
   const FTABS = [
     { key: 'all', label: '전체', m: () => true },
     { key: 'ri', label: '반복문의', m: (c: CsCustomerProfileHubItem) => c.tags.includes('반복문의') },
@@ -476,9 +486,6 @@ const CsCustomerProfilePopup: React.FC<{ items: CsCustomerProfileHubItem[]; onCl
   const [sel, setSel] = useState<string | null>(null);
   const [ptab, setPtab] = useState<ProfileTab>('summary');
   const [detail, setDetail] = useState<{ kind: string; id: string } | null>(null);
-  const [memo, setMemo] = useState<Record<string, string>>({});
-  const [watchTag, setWatchTag] = useState<Record<string, boolean>>({});
-  const [blackTag, setBlackTag] = useState<Record<string, boolean>>({});
 
   const filterTab = FTABS.find((t) => t.key === active) || FTABS[0];
   const list = searchCustomerProfiles(items.filter(filterTab.m), query);
@@ -755,11 +762,34 @@ const CsApprovalQueuePopup: React.FC<{
 // ── 메인 ──────────────────────────────────────────────────────────────────────
 export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goodsNames, loading, onRefresh }) => {
   const [openKpi, setOpenKpi] = useState<KpiKey | null>(null);
-  // CS Work Completion Flow v0 — 세션 local 완료 이력(미처리/AI함 → 처리완료).
-  const [completed, setCompleted] = useState<CsCompletedWorkItem[]>([]);
-  // CS Draft → Approval Queue HITL v0 — 세션 local 승인 큐.
-  const [approvals, setApprovals] = useState<CsApprovalQueueItem[]>([]);
+  // CS Local State Persistence v0 — mount 시 localStorage 복원(lazy, 1회).
+  const [persisted] = useState(() => loadCsPersistedState());
+  // CS Work Completion Flow v0 — local 완료 이력(미처리/AI함 → 처리완료).
+  const [completed, setCompleted] = useState<CsCompletedWorkItem[]>(() => persisted?.completedWorkItems ?? []);
+  // CS Draft → Approval Queue HITL v0 — local 승인 큐.
+  const [approvals, setApprovals] = useState<CsApprovalQueueItem[]>(() => persisted?.approvalItems ?? []);
   const [approvalOpen, setApprovalOpen] = useState(false);
+  // 미처리 담당직원/내부 메모(영속).
+  const [assigneeByItem, setAssigneeByItem] = useState<Record<string, string>>(() => persisted?.assigneeByItem ?? {});
+  const [memoByItem, setMemoByItem] = useState<Record<string, string>>(() => persisted?.memoByItem ?? {});
+  // 고객관리 메모/주의/블랙리스트(영속).
+  const [custMemo, setCustMemo] = useState<Record<string, string>>(() => persisted?.customerManagement.memoByCustomerId ?? {});
+  const [custCaution, setCustCaution] = useState<Record<string, boolean>>(() => persisted?.customerManagement.cautionByCustomerId ?? {});
+  const [custBlacklist, setCustBlacklist] = useState<Record<string, boolean>>(() => persisted?.customerManagement.blacklistCandidateByCustomerId ?? {});
+
+  // 변경 시 localStorage 저장(실제 WRITE 아님).
+  useEffect(() => {
+    saveCsPersistedState({
+      completedWorkItems: completed, approvalItems: approvals, assigneeByItem, memoByItem,
+      customerManagement: { memoByCustomerId: custMemo, cautionByCustomerId: custCaution, blacklistCandidateByCustomerId: custBlacklist }
+    });
+  }, [completed, approvals, assigneeByItem, memoByItem, custMemo, custCaution, custBlacklist]);
+
+  const handleClearLocal = (): void => {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function' && !window.confirm('저장된 CS 로컬 상태를 초기화할까요? 승인 큐/처리완료/메모 상태가 삭제됩니다. (실제 고도몰 데이터에는 영향 없음)')) return;
+    clearCsPersistedState();
+    setCompleted([]); setApprovals([]); setAssigneeByItem({}); setMemoByItem({}); setCustMemo({}); setCustCaution({}); setCustBlacklist({});
+  };
 
   const facts = useMemo<CsDashboardFacts | null>(() => {
     if (!revenue?.universeAux) return null;
@@ -882,7 +912,10 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
       </div>
       <div className="cs-dash-kpi-noterow">
         <p className="cs-dash-kpi-note">미처리=지금 처리할 문의 · 처리완료=과거 이력 조회 · AI 자동처리함=리뷰·배송 저위험 일괄(운영자 승인/등록 트리거) · 고객관리=고객 단위 이력</p>
-        <button type="button" className="cs-dash-approval-btn" onClick={() => setApprovalOpen(true)}>🗳️ CS 승인 큐 {approvals.length ? `(대기 ${pendingApprovals})` : ''}</button>
+        <div className="cs-dash-noterow-btns">
+          <button type="button" className="cs-dash-approval-btn" onClick={() => setApprovalOpen(true)}>🗳️ CS 승인 큐 {approvals.length ? `(대기 ${pendingApprovals})` : ''}</button>
+          <button type="button" className="cs-dash-clear-btn" onClick={handleClearLocal} title="localStorage CS 상태 삭제(고도몰 영향 없음)">CS 로컬 상태 초기화</button>
+        </div>
       </div>
 
       <section className="cs-dash-section">
@@ -908,10 +941,10 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <div className="cs-dash-hint-list">{wf.chatHints.map((h, i) => <span key={i} className="cs-dash-hint-chip">{h}</span>)}</div>
       </div>
 
-      {openKpi === 'unresolved' && <CsItemPopup title="미처리 문의" items={unresolvedItems} tabs={UNRES_TABS} allowDraft={false} allowRegister={false} orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteItem={handleCompleteItem} onRequestApproval={handleRequestApproval} approvalStatus={approvalStatus} />}
-      {openKpi === 'ai' && <CsItemPopup title="AI 자동처리함 (리뷰·배송)" items={aiAutoItems} tabs={AI_TABS} allowDraft allowRegister orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteBatch={handleCompleteBatch} onRequestApprovalBatch={handleRequestApprovalBatch} approvalStatus={approvalStatus} />}
+      {openKpi === 'unresolved' && <CsItemPopup title="미처리 문의" items={unresolvedItems} tabs={UNRES_TABS} allowDraft={false} allowRegister={false} orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteItem={handleCompleteItem} onRequestApproval={handleRequestApproval} approvalStatus={approvalStatus} assigneeByItem={assigneeByItem} setAssigneeByItem={setAssigneeByItem} memoByItem={memoByItem} setMemoByItem={setMemoByItem} />}
+      {openKpi === 'ai' && <CsItemPopup title="AI 자동처리함 (리뷰·배송)" items={aiAutoItems} tabs={AI_TABS} allowDraft allowRegister orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteBatch={handleCompleteBatch} onRequestApprovalBatch={handleRequestApprovalBatch} approvalStatus={approvalStatus} assigneeByItem={assigneeByItem} setAssigneeByItem={setAssigneeByItem} memoByItem={memoByItem} setMemoByItem={setMemoByItem} />}
       {openKpi === 'resolved' && <CsResolvedPopup items={resolvedItems} onClose={() => setOpenKpi(null)} />}
-      {openKpi === 'customers' && <CsCustomerProfilePopup items={customerHub.items} onClose={() => setOpenKpi(null)} />}
+      {openKpi === 'customers' && <CsCustomerProfilePopup items={customerHub.items} memo={custMemo} setMemo={setCustMemo} watchTag={custCaution} setWatchTag={setCustCaution} blackTag={custBlacklist} setBlackTag={setCustBlacklist} onClose={() => setOpenKpi(null)} />}
       {approvalOpen && <CsApprovalQueuePopup items={approvals} onApprove={(id) => setApprovals((p) => approveCsApprovalItem(p, id))} onReject={(id, reason) => setApprovals((p) => rejectCsApprovalItem(p, id, reason))} onClose={() => setApprovalOpen(false)} />}
     </div>
   );

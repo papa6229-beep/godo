@@ -136,6 +136,9 @@
 .cs-dash-kpi-noterow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: -4px; }
 .cs-dash-approval-btn { flex: 0 0 auto; font-size: 12px; color: #31D6C4; background: rgba(49, 214, 196, 0.1); border: 1px solid rgba(49, 214, 196, 0.35); border-radius: 8px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
 .cs-dash-approval-btn:hover { background: rgba(49, 214, 196, 0.18); }
+.cs-dash-noterow-btns { display: flex; gap: 8px; flex: 0 0 auto; }
+.cs-dash-clear-btn { font-size: 11px; color: var(--text-secondary); background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+.cs-dash-clear-btn:hover { color: #FB7185; border-color: rgba(251, 113, 133, 0.4); }
 @media (prefers-color-scheme: light) { .cs-dash-approval-btn { color: #0E7C70; } }
 .cs-dash-kpi-note b { color: var(--text-muted); }
 .cs-dash-section-desc { font-size: 11px; color: var(--text-secondary); margin: -6px 0 8px; }
