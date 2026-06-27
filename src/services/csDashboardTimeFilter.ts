@@ -6,7 +6,8 @@ import type { CsDashInquiry, CsDashReview } from './csTeamDashboardFacts';
 import type { CsCompletedWorkItem } from './csWorkCompletionState';
 import type { CsApprovalQueueItem } from './csApprovalQueueBridge';
 
-export type CsTimeRange = 'all' | 'today' | '7d' | '30d' | 'month';
+export type CsTimeRange = 'all' | 'today' | '7d' | '30d' | 'month' | 'custom';
+// pill 목록(직접 선택은 컴포넌트가 별도 버튼으로 처리).
 export const CS_TIME_RANGES: Array<{ key: CsTimeRange; label: string }> = [
   { key: 'all', label: '전체' },
   { key: 'today', label: '오늘' },
@@ -15,14 +16,25 @@ export const CS_TIME_RANGES: Array<{ key: CsTimeRange; label: string }> = [
   { key: 'month', label: '이번 달' }
 ];
 
+export interface CsCustomRange { start?: string; end?: string } // 'YYYY-MM-DD'
+
+// 직접 선택 유효성: 둘 다 있고 종료일 >= 시작일.
+export const isValidCustomRange = (c?: CsCustomRange): boolean =>
+  !!c && !!c.start && !!c.end && c.start <= c.end;
+
 const dayStr = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 const monthStr = (ms: number): string => new Date(ms).toISOString().slice(0, 7);
 
 // 날짜 문자열이 기간에 포함되는가. all=항상, 날짜없음=false(기간 필터 제외).
-export function inCsTimeRange(dateStr: string | undefined, range: CsTimeRange, nowMs: number): boolean {
+export function inCsTimeRange(dateStr: string | undefined, range: CsTimeRange, nowMs: number, custom?: CsCustomRange): boolean {
   if (range === 'all') return true;
   const s = (dateStr || '').trim();
   if (!s) return false;
+  if (range === 'custom') {
+    if (!isValidCustomRange(custom)) return false;
+    const day = s.slice(0, 10);
+    return day >= (custom!.start as string) && day <= (custom!.end as string);
+  }
   const t = Date.parse(s.replace(' ', 'T'));
   if (Number.isNaN(t)) return false;
   if (range === 'today') return dayStr(t) === dayStr(nowMs);
@@ -35,13 +47,16 @@ export function inCsTimeRange(dateStr: string | undefined, range: CsTimeRange, n
 export function filterCsInputsByTime<O extends { orderDate?: string }>(
   inputs: { inquiries: CsDashInquiry[]; reviews: CsDashReview[]; orders: O[]; completed?: CsCompletedWorkItem[]; approvals?: CsApprovalQueueItem[] },
   range: CsTimeRange,
-  nowMs: number
+  nowMs: number,
+  custom?: CsCustomRange
 ): { inquiries: CsDashInquiry[]; reviews: CsDashReview[]; orders: O[]; completed: CsCompletedWorkItem[]; approvals: CsApprovalQueueItem[] } {
+  // custom인데 범위가 유효하지 않으면 '전체'로 폴백(빈 화면 방지).
+  const eff: CsTimeRange = range === 'custom' && !isValidCustomRange(custom) ? 'all' : range;
   return {
-    inquiries: (inputs.inquiries || []).filter((q) => inCsTimeRange(q.createdAt, range, nowMs)),
-    reviews: (inputs.reviews || []).filter((r) => inCsTimeRange(r.createdAt, range, nowMs)),
-    orders: (inputs.orders || []).filter((o) => inCsTimeRange(o.orderDate, range, nowMs)),
-    completed: (inputs.completed || []).filter((c) => inCsTimeRange(c.completedAt, range, nowMs)),
-    approvals: (inputs.approvals || []).filter((a) => inCsTimeRange(a.createdAt, range, nowMs))
+    inquiries: (inputs.inquiries || []).filter((q) => inCsTimeRange(q.createdAt, eff, nowMs, custom)),
+    reviews: (inputs.reviews || []).filter((r) => inCsTimeRange(r.createdAt, eff, nowMs, custom)),
+    orders: (inputs.orders || []).filter((o) => inCsTimeRange(o.orderDate, eff, nowMs, custom)),
+    completed: (inputs.completed || []).filter((c) => inCsTimeRange(c.completedAt, eff, nowMs, custom)),
+    approvals: (inputs.approvals || []).filter((a) => inCsTimeRange(a.createdAt, eff, nowMs, custom))
   };
 }
