@@ -590,3 +590,253 @@ export function buildCsDetailItem(
 
   return detail;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CS Dashboard Admin Workflow Restructure v0
+//   KPI = 미처리 문의 / 처리완료 문의 / AI 자동처리함(리뷰+배송만) / 고객관리
+//   ⚠️ 고객 PII는 contacts가 주어진 CS UI 경로에서만. bulk counts/AI/타부서엔 미노출.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 문의 타입 → 색상 class token (배지/라인용)
+export const csTypeColorClass = (topic?: string): string => {
+  const t = normalizeCsTopic(topic);
+  if (t === 'payment') return 'type-pay';
+  if (t === 'refund' || t === 'cancel' || t === 'return' || t === 'exchange') return 'type-claim';
+  if (t === 'delivery') return 'type-delivery';
+  if (t === 'product') return 'type-product';
+  return 'type-general';
+};
+
+export interface CsResolvedItem {
+  inquiryId: string;
+  title: string;
+  type: string;
+  productName: string;
+  orderNo?: string;
+  customerLabel?: string; // contacts 있을 때만 고객명, 없으면 미표시(PII 게이트)
+  createdAt: string;
+  processedAt?: string;
+  result?: string;
+  followUp?: boolean;
+  prevAnswer?: string;
+}
+
+const orderMemberKeyMap = (orders: GroundingOrder[]): Map<string, string> => {
+  const m = new Map<string, string>();
+  for (const o of orders) if (o.orderNo && o.memberKey) m.set(o.orderNo, o.memberKey);
+  return m;
+};
+
+export function buildCsResolvedInquiries(params: {
+  inquiries: CsDashInquiry[];
+  orders: GroundingOrder[];
+  contacts?: CsDashContact[];
+  goodsNames?: Record<string, string>;
+  nowMs?: number;
+}): { count: number; today: number; last7d: number; repeat: number; items: CsResolvedItem[] } {
+  const orders = params.orders || [];
+  const names = params.goodsNames;
+  const nowMs = params.nowMs ?? (Date.parse(`${(params.inquiries[0]?.createdAt || '2026-06-27').slice(0, 10)}T23:59:59`) || 0);
+  const mkMap = orderMemberKeyMap(orders);
+  const contactByKey = new Map<string, CsDashContact>();
+  for (const c of params.contacts || []) contactByKey.set(c.memberKey, c);
+
+  // memberKey별 전체 문의 수(반복 판정)
+  const inqByMember = new Map<string, number>();
+  for (const q of params.inquiries || []) {
+    const mk = q.orderNo ? mkMap.get(q.orderNo) : undefined;
+    if (mk) inqByMember.set(mk, (inqByMember.get(mk) || 0) + 1);
+  }
+
+  const answered = (params.inquiries || []).filter((q) => isAnsweredInquiry(q.status));
+  let today = 0, last7d = 0, repeat = 0;
+  const items: CsResolvedItem[] = answered
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    .map((q) => {
+      const mk = q.orderNo ? mkMap.get(q.orderNo) : undefined;
+      const followUp = !!mk && (inqByMember.get(mk) || 0) >= 2;
+      const age = ageDaysOf(q.createdAt || '', nowMs);
+      if (age <= 0) today += 1;
+      if (age <= 7) last7d += 1;
+      if (followUp) repeat += 1;
+      const c = mk ? contactByKey.get(mk) : undefined;
+      return {
+        inquiryId: q.inquiryId || '',
+        title: q.title || `${csTopicKo(q.topic)} 문의`,
+        type: csTopicKo(q.topic),
+        productName: prodName(q.goodsNo, undefined, names),
+        ...(q.orderNo ? { orderNo: q.orderNo } : {}),
+        ...(params.contacts && c?.customerName ? { customerLabel: c.customerName } : {}),
+        createdAt: q.createdAt || '',
+        processedAt: q.createdAt || '', // v0: 실제 처리일시 데이터 없음 → 접수일 대용
+        result: '답변 완료',
+        followUp,
+        prevAnswer: '이전 답변 원문은 고도몰 CS 원장 확인 필요 (v0 미연동)'
+      };
+    });
+  return { count: items.length, today, last7d, repeat, items };
+}
+
+// ── 고객관리 ──────────────────────────────────────────────────────────────────
+export interface CsCustomerManagementItem {
+  customerId: string;
+  memberKey: string;
+  isSynthetic?: boolean;
+  memberId?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  orderCount: number;
+  totalOrderAmount?: number;
+  inquiryCount: number;
+  reviewCount: number;
+  claimCount?: number;
+  refundCancelCount?: number;
+  tags: string[];
+  riskLevel: CsRiskLevel;
+  lastActivityAt?: string;
+  recentOrders: Array<{ orderNo: string; orderDate?: string; amount?: number; productNames?: string[] }>;
+  recentInquiries: Array<{ inquiryId: string; title?: string; type?: string; createdAt?: string; status?: string }>;
+  recentReviews: Array<{ reviewId: string; rating?: number; sentiment?: string; createdAt?: string }>;
+}
+
+const HIGH_VALUE_WON = 100000;
+
+export function buildCsCustomerManagementFacts(params: {
+  inquiries: CsDashInquiry[];
+  reviews: CsDashReview[];
+  orders: GroundingOrder[];
+  contacts?: CsDashContact[];
+  goodsNames?: Record<string, string>;
+  limit?: number;
+}): {
+  count: number;
+  byTag: { repeatInquiry: number; repeatClaim: number; highValue: number; watch: number };
+  items: CsCustomerManagementItem[];
+} {
+  const orders = params.orders || [];
+  const names = params.goodsNames;
+  const mkMap = orderMemberKeyMap(orders);
+  const contactByKey = new Map<string, CsDashContact>();
+  for (const c of params.contacts || []) contactByKey.set(c.memberKey, c);
+
+  type Agg = {
+    memberKey: string;
+    orders: GroundingOrder[];
+    inquiries: CsDashInquiry[];
+    reviews: CsDashReview[];
+  };
+  const map = new Map<string, Agg>();
+  const get = (mk: string): Agg => {
+    let a = map.get(mk);
+    if (!a) { a = { memberKey: mk, orders: [], inquiries: [], reviews: [] }; map.set(mk, a); }
+    return a;
+  };
+  for (const o of orders) if (o.memberKey) get(o.memberKey).orders.push(o);
+  for (const q of params.inquiries || []) { const mk = q.orderNo ? mkMap.get(q.orderNo) : undefined; if (mk) get(mk).inquiries.push(q); }
+  for (const r of params.reviews || []) { const mk = r.orderNo ? mkMap.get(r.orderNo) : undefined; if (mk) get(mk).reviews.push(r); }
+
+  const items: CsCustomerManagementItem[] = [...map.values()].map((a) => {
+    const paidOrders = a.orders.filter((o) => o.paid);
+    const totalOrderAmount = paidOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+    const claimCount = a.orders.filter((o) => o.claim?.hasClaim).length;
+    const refundCancelCount = a.orders.filter((o) => (o.claim?.claimTypes || []).some((t) => /refund|cancel|return/.test(t)) || o.canceled).length;
+    const lowReviewCount = a.reviews.filter((r) => (typeof r.rating === 'number' && r.rating <= 2) || /negative|부정/i.test(r.sentiment || '')).length;
+    const tags: string[] = [];
+    if (a.inquiries.length >= 2) tags.push('반복문의');
+    if (refundCancelCount >= 2) tags.push('반복 환불·취소');
+    if (lowReviewCount >= 2) tags.push('저평점 반복');
+    if (totalOrderAmount >= HIGH_VALUE_WON) tags.push('고액 고객');
+    const riskLevel: CsRiskLevel = claimCount >= 2 || refundCancelCount >= 2 ? 'high' : claimCount >= 1 || a.inquiries.length >= 2 ? 'medium' : 'low';
+    if (riskLevel !== 'low') tags.push('주의 고객');
+    if (riskLevel === 'high' && refundCancelCount >= 2) tags.push('블랙리스트 후보');
+
+    const c = contactByKey.get(a.memberKey);
+    const lastActivityAt = [...a.orders.map((o) => o.orderDate || ''), ...a.inquiries.map((q) => q.createdAt || ''), ...a.reviews.map((r) => r.createdAt || '')].sort().pop() || undefined;
+
+    const item: CsCustomerManagementItem = {
+      customerId: c?.customerId || a.memberKey,
+      memberKey: a.memberKey,
+      orderCount: a.orders.length,
+      totalOrderAmount,
+      inquiryCount: a.inquiries.length,
+      reviewCount: a.reviews.length,
+      claimCount,
+      refundCancelCount,
+      tags,
+      riskLevel,
+      ...(lastActivityAt ? { lastActivityAt } : {}),
+      recentOrders: [...a.orders].sort((x, y) => (y.orderDate || '').localeCompare(x.orderDate || '')).slice(0, 5).map((o) => ({
+        orderNo: o.orderNo, orderDate: o.orderDate, amount: o.totalAmount, productNames: (o.lines || []).map((l) => l.goodsName || (l.goodsNo && names?.[l.goodsNo]) || l.goodsNo).filter(Boolean) as string[]
+      })),
+      recentInquiries: [...a.inquiries].sort((x, y) => (y.createdAt || '').localeCompare(x.createdAt || '')).slice(0, 5).map((q) => ({
+        inquiryId: q.inquiryId || '', title: q.title, type: csTopicKo(q.topic), createdAt: q.createdAt, status: q.status
+      })),
+      recentReviews: [...a.reviews].sort((x, y) => (y.createdAt || '').localeCompare(x.createdAt || '')).slice(0, 5).map((r) => ({
+        reviewId: r.reviewId || '', rating: r.rating, sentiment: r.sentiment, createdAt: r.createdAt
+      }))
+    };
+    // 고객 PII는 contacts(CS UI 경로)일 때만.
+    if (params.contacts && c) {
+      item.isSynthetic = c.origin?.isFakePii === true || c.origin?.piiType === 'fake' || true;
+      item.memberId = c.customerId;
+      item.name = c.customerName;
+      item.phone = c.phone;
+      item.email = c.email;
+    }
+    return item;
+  });
+
+  // 정렬: 위험도 high → 활동 많은 순
+  const rank = (r: CsRiskLevel): number => (r === 'high' ? 0 : r === 'medium' ? 1 : 2);
+  items.sort((x, y) => rank(x.riskLevel) - rank(y.riskLevel) || (y.inquiryCount + (y.claimCount || 0)) - (x.inquiryCount + (x.claimCount || 0)));
+
+  const byTag = {
+    repeatInquiry: items.filter((i) => i.tags.includes('반복문의')).length,
+    repeatClaim: items.filter((i) => i.tags.includes('반복 환불·취소')).length,
+    highValue: items.filter((i) => i.tags.includes('고액 고객')).length,
+    watch: items.filter((i) => i.tags.includes('주의 고객')).length
+  };
+  return { count: items.length, byTag, items: items.slice(0, params.limit ?? 50) };
+}
+
+// ── Admin Workflow 오케스트레이터(4 KPI) ──────────────────────────────────────
+export interface CsAdminWorkflowFacts {
+  unresolved: { count: number; byStage: { aiDraftable: number; internalCheck: number; hold: number }; items: CsKpiInquiryItem[] };
+  resolved: { count: number; today: number; last7d: number; repeat: number; items: CsResolvedItem[] };
+  aiAuto: { count: number; byType: { review: number; delivery: number }; items: CsKpiItem[] };
+  customers: { count: number; byTag: { repeatInquiry: number; repeatClaim: number; highValue: number; watch: number }; items: CsCustomerManagementItem[] };
+  chatHints: string[];
+}
+
+export function buildCsAdminWorkflow(params: {
+  inquiries: CsDashInquiry[];
+  reviews: CsDashReview[];
+  orders: GroundingOrder[];
+  contacts?: CsDashContact[];
+  goodsNames?: Record<string, string>;
+  nowMs?: number;
+}): CsAdminWorkflowFacts {
+  const rev = buildCsKpiRevision({ inquiries: params.inquiries, reviews: params.reviews, orders: params.orders, goodsNames: params.goodsNames, nowMs: params.nowMs });
+  const unresolvedItems = rev.items.unresolvedInquiries;
+  const byStage = {
+    aiDraftable: unresolvedItems.filter((i) => i.aiProcessable).length,
+    internalCheck: unresolvedItems.filter((i) => i.needsInternalCheck).length,
+    hold: unresolvedItems.filter((i) => /hold|보류/i.test(i.status || '')).length
+  };
+  // AI 자동처리함: 리뷰 답글 + 배송안내만(상품/결제/일반/환불·취소 제외)
+  const reviewItems = rev.items.unresolvedReviews;
+  const deliveryItems = unresolvedItems.filter((i) => i.topic === 'delivery');
+  const aiAutoItems: CsKpiItem[] = [...reviewItems, ...deliveryItems];
+
+  const resolved = buildCsResolvedInquiries({ inquiries: params.inquiries, orders: params.orders, contacts: params.contacts, goodsNames: params.goodsNames, nowMs: params.nowMs });
+  const customers = buildCsCustomerManagementFacts({ inquiries: params.inquiries, reviews: params.reviews, orders: params.orders, contacts: params.contacts, goodsNames: params.goodsNames });
+
+  return {
+    unresolved: { count: unresolvedItems.length, byStage, items: unresolvedItems },
+    resolved,
+    aiAuto: { count: aiAutoItems.length, byType: { review: reviewItems.length, delivery: deliveryItems.length }, items: aiAutoItems },
+    customers: { count: customers.count, byTag: customers.byTag, items: customers.items },
+    chatHints: ['“1순위 미처리 문의 답변 써줘”', '“리뷰답글 초안 만들어줘”', '“반복문의 고객 알려줘”']
+  };
+}

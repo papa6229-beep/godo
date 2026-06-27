@@ -189,6 +189,24 @@
 .cs-pop-history-item { font-size: 11px; color: var(--text-secondary); }
 .cs-pop-action-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
 
+/* 문의/업무 타입 색상(배지 + 리스트 좌측 라인) */
+.cs-badge.type { border-width: 1px; }
+.cs-badge.type-pay { color: #8B7DF0; border-color: rgba(139, 125, 240, 0.5); }
+.cs-badge.type-claim { color: #F59E5B; border-color: rgba(245, 158, 91, 0.5); }
+.cs-badge.type-delivery { color: #38BDF8; border-color: rgba(56, 189, 248, 0.5); }
+.cs-badge.type-product { color: #F472B6; border-color: rgba(244, 114, 182, 0.5); }
+.cs-badge.type-general { color: var(--text-secondary); }
+.cs-badge.type-review { color: #FBBF24; border-color: rgba(251, 191, 36, 0.5); }
+.cs-badge.type-customer { color: #2DD4BF; border-color: rgba(45, 212, 191, 0.5); }
+.cs-pop-item.type-pay { box-shadow: inset 3px 0 0 #8B7DF0; }
+.cs-pop-item.type-claim { box-shadow: inset 3px 0 0 #F59E5B; }
+.cs-pop-item.type-delivery { box-shadow: inset 3px 0 0 #38BDF8; }
+.cs-pop-item.type-product { box-shadow: inset 3px 0 0 #F472B6; }
+.cs-pop-item.type-general { box-shadow: inset 3px 0 0 var(--line-subtle); }
+.cs-pop-item.type-review { box-shadow: inset 3px 0 0 #FBBF24; }
+.cs-pop-item.type-customer { box-shadow: inset 3px 0 0 #2DD4BF; }
+.dept-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .cs-pop-preview { border-top: 1px solid var(--line-subtle); padding: 12px 18px; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .cs-pop-preview-head { font-size: 12px; color: #31D6C4; }
 .cs-pop-preview-item { display: flex; flex-direction: column; gap: 4px; }
