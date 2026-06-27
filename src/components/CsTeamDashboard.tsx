@@ -20,6 +20,16 @@ import {
   type CsCustomerManagementItem,
   type CsDashContact
 } from '../services/csTeamDashboardFacts';
+import {
+  buildCompletedWorkItem,
+  addCompletedWorkItems,
+  completedOriginalIdSet,
+  isAiAutoCompletable,
+  toResolvedItem,
+  type CsCompletedWorkItem,
+  type CsCompletionSource,
+  type CsCompletionMethod
+} from '../services/csWorkCompletionState';
 
 // CS팀 처리판 v0.3 — 관리자 업무 흐름 KPI: 미처리 문의 / 처리완료 문의 / AI 자동처리함 / 고객관리.
 // 데이터: 이미 로드된 revenue 재사용. 고객 PII는 CS UI 경로(contacts)만. 실제 WRITE/발송 없음.
@@ -114,7 +124,9 @@ const itemId = (i: CsKpiItem): string => (i.kind === 'inquiry' ? i.inquiryId : i
 const CsItemPopup: React.FC<{
   title: string; items: CsKpiItem[]; tabs: PopupTab[]; allowDraft: boolean; allowRegister: boolean;
   orders: RevenueResult['orders']; contacts: CsDashContact[]; goodsNames: Record<string, string>; onClose: () => void;
-}> = ({ title, items, tabs, allowDraft, allowRegister, orders, contacts, goodsNames, onClose }) => {
+  onCompleteItem?: (item: CsKpiItem, payload: { answerText: string; assignee?: string; method: CsCompletionMethod }) => void;
+  onCompleteBatch?: (entries: Array<{ item: CsKpiItem; draft: string }>) => void;
+}> = ({ title, items, tabs, allowDraft, allowRegister, orders, contacts, goodsNames, onClose, onCompleteItem, onCompleteBatch }) => {
   const [activeTab, setActiveTab] = useState(tabs[0]?.key || 'all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -136,6 +148,29 @@ const CsItemPopup: React.FC<{
   const makeDrafts = (list: CsKpiItem[]): void =>
     setPreviews(list.map((i) => ({ label: i.kind === 'review' ? `리뷰 · ${i.productName}` : `${(i as CsKpiInquiryItem).title} · ${i.productName}`, draft: genDraft(i) })));
 
+  const [doneNote, setDoneNote] = useState('');
+  // AI 자동처리함: draft 있는 리뷰/배송만 처리완료(상품/결제/일반/환불은 애초에 목록에 없음).
+  const runBatchComplete = (list: CsKpiItem[]): void => {
+    if (!onCompleteBatch) return;
+    const entries = list.map((i) => ({ item: i, draft: genDraft(i) }))
+      .filter(({ item, draft }) => isAiAutoCompletable(item.kind === 'review' ? 'review' : 'delivery', draft));
+    if (!entries.length) { setDoneNote('처리완료할 초안 대상이 없습니다.'); return; }
+    onCompleteBatch(entries);
+    setDoneNote(`${entries.length}건 처리완료되었습니다. 처리완료 문의로 이동되었습니다.`);
+    setSelectedId(null);
+  };
+  // 미처리: 직접 답변 또는 AI 초안 기준 단건 처리완료.
+  const runItemComplete = (item: CsKpiItem): void => {
+    if (!onCompleteItem) return;
+    const id = itemId(item);
+    const manual = (replyByItem[id] || '').trim();
+    const answerText = manual || genDraft(item);
+    if (!answerText) { setDoneNote('답변 내용 또는 AI 초안이 필요합니다.'); return; }
+    onCompleteItem(item, { answerText, assignee: assigneeByItem[id] || undefined, method: manual ? 'manual_reply' : 'ai_draft' });
+    setDoneNote('처리 완료되었습니다. 처리완료 문의에서 확인할 수 있습니다.');
+    setSelectedId(null);
+  };
+
   return (
     <PopupShell title={title} count={filtered.length} onClose={onClose}>
       <div className="cs-pop-tabs">
@@ -149,11 +184,12 @@ const CsItemPopup: React.FC<{
         <div className="cs-pop-actions">
           <button type="button" className="dept-refresh-btn" onClick={() => makeDrafts(filtered)}>전체 초안 만들기</button>
           <button type="button" className="dept-refresh-btn" onClick={() => makeDrafts(filtered.filter((i) => checked[itemId(i)]))}>선택 초안 만들기</button>
-          {allowRegister && <>
-            <button type="button" className="dept-refresh-btn" disabled title="승인큐 미연결">선택 승인요청</button>
-            <button type="button" className="dept-refresh-btn" disabled title="승인큐 미연결">전체 승인요청</button>
+          {allowRegister && onCompleteBatch && <>
+            <button type="button" className="dept-refresh-btn" onClick={() => runBatchComplete(filtered.filter((i) => checked[itemId(i)]))}>선택 처리완료</button>
+            <button type="button" className="dept-refresh-btn" onClick={() => runBatchComplete(filtered)}>전체 처리완료</button>
           </>}
-          <span className="cs-pop-actions-note">※ 현재는 미리보기만 — 승인요청(승인큐 등록)은 승인큐/WRITE 연결 후 활성화됩니다(AI 자동발송 아님, 운영자 트리거 필요).</span>
+          <span className="cs-pop-actions-note">※ v0: 로컬 처리완료(처리완료 문의로 이동) — 실제 고도몰 등록은 WRITE 연결 후 활성화됩니다(AI 자동발송 아님, 운영자 트리거 필요).</span>
+          {doneNote && <span className="cs-pop-done-note">{doneNote}</span>}
         </div>
       )}
       <div className="cs-pop-body wide">
@@ -246,8 +282,10 @@ const CsItemPopup: React.FC<{
                     <button type="button" className="dept-refresh-btn" onClick={() => { setDraftOpen(true); setRegenDraft(null); }}>AI 초안 보기</button>
                     <button type="button" className="dept-refresh-btn" onClick={() => { setDraftOpen(true); setRegenDraft(genDraft(selected)); }}>AI 초안 다시 만들기</button>
                     <button type="button" className="dept-refresh-btn" onClick={() => setReplyOpen((v) => !v)}>직접 답변 작성</button>
+                    {onCompleteItem && <button type="button" className="dept-refresh-btn cs-pop-complete-btn" onClick={() => runItemComplete(selected)}>처리 완료</button>}
                   </div>
-                  <p className="cs-pop-actions-note">※ v0: 미리보기/메모만 — 실제 발송·등록·전화·알림은 하지 않습니다.</p>
+                  <p className="cs-pop-actions-note">※ v0: 처리 완료는 로컬 이력으로 이동 — 실제 고도몰 등록은 WRITE 연결 후. 발송·전화·알림 없음.</p>
+                  {doneNote && <p className="cs-pop-done-note">{doneNote}</p>}
                   {draftOpen && <div className="cs-pop-detail-draft"><div className="cs-pop-detail-draft-label">AI 초안 미리보기</div><pre className="cs-pop-draft-pre">{regenDraft ?? genDraft(selected)}</pre></div>}
                   {replyOpen && <div className="cs-pop-detail-draft"><div className="cs-pop-detail-draft-label">직접 답변 작성 (local · v0)</div><textarea className="cs-pop-memo" rows={3} value={replyByItem[id] || ''} onChange={(e) => setReplyByItem((p) => ({ ...p, [id]: e.target.value }))} placeholder="직접 답변을 작성하세요…" /></div>}
                 </div>
@@ -290,8 +328,8 @@ const CsResolvedPopup: React.FC<{ items: CsResolvedItem[]; onClose: () => void }
           {list.map((r) => (
             <li key={r.inquiryId} className={`cs-pop-item ${csTypeColorClass(r.type)} ${sel === r.inquiryId ? 'active' : ''}`} onClick={() => setSel(r.inquiryId)}>
               <div className="cs-pop-item-main">
-                <div className="cs-pop-item-title">{r.title} <span className="cs-badge muted">{r.type}</span> {r.followUp && <span className="cs-badge warn">반복문의</span>}</div>
-                <div className="cs-pop-item-meta">{r.productName} · {r.customerLabel || r.orderNo || '주문 미상'} · 처리 {shortDate(r.processedAt || '')}</div>
+                <div className="cs-pop-item-title">{r.title} <span className="cs-badge muted">{r.type}</span> {r.localCompleted && <span className="cs-badge ok">방금 완료</span>} {r.followUp && <span className="cs-badge warn">반복문의</span>}</div>
+                <div className="cs-pop-item-meta">{r.productName} · {r.customerLabel || r.orderNo || '주문 미상'} · 처리 {shortDate(r.processedAt || '')}{r.handledBy ? ` · ${r.handledBy}` : ''}</div>
               </div>
             </li>
           ))}
@@ -319,10 +357,10 @@ const CsResolvedPopup: React.FC<{ items: CsResolvedItem[]; onClose: () => void }
                 <div className="cs-pop-sec-title">질문 내용</div>
                 <div className="cs-pop-body-text">{selected.questionText || '문의 원문 없음'}</div>
               </div>
-              {/* 3. 이전 답변 */}
+              {/* 3. 이전 답변 / 처리한 답변 */}
               <div className="cs-pop-sec">
-                <div className="cs-pop-sec-title">이전 답변</div>
-                <div className="cs-pop-body-text">{selected.prevAnswer || '이전 답변 원문 미연동'}</div>
+                <div className="cs-pop-sec-title">{selected.localCompleted ? '처리한 답변' : '이전 답변'} {selected.localCompleted && <span className="cs-badge warn">WRITE 미연결</span>}</div>
+                <div className="cs-pop-body-text">{selected.answerText || selected.prevAnswer || '이전 답변 원문 미연동'}</div>
               </div>
               {/* 4. 주문 정보 */}
               <div className="cs-pop-sec">
@@ -360,6 +398,8 @@ const CsResolvedPopup: React.FC<{ items: CsResolvedItem[]; onClose: () => void }
                   <div><dt>처리단계</dt><dd>처리 완료</dd></div>
                   <div><dt>처리결과</dt><dd>{selected.result}</dd></div>
                   <div><dt>담당직원</dt><dd>{selected.handledBy || '미기록'}</dd></div>
+                  {selected.completionMethod && <div><dt>처리방식</dt><dd>{selected.completionMethod === 'manual_reply' ? '직접 답변' : selected.completionMethod === 'ai_auto_batch' ? 'AI 자동처리(일괄)' : 'AI 초안'}</dd></div>}
+                  {selected.localCompleted && <div><dt>등록상태</dt><dd>WRITE 미연결</dd></div>}
                   <div><dt>후속문의</dt><dd>{selected.followUp ? '있음' : '없음'}</dd></div>
                 </dl>
               </div>
@@ -455,6 +495,8 @@ const CsCustomerPopup: React.FC<{ items: CsCustomerManagementItem[]; onClose: ()
 // ── 메인 ──────────────────────────────────────────────────────────────────────
 export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goodsNames, loading, onRefresh }) => {
   const [openKpi, setOpenKpi] = useState<KpiKey | null>(null);
+  // CS Work Completion Flow v0 — 세션 local 완료 이력(미처리/AI함 → 처리완료).
+  const [completed, setCompleted] = useState<CsCompletedWorkItem[]>([]);
 
   const facts = useMemo<CsDashboardFacts | null>(() => {
     if (!revenue?.universeAux) return null;
@@ -499,9 +541,40 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
   ];
 
   const u = wf.unresolved, r = wf.resolved, a = wf.aiAuto, cs = wf.customers;
-  const unresolvedSub = `AI초안 ${u.byStage.aiDraftable} · 내부확인 ${u.byStage.internalCheck} · 보류 ${u.byStage.hold}`;
-  const resolvedSub = `오늘 ${r.today} · 최근7일 ${r.last7d} · 반복 ${r.repeat}`;
-  const aiSub = `리뷰 ${a.byType.review} · 배송 ${a.byType.delivery}`;
+
+  // 완료된 originalId는 미처리/AI함에서 제외, 처리완료에는 prepend.
+  const completedIds = completedOriginalIdSet(completed);
+  const unresolvedItems = u.items.filter((i) => !completedIds.has(i.inquiryId));
+  const aiAutoItems = a.items.filter((i) => !completedIds.has(itemId(i)));
+  const resolvedItems = [...completed.map(toResolvedItem), ...r.items];
+
+  const nowIso = (): string => new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const handleCompleteItem = (item: CsKpiItem, payload: { answerText: string; assignee?: string; method: CsCompletionMethod }): void => {
+    const d = buildCsDetailItem(item, { orders, contacts, goodsNames });
+    const built = buildCompletedWorkItem({
+      sourceType: 'inquiry', originalId: itemId(item), title: item.kind === 'inquiry' ? item.title : `${item.productName} 리뷰`,
+      type: item.topicKo, productName: item.productName, orderNo: item.orderNo, originalText: d.bodyText,
+      answerText: payload.answerText, assignee: payload.assignee, completedAt: nowIso(), completionMethod: payload.method,
+      order: d.order, customer: d.customer
+    });
+    setCompleted((prev) => addCompletedWorkItems(prev, [built]));
+  };
+  const handleCompleteBatch = (entries: Array<{ item: CsKpiItem; draft: string }>): void => {
+    const builds = entries.map(({ item, draft }) => {
+      const sourceType: CsCompletionSource = item.kind === 'review' ? 'review' : 'delivery';
+      const d = buildCsDetailItem(item, { orders, contacts, goodsNames });
+      return buildCompletedWorkItem({
+        sourceType, originalId: itemId(item), title: item.kind === 'review' ? `${item.productName} 리뷰` : item.title,
+        type: item.kind === 'review' ? '리뷰' : item.topicKo, productName: item.productName, orderNo: item.orderNo, originalText: d.bodyText,
+        answerText: draft, completedAt: nowIso(), completionMethod: 'ai_auto_batch', order: d.order, customer: d.customer
+      });
+    });
+    setCompleted((prev) => addCompletedWorkItems(prev, builds));
+  };
+
+  const unresolvedSub = `AI초안 ${unresolvedItems.filter((i) => i.aiProcessable).length} · 내부확인 ${unresolvedItems.filter((i) => i.needsInternalCheck).length} · 보류 ${u.byStage.hold}`;
+  const resolvedSub = `로컬완료 ${completed.length} · 최근7일 ${r.last7d} · 반복 ${r.repeat}`;
+  const aiSub = `리뷰 ${aiAutoItems.filter((i) => i.kind === 'review').length} · 배송 ${aiAutoItems.filter((i) => i.kind === 'inquiry').length}`;
   const custSub = `반복문의 ${cs.byTag.repeatInquiry} · 클레임반복 ${cs.byTag.repeatClaim} · 고액 ${cs.byTag.highValue} · 주의 ${cs.byTag.watch}`;
 
   return (
@@ -512,9 +585,9 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
       </div>
 
       <div className="dept-card-grid cs-dash-kpi-grid">
-        <KpiCard label="미처리 문의" value={u.count} unit="건" sub={unresolvedSub} icon="✉️" accent="#31D6C4" onClick={() => setOpenKpi('unresolved')} />
-        <KpiCard label="처리완료 문의" value={r.count} unit="건" sub={resolvedSub} icon="✅" accent="#5B7DB1" onClick={() => setOpenKpi('resolved')} />
-        <KpiCard label="AI 자동처리함" value={a.count} unit="건" sub={aiSub} icon="🤖" accent="#FBBF24" onClick={() => setOpenKpi('ai')} />
+        <KpiCard label="미처리 문의" value={unresolvedItems.length} unit="건" sub={unresolvedSub} icon="✉️" accent="#31D6C4" onClick={() => setOpenKpi('unresolved')} />
+        <KpiCard label="처리완료 문의" value={r.count + completed.length} unit="건" sub={resolvedSub} icon="✅" accent="#5B7DB1" onClick={() => setOpenKpi('resolved')} />
+        <KpiCard label="AI 자동처리함" value={aiAutoItems.length} unit="건" sub={aiSub} icon="🤖" accent="#FBBF24" onClick={() => setOpenKpi('ai')} />
         <KpiCard label="고객관리" value={cs.count} unit="명" sub={custSub} icon="👤" accent="#2DD4BF" onClick={() => setOpenKpi('customers')} />
       </div>
       <p className="cs-dash-kpi-note">미처리=지금 처리할 문의 · 처리완료=과거 이력 조회 · AI 자동처리함=리뷰·배송 저위험 일괄(운영자 등록 트리거) · 고객관리=고객 단위 이력</p>
@@ -542,9 +615,9 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <div className="cs-dash-hint-list">{wf.chatHints.map((h, i) => <span key={i} className="cs-dash-hint-chip">{h}</span>)}</div>
       </div>
 
-      {openKpi === 'unresolved' && <CsItemPopup title="미처리 문의" items={u.items} tabs={UNRES_TABS} allowDraft={false} allowRegister={false} orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} />}
-      {openKpi === 'ai' && <CsItemPopup title="AI 자동처리함 (리뷰·배송)" items={a.items} tabs={AI_TABS} allowDraft allowRegister orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} />}
-      {openKpi === 'resolved' && <CsResolvedPopup items={r.items} onClose={() => setOpenKpi(null)} />}
+      {openKpi === 'unresolved' && <CsItemPopup title="미처리 문의" items={unresolvedItems} tabs={UNRES_TABS} allowDraft={false} allowRegister={false} orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteItem={handleCompleteItem} />}
+      {openKpi === 'ai' && <CsItemPopup title="AI 자동처리함 (리뷰·배송)" items={aiAutoItems} tabs={AI_TABS} allowDraft allowRegister orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteBatch={handleCompleteBatch} />}
+      {openKpi === 'resolved' && <CsResolvedPopup items={resolvedItems} onClose={() => setOpenKpi(null)} />}
       {openKpi === 'customers' && <CsCustomerPopup items={cs.items} onClose={() => setOpenKpi(null)} />}
     </div>
   );

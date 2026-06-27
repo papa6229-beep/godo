@@ -70,7 +70,7 @@ ok('9. 처리완료 item에 주문/고객 블록(contacts 경로)', !!resolved.o
 
 // AI 자동처리함
 ok('10. AI함 상세 AI 초안 미리보기 존재', /AI 초안 미리보기/.test(TSX) && /AI 초안 보기/.test(TSX));
-ok('11. AI함 등록 버튼이 승인요청(승인큐) 의미 유지 + disabled', /선택 승인요청/.test(TSX) && /전체 승인요청/.test(TSX) && /승인큐/.test(TSX) && /disabled title="승인큐 미연결"/.test(TSX));
+ok('11. AI함 처리완료 트리거 + 고도몰 등록은 WRITE 연결 후 안내 유지(승인큐 의미)', /선택 처리완료/.test(TSX) && /전체 처리완료/.test(TSX) && /WRITE 연결 후/.test(TSX));
 
 // 라이트모드 가독성
 ok('12. 라이트 모드 가독성 미디어쿼리 + 진한 amber', /@media \(prefers-color-scheme: light\)/.test(CSS) && /#92600A|#8A5A00|#B8860B/.test(CSS));
