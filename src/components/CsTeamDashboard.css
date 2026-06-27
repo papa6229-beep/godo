@@ -2,10 +2,46 @@
 .cs-dash {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 6px 20px 20px;
 }
+/* KPI 영역 여백/간격 개선 */
+.cs-dash-kpi-grid { gap: 16px; }
+.cs-dash-kpi { min-height: 104px; padding: 16px; }
+
+/* 통계: 문의 유형 비중 막대 */
+.cs-stat-bars { display: flex; flex-direction: column; gap: 8px; }
+.cs-stat-bar-row { display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; gap: 10px; }
+.cs-stat-bar-label { font-size: 12px; color: var(--text-secondary); }
+.cs-stat-bar-track { height: 10px; background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 999px; overflow: hidden; }
+.cs-stat-bar-fill { display: block; height: 100%; background: #5B7DB1; border-radius: 999px; }
+.cs-stat-bar-fill.type-pay { background: #8B7DF0; }
+.cs-stat-bar-fill.type-claim { background: #F59E5B; }
+.cs-stat-bar-fill.type-delivery { background: #38BDF8; }
+.cs-stat-bar-fill.type-product { background: #F472B6; }
+.cs-stat-bar-fill.type-review { background: #FBBF24; }
+.cs-stat-bar-val { font-size: 12px; color: var(--text-muted); text-align: right; }
+
+/* 통계: 업무 흐름 */
+.cs-stat-flow { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
+.cs-stat-flow-card { flex: 1 1 0; min-width: 64px; background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.cs-stat-flow-n { font-size: 18px; font-weight: 700; color: #31D6C4; }
+.cs-stat-flow-label { font-size: 11px; color: var(--text-secondary); }
+.cs-stat-flow-arrow { align-self: center; color: var(--text-secondary); font-size: 12px; }
+
+/* 통계: 이슈 상품 랭킹 */
+.cs-stat-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cs-stat-rank-row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dashed var(--line-subtle); }
+.cs-stat-rank-no { flex: 0 0 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: rgba(49, 214, 196, 0.15); color: #31D6C4; font-weight: 700; font-size: 12px; }
+.cs-stat-rank-title { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.cs-stat-rank-meta { font-size: 11px; color: var(--text-secondary); }
+
+/* 통계: 고객 리스크 */
+.cs-stat-risk-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.cs-stat-risk-top { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+.cs-stat-risk-top-row { font-size: 12px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 1000px) { .cs-stat-risk-cards { grid-template-columns: repeat(2, 1fr); } }
 
 .cs-dash-head { display: flex; flex-direction: column; gap: 4px; }
 
