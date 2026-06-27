@@ -478,6 +478,28 @@ export interface CsDetailOrderItem {
   amount?: number;
 }
 
+export interface CsDetailOrderBlock {
+  orderNo?: string;
+  orderDate?: string;
+  paymentState?: string;
+  orderAmount?: number;
+  goodsAmount?: number;
+  deliveryCharge?: number;
+  claimTypes?: string[];
+  items?: CsDetailOrderItem[];
+  matched: boolean;
+}
+
+export interface CsDetailCustomerBlock {
+  isSynthetic: boolean;
+  memberType?: string;
+  memberId?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  recentOrderCount?: number;
+}
+
 export interface CsDashboardDetailItem {
   id: string;
   sourceType: 'inquiry' | 'review';
@@ -493,26 +515,48 @@ export interface CsDashboardDetailItem {
   summary?: string;
   rating?: number;
   sentiment?: string;
-  order?: {
-    orderNo?: string;
-    orderDate?: string;
-    paymentState?: string;
-    orderAmount?: number;
-    goodsAmount?: number;
-    deliveryCharge?: number;
-    claimTypes?: string[];
-    items?: CsDetailOrderItem[];
-  };
-  customer?: {
-    isSynthetic: boolean;
-    memberType?: string;
-    memberId?: string;
-    name?: string;
-    phone?: string;
-    email?: string;
-    recentOrderCount?: number;
-  };
+  order?: CsDetailOrderBlock;
+  customer?: CsDetailCustomerBlock;
   flags: { orderLinked: boolean; draftable: boolean; needsInternalCheck: boolean; highRisk: boolean };
+}
+
+// 공유: orderNo → 주문 블록(연결 여부 포함). PII 없음.
+function buildOrderBlock(orderNo: string | undefined, orders: GroundingOrder[], names?: Record<string, string>): CsDetailOrderBlock {
+  const probe = { inquiryId: '', orderNo, goodsNo: undefined, topic: undefined };
+  const facts = buildAssociatedOrderFacts(probe, orders);
+  const order = orderNo ? orders.find((o) => o.orderNo === orderNo) : undefined;
+  if (facts.matched && order) {
+    return {
+      orderNo: order.orderNo,
+      orderDate: order.orderDate || undefined,
+      paymentState: order.paid ? '결제완료' : '미결제/미완료',
+      orderAmount: order.totalAmount,
+      goodsAmount: order.productRevenueByLines,
+      deliveryCharge: order.deliveryFee,
+      ...(facts.claimSummary?.claimTypes?.length ? { claimTypes: facts.claimSummary.claimTypes } : {}),
+      items: (order.lines || []).map((l) => ({ productName: l.goodsName || (l.goodsNo && names?.[l.goodsNo]) || l.goodsNo, quantity: l.quantity, amount: l.lineRevenue })),
+      matched: true
+    };
+  }
+  return { orderNo, items: [], matched: false };
+}
+
+// 공유: 고객 블록(contacts가 있을 때만 = CS UI 경로). memberKey는 주문에서만 얻음. PII 게이트.
+function buildCustomerBlock(orderNo: string | undefined, orders: GroundingOrder[], contacts?: CsDashContact[]): CsDetailCustomerBlock | undefined {
+  if (!contacts || !orderNo) return undefined;
+  const order = orders.find((o) => o.orderNo === orderNo);
+  if (!order?.memberKey) return undefined;
+  const c = contacts.find((x) => x.memberKey === order.memberKey);
+  if (!c) return undefined;
+  return {
+    isSynthetic: c.origin?.isFakePii === true || c.origin?.piiType === 'fake' || true,
+    memberType: '회원',
+    memberId: c.customerId,
+    name: c.customerName,
+    phone: c.phone,
+    email: c.email,
+    recentOrderCount: orders.filter((o) => o.memberKey === order.memberKey).length
+  };
 }
 
 // 단건 enriched detail. customer는 contacts가 주어졌을 때만(=CS 상세 UI 경로) 채운다.
@@ -524,11 +568,7 @@ export function buildCsDetailItem(
   const names = ctx.goodsNames;
   const id = item.kind === 'inquiry' ? item.inquiryId : item.reviewId;
   const orderNo = item.orderNo;
-  const facts = buildAssociatedOrderFacts(
-    { inquiryId: id, orderNo, goodsNo: item.goodsNo, topic: item.kind === 'inquiry' ? item.topic : 'product' },
-    orders
-  );
-  const order = orderNo ? orders.find((o) => o.orderNo === orderNo) : undefined;
+  const orderBlock = buildOrderBlock(orderNo, orders, names);
 
   const detail: CsDashboardDetailItem = {
     id,
@@ -543,51 +583,17 @@ export function buildCsDetailItem(
     bodyText: item.excerpt || undefined,
     summary: item.excerpt || undefined,
     ...(item.kind === 'inquiry' ? {} : { rating: item.rating, sentiment: item.sentiment }),
+    order: orderBlock,
     flags: {
-      orderLinked: facts.matched,
+      orderLinked: orderBlock.matched,
       draftable: item.aiProcessable,
       needsInternalCheck: item.needsInternalCheck,
       highRisk: item.riskLevel === 'high'
     }
   };
   if (item.kind === 'inquiry') detail.status = item.status;
-
-  // 주문 섹션
-  if (facts.matched && order) {
-    detail.order = {
-      orderNo: order.orderNo,
-      orderDate: order.orderDate || undefined,
-      paymentState: order.paid ? '결제완료' : '미결제/미완료',
-      orderAmount: order.totalAmount,
-      goodsAmount: order.productRevenueByLines,
-      deliveryCharge: order.deliveryFee,
-      ...(facts.claimSummary?.claimTypes?.length ? { claimTypes: facts.claimSummary.claimTypes } : {}),
-      items: (order.lines || []).map((l) => ({
-        productName: l.goodsName || (l.goodsNo && names?.[l.goodsNo]) || l.goodsNo,
-        quantity: l.quantity,
-        amount: l.lineRevenue
-      }))
-    };
-  } else {
-    detail.order = { orderNo, items: [] }; // 연결 없음(컴포넌트가 "연결 주문 없음" 표시)
-  }
-
-  // 고객 섹션 — contacts가 주어진 경우만(CS 상세 UI). memberKey는 주문에서만 얻음.
-  if (ctx.contacts && order?.memberKey) {
-    const c = ctx.contacts.find((x) => x.memberKey === order.memberKey);
-    if (c) {
-      detail.customer = {
-        isSynthetic: c.origin?.isFakePii === true || c.origin?.piiType === 'fake' || true,
-        memberType: '회원',
-        memberId: c.customerId,
-        name: c.customerName,
-        phone: c.phone,
-        email: c.email,
-        recentOrderCount: orders.filter((o) => o.memberKey === order.memberKey).length
-      };
-    }
-  }
-
+  const cust = buildCustomerBlock(orderNo, orders, ctx.contacts);
+  if (cust) detail.customer = cust;
   return detail;
 }
 
@@ -618,7 +624,11 @@ export interface CsResolvedItem {
   processedAt?: string;
   result?: string;
   followUp?: boolean;
-  prevAnswer?: string;
+  questionText?: string; // 고객 질문 원문(safe excerpt)
+  prevAnswer?: string; // 이전 답변(placeholder)
+  handledBy?: string; // 담당직원(데이터 없으면 undefined → UI에서 '미기록')
+  order?: CsDetailOrderBlock;
+  customer?: CsDetailCustomerBlock;
 }
 
 const orderMemberKeyMap = (orders: GroundingOrder[]): Map<string, string> => {
@@ -660,7 +670,9 @@ export function buildCsResolvedInquiries(params: {
       if (age <= 7) last7d += 1;
       if (followUp) repeat += 1;
       const c = mk ? contactByKey.get(mk) : undefined;
-      return {
+      const orderBlock = buildOrderBlock(q.orderNo, orders, names);
+      const customerBlock = buildCustomerBlock(q.orderNo, orders, params.contacts);
+      const item: CsResolvedItem = {
         inquiryId: q.inquiryId || '',
         title: q.title || `${csTopicKo(q.topic)} 문의`,
         type: csTopicKo(q.topic),
@@ -671,8 +683,13 @@ export function buildCsResolvedInquiries(params: {
         processedAt: q.createdAt || '', // v0: 실제 처리일시 데이터 없음 → 접수일 대용
         result: '답변 완료',
         followUp,
-        prevAnswer: '이전 답변 원문은 고도몰 CS 원장 확인 필요 (v0 미연동)'
+        ...(q.excerpt ? { questionText: q.excerpt } : {}),
+        prevAnswer: '이전 답변 원문은 고도몰 CS 원장 확인 필요 (v0 미연동)',
+        // handledBy: 데이터 없음 → 미설정(UI에서 '미기록' placeholder)
+        order: orderBlock,
+        ...(customerBlock ? { customer: customerBlock } : {})
       };
+      return item;
     });
   return { count: items.length, today, last7d, repeat, items };
 }
