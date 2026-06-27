@@ -15,6 +15,7 @@ import { composeCsDraftFromOrders, normalizeCsTopic, type CsDraftInquiry, type C
 export type CsDashInquiry = CsDraftInquiry;
 export interface CsDashReview {
   reviewId?: string;
+  orderNo?: string;
   goodsNo?: string;
   productId?: string;
   rating?: number;
@@ -264,8 +265,10 @@ export interface CsKpiInquiryItem {
   productName: string;
   topic: string;
   topicKo: string;
+  status?: string;
   orderNo?: string;
   goodsNo?: string;
+  excerpt?: string;
   createdAt: string;
   ageDays: number;
   stage: string;
@@ -278,6 +281,7 @@ export interface CsKpiInquiryItem {
 export interface CsKpiReviewItem {
   kind: 'review';
   reviewId: string;
+  orderNo?: string;
   productName: string;
   goodsNo?: string;
   rating: number;
@@ -392,8 +396,10 @@ export function buildCsKpiRevision(params: {
       productName: prodName(q.goodsNo, undefined, names),
       topic,
       topicKo: csTopicKo(q.topic),
+      ...(q.status ? { status: q.status } : {}),
       ...(q.orderNo ? { orderNo: q.orderNo } : {}),
       ...(q.goodsNo ? { goodsNo: q.goodsNo } : {}),
+      ...(q.excerpt ? { excerpt: q.excerpt } : {}),
       createdAt: q.createdAt || '',
       ageDays: ageDaysOf(q.createdAt || '', nowMs),
       stage: cls.aiProcessable ? 'AI 초안 가능' : '내부 확인 중',
@@ -415,6 +421,7 @@ export function buildCsKpiRevision(params: {
     const item: CsKpiReviewItem = {
       kind: 'review',
       reviewId: r.reviewId || '',
+      ...(r.orderNo ? { orderNo: r.orderNo } : {}),
       productName: prodName(r.goodsNo, r.productId, names),
       ...(r.goodsNo ? { goodsNo: r.goodsNo } : {}),
       rating,
@@ -445,4 +452,141 @@ export function buildCsKpiRevision(params: {
     breakdowns: { inquiryByType, reviewByType, aiProcessableByType, needsInternalCheckByType },
     items: { unresolvedInquiries, unresolvedReviews, aiProcessable, needsInternalCheck }
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CS Inquiry Detail Panel Enrichment v0 — 팝업 우측 상세용 enriched item.
+//   ⚠️ customer(고객정보)는 이 detail item에만 담는다. bulk facts(KPI/breakdown)·AI
+//      context·타 부서·docs/smoke 에는 절대 싣지 않는다. fake contact는 isSynthetic 표식.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// CS 전용 fake contact 입력(구조적 호환: CsFakeContact). bulk facts엔 미사용.
+export interface CsDashContact {
+  memberKey: string;
+  customerId?: string;
+  customerName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  origin?: { isFakePii?: boolean; piiType?: string; syntheticProfile?: string };
+}
+
+export interface CsDetailOrderItem {
+  productName?: string;
+  optionName?: string;
+  quantity?: number;
+  amount?: number;
+}
+
+export interface CsDashboardDetailItem {
+  id: string;
+  sourceType: 'inquiry' | 'review';
+  title: string;
+  productName?: string;
+  type?: string;
+  status?: string;
+  createdAt?: string;
+  elapsedDays?: number;
+  processStage?: string;
+  processRoute?: 'ai_auto' | 'internal_check';
+  bodyText?: string;
+  summary?: string;
+  rating?: number;
+  sentiment?: string;
+  order?: {
+    orderNo?: string;
+    orderDate?: string;
+    paymentState?: string;
+    orderAmount?: number;
+    goodsAmount?: number;
+    deliveryCharge?: number;
+    claimTypes?: string[];
+    items?: CsDetailOrderItem[];
+  };
+  customer?: {
+    isSynthetic: boolean;
+    memberType?: string;
+    memberId?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    recentOrderCount?: number;
+  };
+  flags: { orderLinked: boolean; draftable: boolean; needsInternalCheck: boolean; highRisk: boolean };
+}
+
+// 단건 enriched detail. customer는 contacts가 주어졌을 때만(=CS 상세 UI 경로) 채운다.
+export function buildCsDetailItem(
+  item: CsKpiItem,
+  ctx: { orders: GroundingOrder[]; contacts?: CsDashContact[]; goodsNames?: Record<string, string> }
+): CsDashboardDetailItem {
+  const orders = ctx.orders || [];
+  const names = ctx.goodsNames;
+  const id = item.kind === 'inquiry' ? item.inquiryId : item.reviewId;
+  const orderNo = item.orderNo;
+  const facts = buildAssociatedOrderFacts(
+    { inquiryId: id, orderNo, goodsNo: item.goodsNo, topic: item.kind === 'inquiry' ? item.topic : 'product' },
+    orders
+  );
+  const order = orderNo ? orders.find((o) => o.orderNo === orderNo) : undefined;
+
+  const detail: CsDashboardDetailItem = {
+    id,
+    sourceType: item.kind,
+    title: item.kind === 'inquiry' ? item.title : `${item.productName} 리뷰`,
+    productName: item.productName,
+    type: item.topicKo,
+    createdAt: item.createdAt,
+    elapsedDays: item.ageDays,
+    processStage: item.stage,
+    processRoute: item.aiProcessable ? 'ai_auto' : 'internal_check',
+    bodyText: item.excerpt || undefined,
+    summary: item.excerpt || undefined,
+    ...(item.kind === 'inquiry' ? {} : { rating: item.rating, sentiment: item.sentiment }),
+    flags: {
+      orderLinked: facts.matched,
+      draftable: item.aiProcessable,
+      needsInternalCheck: item.needsInternalCheck,
+      highRisk: item.riskLevel === 'high'
+    }
+  };
+  if (item.kind === 'inquiry') detail.status = item.status;
+
+  // 주문 섹션
+  if (facts.matched && order) {
+    detail.order = {
+      orderNo: order.orderNo,
+      orderDate: order.orderDate || undefined,
+      paymentState: order.paid ? '결제완료' : '미결제/미완료',
+      orderAmount: order.totalAmount,
+      goodsAmount: order.productRevenueByLines,
+      deliveryCharge: order.deliveryFee,
+      ...(facts.claimSummary?.claimTypes?.length ? { claimTypes: facts.claimSummary.claimTypes } : {}),
+      items: (order.lines || []).map((l) => ({
+        productName: l.goodsName || (l.goodsNo && names?.[l.goodsNo]) || l.goodsNo,
+        quantity: l.quantity,
+        amount: l.lineRevenue
+      }))
+    };
+  } else {
+    detail.order = { orderNo, items: [] }; // 연결 없음(컴포넌트가 "연결 주문 없음" 표시)
+  }
+
+  // 고객 섹션 — contacts가 주어진 경우만(CS 상세 UI). memberKey는 주문에서만 얻음.
+  if (ctx.contacts && order?.memberKey) {
+    const c = ctx.contacts.find((x) => x.memberKey === order.memberKey);
+    if (c) {
+      detail.customer = {
+        isSynthetic: c.origin?.isFakePii === true || c.origin?.piiType === 'fake' || true,
+        memberType: '회원',
+        memberId: c.customerId,
+        name: c.customerName,
+        phone: c.phone,
+        email: c.email,
+        recentOrderCount: orders.filter((o) => o.memberKey === order.memberKey).length
+      };
+    }
+  }
+
+  return detail;
 }

@@ -5,6 +5,7 @@ import { composeCsDraftFromOrders } from '../services/csDraftComposer';
 import {
   buildCsDashboardFacts,
   buildCsKpiRevision,
+  buildCsDetailItem,
   csTopicKo,
   type CsDashboardFacts,
   type CsKpiRevisionFacts,
@@ -13,7 +14,8 @@ import {
   type CsIssueProduct,
   type CsKpiItem,
   type CsKpiInquiryItem,
-  type CsKpiReviewItem
+  type CsKpiReviewItem,
+  type CsDashContact
 } from '../services/csTeamDashboardFacts';
 
 // CS팀 처리판 v0.2 — KPI를 [접수 현황] vs [처리 분류]로 재구성 + 카드 클릭 팝업.
@@ -95,19 +97,29 @@ interface PopupTab { key: string; label: string; match: (i: CsKpiItem) => boolea
 
 const itemId = (i: CsKpiItem): string => (i.kind === 'inquiry' ? i.inquiryId : i.reviewId);
 
+const PROCESS_STAGES = ['미확인', 'AI 초안 가능', '초안 작성됨', '내부 확인 중', '답변 대기', '처리 완료', '보류'];
+
 const CsKpiPopup: React.FC<{
   title: string;
   items: CsKpiItem[];
   tabs: PopupTab[];
   allowDraft: boolean;
   orders: RevenueResult['orders'];
+  contacts: CsDashContact[];
+  goodsNames: Record<string, string>;
   onClose: () => void;
-}> = ({ title, items, tabs, allowDraft, orders, onClose }) => {
+}> = ({ title, items, tabs, allowDraft, orders, contacts, goodsNames, onClose }) => {
   const [activeTab, setActiveTab] = useState(tabs[0]?.key || 'all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [memo, setMemo] = useState<Record<string, string>>({});
+  const [stageByItem, setStageByItem] = useState<Record<string, string>>({});
+  const [replyByItem, setReplyByItem] = useState<Record<string, string>>({});
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [regenDraft, setRegenDraft] = useState<string | null>(null);
+  const [replyOpen, setReplyOpen] = useState(false);
   const [previews, setPreviews] = useState<Array<{ label: string; draft: string }>>([]);
+  const selectItem = (id: string): void => { setSelectedId(id); setDraftOpen(false); setRegenDraft(null); setReplyOpen(false); };
 
   const tab = tabs.find((t) => t.key === activeTab) || tabs[0];
   const filtered = tab ? items.filter(tab.match) : items;
@@ -131,7 +143,7 @@ const CsKpiPopup: React.FC<{
 
         <div className="cs-pop-tabs">
           {tabs.map((t) => (
-            <button key={t.key} type="button" className={`cs-pop-tab ${t.key === activeTab ? 'active' : ''}`} onClick={() => { setActiveTab(t.key); setSelectedId(null); }}>
+            <button key={t.key} type="button" className={`cs-pop-tab ${t.key === activeTab ? 'active' : ''}`} onClick={() => { setActiveTab(t.key); selectItem(''); }}>
               {t.label} <span className="cs-pop-tab-n">{items.filter(t.match).length}</span>
             </button>
           ))}
@@ -151,7 +163,7 @@ const CsKpiPopup: React.FC<{
             {filtered.map((i) => {
               const id = itemId(i);
               return (
-                <li key={id} className={`cs-pop-item ${selectedId === id ? 'active' : ''}`} onClick={() => setSelectedId(id)}>
+                <li key={id} className={`cs-pop-item ${selectedId === id ? 'active' : ''}`} onClick={() => selectItem(id)}>
                   {allowDraft && (
                     <input type="checkbox" checked={!!checked[id]} onClick={(e) => e.stopPropagation()} onChange={(e) => setChecked((p) => ({ ...p, [id]: e.target.checked }))} />
                   )}
@@ -173,30 +185,112 @@ const CsKpiPopup: React.FC<{
           </ul>
 
           <div className="cs-pop-detail">
-            {selected ? (
-              <>
-                <div className="cs-pop-detail-title">{selected.kind === 'inquiry' ? (selected as CsKpiInquiryItem).title : `${selected.productName} 리뷰`}</div>
-                <dl className="cs-pop-detail-list">
-                  <div><dt>상품</dt><dd>{selected.productName}</dd></div>
-                  {selected.kind === 'inquiry'
-                    ? <div><dt>주문</dt><dd>{(selected as CsKpiInquiryItem).orderLinked ? `연결됨 (${(selected as CsKpiInquiryItem).orderNo || '-'})` : '미연결'}</dd></div>
-                    : <div><dt>평점/감성</dt><dd>{(selected as CsKpiReviewItem).rating}점 · {sentimentKo((selected as CsKpiReviewItem).sentiment)}</dd></div>}
-                  <div><dt>유형</dt><dd>{selected.topicKo}</dd></div>
-                  <div><dt>접수/경과</dt><dd>{shortDate(selected.createdAt)} · {ageKo(selected.ageDays)}</dd></div>
-                  <div><dt>처리단계</dt><dd>{selected.stage}</dd></div>
-                  <div><dt>처리분류</dt><dd>{selected.aiProcessable ? 'AI 자동처리 가능' : `내부확인 필요${selected.internalReason ? ` — ${selected.internalReason}` : ''}`}</dd></div>
-                  {selected.kind === 'review' && (selected as CsKpiReviewItem).excerpt && <div><dt>요약</dt><dd>{(selected as CsKpiReviewItem).excerpt}</dd></div>}
-                </dl>
-                <label className="cs-pop-memo-label">내부 메모 (저장 안 됨 · v0)</label>
-                <textarea className="cs-pop-memo" rows={2} value={memo[itemId(selected)] || ''} onChange={(e) => setMemo((p) => ({ ...p, [itemId(selected)]: e.target.value }))} placeholder="내부 확인 메모를 남겨보세요…" />
-                {allowDraft && (
-                  <div className="cs-pop-detail-draft">
-                    <div className="cs-pop-detail-draft-label">AI 초안 미리보기</div>
-                    <pre className="cs-pop-draft-pre">{genDraft(selected)}</pre>
+            {selected ? (() => {
+              const id = itemId(selected);
+              const d = buildCsDetailItem(selected, { orders: orders || [], contacts, goodsNames });
+              const stage = stageByItem[id] || d.processStage || '미확인';
+              const history = [
+                `${shortDate(d.createdAt || '')} · ${d.sourceType === 'inquiry' ? '문의' : '리뷰'} 접수`,
+                `분류: ${d.processRoute === 'ai_auto' ? 'AI 자동처리 가능' : '내부확인 필요'}`,
+                ...(draftOpen || regenDraft ? ['AI 초안 생성됨'] : [])
+              ];
+              return (
+                <>
+                  {/* 1. 문의/리뷰 내용 */}
+                  <div className="cs-pop-sec">
+                    <div className="cs-pop-sec-title">{d.sourceType === 'inquiry' ? '문의 내용' : '리뷰 내용'}</div>
+                    <div className="cs-pop-detail-title">{d.title}</div>
+                    <dl className="cs-pop-detail-list">
+                      <div><dt>상품</dt><dd>{d.productName || '상품미상'}</dd></div>
+                      <div><dt>유형</dt><dd>{d.type}</dd></div>
+                      {d.sourceType === 'inquiry'
+                        ? <div><dt>상태</dt><dd>{statusKo(d.status || '')}</dd></div>
+                        : <div><dt>평점/감성</dt><dd>{d.rating}점 · {sentimentKo(d.sentiment || '')}</dd></div>}
+                      <div><dt>접수/경과</dt><dd>{shortDate(d.createdAt || '')} · {ageKo(d.elapsedDays || 0)}</dd></div>
+                      <div><dt>처리분류</dt><dd>{d.flags.needsInternalCheck ? `내부확인 필요${selected.needsInternalCheck && selected.internalReason ? ` — ${selected.internalReason}` : ''}` : 'AI 자동처리 가능'}</dd></div>
+                    </dl>
+                    {d.bodyText && <div className="cs-pop-body-text">{d.bodyText}</div>}
                   </div>
-                )}
-              </>
-            ) : (
+
+                  {/* 2. 주문 정보 */}
+                  <div className="cs-pop-sec">
+                    <div className="cs-pop-sec-title">주문 정보</div>
+                    {d.flags.orderLinked && d.order ? (
+                      <>
+                        <dl className="cs-pop-detail-list">
+                          <div><dt>주문번호</dt><dd>{d.order.orderNo}</dd></div>
+                          <div><dt>주문일</dt><dd>{shortDate(d.order.orderDate || '')}</dd></div>
+                          <div><dt>결제상태</dt><dd>{d.order.paymentState}</dd></div>
+                          <div><dt>주문금액</dt><dd>{(d.order.orderAmount || 0).toLocaleString()}원 (상품 {(d.order.goodsAmount || 0).toLocaleString()} · 배송 {(d.order.deliveryCharge || 0).toLocaleString()})</dd></div>
+                          {d.order.claimTypes?.length ? <div><dt>클레임</dt><dd>{d.order.claimTypes.join(', ')} (완료 여부 미확정)</dd></div> : null}
+                        </dl>
+                        <div className="cs-pop-order-items">
+                          {(d.order.items || []).map((it, i) => (
+                            <div key={i} className="cs-pop-order-item">- {it.productName} / {it.quantity}개 / {(it.amount || 0).toLocaleString()}원</div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="cs-dash-muted">연결된 주문이 없습니다. 주문번호 확인이 필요합니다.</p>
+                    )}
+                  </div>
+
+                  {/* 3. 고객 정보 */}
+                  <div className="cs-pop-sec">
+                    <div className="cs-pop-sec-title">고객 정보 {d.customer?.isSynthetic && <span className="cs-badge warn">가상 고객(synthetic/fake)</span>}</div>
+                    {d.customer ? (
+                      <dl className="cs-pop-detail-list">
+                        <div><dt>회원구분</dt><dd>{d.customer.memberType || '-'}</dd></div>
+                        <div><dt>회원ID</dt><dd>{d.customer.memberId || '-'}</dd></div>
+                        <div><dt>고객명</dt><dd>{d.customer.name || '-'}</dd></div>
+                        <div><dt>연락처</dt><dd>{d.customer.phone || '-'}</dd></div>
+                        <div><dt>이메일</dt><dd>{d.customer.email || '-'}</dd></div>
+                        <div><dt>최근 주문</dt><dd>{d.customer.recentOrderCount ?? '-'}건</dd></div>
+                      </dl>
+                    ) : (
+                      <p className="cs-dash-muted">연결된 고객 정보가 없습니다.</p>
+                    )}
+                  </div>
+
+                  {/* 4. 처리 상태 / 메모 / 이력 */}
+                  <div className="cs-pop-sec">
+                    <div className="cs-pop-sec-title">처리 상태 / 메모</div>
+                    <label className="cs-pop-memo-label">처리 단계</label>
+                    <select className="cs-pop-stage" value={stage} onChange={(e) => setStageByItem((p) => ({ ...p, [id]: e.target.value }))}>
+                      {PROCESS_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <label className="cs-pop-memo-label">내부 메모 (local · v0 미영속)</label>
+                    <textarea className="cs-pop-memo" rows={2} value={memo[id] || ''} onChange={(e) => setMemo((p) => ({ ...p, [id]: e.target.value }))} placeholder="내부 확인 메모를 남겨보세요…" />
+                    <div className="cs-pop-history">
+                      {history.map((h, i) => <div key={i} className="cs-pop-history-item">{h}</div>)}
+                    </div>
+                  </div>
+
+                  {/* 5. AI 초안 / 응답 액션 */}
+                  <div className="cs-pop-sec">
+                    <div className="cs-pop-sec-title">AI 초안 / 응답 액션</div>
+                    <div className="cs-pop-action-btns">
+                      <button type="button" className="dept-refresh-btn" onClick={() => { setDraftOpen(true); setRegenDraft(null); }}>AI 초안 보기</button>
+                      <button type="button" className="dept-refresh-btn" onClick={() => { setDraftOpen(true); setRegenDraft(genDraft(selected)); }}>AI 초안 다시 만들기</button>
+                      <button type="button" className="dept-refresh-btn" onClick={() => setReplyOpen((v) => !v)}>직접 답변 작성</button>
+                    </div>
+                    <p className="cs-pop-actions-note">※ v0: 미리보기/메모만 — 실제 발송·등록·전화·알림은 하지 않습니다.</p>
+                    {draftOpen && (
+                      <div className="cs-pop-detail-draft">
+                        <div className="cs-pop-detail-draft-label">AI 초안 미리보기</div>
+                        <pre className="cs-pop-draft-pre">{regenDraft ?? genDraft(selected)}</pre>
+                      </div>
+                    )}
+                    {replyOpen && (
+                      <div className="cs-pop-detail-draft">
+                        <div className="cs-pop-detail-draft-label">직접 답변 작성 (local · v0)</div>
+                        <textarea className="cs-pop-memo" rows={3} value={replyByItem[id] || ''} onChange={(e) => setReplyByItem((p) => ({ ...p, [id]: e.target.value }))} placeholder="직접 답변을 작성하세요…" />
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })() : (
               <p className="cs-dash-muted">항목을 선택하면 상세가 표시됩니다.</p>
             )}
           </div>
@@ -242,6 +336,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
   }
 
   const orders = revenue?.orders || [];
+  const contacts = (revenue?.universeAux?.csOnlyFakeContacts || []) as CsDashContact[];
   const qItems = rev.items.unresolvedInquiries;
   const inquirySub = `오늘 ${qItems.filter((i) => i.ageDays <= 0).length} · 1일+ ${qItems.filter((i) => i.ageDays >= 1).length} · 3일+ ${qItems.filter((i) => i.ageDays >= 3).length}`;
   const rb = rev.breakdowns.reviewByType;
@@ -347,7 +442,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <div className="cs-dash-hint-list">{facts.chatHints.map((h, i) => <span key={i} className="cs-dash-hint-chip">{h}</span>)}</div>
       </div>
 
-      {cfg && <CsKpiPopup title={cfg.title} items={cfg.items} tabs={cfg.tabs} allowDraft={cfg.allowDraft} orders={orders} onClose={() => setOpenKpi(null)} />}
+      {cfg && <CsKpiPopup title={cfg.title} items={cfg.items} tabs={cfg.tabs} allowDraft={cfg.allowDraft} orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} />}
     </div>
   );
 };

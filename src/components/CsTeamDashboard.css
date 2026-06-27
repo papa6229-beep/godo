@@ -179,6 +179,16 @@
 .cs-pop-detail-draft { margin-top: 12px; }
 .cs-pop-detail-draft-label, .cs-pop-preview-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
 .cs-pop-draft-pre { white-space: pre-wrap; font-size: 12px; color: var(--text-muted); background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 6px; padding: 8px; margin: 0; font-family: inherit; }
+/* 상세 섹션(Detail Panel Enrichment) */
+.cs-pop-sec { border: 1px solid var(--line-subtle); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg-app); }
+.cs-pop-sec-title { font-size: 12px; font-weight: 700; color: #31D6C4; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.cs-pop-body-text { font-size: 12px; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--line-subtle); border-radius: 6px; padding: 8px; white-space: pre-wrap; }
+.cs-pop-order-items { font-size: 12px; color: var(--text-muted); margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.cs-pop-stage { width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--line-subtle); color: var(--text-muted); border-radius: 6px; padding: 5px; font-size: 12px; margin-bottom: 8px; }
+.cs-pop-history { margin-top: 8px; border-left: 2px solid var(--line-subtle); padding-left: 10px; display: flex; flex-direction: column; gap: 4px; }
+.cs-pop-history-item { font-size: 11px; color: var(--text-secondary); }
+.cs-pop-action-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+
 .cs-pop-preview { border-top: 1px solid var(--line-subtle); padding: 12px 18px; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .cs-pop-preview-head { font-size: 12px; color: #31D6C4; }
 .cs-pop-preview-item { display: flex; flex-direction: column; gap: 4px; }
