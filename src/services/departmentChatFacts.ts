@@ -7,6 +7,13 @@
 //   - fake PII는 CS팀 context에만(가상/fake 표시 필수). 상품/마케팅/총괄 context엔 절대 미포함.
 
 import type { DepartmentFactsBundle, AnalyticsPacket, MarketingRecommendationCandidate } from './departmentFactsRouting';
+import {
+  buildAssociatedOrderFacts,
+  findDuplicatePaymentCandidates,
+  type GroundingOrder,
+  type AssociatedOrderFacts,
+  type DuplicatePaymentCandidate
+} from './csInquiryOrderGrounding';
 
 export type ChatTeam = 'product' | 'cs' | 'marketing' | 'manager';
 
@@ -47,6 +54,7 @@ export interface SafeInquiryChatItem {
   status?: string;
   urgency?: string;
   topic?: string;
+  orderNo?: string; // 연결 주문 facts 대조 키(있을 때만). PII 아님.
   goodsNo?: string;
   productId?: string;
   title?: string;
@@ -66,6 +74,7 @@ export interface SafeReviewChatItem {
 export interface CsChatDetailInput {
   inquiries?: SafeInquiryChatItem[];
   reviews?: SafeReviewChatItem[];
+  orders?: GroundingOrder[]; // CS 전용: 문의↔주문 대조용(RevenueOrderLite 호환, PII 없음). 타 팀 미전달.
   goodsNames?: Record<string, string>;
 }
 
@@ -85,6 +94,91 @@ const inqLine = (q: SafeInquiryChatItem, i: number, names?: Record<string, strin
   `${i + 1}. [${urgencyKo(q.urgency)} · ${q.topic || '기타'}] ${prodName(q.goodsNo, q.productId, names)} — 접수 ${q.createdAt || '?'} · 상태 ${statusKo(q.status)} · 제목 ${q.title || '문의'} · 요약 ${q.excerpt || ''}`;
 const revLine = (r: SafeReviewChatItem, i: number, names?: Record<string, string>): string =>
   `${i + 1}. ${prodName(r.goodsNo, r.productId, names)} — 평점 ${r.rating ?? '?'}점 · ${r.sentiment || ''} · 주제 ${r.topic || ''} · 요약 ${r.excerpt || ''}`;
+
+// ── 연결 주문 facts(associatedOrderFacts) 렌더 — CS 전용 ───────────────────────
+const wonOpt = (n?: number): string => (typeof n === 'number' ? `${Math.round(n).toLocaleString()}원` : '미상');
+const isPaymentTopic = (t?: string): boolean => !!t && /payment|결제|중복/i.test(t);
+const CONNECTED_FACTS_MAX = 6;
+
+// associatedOrderFacts → 사람이 읽는 블록. memberKey 등은 노출하지 않는다(PII/가명 보호).
+const assocFactsBlock = (
+  q: SafeInquiryChatItem,
+  facts: AssociatedOrderFacts,
+  dupCands: DuplicatePaymentCandidate[],
+  names?: Record<string, string>
+): string => {
+  if (!facts.matched) {
+    return (
+      `- 문의ID ${q.inquiryId || '?'} · 주문번호 ${facts.orderNo || '없음'} · 주문 매칭: 아니오\n` +
+      `  · 사유: ${facts.missingData[0] || '주문 미확인'} · missingData: ${facts.missingData.join(', ')}`
+    );
+  }
+  const claim = facts.claimSummary;
+  const claimTypes =
+    claim?.claimTypes && claim.claimTypes.length
+      ? claim.claimTypes
+      : [facts.canceled && 'cancel', facts.refunded && 'refund', facts.returned && 'return', facts.exchanged && 'exchange'].filter(Boolean) as string[];
+  const prodNames = (facts.productNames && facts.productNames.length
+    ? facts.productNames
+    : (facts.goodsNos || []).map((g) => names?.[g] || g)
+  ).slice(0, 3).join(', ');
+  const claimLine = claimTypes.length
+    ? `\n  · 클레임 ${claimTypes.join(', ')}${claim?.claimAmount ? ` / claimAmount ${wonOpt(claim.claimAmount)}` : ''} (완료 여부 미확정)`
+    : '\n  · 클레임 없음';
+  const dupLine = isPaymentTopic(q.topic)
+    ? `\n  · 중복결제 점검: ${
+        dupCands.length
+          ? `동일 고객/동일 금액/근접 시간대 후보 ${dupCands.length}건(${dupCands.slice(0, 3).map((c) => c.orderNo).join(', ')})`
+          : '주문 데이터 기준 중복 주문 후보 없음'
+      } (PG 승인내역 기준 최종 확인은 결제 원장 필요)`
+    : '';
+  return (
+    `- 문의ID ${q.inquiryId || '?'} · 주문번호 ${facts.orderNo} · 주문 매칭: 예\n` +
+    `  · 결제상태 ${facts.paid ? '결제완료' : '미결제/미완료'} · 주문금액 ${wonOpt(facts.orderAmount)} · 상품금액 ${wonOpt(facts.goodsAmount)} · 배송비 ${wonOpt(facts.deliveryCharge)}\n` +
+    `  · 주문일 ${facts.orderDate || '미상'} · 결제일 현재 연결 데이터에 없음` +
+    (prodNames ? `\n  · 상품 ${prodNames}` : '') +
+    claimLine +
+    dupLine +
+    `\n  · missingData: ${facts.missingData.join(', ')}`
+  );
+};
+
+// CS shortlist(미답변∪긴급∪최근) 상위 문의에 연결 주문 facts 섹션 생성. orders 없으면 안내.
+const buildConnectedOrderFactsSection = (
+  detail: CsChatDetailInput | undefined,
+  names?: Record<string, string>
+): string => {
+  const inquiries = (detail?.inquiries || []).filter((q) => q.createdAt || q.inquiryId);
+  if (!inquiries.length) return '';
+  const orders = detail?.orders || [];
+  if (!orders.length) {
+    return '\n[연결 주문 facts]\n- (주문 데이터가 연결되지 않아 문의-주문 대조 불가 — 주문번호/결제 승인내역 확인 필요)';
+  }
+  const sorted = [...inquiries].sort(byCreatedDesc);
+  const union: SafeInquiryChatItem[] = [];
+  const seen = new Set<string>();
+  const add = (items: SafeInquiryChatItem[]): void => {
+    for (const q of items) {
+      const k = q.inquiryId || `${q.createdAt || ''}|${q.orderNo || ''}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      union.push(q);
+    }
+  };
+  add(sorted.filter((q) => isUnansweredStatus(q.status)));
+  add(sorted.filter((q) => isUrgent(q.urgency)));
+  add(sorted);
+  const lines = union.slice(0, CONNECTED_FACTS_MAX).map((q) => {
+    const probe = { inquiryId: q.inquiryId || '', orderNo: q.orderNo };
+    const facts = buildAssociatedOrderFacts(probe, orders);
+    const dup =
+      isPaymentTopic(q.topic) && facts.matched
+        ? findDuplicatePaymentCandidates(probe, orders).candidates
+        : [];
+    return assocFactsBlock(q, facts, dup, names);
+  });
+  return `\n[연결 주문 facts]\n${lines.join('\n')}`;
+};
 
 // CS detail 섹션 문자열 생성(없으면 빈 문자열). 모든 항목은 safe fields만(연락처/이름 없음).
 const buildCsDetailSections = (detail: CsChatDetailInput | undefined, csIssuePacketRows: { key: string; label: string; value: number }[], names?: Record<string, string>): string => {
@@ -110,7 +204,8 @@ const buildCsDetailSections = (detail: CsChatDetailInput | undefined, csIssuePac
     sec('긴급 문의 목록', urgent.map((q, i) => inqLine(q, i, names)), '- (현재 safe 긴급 문의 없음)') +
     sec('최근 문의 목록', recent.map((q, i) => inqLine(q, i, names)), '- (현재 safe 문의 없음)') +
     sec('저평점/부정 리뷰 목록', lowReviews.map((r, i) => revLine(r, i, names)), '- (현재 safe 저평점/부정 리뷰 없음)') +
-    sec('CS 이슈 상품', issueProducts, '- (CS 이슈 상품 데이터 없음)')
+    sec('CS 이슈 상품', issueProducts, '- (CS 이슈 상품 데이터 없음)') +
+    buildConnectedOrderFactsSection(detail, names)
   );
 };
 
@@ -161,7 +256,15 @@ export function buildDepartmentChatContext(
         'safe 목록이 context에 있으면 "조회할 수 없다"·"고도몰 CS 관리자에서 직접 확인해 주세요"를 1차 답변으로 쓰지 마라. ' +
         '목록이 비어 있을 때만 "조건에 맞는 문의를 찾지 못했습니다"라고 안내하고 요약 수치를 제시하라. ' +
         '맨 아래 보조로만 "이 목록은 Commerce Universe synthetic safe data 기준이며 실제 고도몰 실시간 CS 원장은 별도 확인이 필요합니다"를 덧붙일 수 있다. ' +
-        '마케팅 전략/프로모션/캠페인/광고를 제안하지 마라. 고객명/전화/주소/이메일/계좌는 절대 표시하지 마라. 숫자를 추측하지 마라.'
+        '마케팅 전략/프로모션/캠페인/광고를 제안하지 마라. 고객명/전화/주소/이메일/계좌는 절대 표시하지 마라. 숫자를 추측하지 마라. ' +
+        // ── CS Response Evidence Policy v0 ──
+        '[Evidence Policy] 결제/주문/환불/취소/중복결제 관련 답변은 반드시 위 [연결 주문 facts]를 근거로 하라. ' +
+        '주문 facts가 있으면(주문 매칭: 예) "현재 연결된 주문 데이터 기준으로는…"으로 범위를 한정해 해당 facts(결제상태/금액/주문일/클레임 내역)만 전달하라. ' +
+        '주문 facts가 없으면(주문 매칭: 아니오 또는 [연결 주문 facts] 없음) "확인한 결과", "중복결제가 아닙니다", "환불 처리되었습니다", "취소 완료되었습니다", "문제 없습니다" 같은 확정 표현을 절대 쓰지 마라. ' +
+        '대신 "현재 연결된 주문 데이터만으로는 최종 확인이 어렵고, 주문번호 또는 결제 승인내역 확인이 필요합니다"라고 안내하라. ' +
+        '클레임(취소/환불/반품/교환)은 "내역이 확인됩니다"까지만 말하고 "처리 완료되었습니다"로 단정하지 마라(완료 여부 미확정). ' +
+        '중복결제 문의는 주문 데이터 기준 "유사 주문 후보"까지만 확인할 수 있고, PG 승인번호·카드 승인번호·transaction id가 없어 최종 중복결제 여부는 결제 원장 확인이 필요하다고 반드시 안내하라. ' +
+        '중복 후보가 없으면 "현재 연결된 주문 데이터 기준으로는 동일 고객/동일 금액/근접 시간대의 중복 주문 후보는 확인되지 않습니다(최종 확인은 결제 원장 필요)"라고 답하고, "중복결제가 아닙니다/이중 결제는 없습니다/문제 없습니다"로 단정하지 마라.'
     };
   }
 
