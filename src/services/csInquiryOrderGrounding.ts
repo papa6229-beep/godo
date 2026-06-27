@@ -111,6 +111,9 @@ export interface AssociatedOrderFacts {
   sourceType?: 'real_godomall' | 'synthetic_test' | string;
   syntheticSource?: string;
 
+  // 결제 topic 문의에서 호출부가 붙여줄 수 있는 중복 주문 후보(optional). composer가 읽는다.
+  duplicatePaymentCandidates?: DuplicatePaymentCandidate[];
+
   missingData: string[];
 }
 
