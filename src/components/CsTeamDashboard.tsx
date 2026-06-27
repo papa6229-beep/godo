@@ -16,7 +16,8 @@ import {
 } from '../services/csTeamDashboardFacts';
 import { buildCsCustomerProfileHub, searchCustomerProfiles, type CsCustomerProfileHubItem } from '../services/csCustomerManagementFacts';
 import { buildCsDashboardStatistics, type CsDashboardStatistics } from '../services/csDashboardStatistics';
-import { filterCsInputsByTime, CS_TIME_RANGES, type CsTimeRange } from '../services/csDashboardTimeFilter';
+import { filterCsInputsByTime, isValidCustomRange, CS_TIME_RANGES, type CsTimeRange, type CsCustomRange } from '../services/csDashboardTimeFilter';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import {
   typeSliceToIntent, workflowStepToIntent, aiMetricToIntent, riskCardToIntent, riskCustomerToIntent, issueProductToIntent,
   type CsPopupIntent
@@ -71,15 +72,24 @@ const reviewReplyDraft = (r: CsKpiReviewItem): string => {
     : '안녕하세요, 고객님.\n소중한 후기 남겨주셔서 감사합니다.\n앞으로도 좋은 상품과 서비스로 보답하겠습니다. 감사합니다.';
 };
 
+// 카운터 애니메이션 표시 숫자(정수/소수). 레이아웃 흔들림 방지(tabular-nums).
+const AnimatedNumber: React.FC<{ value: number; decimals?: number; suffix?: string }> = ({ value, decimals = 0, suffix = '' }) => {
+  const v = useAnimatedNumber(value, { decimals });
+  return <span className="cs-num">{decimals > 0 ? v.toFixed(decimals) : Math.round(v).toLocaleString()}{suffix}</span>;
+};
+
 const KpiCard: React.FC<{ label: string; value: number; unit: string; sub: string; icon: string; accent: string; onClick: () => void }>
-  = ({ label, value, unit, sub, icon, accent, onClick }) => (
-    <button type="button" className="dept-stat-card cs-dash-kpi cs-dash-kpi-btn" style={{ borderTopColor: accent }} onClick={onClick}>
-      <div className="dept-stat-head"><span className="dept-stat-icon">{icon}</span><span>{label}</span></div>
-      <div className="dept-stat-value" style={{ color: accent }}>{value}{unit}</div>
-      <div className="cs-dash-kpi-sub">{sub}</div>
-      <span className="cs-dash-kpi-more">클릭하여 열기 →</span>
-    </button>
-  );
+  = ({ label, value, unit, sub, icon, accent, onClick }) => {
+    const v = useAnimatedNumber(value);
+    return (
+      <button type="button" className="dept-stat-card cs-dash-kpi cs-dash-kpi-btn" style={{ borderTopColor: accent }} onClick={onClick}>
+        <div className="dept-stat-head"><span className="dept-stat-icon">{icon}</span><span>{label}</span></div>
+        <div className="dept-stat-value cs-num" style={{ color: accent }}>{Math.round(v).toLocaleString()}{unit}</div>
+        <div className="cs-dash-kpi-sub">{sub}</div>
+        <span className="cs-dash-kpi-more">클릭하여 열기 →</span>
+      </button>
+    );
+  };
 
 
 // ── 공통 팝업 셸 ───────────────────────────────────────────────────────────────
@@ -775,6 +785,10 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
   // CS Dashboard Interactive Statistics v0 — 통계 클릭 intent + 기간 필터.
   const [intent, setIntent] = useState<CsPopupIntent | null>(null);
   const [period, setPeriod] = useState<CsTimeRange>('all');
+  const [customRange, setCustomRange] = useState<CsCustomRange>({});
+  const [customDraft, setCustomDraft] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [showCustom, setShowCustom] = useState(false);
+  const [customError, setCustomError] = useState('');
   const [nowMs] = useState(() => { try { return Date.now(); } catch { return 0; } });
   // CS Local State Persistence v0 — mount 시 localStorage 복원(lazy, 1회).
   const [persisted] = useState(() => loadCsPersistedState());
@@ -803,13 +817,23 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
     clearCsPersistedState();
     setCompleted([]); setApprovals([]); setAssigneeByItem({}); setMemoByItem({}); setCustMemo({}); setCustCaution({}); setCustBlacklist({});
   };
+  // 직접 선택(custom) 기간 적용/초기화.
+  const applyCustomRange = (): void => {
+    if (!customDraft.start || !customDraft.end) { setCustomError('시작일과 종료일을 모두 선택하세요.'); return; }
+    if (customDraft.end < customDraft.start) { setCustomError('종료일은 시작일보다 빠를 수 없습니다.'); return; }
+    setCustomError(''); setCustomRange({ start: customDraft.start, end: customDraft.end }); setPeriod('custom');
+  };
+  const resetCustomRange = (): void => {
+    setCustomError(''); setCustomDraft({ start: '', end: '' }); setCustomRange({}); setShowCustom(false);
+    setPeriod((p) => (p === 'custom' ? 'all' : p));
+  };
 
   const contacts = useMemo(() => (revenue?.universeAux?.csOnlyFakeContacts || []) as CsDashContact[], [revenue]);
   // 기간 필터 적용된 입력(각 항목 자기 날짜 기준). 전체엔 날짜 없는 항목도 포함.
   const filtered = useMemo(() => filterCsInputsByTime({
     inquiries: revenue?.universeAux?.inquiries || [], reviews: revenue?.universeAux?.reviews || [], orders: revenue?.orders || [],
     completed, approvals
-  }, period, nowMs), [revenue, completed, approvals, period, nowMs]);
+  }, period, nowMs, customRange), [revenue, completed, approvals, period, nowMs, customRange]);
 
   const stats = useMemo<CsDashboardStatistics | null>(() => {
     if (!revenue?.universeAux) return null;
@@ -924,13 +948,23 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
       </div>
 
       <div className="cs-dash-period">
-        <span className="cs-dash-period-label">조회 기간</span>
+        <span className="cs-dash-period-label">조회 기간{period === 'custom' && isValidCustomRange(customRange) ? ` · ${customRange.start} ~ ${customRange.end}` : ''}</span>
         <div className="cs-dash-period-pills">
           {CS_TIME_RANGES.map((rg) => (
-            <button key={rg.key} type="button" className={`cs-dash-period-pill ${period === rg.key ? 'active' : ''}`} onClick={() => setPeriod(rg.key)}>{rg.label}</button>
+            <button key={rg.key} type="button" className={`cs-dash-period-pill ${period === rg.key ? 'active' : ''}`} onClick={() => { setPeriod(rg.key); setShowCustom(false); }}>{rg.label}</button>
           ))}
-          <button type="button" className="cs-dash-period-pill" disabled title="추후 지원">직접 선택</button>
+          <button type="button" className={`cs-dash-period-pill ${period === 'custom' ? 'active' : ''}`} onClick={() => setShowCustom((v) => !v)}>직접 선택</button>
         </div>
+        {showCustom && (
+          <div className="cs-dash-custom-row">
+            <input type="date" className="cs-dash-date" value={customDraft.start} onChange={(e) => setCustomDraft((p) => ({ ...p, start: e.target.value }))} aria-label="시작일" />
+            <span className="cs-dash-custom-sep">~</span>
+            <input type="date" className="cs-dash-date" value={customDraft.end} onChange={(e) => setCustomDraft((p) => ({ ...p, end: e.target.value }))} aria-label="종료일" />
+            <button type="button" className="cs-dash-period-pill active" onClick={applyCustomRange}>적용</button>
+            <button type="button" className="cs-dash-period-pill" onClick={resetCustomRange}>초기화</button>
+            {customError && <span className="cs-dash-custom-error">{customError}</span>}
+          </div>
+        )}
       </div>
 
       <div className="dept-card-grid cs-dash-kpi-grid">
@@ -957,7 +991,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
               <div key={s.type} className="cs-stat-bar-row cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(typeSliceToIntent(s.type))} title="클릭해서 보기">
                 <span className="cs-stat-bar-label">{s.label}</span>
                 <span className="cs-stat-bar-track"><span className={`cs-stat-bar-fill ${csTypeColorClass(s.type === 'claim' ? 'refund' : s.type === 'review' ? '' : s.type)} ${s.type === 'review' ? 'type-review' : ''}`} style={{ width: `${Math.max(2, s.percent)}%` }} /></span>
-                <span className="cs-stat-bar-val">{s.percent}% <span className="cs-dash-muted">({s.count})</span></span>
+                <span className="cs-stat-bar-val"><AnimatedNumber value={s.percent} suffix="%" /> <span className="cs-dash-muted">(<AnimatedNumber value={s.count} />)</span></span>
               </div>
             ))}
           </div>
@@ -969,7 +1003,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
           <div className="cs-stat-flow">
             {([['unresolved', '미처리', stats.workflowSummary.unresolved], ['pendingApproval', '승인 대기', stats.workflowSummary.pendingApproval], ['approved', '승인됨', stats.workflowSummary.approved], ['completed', '처리완료', stats.workflowSummary.completed], ['rejectedOrHeld', '반려/보류', stats.workflowSummary.rejectedOrHeld]] as Array<[string, string, number]>).map(([step, label, n], i, arr) => (
               <React.Fragment key={step}>
-                <div className="cs-stat-flow-card cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(workflowStepToIntent(step))} title="클릭해서 보기"><span className="cs-stat-flow-n">{n}</span><span className="cs-stat-flow-label">{label}</span></div>
+                <div className="cs-stat-flow-card cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(workflowStepToIntent(step))} title="클릭해서 보기"><span className="cs-stat-flow-n"><AnimatedNumber value={n} /></span><span className="cs-stat-flow-label">{label}</span></div>
                 {i < arr.length - 1 && <span className="cs-stat-flow-arrow">→</span>}
               </React.Fragment>
             ))}
@@ -984,9 +1018,9 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
           <p className="cs-dash-section-desc">AI가 초안을 만들고, 운영자가 승인합니다.</p>
           <div className="cs-cust-metrics">
             {([['draftCount', 'AI 초안 후보', stats.aiPerformance.draftCount], ['approvalRequestedCount', '승인요청', stats.aiPerformance.approvalRequestedCount], ['approvedCount', '승인', stats.aiPerformance.approvedCount], ['rejectedCount', '반려', stats.aiPerformance.rejectedCount], ['aiCompletedCount', 'AI 처리완료', stats.aiPerformance.aiCompletedCount]] as Array<[string, string, number]>).map(([metric, label, n]) => (
-              <div key={metric} className="cs-cust-metric cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(aiMetricToIntent(metric))} title="클릭해서 보기"><span>{label}</span><b>{n}</b></div>
+              <div key={metric} className="cs-cust-metric cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(aiMetricToIntent(metric))} title="클릭해서 보기"><span>{label}</span><b><AnimatedNumber value={n} /></b></div>
             ))}
-            <div className="cs-cust-metric"><span>승인율</span><b>{stats.aiPerformance.approvalRate != null ? `${stats.aiPerformance.approvalRate}%` : '–'}</b></div>
+            <div className="cs-cust-metric"><span>승인율</span><b>{stats.aiPerformance.approvalRate != null ? <AnimatedNumber value={stats.aiPerformance.approvalRate} suffix="%" /> : '–'}</b></div>
           </div>
         </section>
 
@@ -1014,7 +1048,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <h3 className="cs-dash-section-title">🛡️ 고객 리스크 요약</h3>
         <div className="cs-stat-risk-cards">
           {([['repeatInquiry', '반복문의', stats.customerRiskSummary.repeatInquiryCount], ['repeatRefundCancel', '반복 환불·취소', stats.customerRiskSummary.repeatRefundCancelCount], ['caution', '주의 고객', stats.customerRiskSummary.cautionCustomerCount], ['blacklist', '블랙리스트 후보', stats.customerRiskSummary.blacklistCandidateCount], ['highValue', '고액 고객', stats.customerRiskSummary.highValueCustomerCount]] as Array<[string, string, number]>).map(([card, label, n]) => (
-            <div key={card} className="cs-cust-metric cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(riskCardToIntent(card))} title="클릭해서 보기"><span>{label}</span><b>{n}</b></div>
+            <div key={card} className="cs-cust-metric cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(riskCardToIntent(card))} title="클릭해서 보기"><span>{label}</span><b><AnimatedNumber value={n} /></b></div>
           ))}
         </div>
         {stats.customerRiskSummary.topRiskCustomers.length > 0 && (
