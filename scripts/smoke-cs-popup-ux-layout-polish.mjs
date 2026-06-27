@@ -77,7 +77,7 @@ ok('12. 라이트 모드 가독성 미디어쿼리 + 진한 amber', /@media \(pr
 ok('13. 유형별 색상/배지 유지', /csTypeColorClass/.test(TSX) && /type-pay|type-claim|type-delivery|type-review/.test(CSS));
 
 // 고객관리 무변경(컴포넌트/팝업 존재 유지)
-ok('14. 고객관리 팝업 구조 유지(CsCustomerPopup)', /CsCustomerPopup/.test(TSX) && /고객관리/.test(TSX));
+ok('14. 고객관리 팝업 구조 유지(CsCustomerProfilePopup)', /CsCustomerProfilePopup/.test(TSX) && /고객관리/.test(TSX));
 
 // 정책 유지
 ok('15. approval/auto-processing 정책 유지(AI함 리뷰+배송)', W.aiAuto.byType.review >= 1 && W.aiAuto.byType.delivery >= 1 && !W.aiAuto.items.some((i) => i.kind === 'inquiry' && i.topic === 'payment'));
