@@ -149,10 +149,10 @@ const CsItemPopup: React.FC<{
           <button type="button" className="dept-refresh-btn" onClick={() => makeDrafts(filtered)}>전체 초안 만들기</button>
           <button type="button" className="dept-refresh-btn" onClick={() => makeDrafts(filtered.filter((i) => checked[itemId(i)]))}>선택 초안 만들기</button>
           {allowRegister && <>
-            <button type="button" className="dept-refresh-btn" disabled>선택 등록</button>
-            <button type="button" className="dept-refresh-btn" disabled>전체 등록</button>
+            <button type="button" className="dept-refresh-btn" disabled title="승인큐 미연결">선택 승인요청</button>
+            <button type="button" className="dept-refresh-btn" disabled title="승인큐 미연결">전체 승인요청</button>
           </>}
-          <span className="cs-pop-actions-note">※ 현재는 미리보기만 — 실제 고도몰 등록은 WRITE 연결 후 활성화됩니다(AI 자동발송 아님, 운영자 등록 트리거 필요).</span>
+          <span className="cs-pop-actions-note">※ 현재는 미리보기만 — 승인요청(승인큐 등록)은 승인큐/WRITE 연결 후 활성화됩니다(AI 자동발송 아님, 운영자 트리거 필요).</span>
         </div>
       )}
       <div className="cs-pop-body">
@@ -171,8 +171,8 @@ const CsItemPopup: React.FC<{
                   <div className="cs-pop-item-meta">{i.productName} · {ageKo(i.ageDays)} · {i.stage}</div>
                   <div className="cs-dash-badges">
                     <span className={`cs-badge ${i.aiProcessable ? 'ok' : 'muted'}`}>{i.aiProcessable ? 'AI 처리 가능' : 'AI 보류'}</span>
-                    {i.needsInternalCheck && <span className="cs-badge warn">내부확인 필요</span>}
-                    {i.internalReason && <span className="cs-badge warn">{i.internalReason}</span>}
+                    {!allowRegister && i.needsInternalCheck && <span className="cs-badge warn">내부확인 필요</span>}
+                    {allowRegister && <span className="cs-badge muted">승인큐 미연결</span>}
                   </div>
                 </div>
               </li>
@@ -294,22 +294,69 @@ const CsResolvedPopup: React.FC<{ items: CsResolvedItem[]; onClose: () => void }
         <div className="cs-pop-detail">
           {selected ? (
             <>
+              {/* 1. 처리완료 기본 정보 */}
               <div className="cs-pop-sec">
-                <div className="cs-pop-sec-title">처리완료 상세</div>
+                <div className="cs-pop-sec-title">처리완료 기본 정보</div>
                 <dl className="cs-pop-detail-list">
                   <div><dt>제목</dt><dd>{selected.title}</dd></div>
                   <div><dt>유형</dt><dd>{selected.type}</dd></div>
                   <div><dt>상품</dt><dd>{selected.productName}</dd></div>
                   <div><dt>주문번호</dt><dd>{selected.orderNo || '-'}</dd></div>
-                  {selected.customerLabel && <div><dt>고객</dt><dd>{selected.customerLabel}</dd></div>}
+                  <div><dt>고객</dt><dd>{selected.customerLabel || selected.customer?.name || '미상'}</dd></div>
                   <div><dt>처리일</dt><dd>{shortDate(selected.processedAt || '')}</dd></div>
                   <div><dt>처리결과</dt><dd>{selected.result}</dd></div>
                   <div><dt>후속문의</dt><dd>{selected.followUp ? '있음(반복 고객)' : '없음'}</dd></div>
+                  <div><dt>담당직원</dt><dd>{selected.handledBy || '미기록'}</dd></div>
                 </dl>
               </div>
+              {/* 2. 질문 내용 */}
+              <div className="cs-pop-sec">
+                <div className="cs-pop-sec-title">질문 내용</div>
+                <div className="cs-pop-body-text">{selected.questionText || '문의 원문 없음'}</div>
+              </div>
+              {/* 3. 이전 답변 */}
               <div className="cs-pop-sec">
                 <div className="cs-pop-sec-title">이전 답변</div>
-                <div className="cs-pop-body-text">{selected.prevAnswer}</div>
+                <div className="cs-pop-body-text">{selected.prevAnswer || '이전 답변 원문 미연동'}</div>
+              </div>
+              {/* 4. 주문 정보 */}
+              <div className="cs-pop-sec">
+                <div className="cs-pop-sec-title">주문 정보</div>
+                {selected.order?.matched ? (
+                  <>
+                    <dl className="cs-pop-detail-list">
+                      <div><dt>주문번호</dt><dd>{selected.order.orderNo}</dd></div>
+                      <div><dt>주문일</dt><dd>{shortDate(selected.order.orderDate || '')}</dd></div>
+                      <div><dt>결제상태</dt><dd>{selected.order.paymentState}</dd></div>
+                      <div><dt>주문금액</dt><dd>{won(selected.order.orderAmount)} (상품 {won(selected.order.goodsAmount)} · 배송 {won(selected.order.deliveryCharge)})</dd></div>
+                      {selected.order.claimTypes?.length ? <div><dt>클레임</dt><dd>{selected.order.claimTypes.join(', ')}</dd></div> : null}
+                    </dl>
+                    <div className="cs-pop-order-items">{(selected.order.items || []).map((it, i) => <div key={i} className="cs-pop-order-item">- {it.productName} / {it.quantity}개 / {won(it.amount)}</div>)}</div>
+                  </>
+                ) : <p className="cs-dash-muted">연결된 주문이 없습니다.</p>}
+              </div>
+              {/* 5. 고객 정보 */}
+              <div className="cs-pop-sec">
+                <div className="cs-pop-sec-title">고객 정보 {selected.customer?.isSynthetic && <span className="cs-badge warn">가상 고객(synthetic/fake)</span>}</div>
+                {selected.customer ? (
+                  <dl className="cs-pop-detail-list">
+                    <div><dt>회원ID</dt><dd>{selected.customer.memberId || '-'}</dd></div>
+                    <div><dt>고객명</dt><dd>{selected.customer.name || '-'}</dd></div>
+                    <div><dt>연락처</dt><dd>{selected.customer.phone || '-'}</dd></div>
+                    <div><dt>이메일</dt><dd>{selected.customer.email || '-'}</dd></div>
+                    <div><dt>최근 주문</dt><dd>{selected.customer.recentOrderCount ?? '-'}건</dd></div>
+                  </dl>
+                ) : <p className="cs-dash-muted">연결된 고객 정보가 없습니다.</p>}
+              </div>
+              {/* 6. 처리 기록 */}
+              <div className="cs-pop-sec">
+                <div className="cs-pop-sec-title">처리 기록</div>
+                <dl className="cs-pop-detail-list">
+                  <div><dt>처리단계</dt><dd>처리 완료</dd></div>
+                  <div><dt>처리결과</dt><dd>{selected.result}</dd></div>
+                  <div><dt>담당직원</dt><dd>{selected.handledBy || '미기록'}</dd></div>
+                  <div><dt>후속문의</dt><dd>{selected.followUp ? '있음' : '없음'}</dd></div>
+                </dl>
               </div>
             </>
           ) : <p className="cs-dash-muted">항목을 선택하면 처리 이력이 표시됩니다.</p>}
