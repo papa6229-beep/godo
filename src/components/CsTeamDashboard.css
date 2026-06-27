@@ -161,15 +161,17 @@
 .cs-pop-tab-n { opacity: 0.7; margin-left: 3px; }
 .cs-pop-actions { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--line-subtle); flex-wrap: wrap; }
 .cs-pop-actions-note { font-size: 11px; color: var(--text-secondary); }
-/* 좌측 선택 리스트(컴팩트) 45% / 우측 상세(강화) 55% */
+/* 좌측 선택 리스트(컴팩트) / 우측 상세(강화). 고객관리는 기본 비율 유지, 3개 팝업만 .wide */
 .cs-pop-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 1.25fr); gap: 0; overflow: hidden; flex: 1; min-height: 0; }
-.cs-pop-list { list-style: none; margin: 0; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.cs-pop-item { display: flex; gap: 8px; padding: 7px 9px; border: 1px solid var(--line-subtle); border-radius: 7px; background: var(--bg-app); cursor: pointer; }
+.cs-pop-body.wide { grid-template-columns: minmax(0, 0.85fr) minmax(420px, 1.35fr); } /* 미처리/처리완료/AI함: 좌 40% / 우 60% */
+.cs-pop-list { list-style: none; margin: 0; padding: 9px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.cs-pop-item { display: flex; gap: 7px; padding: 6px 8px; border: 1px solid var(--line-subtle); border-radius: 7px; background: var(--bg-app); cursor: pointer; line-height: 1.35; }
 .cs-pop-item.active { border-color: #31D6C4; background: rgba(49, 214, 196, 0.06); }
 .cs-pop-item-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cs-pop-item-title { font-size: 12.5px; font-weight: 600; color: var(--text-muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .cs-pop-item-meta { font-size: 11px; color: var(--text-secondary); }
 .cs-pop-item .cs-dash-badges { gap: 4px; }
+.cs-pop { width: min(1040px, 96vw); }
 .cs-pop-detail { border-left: 1px solid var(--line-subtle); padding: 14px; overflow-y: auto; }
 .cs-pop-detail-title { font-size: 14px; font-weight: 700; color: var(--text-muted); margin-bottom: 10px; }
 .cs-pop-detail-list { margin: 0 0 12px; font-size: 12px; }

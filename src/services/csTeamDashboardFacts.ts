@@ -517,6 +517,7 @@ export interface CsDashboardDetailItem {
   sentiment?: string;
   order?: CsDetailOrderBlock;
   customer?: CsDetailCustomerBlock;
+  assignee?: string; // 담당직원(미처리 단계 입력 → 처리완료 handledBy로 연결될 값). v0 미설정.
   flags: { orderLinked: boolean; draftable: boolean; needsInternalCheck: boolean; highRisk: boolean };
 }
 

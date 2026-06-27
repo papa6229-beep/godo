@@ -57,7 +57,7 @@ console.log('=== CS Popup UX Layout Polish smoke ===');
 
 // 레이아웃(CSS)
 ok('1. 우측 상세 폭 확대(좌<우 grid 비율)', /\.cs-pop-body\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*minmax\(380px,\s*1\.25fr\)/.test(CSS));
-ok('2. 좌측 카드 컴팩트화(padding 축소)', /\.cs-pop-item\s*{[^}]*padding:\s*7px 9px/.test(CSS));
+ok('2. 좌측 카드 컴팩트화(padding 축소)', /\.cs-pop-item\s*{[^}]*padding:\s*[67]px [89]px/.test(CSS));
 ok('3. 우측 상세 섹션(cs-pop-sec) 유지', /\.cs-pop-sec\b/.test(CSS) && /cs-pop-sec-title/.test(TSX));
 
 // 처리완료 상세 강화(helper + TSX)
