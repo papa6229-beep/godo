@@ -120,6 +120,7 @@ const CsItemPopup: React.FC<{
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [memo, setMemo] = useState<Record<string, string>>({});
   const [stageByItem, setStageByItem] = useState<Record<string, string>>({});
+  const [assigneeByItem, setAssigneeByItem] = useState<Record<string, string>>({});
   const [replyByItem, setReplyByItem] = useState<Record<string, string>>({});
   const [draftOpen, setDraftOpen] = useState(false);
   const [regenDraft, setRegenDraft] = useState<string | null>(null);
@@ -155,7 +156,7 @@ const CsItemPopup: React.FC<{
           <span className="cs-pop-actions-note">※ 현재는 미리보기만 — 승인요청(승인큐 등록)은 승인큐/WRITE 연결 후 활성화됩니다(AI 자동발송 아님, 운영자 트리거 필요).</span>
         </div>
       )}
-      <div className="cs-pop-body">
+      <div className="cs-pop-body wide">
         <ul className="cs-pop-list">
           {filtered.length === 0 && <li className="cs-dash-muted">해당 항목이 없습니다.</li>}
           {filtered.map((i) => {
@@ -184,7 +185,8 @@ const CsItemPopup: React.FC<{
             const id = itemId(selected);
             const d = buildCsDetailItem(selected, { orders: orders || [], contacts, goodsNames });
             const stage = stageByItem[id] || d.processStage || '미확인';
-            const history = [`${shortDate(d.createdAt || '')} · ${d.sourceType === 'inquiry' ? '문의' : '리뷰'} 접수`, `분류: ${d.processRoute === 'ai_auto' ? 'AI 자동처리 가능' : '내부확인 필요'}`, ...(draftOpen || regenDraft ? ['AI 초안 생성됨'] : [])];
+            const assignee = assigneeByItem[id] || '';
+            const history = [`${shortDate(d.createdAt || '')} · ${d.sourceType === 'inquiry' ? '문의' : '리뷰'} 접수`, `분류: ${d.processRoute === 'ai_auto' ? 'AI 자동처리 가능' : '내부확인 필요'}`, `현재 담당직원: ${assignee || '미지정'}`, ...(draftOpen || regenDraft ? ['AI 초안 생성됨'] : [])];
             return (
               <>
                 <div className="cs-pop-sec">
@@ -231,6 +233,9 @@ const CsItemPopup: React.FC<{
                   <div className="cs-pop-sec-title">처리 상태 / 메모</div>
                   <label className="cs-pop-memo-label">처리 단계</label>
                   <select className="cs-pop-stage" value={stage} onChange={(e) => setStageByItem((p) => ({ ...p, [id]: e.target.value }))}>{PROCESS_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+                  <label className="cs-pop-memo-label">담당직원</label>
+                  <input className="cs-pop-stage" type="text" list="cs-assignee-options" value={assignee} onChange={(e) => setAssigneeByItem((p) => ({ ...p, [id]: e.target.value }))} placeholder="담당직원 이름을 입력하세요 (미지정)" />
+                  <datalist id="cs-assignee-options"><option value="CS팀장" /><option value="CS 담당자 A" /><option value="CS 담당자 B" /></datalist>
                   <label className="cs-pop-memo-label">내부 메모 (local · v0 미영속)</label>
                   <textarea className="cs-pop-memo" rows={2} value={memo[id] || ''} onChange={(e) => setMemo((p) => ({ ...p, [id]: e.target.value }))} placeholder="내부 확인 메모를 남겨보세요…" />
                   <div className="cs-pop-history">{history.map((h, i) => <div key={i} className="cs-pop-history-item">{h}</div>)}</div>
@@ -279,7 +284,7 @@ const CsResolvedPopup: React.FC<{ items: CsResolvedItem[]; onClose: () => void }
   return (
     <PopupShell title="처리완료 문의" count={list.length} onClose={onClose}>
       <div className="cs-pop-tabs">{tabs.map((t) => <button key={t.key} type="button" className={`cs-pop-tab ${t.key === active ? 'active' : ''}`} onClick={() => { setActive(t.key); setSel(null); }}>{t.label} <span className="cs-pop-tab-n">{items.filter(t.m).length}</span></button>)}</div>
-      <div className="cs-pop-body">
+      <div className="cs-pop-body wide">
         <ul className="cs-pop-list">
           {list.length === 0 && <li className="cs-dash-muted">해당 항목이 없습니다.</li>}
           {list.map((r) => (
