@@ -16,6 +16,11 @@ import {
 } from '../services/csTeamDashboardFacts';
 import { buildCsCustomerProfileHub, searchCustomerProfiles, type CsCustomerProfileHubItem } from '../services/csCustomerManagementFacts';
 import { buildCsDashboardStatistics, type CsDashboardStatistics } from '../services/csDashboardStatistics';
+import { filterCsInputsByTime, CS_TIME_RANGES, type CsTimeRange } from '../services/csDashboardTimeFilter';
+import {
+  typeSliceToIntent, workflowStepToIntent, aiMetricToIntent, riskCardToIntent, riskCustomerToIntent, issueProductToIntent,
+  type CsPopupIntent
+} from '../services/csDashboardInteractions';
 import {
   buildCsApprovalItem,
   addCsApprovalItems,
@@ -49,7 +54,6 @@ interface CsTeamDashboardProps {
   onRefresh: () => void;
 }
 
-type KpiKey = 'unresolved' | 'resolved' | 'ai' | 'customers';
 
 const statusKo = (s: string): string =>
   /needs_human/i.test(s) ? '담당자 확인' : /unanswered|pending|open|미답변/i.test(s) ? '미답변' : /answered/i.test(s) ? '답변완료' : s;
@@ -109,8 +113,9 @@ const CsItemPopup: React.FC<{
   setAssigneeByItem: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   memoByItem: Record<string, string>;
   setMemoByItem: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-}> = ({ title, items, tabs, allowDraft, allowRegister, orders, contacts, goodsNames, onClose, onCompleteItem, onCompleteBatch, onRequestApproval, onRequestApprovalBatch, approvalStatus, assigneeByItem, setAssigneeByItem, memoByItem, setMemoByItem }) => {
-  const [activeTab, setActiveTab] = useState(tabs[0]?.key || 'all');
+  initialTab?: string;
+}> = ({ title, items, tabs, allowDraft, allowRegister, orders, contacts, goodsNames, onClose, onCompleteItem, onCompleteBatch, onRequestApproval, onRequestApprovalBatch, approvalStatus, assigneeByItem, setAssigneeByItem, memoByItem, setMemoByItem, initialTab }) => {
+  const [activeTab, setActiveTab] = useState(initialTab && tabs.some((t) => t.key === initialTab) ? initialTab : (tabs[0]?.key || 'all'));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const memo = memoByItem; const setMemo = setMemoByItem;
@@ -313,16 +318,17 @@ const CsItemPopup: React.FC<{
 };
 
 // ── 처리완료 문의 팝업 ─────────────────────────────────────────────────────────
-const CsResolvedPopup: React.FC<{ items: CsResolvedItem[]; onClose: () => void }> = ({ items, onClose }) => {
+const CsResolvedPopup: React.FC<{ items: CsResolvedItem[]; initialTab?: string; onClose: () => void }> = ({ items, initialTab, onClose }) => {
   const tabs = [
     { key: 'all', label: '전체', m: () => true },
     { key: 'pay', label: '결제·주문', m: (r: CsResolvedItem) => /결제|주문/.test(r.type) },
     { key: 'rc', label: '환불·취소', m: (r: CsResolvedItem) => /환불|취소|반품|교환/.test(r.type) },
     { key: 'dlv', label: '배송', m: (r: CsResolvedItem) => /배송/.test(r.type) },
     { key: 'prod', label: '상품', m: (r: CsResolvedItem) => /상품/.test(r.type) },
+    { key: 'ai', label: 'AI 처리완료', m: (r: CsResolvedItem) => !!r.localCompleted && /ai/.test(r.completionMethod || '') },
     { key: 'repeat', label: '반복문의', m: (r: CsResolvedItem) => !!r.followUp }
   ];
-  const [active, setActive] = useState('all');
+  const [active, setActive] = useState(initialTab && tabs.some((t) => t.key === initialTab) ? initialTab : 'all');
   const [sel, setSel] = useState<string | null>(null);
   const tab = tabs.find((t) => t.key === active) || tabs[0];
   const list = items.filter(tab.m);
@@ -434,8 +440,9 @@ const CsCustomerProfilePopup: React.FC<{
   memo: Record<string, string>; setMemo: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   watchTag: Record<string, boolean>; setWatchTag: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   blackTag: Record<string, boolean>; setBlackTag: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  initialFilter?: string; initialCustomerKey?: string;
   onClose: () => void;
-}> = ({ items, memo, setMemo, watchTag, setWatchTag, blackTag, setBlackTag, onClose }) => {
+}> = ({ items, memo, setMemo, watchTag, setWatchTag, blackTag, setBlackTag, initialFilter, initialCustomerKey, onClose }) => {
   const FTABS = [
     { key: 'all', label: '전체', m: () => true },
     { key: 'ri', label: '반복문의', m: (c: CsCustomerProfileHubItem) => c.tags.includes('반복문의') },
@@ -445,9 +452,9 @@ const CsCustomerProfilePopup: React.FC<{
     { key: 'watch', label: '주의 고객', m: (c: CsCustomerProfileHubItem) => c.tags.includes('주의 고객') },
     { key: 'bl', label: '블랙리스트 후보', m: (c: CsCustomerProfileHubItem) => c.tags.includes('블랙리스트 후보') }
   ];
-  const [active, setActive] = useState('all');
+  const [active, setActive] = useState(initialFilter || 'all');
   const [query, setQuery] = useState('');
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(initialCustomerKey || null);
   const [ptab, setPtab] = useState<ProfileTab>('summary');
   const [detail, setDetail] = useState<{ kind: string; id: string } | null>(null);
 
@@ -654,17 +661,18 @@ const CsCustomerProfilePopup: React.FC<{
 // ── CS 승인 큐 팝업(HITL) ──────────────────────────────────────────────────────
 const CsApprovalQueuePopup: React.FC<{
   items: CsApprovalQueueItem[];
+  initialTab?: 'all' | 'pending' | 'approved' | 'rejected';
   onApprove: (id: string) => void;
   onReject: (id: string, reason?: string) => void;
   onClose: () => void;
-}> = ({ items, onApprove, onReject, onClose }) => {
+}> = ({ items, initialTab, onApprove, onReject, onClose }) => {
   const tabs = [
     { key: 'all', label: '전체', m: () => true },
     { key: 'pending', label: '승인 대기', m: (x: CsApprovalQueueItem) => x.status === 'pending_approval' },
     { key: 'approved', label: '승인됨', m: (x: CsApprovalQueueItem) => x.status === 'approved_local' },
     { key: 'rejected', label: '반려됨', m: (x: CsApprovalQueueItem) => x.status === 'rejected' }
   ];
-  const [active, setActive] = useState('pending');
+  const [active, setActive] = useState<string>(initialTab || 'pending');
   const [sel, setSel] = useState<string | null>(null);
   const [reason, setReason] = useState<Record<string, string>>({});
   const tab = tabs.find((t) => t.key === active) || tabs[0];
@@ -723,16 +731,57 @@ const CsApprovalQueuePopup: React.FC<{
   );
 };
 
+// ── CS 이슈 상품 상세 팝업(통계 클릭 진입) ────────────────────────────────────
+const CsIssueProductPopup: React.FC<{
+  goodsNo: string; productName: string;
+  inquiries: CsKpiInquiryItem[] | Array<{ inquiryId?: string; goodsNo?: string; topic?: string; title?: string; status?: string; createdAt?: string; excerpt?: string }>;
+  reviews: Array<{ reviewId?: string; goodsNo?: string; rating?: number; sentiment?: string; createdAt?: string; excerpt?: string }>;
+  orders: RevenueResult['orders'];
+  goodsNames: Record<string, string>;
+  onClose: () => void;
+}> = ({ goodsNo, productName, inquiries, reviews, orders, onClose }) => {
+  const relInq = (inquiries as Array<{ inquiryId?: string; goodsNo?: string; topic?: string; title?: string; status?: string; createdAt?: string; excerpt?: string }>).filter((q) => q.goodsNo === goodsNo);
+  const relRev = reviews.filter((r) => r.goodsNo === goodsNo);
+  const relClaims = (orders || []).filter((o) => (o.claim?.hasClaim || o.canceled) && (o.lines || []).some((l) => l.goodsNo === goodsNo));
+  return (
+    <PopupShell title={`CS 이슈 상품: ${productName}`} count={relInq.length + relRev.length + relClaims.length} onClose={onClose}>
+      <div className="cs-pop-body wide">
+        <div className="cs-pop-list">
+          <div className="cs-pop-sec">
+            <div className="cs-pop-sec-title">요약</div>
+            <dl className="cs-pop-detail-list">{kv('상품', productName)}{kv('문의', relInq.length)}{kv('리뷰 이슈', relRev.filter((r) => (r.rating ?? 5) <= 2 || /negative|부정/i.test(r.sentiment || '')).length)}{kv('클레임', relClaims.length)}</dl>
+            <span className="cs-badge warn">상품관리팀 전달 후보</span>
+            <p className="cs-pop-actions-note">※ v0: 전달 후보 표시만 — 실제 handoff 생성은 하지 않습니다.</p>
+          </div>
+        </div>
+        <div className="cs-pop-detail">
+          <div className="cs-pop-sec"><div className="cs-pop-sec-title">관련 문의 ({relInq.length})</div>
+            <div className="cs-pop-order-items">{relInq.length ? relInq.map((q, i) => <div key={q.inquiryId || i} className="cs-pop-order-item">{q.title || csTopicKo(q.topic)} · {statusKo(q.status || '')} · {shortDate(q.createdAt || '')} · {q.excerpt || ''}</div>) : <span className="cs-dash-muted">없음</span>}</div>
+          </div>
+          <div className="cs-pop-sec"><div className="cs-pop-sec-title">관련 리뷰 ({relRev.length})</div>
+            <div className="cs-pop-order-items">{relRev.length ? relRev.map((r, i) => <div key={r.reviewId || i} className="cs-pop-order-item">{r.rating}점 · {sentimentKo(r.sentiment || '')} · {shortDate(r.createdAt || '')} · {r.excerpt || ''}</div>) : <span className="cs-dash-muted">없음</span>}</div>
+          </div>
+          <div className="cs-pop-sec"><div className="cs-pop-sec-title">관련 클레임 ({relClaims.length})</div>
+            <div className="cs-pop-order-items">{relClaims.length ? relClaims.map((o) => <div key={o.orderNo} className="cs-pop-order-item">{o.orderNo} · {(o.claim?.claimTypes || (o.canceled ? ['cancel'] : [])).join(', ')} · {shortDate(o.orderDate || '')}</div>) : <span className="cs-dash-muted">없음</span>}</div>
+          </div>
+        </div>
+      </div>
+    </PopupShell>
+  );
+};
+
 // ── 메인 ──────────────────────────────────────────────────────────────────────
 export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goodsNames, loading, onRefresh }) => {
-  const [openKpi, setOpenKpi] = useState<KpiKey | null>(null);
+  // CS Dashboard Interactive Statistics v0 — 통계 클릭 intent + 기간 필터.
+  const [intent, setIntent] = useState<CsPopupIntent | null>(null);
+  const [period, setPeriod] = useState<CsTimeRange>('all');
+  const [nowMs] = useState(() => { try { return Date.now(); } catch { return 0; } });
   // CS Local State Persistence v0 — mount 시 localStorage 복원(lazy, 1회).
   const [persisted] = useState(() => loadCsPersistedState());
   // CS Work Completion Flow v0 — local 완료 이력(미처리/AI함 → 처리완료).
   const [completed, setCompleted] = useState<CsCompletedWorkItem[]>(() => persisted?.completedWorkItems ?? []);
   // CS Draft → Approval Queue HITL v0 — local 승인 큐.
   const [approvals, setApprovals] = useState<CsApprovalQueueItem[]>(() => persisted?.approvalItems ?? []);
-  const [approvalOpen, setApprovalOpen] = useState(false);
   // 미처리 담당직원/내부 메모(영속).
   const [assigneeByItem, setAssigneeByItem] = useState<Record<string, string>>(() => persisted?.assigneeByItem ?? {});
   const [memoByItem, setMemoByItem] = useState<Record<string, string>>(() => persisted?.memoByItem ?? {});
@@ -755,22 +804,25 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
     setCompleted([]); setApprovals([]); setAssigneeByItem({}); setMemoByItem({}); setCustMemo({}); setCustCaution({}); setCustBlacklist({});
   };
 
+  const contacts = useMemo(() => (revenue?.universeAux?.csOnlyFakeContacts || []) as CsDashContact[], [revenue]);
+  // 기간 필터 적용된 입력(각 항목 자기 날짜 기준). 전체엔 날짜 없는 항목도 포함.
+  const filtered = useMemo(() => filterCsInputsByTime({
+    inquiries: revenue?.universeAux?.inquiries || [], reviews: revenue?.universeAux?.reviews || [], orders: revenue?.orders || [],
+    completed, approvals
+  }, period, nowMs), [revenue, completed, approvals, period, nowMs]);
+
   const stats = useMemo<CsDashboardStatistics | null>(() => {
     if (!revenue?.universeAux) return null;
     return buildCsDashboardStatistics({
-      inquiries: revenue.universeAux.inquiries || [], reviews: revenue.universeAux.reviews || [], orders: revenue.orders || [],
-      contacts: (revenue.universeAux.csOnlyFakeContacts || []) as CsDashContact[],
-      completed, approvals, cautionByKey: custCaution, blacklistByKey: custBlacklist, goodsNames
+      inquiries: filtered.inquiries, reviews: filtered.reviews, orders: filtered.orders, contacts,
+      completed: filtered.completed, approvals: filtered.approvals, cautionByKey: custCaution, blacklistByKey: custBlacklist, goodsNames, nowMs
     });
-  }, [revenue, goodsNames, completed, approvals, custCaution, custBlacklist]);
+  }, [revenue, filtered, contacts, custCaution, custBlacklist, goodsNames, nowMs]);
 
   const wf = useMemo<CsAdminWorkflowFacts | null>(() => {
     if (!revenue?.universeAux) return null;
-    return buildCsAdminWorkflow({
-      inquiries: revenue.universeAux.inquiries || [], reviews: revenue.universeAux.reviews || [], orders: revenue.orders || [],
-      contacts: (revenue.universeAux.csOnlyFakeContacts || []) as CsDashContact[], goodsNames
-    });
-  }, [revenue, goodsNames]);
+    return buildCsAdminWorkflow({ inquiries: filtered.inquiries, reviews: filtered.reviews, orders: filtered.orders, contacts, goodsNames, nowMs });
+  }, [revenue, filtered, contacts, goodsNames, nowMs]);
 
   if (!stats || !wf) {
     return (
@@ -781,12 +833,11 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
     );
   }
 
-  const orders = revenue?.orders || [];
-  const contacts = (revenue?.universeAux?.csOnlyFakeContacts || []) as CsDashContact[];
-  // 고객 프로필 허브 — completed(세션 완료 이력) 병합. CS UI 경로라 contacts(PII) 포함.
+  const orders = filtered.orders;
+  // 고객 프로필 허브 — 기간 필터 + completed(세션 완료 이력) 병합. CS UI 경로라 contacts(PII) 포함.
   const customerHub = buildCsCustomerProfileHub({
-    inquiries: revenue?.universeAux?.inquiries || [], reviews: revenue?.universeAux?.reviews || [], orders,
-    contacts, completed, goodsNames
+    inquiries: filtered.inquiries, reviews: filtered.reviews, orders,
+    contacts, completed: filtered.completed, goodsNames, nowMs
   });
 
   const UNRES_TABS: PopupTab[] = [
@@ -808,11 +859,11 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
 
   const u = wf.unresolved, r = wf.resolved, a = wf.aiAuto, cs = wf.customers;
 
-  // 완료된 originalId는 미처리/AI함에서 제외, 처리완료에는 prepend.
-  const completedIds = completedOriginalIdSet(completed);
+  // 완료된 originalId는 미처리/AI함에서 제외, 처리완료에는 prepend(기간 필터 적용된 completed).
+  const completedIds = completedOriginalIdSet(filtered.completed);
   const unresolvedItems = u.items.filter((i) => !completedIds.has(i.inquiryId));
   const aiAutoItems = a.items.filter((i) => !completedIds.has(itemId(i)));
-  const resolvedItems = [...completed.map(toResolvedItem), ...r.items];
+  const resolvedItems = [...filtered.completed.map(toResolvedItem), ...r.items];
 
   const nowIso = (): string => new Date().toISOString().replace('T', ' ').slice(0, 19);
   const handleCompleteItem = (item: CsKpiItem, payload: { answerText: string; assignee?: string; method: CsCompletionMethod }): void => {
@@ -861,7 +912,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
   };
 
   const unresolvedSub = `AI초안 ${unresolvedItems.filter((i) => i.aiProcessable).length} · 내부확인 ${unresolvedItems.filter((i) => i.needsInternalCheck).length} · 보류 ${u.byStage.hold}`;
-  const resolvedSub = `로컬완료 ${completed.length} · 최근7일 ${r.last7d} · 반복 ${r.repeat}`;
+  const resolvedSub = `로컬완료 ${filtered.completed.length} · 최근7일 ${r.last7d} · 반복 ${r.repeat}`;
   const aiSub = `리뷰 ${aiAutoItems.filter((i) => i.kind === 'review').length} · 배송 ${aiAutoItems.filter((i) => i.kind === 'inquiry').length}`;
   const custSub = `반복문의 ${cs.byTag.repeatInquiry} · 클레임반복 ${cs.byTag.repeatClaim} · 고액 ${cs.byTag.highValue} · 주의 ${cs.byTag.watch}`;
 
@@ -872,16 +923,26 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <p className="dept-dashboard-desc">관리자 업무 흐름 기준. (Commerce Universe safe data · 고객정보는 CS 처리 화면에서만 표시)</p>
       </div>
 
+      <div className="cs-dash-period">
+        <span className="cs-dash-period-label">조회 기간</span>
+        <div className="cs-dash-period-pills">
+          {CS_TIME_RANGES.map((rg) => (
+            <button key={rg.key} type="button" className={`cs-dash-period-pill ${period === rg.key ? 'active' : ''}`} onClick={() => setPeriod(rg.key)}>{rg.label}</button>
+          ))}
+          <button type="button" className="cs-dash-period-pill" disabled title="추후 지원">직접 선택</button>
+        </div>
+      </div>
+
       <div className="dept-card-grid cs-dash-kpi-grid">
-        <KpiCard label="미처리 문의" value={unresolvedItems.length} unit="건" sub={unresolvedSub} icon="✉️" accent="#31D6C4" onClick={() => setOpenKpi('unresolved')} />
-        <KpiCard label="처리완료 문의" value={r.count + completed.length} unit="건" sub={resolvedSub} icon="✅" accent="#5B7DB1" onClick={() => setOpenKpi('resolved')} />
-        <KpiCard label="AI 자동처리함" value={aiAutoItems.length} unit="건" sub={aiSub} icon="🤖" accent="#FBBF24" onClick={() => setOpenKpi('ai')} />
-        <KpiCard label="고객관리" value={cs.count} unit="명" sub={custSub} icon="👤" accent="#2DD4BF" onClick={() => setOpenKpi('customers')} />
+        <KpiCard label="미처리 문의" value={unresolvedItems.length} unit="건" sub={unresolvedSub} icon="✉️" accent="#31D6C4" onClick={() => setIntent({ kind: 'unresolved' })} />
+        <KpiCard label="처리완료 문의" value={r.count + filtered.completed.length} unit="건" sub={resolvedSub} icon="✅" accent="#5B7DB1" onClick={() => setIntent({ kind: 'completed' })} />
+        <KpiCard label="AI 자동처리함" value={aiAutoItems.length} unit="건" sub={aiSub} icon="🤖" accent="#FBBF24" onClick={() => setIntent({ kind: 'aiAuto' })} />
+        <KpiCard label="고객관리" value={cs.count} unit="명" sub={custSub} icon="👤" accent="#2DD4BF" onClick={() => setIntent({ kind: 'customer' })} />
       </div>
       <div className="cs-dash-kpi-noterow">
-        <p className="cs-dash-kpi-note">미처리=지금 처리할 문의 · 처리완료=과거 이력 조회 · AI 자동처리함=리뷰·배송 저위험 일괄(운영자 승인/등록 트리거) · 고객관리=고객 단위 이력</p>
+        <p className="cs-dash-kpi-note">통계 항목을 클릭하면 관련 목록이 열립니다 · 기간을 바꾸면 KPI·통계가 함께 변경됩니다.</p>
         <div className="cs-dash-noterow-btns">
-          <button type="button" className="cs-dash-approval-btn" onClick={() => setApprovalOpen(true)}>🗳️ CS 승인 큐 {approvals.length ? `(대기 ${pendingApprovals})` : ''}</button>
+          <button type="button" className="cs-dash-approval-btn" onClick={() => setIntent({ kind: 'approvalQueue', initialTab: 'pending' })}>🗳️ CS 승인 큐 {approvals.length ? `(대기 ${pendingApprovals})` : ''}</button>
           <button type="button" className="cs-dash-clear-btn" onClick={handleClearLocal} title="localStorage CS 상태 삭제(고도몰 영향 없음)">CS 로컬 상태 초기화</button>
         </div>
       </div>
@@ -893,7 +954,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
           <h3 className="cs-dash-section-title">📊 문의 유형 비중</h3>
           <div className="cs-stat-bars">
             {stats.inquiryTypeDistribution.map((s) => (
-              <div key={s.type} className="cs-stat-bar-row">
+              <div key={s.type} className="cs-stat-bar-row cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(typeSliceToIntent(s.type))} title="클릭해서 보기">
                 <span className="cs-stat-bar-label">{s.label}</span>
                 <span className="cs-stat-bar-track"><span className={`cs-stat-bar-fill ${csTypeColorClass(s.type === 'claim' ? 'refund' : s.type === 'review' ? '' : s.type)} ${s.type === 'review' ? 'type-review' : ''}`} style={{ width: `${Math.max(2, s.percent)}%` }} /></span>
                 <span className="cs-stat-bar-val">{s.percent}% <span className="cs-dash-muted">({s.count})</span></span>
@@ -906,9 +967,9 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <section className="cs-dash-section">
           <h3 className="cs-dash-section-title">🔀 CS 업무 흐름</h3>
           <div className="cs-stat-flow">
-            {[['미처리', stats.workflowSummary.unresolved], ['승인 대기', stats.workflowSummary.pendingApproval], ['승인됨', stats.workflowSummary.approved], ['처리완료', stats.workflowSummary.completed], ['반려/보류', stats.workflowSummary.rejectedOrHeld]].map(([label, n], i, arr) => (
-              <React.Fragment key={label as string}>
-                <div className="cs-stat-flow-card"><span className="cs-stat-flow-n">{n}</span><span className="cs-stat-flow-label">{label}</span></div>
+            {([['unresolved', '미처리', stats.workflowSummary.unresolved], ['pendingApproval', '승인 대기', stats.workflowSummary.pendingApproval], ['approved', '승인됨', stats.workflowSummary.approved], ['completed', '처리완료', stats.workflowSummary.completed], ['rejectedOrHeld', '반려/보류', stats.workflowSummary.rejectedOrHeld]] as Array<[string, string, number]>).map(([step, label, n], i, arr) => (
+              <React.Fragment key={step}>
+                <div className="cs-stat-flow-card cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(workflowStepToIntent(step))} title="클릭해서 보기"><span className="cs-stat-flow-n">{n}</span><span className="cs-stat-flow-label">{label}</span></div>
                 {i < arr.length - 1 && <span className="cs-stat-flow-arrow">→</span>}
               </React.Fragment>
             ))}
@@ -922,11 +983,9 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
           <h3 className="cs-dash-section-title">🤖 AI 처리 성과</h3>
           <p className="cs-dash-section-desc">AI가 초안을 만들고, 운영자가 승인합니다.</p>
           <div className="cs-cust-metrics">
-            <div className="cs-cust-metric"><span>AI 초안 후보</span><b>{stats.aiPerformance.draftCount}</b></div>
-            <div className="cs-cust-metric"><span>승인요청</span><b>{stats.aiPerformance.approvalRequestedCount}</b></div>
-            <div className="cs-cust-metric"><span>승인</span><b>{stats.aiPerformance.approvedCount}</b></div>
-            <div className="cs-cust-metric"><span>반려</span><b>{stats.aiPerformance.rejectedCount}</b></div>
-            <div className="cs-cust-metric"><span>AI 처리완료</span><b>{stats.aiPerformance.aiCompletedCount}</b></div>
+            {([['draftCount', 'AI 초안 후보', stats.aiPerformance.draftCount], ['approvalRequestedCount', '승인요청', stats.aiPerformance.approvalRequestedCount], ['approvedCount', '승인', stats.aiPerformance.approvedCount], ['rejectedCount', '반려', stats.aiPerformance.rejectedCount], ['aiCompletedCount', 'AI 처리완료', stats.aiPerformance.aiCompletedCount]] as Array<[string, string, number]>).map(([metric, label, n]) => (
+              <div key={metric} className="cs-cust-metric cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(aiMetricToIntent(metric))} title="클릭해서 보기"><span>{label}</span><b>{n}</b></div>
+            ))}
             <div className="cs-cust-metric"><span>승인율</span><b>{stats.aiPerformance.approvalRate != null ? `${stats.aiPerformance.approvalRate}%` : '–'}</b></div>
           </div>
         </section>
@@ -937,7 +996,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
           {stats.issueProducts.length ? (
             <ol className="cs-stat-rank">
               {stats.issueProducts.map((p, i) => (
-                <li key={p.goodsNo} className="cs-stat-rank-row">
+                <li key={p.goodsNo} className="cs-stat-rank-row cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(issueProductToIntent(p.goodsNo, p.productName))} title="상품 이슈 상세 보기">
                   <span className="cs-stat-rank-no">{i + 1}</span>
                   <div className="cs-stat-rank-body">
                     <div className="cs-stat-rank-title">{p.productName} <span className={`cs-badge risk-${p.riskLevel}`}>위험 {riskKo(p.riskLevel)}</span></div>
@@ -954,16 +1013,14 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
       <section className="cs-dash-section">
         <h3 className="cs-dash-section-title">🛡️ 고객 리스크 요약</h3>
         <div className="cs-stat-risk-cards">
-          <div className="cs-cust-metric"><span>반복문의</span><b>{stats.customerRiskSummary.repeatInquiryCount}</b></div>
-          <div className="cs-cust-metric"><span>반복 환불·취소</span><b>{stats.customerRiskSummary.repeatRefundCancelCount}</b></div>
-          <div className="cs-cust-metric"><span>주의 고객</span><b>{stats.customerRiskSummary.cautionCustomerCount}</b></div>
-          <div className="cs-cust-metric"><span>블랙리스트 후보</span><b>{stats.customerRiskSummary.blacklistCandidateCount}</b></div>
-          <div className="cs-cust-metric"><span>고액 고객</span><b>{stats.customerRiskSummary.highValueCustomerCount}</b></div>
+          {([['repeatInquiry', '반복문의', stats.customerRiskSummary.repeatInquiryCount], ['repeatRefundCancel', '반복 환불·취소', stats.customerRiskSummary.repeatRefundCancelCount], ['caution', '주의 고객', stats.customerRiskSummary.cautionCustomerCount], ['blacklist', '블랙리스트 후보', stats.customerRiskSummary.blacklistCandidateCount], ['highValue', '고액 고객', stats.customerRiskSummary.highValueCustomerCount]] as Array<[string, string, number]>).map(([card, label, n]) => (
+            <div key={card} className="cs-cust-metric cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(riskCardToIntent(card))} title="클릭해서 보기"><span>{label}</span><b>{n}</b></div>
+          ))}
         </div>
         {stats.customerRiskSummary.topRiskCustomers.length > 0 && (
           <div className="cs-stat-risk-top">
             {stats.customerRiskSummary.topRiskCustomers.map((c) => (
-              <div key={c.customerId} className="cs-stat-risk-top-row">
+              <div key={c.customerId} className="cs-stat-risk-top-row cs-stat-clickable" role="button" tabIndex={0} onClick={() => setIntent(riskCustomerToIntent(c.customerId))} title="고객 상세 보기">
                 <span>{c.name || c.customerId}</span> <span className={`cs-badge risk-${c.riskLevel}`}>위험 {riskKo(c.riskLevel)}</span> <span className="cs-dash-muted">{c.tags.slice(0, 2).join(' · ')}</span>
               </div>
             ))}
@@ -976,11 +1033,12 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <div className="cs-dash-hint-list">{wf.chatHints.map((h, i) => <span key={i} className="cs-dash-hint-chip">{h}</span>)}</div>
       </div>
 
-      {openKpi === 'unresolved' && <CsItemPopup title="미처리 문의" items={unresolvedItems} tabs={UNRES_TABS} allowDraft={false} allowRegister={false} orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteItem={handleCompleteItem} onRequestApproval={handleRequestApproval} approvalStatus={approvalStatus} assigneeByItem={assigneeByItem} setAssigneeByItem={setAssigneeByItem} memoByItem={memoByItem} setMemoByItem={setMemoByItem} />}
-      {openKpi === 'ai' && <CsItemPopup title="AI 자동처리함 (리뷰·배송)" items={aiAutoItems} tabs={AI_TABS} allowDraft allowRegister orders={orders} contacts={contacts} goodsNames={goodsNames} onClose={() => setOpenKpi(null)} onCompleteBatch={handleCompleteBatch} onRequestApprovalBatch={handleRequestApprovalBatch} approvalStatus={approvalStatus} assigneeByItem={assigneeByItem} setAssigneeByItem={setAssigneeByItem} memoByItem={memoByItem} setMemoByItem={setMemoByItem} />}
-      {openKpi === 'resolved' && <CsResolvedPopup items={resolvedItems} onClose={() => setOpenKpi(null)} />}
-      {openKpi === 'customers' && <CsCustomerProfilePopup items={customerHub.items} memo={custMemo} setMemo={setCustMemo} watchTag={custCaution} setWatchTag={setCustCaution} blackTag={custBlacklist} setBlackTag={setCustBlacklist} onClose={() => setOpenKpi(null)} />}
-      {approvalOpen && <CsApprovalQueuePopup items={approvals} onApprove={(id) => setApprovals((p) => approveCsApprovalItem(p, id))} onReject={(id, reason) => setApprovals((p) => rejectCsApprovalItem(p, id, reason))} onClose={() => setApprovalOpen(false)} />}
+      {intent?.kind === 'unresolved' && <CsItemPopup title="미처리 문의" items={unresolvedItems} tabs={UNRES_TABS} allowDraft={false} allowRegister={false} orders={orders} contacts={contacts} goodsNames={goodsNames} initialTab={intent.initialTab} onClose={() => setIntent(null)} onCompleteItem={handleCompleteItem} onRequestApproval={handleRequestApproval} approvalStatus={approvalStatus} assigneeByItem={assigneeByItem} setAssigneeByItem={setAssigneeByItem} memoByItem={memoByItem} setMemoByItem={setMemoByItem} />}
+      {intent?.kind === 'aiAuto' && <CsItemPopup title="AI 자동처리함 (리뷰·배송)" items={aiAutoItems} tabs={AI_TABS} allowDraft allowRegister orders={orders} contacts={contacts} goodsNames={goodsNames} initialTab={intent.initialTab} onClose={() => setIntent(null)} onCompleteBatch={handleCompleteBatch} onRequestApprovalBatch={handleRequestApprovalBatch} approvalStatus={approvalStatus} assigneeByItem={assigneeByItem} setAssigneeByItem={setAssigneeByItem} memoByItem={memoByItem} setMemoByItem={setMemoByItem} />}
+      {intent?.kind === 'completed' && <CsResolvedPopup items={resolvedItems} initialTab={intent.initialTab} onClose={() => setIntent(null)} />}
+      {intent?.kind === 'customer' && <CsCustomerProfilePopup items={customerHub.items} memo={custMemo} setMemo={setCustMemo} watchTag={custCaution} setWatchTag={setCustCaution} blackTag={custBlacklist} setBlackTag={setCustBlacklist} initialFilter={intent.initialFilter} initialCustomerKey={intent.selectedCustomerId} onClose={() => setIntent(null)} />}
+      {intent?.kind === 'approvalQueue' && <CsApprovalQueuePopup items={approvals} initialTab={intent.initialTab} onApprove={(id) => setApprovals((p) => approveCsApprovalItem(p, id))} onReject={(id, reason) => setApprovals((p) => rejectCsApprovalItem(p, id, reason))} onClose={() => setIntent(null)} />}
+      {intent?.kind === 'issueProduct' && <CsIssueProductPopup goodsNo={intent.goodsNo} productName={intent.productName} inquiries={filtered.inquiries} reviews={filtered.reviews} orders={orders} goodsNames={goodsNames} onClose={() => setIntent(null)} />}
     </div>
   );
 };

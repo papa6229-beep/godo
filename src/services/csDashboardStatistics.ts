@@ -129,7 +129,7 @@ export function buildCsDashboardStatistics(params: {
     blacklistCandidateCount,
     highValueCustomerCount: hub.byTag.highValue,
     topRiskCustomers: hub.items.filter((c) => c.summary.riskLevel === 'high').slice(0, 3).map((c) => ({
-      customerId: c.customerId, ...(c.basic.name ? { name: c.basic.name } : {}), tags: c.tags, riskLevel: c.summary.riskLevel
+      customerId: c.memberKey, ...(c.basic.name ? { name: c.basic.name } : {}), tags: c.tags, riskLevel: c.summary.riskLevel
     }))
   };
 

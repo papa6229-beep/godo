@@ -10,6 +10,20 @@
 .cs-dash-kpi-grid { gap: 16px; }
 .cs-dash-kpi { min-height: 104px; padding: 16px; }
 
+/* 기간 필터 */
+.cs-dash-period { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cs-dash-period-label { font-size: 12px; color: var(--text-secondary); }
+.cs-dash-period-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.cs-dash-period-pill { font-size: 12px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-secondary); cursor: pointer; }
+.cs-dash-period-pill.active { color: #31D6C4; border-color: rgba(49, 214, 196, 0.45); background: rgba(49, 214, 196, 0.1); }
+.cs-dash-period-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 클릭 가능한 통계 항목 */
+.cs-stat-clickable { cursor: pointer; transition: background 0.12s, border-color 0.12s; }
+.cs-stat-bar-row.cs-stat-clickable:hover { background: rgba(49, 214, 196, 0.06); border-radius: 6px; }
+.cs-stat-flow-card.cs-stat-clickable:hover, .cs-cust-metric.cs-stat-clickable:hover { border-color: #31D6C4; }
+.cs-stat-rank-row.cs-stat-clickable:hover .cs-stat-rank-title, .cs-stat-risk-top-row.cs-stat-clickable:hover { color: #31D6C4; }
+
 /* 통계: 문의 유형 비중 막대 */
 .cs-stat-bars { display: flex; flex-direction: column; gap: 8px; }
 .cs-stat-bar-row { display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; gap: 10px; }
