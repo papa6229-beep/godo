@@ -14,6 +14,7 @@ import { chatWithTeam } from '../services/departmentChatService';
 import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
 import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } from '../services/departmentFactsRouting';
 import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
+import { runCsDraftRequest } from '../services/csDraftRuntime';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -236,6 +237,15 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       const chatTeam = toChatTeam(teamId);
       // CS: safe inquiry/review detail shortlist를 함께 전달(개별 문의/리뷰 질문 응답용, PII 없음).
       const rev = productData.revenue;
+      // CS 답변 초안 요청이면 LLM 없이 composer가 직접 처리(코드가 주도권). 종결형 customerDraft만 출력.
+      if (chatTeam === 'cs' && rev?.universeAux?.inquiries?.length && rev.orders?.length) {
+        const draft = runCsDraftRequest({ userText: text, inquiries: rev.universeAux.inquiries, orders: rev.orders });
+        if (draft.handled) {
+          setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: draft.reply }] }));
+          setSending(false);
+          return;
+        }
+      }
       // CS 전용: safe inquiry/review + 연결 주문 대조용 orders(RevenueOrderLite, PII 없음). 타 팀엔 미전달.
       const csDetail =
         chatTeam === 'cs' && rev?.universeAux
