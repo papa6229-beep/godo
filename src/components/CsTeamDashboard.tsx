@@ -3,16 +3,11 @@ import './CsTeamDashboard.css';
 import type { RevenueResult } from '../services/departmentDataService';
 import { composeCsDraftFromOrders } from '../services/csDraftComposer';
 import {
-  buildCsDashboardFacts,
   buildCsAdminWorkflow,
   buildCsDetailItem,
   csTopicKo,
   csTypeColorClass,
-  type CsDashboardFacts,
   type CsAdminWorkflowFacts,
-  type CsPriorityInquiry,
-  type CsLowRatingReview,
-  type CsIssueProduct,
   type CsKpiItem,
   type CsKpiInquiryItem,
   type CsKpiReviewItem,
@@ -20,6 +15,7 @@ import {
   type CsDashContact
 } from '../services/csTeamDashboardFacts';
 import { buildCsCustomerProfileHub, searchCustomerProfiles, type CsCustomerProfileHubItem } from '../services/csCustomerManagementFacts';
+import { buildCsDashboardStatistics, type CsDashboardStatistics } from '../services/csDashboardStatistics';
 import {
   buildCsApprovalItem,
   addCsApprovalItems,
@@ -81,38 +77,6 @@ const KpiCard: React.FC<{ label: string; value: number; unit: string; sub: strin
     </button>
   );
 
-// ── 하단 섹션 행(유지) ─────────────────────────────────────────────────────────
-const PriorityRow: React.FC<{ q: CsPriorityInquiry }> = ({ q }) => (
-  <li className={`cs-dash-pri-item ${q.needsHumanCheck ? 'is-risk' : ''}`}>
-    <div className="cs-dash-pri-rank">{q.rank}</div>
-    <div className="cs-dash-pri-body">
-      <div className="cs-dash-pri-title">{q.title}</div>
-      <div className="cs-dash-pri-meta">{q.productName} · {csTopicKo(q.topic)} · {statusKo(q.status)} · {shortDate(q.createdAt)}</div>
-      <div className="cs-dash-badges">
-        <span className={`cs-badge ${q.orderLinked ? 'ok' : 'muted'}`}>{q.orderLinked ? '주문 연결됨' : '주문 미연결'}</span>
-        {q.needsHumanCheck && <span className="cs-badge warn">내부확인 필요</span>}
-        <span className={`cs-badge risk-${q.riskLevel}`}>위험 {riskKo(q.riskLevel)}</span>
-      </div>
-    </div>
-  </li>
-);
-const ReviewRow: React.FC<{ r: CsLowRatingReview }> = ({ r }) => (
-  <li className="cs-dash-rev-item">
-    <span className="cs-dash-rev-rating">{'★'.repeat(Math.max(0, Math.min(5, r.rating)))}<span className="cs-dash-rev-num">{r.rating}점</span></span>
-    <div className="cs-dash-rev-body">
-      <div className="cs-dash-rev-prod">{r.productName} <span className="cs-badge muted">{sentimentKo(r.sentiment)}</span> <span className="cs-dash-rev-topic">{csTopicKo(r.topic)}</span></div>
-      {r.excerpt && <div className="cs-dash-rev-excerpt">{r.excerpt}</div>}
-    </div>
-    <span className="cs-dash-rev-date">{shortDate(r.createdAt)}</span>
-  </li>
-);
-const IssueRow: React.FC<{ p: CsIssueProduct }> = ({ p }) => (
-  <li className="cs-dash-issue-item">
-    <div className="cs-dash-issue-prod">{p.productName}</div>
-    <div className="cs-dash-issue-meta">문의 {p.inquiryCount} · 리뷰이슈 {p.reviewIssueCount} · 주요 {csTopicKo(p.mainTopic)}</div>
-    <span className={`cs-badge risk-${p.riskLevel}`}>위험 {riskKo(p.riskLevel)}</span>
-  </li>
-);
 
 // ── 공통 팝업 셸 ───────────────────────────────────────────────────────────────
 const PopupShell: React.FC<{ title: string; count: number; onClose: () => void; children: React.ReactNode }>
@@ -791,10 +755,14 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
     setCompleted([]); setApprovals([]); setAssigneeByItem({}); setMemoByItem({}); setCustMemo({}); setCustCaution({}); setCustBlacklist({});
   };
 
-  const facts = useMemo<CsDashboardFacts | null>(() => {
+  const stats = useMemo<CsDashboardStatistics | null>(() => {
     if (!revenue?.universeAux) return null;
-    return buildCsDashboardFacts({ inquiries: revenue.universeAux.inquiries || [], reviews: revenue.universeAux.reviews || [], orders: revenue.orders || [], goodsNames });
-  }, [revenue, goodsNames]);
+    return buildCsDashboardStatistics({
+      inquiries: revenue.universeAux.inquiries || [], reviews: revenue.universeAux.reviews || [], orders: revenue.orders || [],
+      contacts: (revenue.universeAux.csOnlyFakeContacts || []) as CsDashContact[],
+      completed, approvals, cautionByKey: custCaution, blacklistByKey: custBlacklist, goodsNames
+    });
+  }, [revenue, goodsNames, completed, approvals, custCaution, custBlacklist]);
 
   const wf = useMemo<CsAdminWorkflowFacts | null>(() => {
     if (!revenue?.universeAux) return null;
@@ -804,7 +772,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
     });
   }, [revenue, goodsNames]);
 
-  if (!facts || !wf) {
+  if (!stats || !wf) {
     return (
       <div className="cs-dash-empty">
         <p>CS 데이터가 아직 없습니다. 데이터를 불러오면 처리판이 표시됩니다.</p>
@@ -918,23 +886,90 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         </div>
       </div>
 
-      <section className="cs-dash-section">
-        <h3 className="cs-dash-section-title">🧭 우선 처리 문의</h3>
-        {facts.priorityInquiries.length ? <ul className="cs-dash-pri-list">{facts.priorityInquiries.map((q) => <PriorityRow key={q.inquiryId || q.rank} q={q} />)}</ul> : <p className="cs-dash-muted">처리할 문의가 없습니다.</p>}
-      </section>
-
+      {/* ── 통계 상황판 ── */}
       <div className="cs-dash-two-col">
+        {/* 1. 문의 유형 비중 */}
         <section className="cs-dash-section">
-          <h3 className="cs-dash-section-title">⚠️ 주의 리뷰</h3>
-          <p className="cs-dash-section-desc">저평점·부정 감성·상품 불만 신호</p>
-          {facts.lowRatingReviews.length ? <ul className="cs-dash-rev-list">{facts.lowRatingReviews.map((rv, i) => <ReviewRow key={i} r={rv} />)}</ul> : <p className="cs-dash-muted">주의 리뷰가 없습니다.</p>}
+          <h3 className="cs-dash-section-title">📊 문의 유형 비중</h3>
+          <div className="cs-stat-bars">
+            {stats.inquiryTypeDistribution.map((s) => (
+              <div key={s.type} className="cs-stat-bar-row">
+                <span className="cs-stat-bar-label">{s.label}</span>
+                <span className="cs-stat-bar-track"><span className={`cs-stat-bar-fill ${csTypeColorClass(s.type === 'claim' ? 'refund' : s.type === 'review' ? '' : s.type)} ${s.type === 'review' ? 'type-review' : ''}`} style={{ width: `${Math.max(2, s.percent)}%` }} /></span>
+                <span className="cs-stat-bar-val">{s.percent}% <span className="cs-dash-muted">({s.count})</span></span>
+              </div>
+            ))}
+          </div>
         </section>
+
+        {/* 2. CS 업무 흐름 요약 */}
         <section className="cs-dash-section">
-          <h3 className="cs-dash-section-title">📦 CS 이슈 상품</h3>
-          <p className="cs-dash-section-desc">문의·리뷰 이슈가 반복되는 상품</p>
-          {facts.issueProducts.length ? <ul className="cs-dash-issue-list">{facts.issueProducts.map((p) => <IssueRow key={p.goodsNo} p={p} />)}</ul> : <p className="cs-dash-muted">이슈 상품이 없습니다.</p>}
+          <h3 className="cs-dash-section-title">🔀 CS 업무 흐름</h3>
+          <div className="cs-stat-flow">
+            {[['미처리', stats.workflowSummary.unresolved], ['승인 대기', stats.workflowSummary.pendingApproval], ['승인됨', stats.workflowSummary.approved], ['처리완료', stats.workflowSummary.completed], ['반려/보류', stats.workflowSummary.rejectedOrHeld]].map(([label, n], i, arr) => (
+              <React.Fragment key={label as string}>
+                <div className="cs-stat-flow-card"><span className="cs-stat-flow-n">{n}</span><span className="cs-stat-flow-label">{label}</span></div>
+                {i < arr.length - 1 && <span className="cs-stat-flow-arrow">→</span>}
+              </React.Fragment>
+            ))}
+          </div>
         </section>
       </div>
+
+      <div className="cs-dash-two-col">
+        {/* 3. AI 처리 성과 */}
+        <section className="cs-dash-section">
+          <h3 className="cs-dash-section-title">🤖 AI 처리 성과</h3>
+          <p className="cs-dash-section-desc">AI가 초안을 만들고, 운영자가 승인합니다.</p>
+          <div className="cs-cust-metrics">
+            <div className="cs-cust-metric"><span>AI 초안 후보</span><b>{stats.aiPerformance.draftCount}</b></div>
+            <div className="cs-cust-metric"><span>승인요청</span><b>{stats.aiPerformance.approvalRequestedCount}</b></div>
+            <div className="cs-cust-metric"><span>승인</span><b>{stats.aiPerformance.approvedCount}</b></div>
+            <div className="cs-cust-metric"><span>반려</span><b>{stats.aiPerformance.rejectedCount}</b></div>
+            <div className="cs-cust-metric"><span>AI 처리완료</span><b>{stats.aiPerformance.aiCompletedCount}</b></div>
+            <div className="cs-cust-metric"><span>승인율</span><b>{stats.aiPerformance.approvalRate != null ? `${stats.aiPerformance.approvalRate}%` : '–'}</b></div>
+          </div>
+        </section>
+
+        {/* 4. CS 이슈 상품 TOP */}
+        <section className="cs-dash-section">
+          <h3 className="cs-dash-section-title">📦 CS 이슈 상품 TOP</h3>
+          {stats.issueProducts.length ? (
+            <ol className="cs-stat-rank">
+              {stats.issueProducts.map((p, i) => (
+                <li key={p.goodsNo} className="cs-stat-rank-row">
+                  <span className="cs-stat-rank-no">{i + 1}</span>
+                  <div className="cs-stat-rank-body">
+                    <div className="cs-stat-rank-title">{p.productName} <span className={`cs-badge risk-${p.riskLevel}`}>위험 {riskKo(p.riskLevel)}</span></div>
+                    <div className="cs-stat-rank-meta">문의 {p.inquiryCount} · 리뷰이슈 {p.reviewIssueCount} · 클레임 {p.claimCount} · 주요 {csTopicKo(p.mainIssueType)}</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : <p className="cs-dash-muted">이슈 상품이 없습니다.</p>}
+        </section>
+      </div>
+
+      {/* 5. 고객 리스크 요약 */}
+      <section className="cs-dash-section">
+        <h3 className="cs-dash-section-title">🛡️ 고객 리스크 요약</h3>
+        <div className="cs-stat-risk-cards">
+          <div className="cs-cust-metric"><span>반복문의</span><b>{stats.customerRiskSummary.repeatInquiryCount}</b></div>
+          <div className="cs-cust-metric"><span>반복 환불·취소</span><b>{stats.customerRiskSummary.repeatRefundCancelCount}</b></div>
+          <div className="cs-cust-metric"><span>주의 고객</span><b>{stats.customerRiskSummary.cautionCustomerCount}</b></div>
+          <div className="cs-cust-metric"><span>블랙리스트 후보</span><b>{stats.customerRiskSummary.blacklistCandidateCount}</b></div>
+          <div className="cs-cust-metric"><span>고액 고객</span><b>{stats.customerRiskSummary.highValueCustomerCount}</b></div>
+        </div>
+        {stats.customerRiskSummary.topRiskCustomers.length > 0 && (
+          <div className="cs-stat-risk-top">
+            {stats.customerRiskSummary.topRiskCustomers.map((c) => (
+              <div key={c.customerId} className="cs-stat-risk-top-row">
+                <span>{c.name || c.customerId}</span> <span className={`cs-badge risk-${c.riskLevel}`}>위험 {riskKo(c.riskLevel)}</span> <span className="cs-dash-muted">{c.tags.slice(0, 2).join(' · ')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="cs-dash-hint">
         <span className="cs-dash-hint-label">우측 CS팀장에게 이렇게 물어보세요</span>
