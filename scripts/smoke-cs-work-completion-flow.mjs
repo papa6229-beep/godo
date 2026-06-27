@@ -40,7 +40,7 @@ ok('2. 답변/AI초안 없으면 완료 불가 안내', /답변 내용 또는 AI
 ok('15. AI 자동처리함 선택 처리완료 버튼', /선택 처리완료/.test(TSX));
 ok('16. AI 자동처리함 전체 처리완료 버튼', /전체 처리완료/.test(TSX));
 ok('23. 실제 WRITE/네트워크 호출 없음', !/fetch\(|axios|\.post\(|\.put\(|\.delete\(/i.test(TSX));
-ok('24. 고객관리 팝업 호출에 완료 콜백 없음(미변경)', (() => { const m = TSX.match(/<CsCustomerPopup[\s\S]*?\/>/); return !!m && !/onComplete(Item|Batch)/.test(m[0]); })());
+ok('24. 고객관리 팝업 호출에 완료 콜백 없음(미변경)', (() => { const m = TSX.match(/<CsCustomerProfilePopup[\s\S]*?\/>/); return !!m && !/onComplete(Item|Batch)/.test(m[0]); })());
 
 // helper 동작
 const orderBlock = { orderNo: 'O1', orderDate: '2026-05-29 10:00:00', paymentState: '결제완료', orderAmount: 62500, goodsAmount: 60000, deliveryCharge: 2500, items: [{ productName: '드라이기', quantity: 1, amount: 60000 }], matched: true };

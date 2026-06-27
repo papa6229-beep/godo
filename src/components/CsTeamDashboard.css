@@ -214,6 +214,29 @@
 .cs-pop-done-note { font-size: 12px; color: #31D6C4; }
 @media (prefers-color-scheme: light) { .cs-pop-done-note, .cs-pop-complete-btn { color: #0E7C70 !important; } }
 
+/* ── 고객관리 프로필 허브 ── */
+.cs-pop-search { width: 100%; box-sizing: border-box; background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 7px; color: var(--text-muted); padding: 7px 10px; font-size: 12px; }
+.cs-pop-body-cust { grid-template-columns: minmax(0, 36fr) minmax(440px, 64fr); }
+.cs-cust-header { padding: 4px 2px 10px; border-bottom: 1px solid var(--line-subtle); margin-bottom: 10px; }
+.cs-cust-header-name { font-size: 18px; font-weight: 700; color: var(--text-muted); }
+.cs-cust-header-sub { font-size: 12px; color: var(--text-secondary); margin: 2px 0 6px; }
+.cs-prof-tabs { padding: 0 0 10px; border-bottom: none; }
+.cs-cust-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.cs-cust-metric { background: var(--bg-surface); border: 1px solid var(--line-subtle); border-radius: 7px; padding: 8px; display: flex; flex-direction: column; gap: 3px; }
+.cs-cust-metric span { font-size: 11px; color: var(--text-secondary); }
+.cs-cust-metric b { font-size: 14px; color: var(--text-muted); }
+.cs-cust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+.cs-cust-grid > div { display: flex; gap: 8px; padding: 3px 0; }
+.cs-pop-order-row, .cs-cust-row { cursor: pointer; }
+.cs-pop-order-row { padding: 4px 0; border-bottom: 1px dashed var(--line-subtle); }
+.cs-pop-order-row:hover { color: #31D6C4; }
+.cs-cust-row { border: 1px solid var(--line-subtle); border-radius: 7px; padding: 8px 10px; margin-bottom: 6px; }
+.cs-cust-row.active { border-color: #31D6C4; }
+.cs-cust-row-title { font-size: 13px; font-weight: 600; color: var(--text-muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cs-cust-row-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.cs-cust-detail { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line-subtle); }
+@media (max-width: 900px) { .cs-pop-body-cust { grid-template-columns: 1fr; } .cs-cust-metrics { grid-template-columns: repeat(2, 1fr); } .cs-cust-grid { grid-template-columns: 1fr; } }
+
 .cs-pop-preview { border-top: 1px solid var(--line-subtle); padding: 12px 18px; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .cs-pop-preview-head { font-size: 12px; color: #31D6C4; }
 .cs-pop-preview-item { display: flex; flex-direction: column; gap: 4px; }
