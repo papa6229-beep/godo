@@ -16,6 +16,7 @@ import { chatWithTeam } from '../services/departmentChatService';
 import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
 import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } from '../services/departmentFactsRouting';
 import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
+import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -234,8 +235,29 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         const ctx = buildDepartmentChatContext('product', departmentFactsBundle);
         opts = ctx ?? { contextNote: buildProductContextNote() };
       }
+    } else if (teamId === 'marketing') {
+      // 마케팅팀: 대시보드와 동일한 buildMarketingAnalysisFacts 기반 context를 우선 사용(같은 데이터 기준).
+      const rev = productData.revenue;
+      const mkt = rev?.orders?.length
+        ? buildMarketingChatContext(text, {
+            orders: rev.orders,
+            products: productData.products?.products,
+            reviews: rev.universeAux?.reviews,
+            inquiries: rev.universeAux?.inquiries,
+            period: { preset: 'all' }
+          })
+        : null;
+      if (mkt) {
+        opts = mkt;
+      } else {
+        const ctx = buildDepartmentChatContext('marketing', departmentFactsBundle);
+        opts = ctx ?? {
+          answerGuidance:
+            '현재 마케팅 분석 facts가 아직 준비되지 않았습니다. 사용자에게 "데이터를 불러오는 중이니 잠시 후 다시 시도하거나 새로고침해 주세요"라고 안내하세요. 숫자를 추측하지 마세요.'
+        };
+      }
     } else {
-      // CS/마케팅/총괄: DepartmentFactsBundle의 자기 슬라이스만 사용.
+      // CS/총괄: DepartmentFactsBundle의 자기 슬라이스만 사용.
       const chatTeam = toChatTeam(teamId);
       // CS: safe inquiry/review detail shortlist를 함께 전달(개별 문의/리뷰 질문 응답용, PII 없음).
       const rev = productData.revenue;

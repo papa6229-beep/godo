@@ -208,6 +208,9 @@ type OrderLike = {
   useDepositAmount?: unknown;
   rewardUseAmount?: unknown;
   state?: { paid?: unknown; canceled?: unknown };
+  // RevenueOrderLite(프론트)는 state를 평탄화해 paid/canceled를 최상위로 둔다 — 둘 다 수용.
+  paid?: unknown;
+  canceled?: unknown;
   lines?: OrderLineLike[];
 };
 type ProductLike = { productId?: unknown; productCode?: unknown; productName?: unknown; categoryCode?: unknown; brandCode?: unknown };
@@ -267,11 +270,15 @@ export function filterMarketingOrdersByPeriod<T extends { orderDate?: unknown }>
 }
 
 // 매출 집계 대상 주문: 결제완료 & 미취소 (미결제/취소는 매출 미포함)
+// 입력 형태 2종 수용: 중첩 state{paid,canceled}(universe) / 평탄 paid·canceled(RevenueOrderLite).
 const isCounted = (o: OrderLike): boolean => {
   if (o.state && (o.state.paid !== undefined || o.state.canceled !== undefined)) {
     return bool(o.state.paid) && !bool(o.state.canceled);
   }
-  return num(o.totalAmount) > 0; // state 없으면 금액 기준 폴백
+  if (o.paid !== undefined || o.canceled !== undefined) {
+    return bool(o.paid) && !bool(o.canceled);
+  }
+  return num(o.totalAmount) > 0; // 상태 정보 없으면 금액 기준 폴백
 };
 const hasCoupon = (o: OrderLike): boolean => bool(o.discountSummary?.hasCoupon);
 const usesMileage = (o: OrderLike): boolean => num(o.useMileageAmount) > 0;
