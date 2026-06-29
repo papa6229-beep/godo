@@ -18,6 +18,7 @@ import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } fr
 import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
 import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
 import { runMarketingChartRequest, type MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
+import { buildMarketingIntelligenceResponse } from '../services/marketingIntelligencePlanner';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -240,9 +241,16 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       }
     } else if (teamId === 'marketing') {
       const rev = productData.revenue;
-      // 1순위: 차트/비교/추이/교차분석 의도면 chartSpec bridge가 코드로 직접 답하고(LLM 없이), chartSpec artifact를 보관.
-      //   중앙 그래프 렌더는 다음 작업 — 여기서는 우측 채팅 답변 + 후속 렌더용 artifact만 준비.
       if (rev?.orders?.length) {
+        // 0순위: Intelligence Planner(질문→분석계획→capability 검증→실행). 분석 의도면 코드가 직접 답 + chartSpec artifact.
+        const intel = buildMarketingIntelligenceResponse({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries });
+        if (intel.handled && intel.reply && intel.artifact) {
+          setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: intel.reply as string }] }));
+          setMarketingChartArtifact(intel.artifact);
+          setSending(false);
+          return;
+        }
+        // 1순위(planner 미처리): 기존 fixed-intent chartSpec bridge가 코드로 답하고 artifact 보관.
         const chart = runMarketingChartRequest({ message: text, orders: rev.orders, products: productData.products?.products });
         if (chart.handled) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: chart.reply }] }));
