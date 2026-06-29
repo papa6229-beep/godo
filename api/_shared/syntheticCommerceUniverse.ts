@@ -134,6 +134,11 @@ export type SyntheticCommerceUniverse = {
     inquiryCount: number;
     sourceType: 'synthetic';
     syntheticProfile: typeof PROFILE;
+    // Baseline Year Synthetic Expansion v0 (includeBaselineYear=true일 때만 의미)
+    includesBaselineYear?: boolean;
+    baselineOrderCount?: number;
+    promotionOrderCount?: number;
+    spanDays?: number;
   };
   customers: SyntheticCustomerProfile[];
   orders: RevenueOrder[]; // Analytics 계약(가명, PII 없음)
@@ -147,7 +152,22 @@ export type SyntheticCommerceOptions = {
   months?: number;
   customers?: number;
   endDate?: string;
+  // Baseline Year Synthetic Expansion v0: true면 promotion year(최근 12개월) 앞에
+  //   "쿠폰/이벤트 없는 기준년도" 12개월을 추가 생성한다(연/월 비교용). 기본 false.
+  includeBaselineYear?: boolean;
 };
+
+// 고객 cohort (baseline 확장 시): both=양년 / promotion_only=올해만 / baseline_only=작년만
+type CustomerCohort = 'both' | 'promotion_only' | 'baseline_only';
+const COHORTS: { v: CustomerCohort; w: number }[] = [
+  { v: 'both', w: 0.6 },
+  { v: 'promotion_only', w: 0.22 },
+  { v: 'baseline_only', w: 0.18 }
+];
+
+// 주문 시나리오 metadata (GODO AI OS 테스트용 — 고도몰 원본 API 필드 아님)
+export type SyntheticScenario = 'baseline_no_promotion' | 'promotion_year';
+export type SyntheticYearLabel = 'baseline' | 'promotion';
 
 // ── 세그먼트 정의 (행동 파라미터) ────────────────────────────────────────────
 type SegDef = { key: CustomerSegment; w: number; ordLo: number; ordHi: number; refundProb: number; reviewProb: number; aovMul: number };
@@ -256,30 +276,31 @@ export function buildSyntheticCommerceUniverse(
   const customers: SyntheticCustomerProfile[] = [];
   const contacts: SyntheticCsContact[] = [];
   // 주문→리뷰/문의 생성을 위해 주문 메타 보관
-  type OrderMeta = { orderNo: string; customerIdx: number; statusKey: string; isClaim: boolean; claimKind?: string; goodsNo: string; productId: string; categoryCode?: string; brandCode?: string; orderDate: Date; confirmed: boolean };
+  type OrderMeta = { orderNo: string; customerIdx: number; statusKey: string; isClaim: boolean; claimKind?: string; goodsNo: string; productId: string; categoryCode?: string; brandCode?: string; orderDate: Date; confirmed: boolean; scenario: SyntheticScenario; yearLabel: SyntheticYearLabel };
   const orderMetas: OrderMeta[] = [];
 
+  const includeBaselineYear = options.includeBaselineYear === true;
+
   let orderSeq = 0;
+  let baselineOrderCount = 0;
+  let promotionOrderCount = 0;
   for (let ci = 0; ci < customerCount; ci++) {
     const seg = pickW(SEGMENTS, rng());
     const nOrders = intIn(rng, seg.ordLo, seg.ordHi);
     const group = MEMBER_GROUP_BY_SEGMENT[seg.key]; // memberKey당 고정(주문별로 흔들리지 않음)
     const memNo = String(100000 + ci);
     const memId = `syn_user_${pad(ci + 1)}`;
-    // 고객 주문일자: 윈도우 내에서 정렬된 nOrders개
-    const dayBacks = Array.from({ length: nOrders }, () => Math.floor(Math.pow(rng(), 1.2) * windowDays)).sort((a, b) => b - a);
-    let firstDate = '';
-    let lastDate = '';
-    let totalPaid = 0;
-    let refundCount = 0;
-    const custOrderNos: string[] = [];
+    // cohort(baseline 확장 시): 양년/올해만/작년만. off일 땐 promotion_only(기존과 동일, rng 미소비).
+    const cohort: CustomerCohort = includeBaselineYear ? pickW(COHORTS, rng()).v : 'promotion_only';
+    const doPromo = cohort !== 'baseline_only';
+    const doBaseline = includeBaselineYear && cohort !== 'promotion_only';
 
-    for (let oi = 0; oi < nOrders; oi++) {
+    const acc = { firstDate: '', lastDate: '', totalPaid: 0, refundCount: 0, orderCount: 0 };
+
+    // 주문 1건 생성. allowCoupons=promotion year에서만 쿠폰/이벤트 할인 발생, baseline year는 전부 0.
+    //   rng 호출 순서는 기존(단일년) 흐름과 동일 → off일 때 결과 불변.
+    const emitOrder = (orderDate: Date, allowCoupons: boolean, scenario: SyntheticScenario, yearLabel: SyntheticYearLabel, isFirstHint: boolean): void => {
       orderSeq += 1;
-      const orderDate = addDays(end, -dayBacks[oi]);
-      orderDate.setHours(8 + Math.floor(rng() * 13), Math.floor(rng() * 60), Math.floor(rng() * 60), 0);
-
-      // 클레임 여부 → 상태
       const isClaim = rng() < seg.refundProb;
       const claim = isClaim ? pickW(CLAIM_KIND, rng()) : null;
       const normal = !isClaim ? pickW(NORMAL_STATUS, rng()) : null;
@@ -311,17 +332,14 @@ export function buildSyntheticCommerceUniverse(
         lines.push(line);
       }
       const deliveryFee = rng() < 0.2 ? 0 : rng() < 0.85 ? 2500 : 3000;
-      const isFirst = oi === 0;
       const paidish = statusKey !== 'unpaid';
 
-      // ── 할인/리워드 enrichment (Spec-Based Synthetic Enrichment v0) ──
-      // Order_Search 스펙 근거(totalGoodsDcPrice/totalMemberDcPrice/totalCoupon*DcPrice/useMileage/useDeposit).
-      // 정책/원장이 아니라 "이 주문에 반영된 결과"만 생성. 일부 주문에만 발생. 음수/과다 차감 guard.
+      // ── 쿠폰/이벤트 할인 (promotion year + 결제 주문에서만) ──
       let goodsDc = 0, memberDc = 0, couponGoodsDc = 0, couponOrderDc = 0, couponDeliveryDc = 0;
       let useMileage = 0, useDeposit = 0;
-      if (paidish) {
+      if (paidish && allowCoupons) {
         let couponProb = 0.18;
-        if (isFirst) couponProb += 0.17; // 첫구매 웰컴쿠폰
+        if (isFirstHint) couponProb += 0.17; // 첫구매 웰컴쿠폰
         if (seg.key === 'discount_sensitive') couponProb += 0.22;
         if (seg.key === 'vip_candidate') couponProb += 0.1;
         if (rng() < couponProb) {
@@ -345,8 +363,9 @@ export function buildSyntheticCommerceUniverse(
           couponOrderDc = Math.floor(couponOrderDc * scale);
         }
         couponDeliveryDc = Math.min(couponDeliveryDc, deliveryFee);
-
-        // 마일리지/예치금: 일부 주문, VIP/재구매에서 더 자주. 남은 결제액의 절반 이내 guard(settle≥0).
+      }
+      // 마일리지/예치금: 쿠폰 이벤트가 아닌 기본 리워드 사용 흐름 → baseline year도 낮은 비율 허용.
+      if (paidish) {
         const remaining = totalGoods - (goodsDc + memberDc + couponGoodsDc + couponOrderDc) + (deliveryFee - couponDeliveryDc);
         let rewardProb = 0.12;
         if (seg.key === 'vip_candidate') rewardProb += 0.25;
@@ -357,7 +376,7 @@ export function buildSyntheticCommerceUniverse(
         }
       }
 
-      // 라인 단위 쿠폰/상품 할인 안분(정보용 — 합계 계산엔 영향 없음, 헤더 할인이 권위값)
+      // 라인 단위 쿠폰/상품 할인 안분(정보용 — 합계 계산엔 영향 없음)
       const allocLine = (key: string, amount: number): void => {
         if (amount <= 0 || lines.length === 0 || totalGoods <= 0) return;
         let allocated = 0;
@@ -370,6 +389,8 @@ export function buildSyntheticCommerceUniverse(
       };
       allocLine('couponGoodsDcPrice', couponGoodsDc);
       allocLine('goodsDcPrice', goodsDc);
+      // baseline year: 라인 쿠폰/상품 할인도 명시적 0(쿠폰 없음 보장)
+      if (!allowCoupons) for (const ln of lines) { ln.couponGoodsDcPrice = '0'; ln.goodsDcPrice = '0'; }
 
       const discountTotal = goodsDc + memberDc + couponGoodsDc + couponOrderDc + couponDeliveryDc;
       const rewardTotal = useMileage + useDeposit;
@@ -378,20 +399,28 @@ export function buildSyntheticCommerceUniverse(
       const yy = String(orderDate.getFullYear() % 100).padStart(2, '0');
       const orderNo = `${yy}${String(orderDate.getMonth() + 1).padStart(2, '0')}${String(orderDate.getDate()).padStart(2, '0')}${String(orderDate.getHours()).padStart(2, '0')}${String(orderDate.getMinutes()).padStart(2, '0')}${pad(orderSeq)}`;
 
+      // baseline year: 쿠폰/이벤트 할인 필드 명시적 0(discountSummary.hasCoupon=false 보장). promotion: 비0만 stamp.
+      const dcKeys: Record<string, string> = allowCoupons
+        ? {
+            ...(goodsDc ? { totalGoodsDcPrice: String(goodsDc) } : {}),
+            ...(memberDc ? { totalMemberDcPrice: String(memberDc) } : {}),
+            ...(couponGoodsDc ? { totalCouponGoodsDcPrice: String(couponGoodsDc) } : {}),
+            ...(couponOrderDc ? { totalCouponOrderDcPrice: String(couponOrderDc) } : {}),
+            ...(couponDeliveryDc ? { totalCouponDeliveryDcPrice: String(couponDeliveryDc) } : {})
+          }
+        : { totalGoodsDcPrice: '0', totalMemberDcPrice: '0', totalCouponGoodsDcPrice: '0', totalCouponOrderDcPrice: '0', totalCouponDeliveryDcPrice: '0' };
+
       rawOrders.push({
         orderNo, memNo, memId, orderStatus: statusCode,
         orderTypeFl: rng() < 0.6 ? 'mobile' : 'pc',
         orderChannelFl: pickW(CHANNEL, rng()).v,
         settleKind: pickW(SETTLE, rng()).v,
-        firstSaleFl: isFirst ? 'y' : '',
+        firstSaleFl: isFirstHint ? 'y' : '',
         memGroupNm: group.nm, memGroupNo: group.code,
+        syntheticScenario: scenario, syntheticYearLabel: yearLabel,
         orderDate: fmtDateTime(orderDate),
         totalGoodsPrice: String(totalGoods), totalDeliveryCharge: String(deliveryFee), settlePrice: String(settlePrice),
-        ...(goodsDc ? { totalGoodsDcPrice: String(goodsDc) } : {}),
-        ...(memberDc ? { totalMemberDcPrice: String(memberDc) } : {}),
-        ...(couponGoodsDc ? { totalCouponGoodsDcPrice: String(couponGoodsDc) } : {}),
-        ...(couponOrderDc ? { totalCouponOrderDcPrice: String(couponOrderDc) } : {}),
-        ...(couponDeliveryDc ? { totalCouponDeliveryDcPrice: String(couponDeliveryDc) } : {}),
+        ...dcKeys,
         ...(useMileage ? { useMileage: String(useMileage) } : {}),
         ...(useDeposit ? { useDeposit: String(useDeposit) } : {}),
         paymentDt: df.paymentDt, invoiceDt: df.invoiceDt, deliveryDt: df.deliveryDt,
@@ -401,27 +430,49 @@ export function buildSyntheticCommerceUniverse(
 
       // 고객 집계 (미결제는 매출 미포함)
       const counted = statusKey !== 'unpaid';
-      if (counted) totalPaid += settlePrice;
-      if (claim && (claim.v === 'refund' || claim.v === 'return')) refundCount += 1;
+      if (counted) acc.totalPaid += settlePrice;
+      if (claim && (claim.v === 'refund' || claim.v === 'return')) acc.refundCount += 1;
+      acc.orderCount += 1;
       const ds = fmtDateTime(orderDate);
-      if (!firstDate || ds < firstDate) firstDate = ds;
-      if (!lastDate || ds > lastDate) lastDate = ds;
-      custOrderNos.push(orderNo);
+      if (!acc.firstDate || ds < acc.firstDate) acc.firstDate = ds;
+      if (!acc.lastDate || ds > acc.lastDate) acc.lastDate = ds;
+      if (yearLabel === 'baseline') baselineOrderCount += 1; else promotionOrderCount += 1;
       orderMetas.push({
         orderNo, customerIdx: ci, statusKey, isClaim: !!claim, claimKind: claim?.v,
         goodsNo: String(firstP!.productId), productId: String(firstP!.productId),
         categoryCode: firstP!.categoryCode || undefined, brandCode: firstP!.brandCode || undefined,
-        orderDate, confirmed: statusKey === 'confirmed' || statusKey === 'exchange'
+        orderDate, confirmed: statusKey === 'confirmed' || statusKey === 'exchange',
+        scenario, yearLabel
       });
+    };
+
+    // promotion year(최근 12개월): dayBack ∈ [0, windowDays]
+    if (doPromo) {
+      const dayBacks = Array.from({ length: nOrders }, () => Math.floor(Math.pow(rng(), 1.2) * windowDays)).sort((a, b) => b - a);
+      for (let oi = 0; oi < nOrders; oi++) {
+        const orderDate = addDays(end, -dayBacks[oi]);
+        orderDate.setHours(8 + Math.floor(rng() * 13), Math.floor(rng() * 60), Math.floor(rng() * 60), 0);
+        emitOrder(orderDate, true, 'promotion_year', 'promotion', oi === 0);
+      }
+    }
+    // baseline year(직전 12개월, 쿠폰/이벤트 없음): dayBack ∈ [windowDays, 2*windowDays]
+    if (doBaseline) {
+      const nB = intIn(rng, seg.ordLo, seg.ordHi);
+      const dayBacks = Array.from({ length: nB }, () => windowDays + Math.floor(Math.pow(rng(), 1.2) * windowDays)).sort((a, b) => b - a);
+      for (let oi = 0; oi < nB; oi++) {
+        const orderDate = addDays(end, -dayBacks[oi]);
+        orderDate.setHours(8 + Math.floor(rng() * 13), Math.floor(rng() * 60), Math.floor(rng() * 60), 0);
+        emitOrder(orderDate, false, 'baseline_no_promotion', 'baseline', false);
+      }
     }
 
     const memberKey = `syn_member_${memNo}`;
     customers.push({
       customerId: `cust_${pad(ci + 1)}`, memberKey, memNo, memId, segment: seg.key,
       memberGroupNm: group.nm, memberGroupCode: group.code,
-      firstOrderDate: firstDate, lastOrderDate: lastDate, orderCount: nOrders,
-      totalPaidAmount: totalPaid, averageOrderValue: nOrders ? Math.round(totalPaid / nOrders) : 0,
-      repurchaseCount: Math.max(0, nOrders - 1), refundCount, reviewCount: 0,
+      firstOrderDate: acc.firstDate, lastOrderDate: acc.lastDate, orderCount: acc.orderCount,
+      totalPaidAmount: acc.totalPaid, averageOrderValue: acc.orderCount ? Math.round(acc.totalPaid / acc.orderCount) : 0,
+      repurchaseCount: Math.max(0, acc.orderCount - 1), refundCount: acc.refundCount, reviewCount: 0,
       sourceType: 'synthetic', syntheticProfile: PROFILE
     });
     // CS contact (fake PII)
@@ -437,11 +488,38 @@ export function buildSyntheticCommerceUniverse(
     });
   }
 
-  // 2) raw → RevenueOrder (real과 같은 mapper 통로) + syntheticSource stamp ──
+  // 2) raw → RevenueOrder (real과 같은 mapper 통로) + syntheticSource/scenario stamp ──
   const orders = mapOrdersToRevenue(rawOrders, buildProductIndex(base), 'synthetic_test');
+  const metaByNo = new Map(orderMetas.map((m) => [m.orderNo, m]));
   for (const o of orders) {
     o.syntheticSource = PROFILE;
     o.dataKind = 'synthetic';
+    const m = metaByNo.get(o.orderNo);
+    if (m) {
+      o.syntheticScenario = m.scenario;
+      o.syntheticYearLabel = m.yearLabel;
+    }
+  }
+
+  // 2-1) firstPurchase 전역 재계산 — 같은 memberKey의 "가장 이른 결제완료·미취소 주문" 1건만 true.
+  //   baseline year 추가 시 promotion의 첫구매/재구매가 달라질 수 있으므로 2년치 합산 기준으로 재계산.
+  const ordersByMember = new Map<string, RevenueOrder[]>();
+  for (const o of orders) {
+    if (!o.memberKey) continue;
+    const arr = ordersByMember.get(o.memberKey) ?? [];
+    arr.push(o);
+    ordersByMember.set(o.memberKey, arr);
+  }
+  for (const list of ordersByMember.values()) {
+    let firstNo: string | undefined;
+    let firstDate = '';
+    for (const o of list) {
+      if (o.state.paid && !o.state.canceled && (!firstDate || o.orderDate < firstDate)) {
+        firstDate = o.orderDate;
+        firstNo = o.orderNo;
+      }
+    }
+    for (const o of list) o.isFirstPurchase = o.orderNo === firstNo;
   }
 
   // 3) 리뷰 (구매확정 주문 일부) ────────────────────────────────────────────
@@ -512,8 +590,17 @@ export function buildSyntheticCommerceUniverse(
     });
   }
 
+  // 전체 주문 날짜 span(일) — baseline 추가 시 약 2년.
+  const dateMs = orders.map((o) => Date.parse(o.orderDate.replace(' ', 'T'))).filter((n) => !Number.isNaN(n));
+  const spanDays = dateMs.length ? Math.round((Math.max(...dateMs) - Math.min(...dateMs)) / 86400000) : 0;
+
   return {
-    meta: { seed, months, endDate: endStr, productCount: base.length, customerCount: customers.length, orderCount: orders.length, reviewCount: reviews.length, inquiryCount: inquiries.length, sourceType: 'synthetic', syntheticProfile: PROFILE },
+    meta: {
+      seed, months, endDate: endStr, productCount: base.length, customerCount: customers.length,
+      orderCount: orders.length, reviewCount: reviews.length, inquiryCount: inquiries.length,
+      sourceType: 'synthetic', syntheticProfile: PROFILE,
+      includesBaselineYear: includeBaselineYear, baselineOrderCount, promotionOrderCount, spanDays
+    },
     customers, orders, reviews, inquiries, contacts
   };
 }
