@@ -380,6 +380,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         products={products}
         loading={loading}
         onRefresh={() => void loadProductTeamData()}
+        marketingChartArtifact={marketingChartArtifact}
+        onClearMarketingChartArtifact={() => setMarketingChartArtifact(null)}
       />
     );
   };

@@ -10,6 +10,7 @@ import {
   type MarketingDimensionMetric,
   type MarketingInsight
 } from '../services/marketingAnalysisFacts';
+import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartSeries } from '../services/marketingChatChartSpec';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Marketing Analysis Dashboard v0.1 — Focused Insight Layout
@@ -26,6 +27,9 @@ interface Props {
   products: AdminProductsResult | null;
   loading: boolean;
   onRefresh: () => void;
+  // 채팅 질문 기반 chartSpec artifact(비영속). 있으면 중앙 그래프/AI 리포트를 이 결과로 우선 표시.
+  marketingChartArtifact?: MarketingChatChartArtifact | null;
+  onClearMarketingChartArtifact?: () => void;
 }
 
 const PRESETS: { key: MarketingAnalysisPeriodPreset; label: string }[] = [
@@ -283,7 +287,245 @@ const DimensionBlock: React.FC<{ title: string; markerClass: string; items: Mark
 
 const SEV_LABEL: Record<MarketingInsight['severity'], string> = { info: '관찰', positive: '긍정', warning: '주의' };
 
-export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products, loading, onRefresh }) => {
+// ────────────────────────────────────────────────────────────────────────────
+// 채팅 chartSpec artifact 렌더 (계산 없음 — chartSpec 결과만 표시). JSON 미노출, PII 미노출.
+// ────────────────────────────────────────────────────────────────────────────
+const BUCKET_LIMIT = 12;
+const formatMetricValue = (value: number, unit?: MarketingChartSpec['unit']): string => {
+  if (unit === 'count') return `${Math.round(value).toLocaleString()}건`;
+  if (unit === 'percent') return `${value}%`;
+  return won(value); // krw / mixed 기본
+};
+const unionBuckets = (chartSpec: MarketingChartSpec): { keys: string[]; labels: Record<string, string>; truncated: boolean } => {
+  const labels: Record<string, string> = {};
+  const set = new Set<string>();
+  for (const s of chartSpec.series) for (const p of s.points) { set.add(p.bucketKey); labels[p.bucketKey] = p.bucketLabel; }
+  const sorted = [...set].sort();
+  if (sorted.length <= BUCKET_LIMIT) return { keys: sorted, labels, truncated: false };
+  return { keys: sorted.slice(-BUCKET_LIMIT), labels, truncated: true };
+};
+const seriesTotal = (s: MarketingChartSeries): number => {
+  let t = 0;
+  for (const p of s.points) t += p.value;
+  return t;
+};
+const seriesOrderCount = (s: MarketingChartSeries): number => {
+  let t = 0;
+  for (const p of s.points) t += p.orderCount ?? 0;
+  return t;
+};
+
+const ChartLegend: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => (
+  <div className="marketing-chart-legend">
+    {chartSpec.series.map((s, i) => (
+      <span key={s.key} className="marketing-chart-legend-item">
+        <span className={`marketing-chart-legend-dot s${i % 4}`} />
+        <span className="marketing-chart-series-label">{s.label}</span>
+      </span>
+    ))}
+  </div>
+);
+
+const GroupedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+  const { keys, labels, truncated } = unionBuckets(chartSpec);
+  const maxV = Math.max(1, ...chartSpec.series.flatMap((s) => s.points.filter((p) => keys.includes(p.bucketKey)).map((p) => p.value)));
+  const byBucket = chartSpec.series.map((s) => ({ s, map: new Map(s.points.map((p) => [p.bucketKey, p])) }));
+  return (
+    <div className="marketing-chart-grouped-bars">
+      <ChartLegend chartSpec={chartSpec} />
+      {keys.map((bk) => (
+        <div className="marketing-chart-bucket" key={bk}>
+          <div className="marketing-chart-bucket-label">{labels[bk] || bk}</div>
+          <div className="marketing-chart-bucket-series">
+            {byBucket.map(({ s, map }, si) => {
+              const p = map.get(bk);
+              const v = p?.value ?? 0;
+              return (
+                <div className="marketing-chart-series-bar" key={s.key}>
+                  <div className="marketing-chart-series-bar-track">
+                    <div className={`marketing-chart-series-fill s${si % 4}`} style={{ width: `${Math.min(100, (v / maxV) * 100)}%` }} />
+                  </div>
+                  <span className="marketing-chart-series-value tabular-nums">
+                    {formatMetricValue(v, chartSpec.unit)}
+                    {p?.orderCount != null ? <span className="marketing-chart-series-sub"> · {p.orderCount}건</span> : null}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {truncated && <p className="marketing-chart-trunc">최근 {BUCKET_LIMIT}개 구간만 표시</p>}
+    </div>
+  );
+};
+
+const LineChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+  const { keys, labels, truncated } = unionBuckets(chartSpec);
+  const maxV = Math.max(1, ...chartSpec.series.flatMap((s) => s.points.filter((p) => keys.includes(p.bucketKey)).map((p) => p.value)));
+  const n = keys.length;
+  const x = (i: number): number => (n <= 1 ? 50 : (i / (n - 1)) * 100);
+  const y = (v: number): number => 38 - (v / maxV) * 36 + 1;
+  return (
+    <div className="marketing-chart-line">
+      <ChartLegend chartSpec={chartSpec} />
+      <svg className="marketing-chart-line-svg" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label={chartSpec.title}>
+        {chartSpec.series.map((s, si) => {
+          const map = new Map(s.points.map((p) => [p.bucketKey, p.value]));
+          const pts = keys.map((bk, i) => `${x(i)},${y(map.get(bk) ?? 0)}`).join(' ');
+          return <polyline key={s.key} className={`marketing-chart-line-path s${si % 4}`} points={pts} fill="none" />;
+        })}
+      </svg>
+      <div className="marketing-chart-line-axis">
+        {keys.map((bk) => (
+          <span key={bk} className="marketing-chart-line-tick">{labels[bk] || bk}</span>
+        ))}
+      </div>
+      <div className="marketing-chart-line-last">
+        {chartSpec.series.map((s, i) => {
+          const last = s.points[s.points.length - 1];
+          return last ? (
+            <span key={s.key} className="marketing-chart-legend-item">
+              <span className={`marketing-chart-legend-dot s${i % 4}`} />
+              {s.label} {formatMetricValue(last.value, chartSpec.unit)}
+            </span>
+          ) : null;
+        })}
+      </div>
+      {truncated && <p className="marketing-chart-trunc">최근 {BUCKET_LIMIT}개 구간만 표시</p>}
+    </div>
+  );
+};
+
+const RankedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+  const ranked = [...chartSpec.series].map((s) => ({ s, total: seriesTotal(s), orders: seriesOrderCount(s) })).sort((a, b) => b.total - a.total).slice(0, 8);
+  const maxV = Math.max(1, ...ranked.map((r) => r.total));
+  if (ranked.length === 0) return <p className="mkt-dim-empty">표시할 데이터가 없습니다.</p>;
+  return (
+    <div className="marketing-chart-ranked-bars">
+      {ranked.map((r, i) => (
+        <div className="marketing-chart-bucket" key={r.s.key}>
+          <div className="marketing-chart-bucket-row-head">
+            <span className="marketing-chart-series-label">{r.s.label}</span>
+            <span className="marketing-chart-series-value tabular-nums">
+              {formatMetricValue(r.total, chartSpec.unit)}
+              {r.orders > 0 ? <span className="marketing-chart-series-sub"> · 주문 {r.orders}건</span> : null}
+            </span>
+          </div>
+          <div className="marketing-chart-series-bar-track">
+            <div className={`marketing-chart-series-fill s${i % 4}`} style={{ width: `${Math.min(100, (r.total / maxV) * 100)}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const TableChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => (
+  <div className="marketing-chart-table">
+    {chartSpec.series.map((s) => (
+      <div key={s.key} className="marketing-chart-table-row">
+        <span className="marketing-chart-series-label">{s.label}</span>
+        <span className="marketing-chart-series-value tabular-nums">{formatMetricValue(seriesTotal(s), chartSpec.unit)}</span>
+      </div>
+    ))}
+  </div>
+);
+
+const UnsupportedChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => (
+  <div className="marketing-chart-unsupported">
+    <div className="marketing-chart-unsupported-lock">🔒</div>
+    <p className="marketing-chart-unsupported-title">현재 계산하지 않습니다.</p>
+    <p className="marketing-chart-unsupported-desc">이 분석에는 외부 데이터 연결이 필요합니다.</p>
+    {chartSpec.requiredData && chartSpec.requiredData.length > 0 && (
+      <div className="marketing-chart-required">
+        {chartSpec.requiredData.map((rd) => (
+          <span key={rd} className="marketing-chart-required-chip">필요: {rd}</span>
+        ))}
+      </div>
+    )}
+  </div>
+);
+
+// chartType → 그래프 (fallback 포함). 알 수 없는 타입은 unsupported.
+const renderMarketingChartSpecGraph = (chartSpec: MarketingChartSpec): React.ReactNode => {
+  if (!chartSpec.available || chartSpec.chartType === 'unsupported') return <UnsupportedChart chartSpec={chartSpec} />;
+  if (chartSpec.series.length === 0) return <p className="mkt-dim-empty">표시할 데이터가 없습니다.</p>;
+  switch (chartSpec.chartType) {
+    case 'line':
+      return <LineChart chartSpec={chartSpec} />;
+    case 'rankedBar':
+    case 'donut': // fallback: rankedBar 유사
+      return <RankedBarChart chartSpec={chartSpec} />;
+    case 'table':
+      return <TableChart chartSpec={chartSpec} />;
+    case 'groupedBar':
+    case 'stackedBar': // fallback: groupedBar 유사
+      return <GroupedBarChart chartSpec={chartSpec} />;
+    default:
+      return <UnsupportedChart chartSpec={chartSpec} />;
+  }
+};
+
+// 채팅 질문 기반 chartSpec 패널(헤더 배지 + 그래프 + 돌아가기). 중앙 smart chart 대체.
+const MarketingChartSpecPanel: React.FC<{ artifact: MarketingChatChartArtifact; onClear?: () => void }> = ({ artifact, onClear }) => {
+  const cs = artifact.chartSpec;
+  return (
+    <div
+      className="marketing-smart-chart marketing-chart-spec-panel"
+      data-marketing-dynamic-chart-active="true"
+      data-marketing-dynamic-chart-intent={artifact.intent}
+      data-marketing-dynamic-chart-type={cs.chartType}
+      data-marketing-dynamic-chart-available={String(cs.available)}
+    >
+      <div className="marketing-chart-spec-header">
+        <div>
+          <span className="marketing-chart-spec-badge">채팅 질문 기반 분석 결과</span>
+          <h3 className="mkt-section-title">{cs.title}</h3>
+          <p className="marketing-smart-chart-desc">{cs.subtitle}</p>
+        </div>
+        {onClear && (
+          <button type="button" className="marketing-chart-back-btn" onClick={onClear}>
+            기본 분석으로 돌아가기
+          </button>
+        )}
+      </div>
+      <div className="marketing-chart-spec-graph">{renderMarketingChartSpecGraph(cs)}</div>
+    </div>
+  );
+};
+
+// 채팅 narrative 우선 AI 분석 리포트(artifact 있을 때). JSON 미노출 — narrative 필드만.
+const MarketingNarrativeReport: React.FC<{ artifact: MarketingChatChartArtifact }> = ({ artifact }) => {
+  const n = artifact.narrative;
+  return (
+    <div className="mkt-insights marketing-ai-report marketing-narrative-report">
+      <h3 className="mkt-section-title">🤖 AI 분석 리포트 (채팅 질문 기반 · 관찰)</h3>
+      <div className="mkt-insight">
+        <div className="mkt-insight-head"><strong>{n.title}</strong></div>
+        <p className="mkt-insight-summary">{n.summary}</p>
+        {n.bullets.length > 0 && (
+          <ul className="marketing-narrative-bullets">
+            {n.bullets.map((b, i) => <li key={i}>{b}</li>)}
+          </ul>
+        )}
+        {n.evidence.length > 0 && (
+          <div className="mkt-insight-evidence">
+            <span className="mkt-insight-tag">근거</span>
+            {n.evidence.map((e, i) => <span key={i} className="marketing-narrative-evidence-chip">{e}</span>)}
+          </div>
+        )}
+        {n.warnings.length > 0 && n.warnings.map((w, i) => <p key={i} className="mkt-insight-action">⚠ {w}</p>)}
+        {n.requiredData && n.requiredData.length > 0 && (
+          <p className="mkt-insight-action">🔒 필요 데이터: {n.requiredData.join(', ')}</p>
+        )}
+      </div>
+      <p className="marketing-ai-caution">※ 위 수치는 관찰값이며 인과관계를 단정하지 않습니다.</p>
+    </div>
+  );
+};
+
+export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products, loading, onRefresh, marketingChartArtifact, onClearMarketingChartArtifact }) => {
   const [preset, setPreset] = useState<MarketingAnalysisPeriodPreset>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -403,7 +645,10 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         </div>
       </div>
 
-      {/* ── 메인 비교 그래프 (smart chart) ── */}
+      {/* ── 메인 비교 그래프 — artifact 있으면 chartSpec 우선, 없으면 기존 focus chart ── */}
+      {marketingChartArtifact ? (
+        <MarketingChartSpecPanel artifact={marketingChartArtifact} onClear={onClearMarketingChartArtifact} />
+      ) : (
       <div className="marketing-smart-chart">
         <div className="marketing-smart-chart-head">
           <h3 className="mkt-section-title">선택 지표 비교 그래프 · {view.chipLabel}</h3>
@@ -431,8 +676,12 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         </div>
         <div className="marketing-smart-chart-summary">📌 {view.chart.summary}</div>
       </div>
+      )}
 
-      {/* ── AI 분석 리포트 (smart chart 바로 아래) ── */}
+      {/* ── AI 분석 리포트 — artifact 있으면 narrative 우선, 없으면 기존 facts.insights ── */}
+      {marketingChartArtifact ? (
+        <MarketingNarrativeReport artifact={marketingChartArtifact} />
+      ) : (
       <div className="mkt-insights marketing-ai-report">
         <h3 className="mkt-section-title">🤖 AI 분석 리포트 (관찰 기반 · 인과 단정 아님)</h3>
         <div className="mkt-insights-list">
@@ -454,6 +703,7 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         </div>
         <p className="marketing-ai-caution">※ 주의할 해석: 위 수치는 관찰값이며 인과관계를 단정하지 않습니다. 추가 분석은 아래 [세부 분석]에서 확인하세요.</p>
       </div>
+      )}
 
       {/* ── 세부 분석 (기존 차원 카드 재배치) ── */}
       <div className="marketing-detail-section">
