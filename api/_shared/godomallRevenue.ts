@@ -117,6 +117,9 @@ export type RevenueOrder = {
   rewardUseAmount?: number;       // = useMileageAmount + useDepositAmount
   dataKind?: 'real' | 'synthetic' | 'mock';                 // sourceType 파생(표기용)
   syntheticSource?: 'legacy' | 'godoRaw' | 'commerce_universe_v1'; // 생성 경로(resolver가 stamp)
+  // Baseline Year Synthetic Expansion v0 — synthetic 전용 테스트 metadata(고도몰 원본 API 필드 아님).
+  syntheticScenario?: 'baseline_no_promotion' | 'promotion_year';
+  syntheticYearLabel?: 'baseline' | 'promotion';
 };
 
 export type RevenueSummary = {

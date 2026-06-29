@@ -319,7 +319,7 @@ export const resolveOrdersRevenue = async (
       ? generateSyntheticRevenueOrders(products)
       : chosen === 'godoRaw'
         ? buildSyntheticRevenueOrdersFromGodomallRaw(products)
-        : (universe = buildSyntheticCommerceUniverse(products)).orders // commerce_universe_v1 (기본)
+        : (universe = buildSyntheticCommerceUniverse(products, { includeBaselineYear: true })).orders // commerce_universe_v1 (기본, baseline+promotion 2년)
     : [];
   // syntheticSource 메타데이터 stamp (legacy는 mapper를 안 타 dataKind 미설정 → 보강).
   for (const o of syntheticOrders) {
