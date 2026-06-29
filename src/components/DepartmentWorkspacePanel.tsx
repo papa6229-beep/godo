@@ -17,6 +17,7 @@ import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
 import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } from '../services/departmentFactsRouting';
 import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
 import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
+import { runMarketingChartRequest, type MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -130,6 +131,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [chatLog, setChatLog] = useState<Record<TeamId, ChatMessage[]>>(() => loadDeptChatLog());
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  // 마케팅 chartSpec artifact(비영속 — localStorage 미저장). 다음 작업의 중앙 smart chart가 읽어갈 payload.
+  const [marketingChartArtifact, setMarketingChartArtifact] = useState<MarketingChatChartArtifact | null>(null);
 
   useEffect(() => {
     saveDeptChatLog(chatLog);
@@ -236,8 +239,19 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         opts = ctx ?? { contextNote: buildProductContextNote() };
       }
     } else if (teamId === 'marketing') {
-      // 마케팅팀: 대시보드와 동일한 buildMarketingAnalysisFacts 기반 context를 우선 사용(같은 데이터 기준).
       const rev = productData.revenue;
+      // 1순위: 차트/비교/추이/교차분석 의도면 chartSpec bridge가 코드로 직접 답하고(LLM 없이), chartSpec artifact를 보관.
+      //   중앙 그래프 렌더는 다음 작업 — 여기서는 우측 채팅 답변 + 후속 렌더용 artifact만 준비.
+      if (rev?.orders?.length) {
+        const chart = runMarketingChartRequest({ message: text, orders: rev.orders, products: productData.products?.products });
+        if (chart.handled) {
+          setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: chart.reply }] }));
+          setMarketingChartArtifact(chart.artifact ?? null);
+          setSending(false);
+          return;
+        }
+      }
+      // 2순위(차트 의도 아님): 대시보드와 동일한 buildMarketingAnalysisFacts 기반 context로 LLM 답변.
       const mkt = rev?.orders?.length
         ? buildMarketingChatContext(text, {
             orders: rev.orders,
@@ -472,6 +486,17 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           <h3>{team.chatTitle}</h3>
           <p className="dept-col-sub">선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.</p>
         </div>
+
+        {/* dev/smoke marker — 마케팅 chartSpec artifact(비영속). 중앙 그래프 렌더는 다음 작업. JSON/PII 미노출. */}
+        {team.id === 'marketing' && marketingChartArtifact && (
+          <div
+            className="marketing-chart-artifact"
+            data-marketing-chart-intent={marketingChartArtifact.intent}
+            data-marketing-chart-available={String(marketingChartArtifact.chartSpec.available)}
+            data-marketing-chart-type={marketingChartArtifact.chartSpec.chartType}
+            hidden
+          />
+        )}
 
         <div className="dept-chat-log">
           {messages.length === 0 ? (

@@ -337,3 +337,55 @@ export function buildMarketingChatChartResponse(input: {
   const narrative = buildMarketingChartNarrative({ intent, chartSpec, crosstab });
   return { intent, request, crosstab, chartSpec, narrative };
 }
+
+// ── 채팅 런타임 연결 (코드 주도, LLM 없이 narrative 응답 + chartSpec artifact) ──
+// 중앙 그래프 렌더는 다음 작업 — 여기서는 우측 채팅 답변 + 후속 렌더용 artifact만 준비한다.
+export type MarketingChatChartArtifact = {
+  type: 'marketing_chart_spec';
+  source: 'marketingChatChartSpec';
+  intent: string;
+  request: MarketingCrossTabRequest | null;
+  chartSpec: MarketingChartSpec;
+  narrative: MarketingChartNarrative;
+  createdAt: string;
+};
+
+// chartSpec/narrative → 우측 채팅용 자연어 답변(결정적). 금지 문구/인과 단정 없음.
+function renderMarketingChartReply(chartSpec: MarketingChartSpec, narrative: MarketingChartNarrative): string {
+  if (!chartSpec.available) {
+    const req = narrative.requiredData && narrative.requiredData.length ? `\n필요 데이터: ${narrative.requiredData.join(', ')}` : '';
+    return `${narrative.summary}${req}\n현재 연결된 고도몰 주문·상품 데이터만으로는 이 지표를 산출하지 않습니다.`;
+  }
+  const lines: string[] = [narrative.summary];
+  if (narrative.bullets.length) {
+    lines.push('', '핵심 관찰:');
+    for (const b of narrative.bullets.slice(0, 5)) lines.push(`- ${b}`);
+  }
+  lines.push('- 이 결과는 관찰값이며 인과관계를 단정하지 않습니다.');
+  return lines.join('\n');
+}
+
+// 마케팅 채팅 1턴: chart intent면 handled=true(코드 답변 + artifact), unknown이면 handled=false(기존 facts/LLM fallback).
+export function runMarketingChartRequest(input: {
+  message: string;
+  orders: unknown[];
+  products?: unknown[];
+  nowMs?: number;
+}): { handled: boolean; intent: MarketingChartIntent; reply: string; artifact?: MarketingChatChartArtifact } {
+  const nowMs = input.nowMs ?? Date.now();
+  const resp = buildMarketingChatChartResponse({ message: input.message, orders: input.orders, products: input.products, nowMs });
+  if (resp.intent === 'unknown') {
+    return { handled: false, intent: resp.intent, reply: '' };
+  }
+  const reply = renderMarketingChartReply(resp.chartSpec, resp.narrative);
+  const artifact: MarketingChatChartArtifact = {
+    type: 'marketing_chart_spec',
+    source: 'marketingChatChartSpec',
+    intent: resp.intent,
+    request: resp.request,
+    chartSpec: resp.chartSpec,
+    narrative: resp.narrative,
+    createdAt: new Date(nowMs).toISOString()
+  };
+  return { handled: true, intent: resp.intent, reply, artifact };
+}
