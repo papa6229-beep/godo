@@ -772,7 +772,10 @@
   background: var(--bg-elevated, var(--bg-surface));
   border: 1px solid var(--accent-border);
   font-size: 0.8rem;
+  min-height: 62px; /* hover 시 레이아웃 점프/깜빡임 방지: 빈 상태에서도 자리 유지 */
 }
+.marketing-chart-tooltip-empty { background: transparent; border-color: transparent; } /* 자리만 유지 */
+.marketing-chart-line-dot { transition: none; }
 .marketing-chart-tooltip-title { font-weight: 700; margin-bottom: 4px; }
 .marketing-chart-tooltip-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-secondary); }
 .marketing-chart-tooltip-delta { margin-top: 4px; color: var(--accent-primary); font-weight: 600; }
