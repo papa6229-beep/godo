@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { won, wonShort, niceCeil, labelStep } from './commerceChartUtils';
 import { CommerceChartTooltip } from './CommerceChartTooltip';
+import { useChartWidth } from './useChartWidth';
 
 // 연도/세그먼트 비교: x축=구간(1월~12월), 각 구간마다 series(2024/2025…) 세로 막대를 나란히. SVG 직접 구현.
 export type CommerceGroupedBarValue = { key: string; label: string; value: number; orderCount?: number; delta?: number; deltaRate?: number };
@@ -17,13 +18,14 @@ const SERIES_CLASS = ['cc-s0', 'cc-s1', 'cc-s2', 'cc-s3'];
 
 export const CommerceGroupedBarChart: React.FC<CommerceGroupedBarChartProps> = ({ points, valueFormatter = won, height = 240 }) => {
   const [hover, setHover] = useState<number | null>(null);
+  const [plotRef, W] = useChartWidth(760); // 카드 실제 폭을 viewBox 폭으로 → 12개월을 넓게 사용
   if (points.length === 0) return <p className="cc-empty">표시할 데이터가 없습니다.</p>;
 
   const seriesKeys: { key: string; label: string }[] = [];
   for (const p of points) for (const v of p.values) if (!seriesKeys.some((s) => s.key === v.key)) seriesKeys.push({ key: v.key, label: v.label });
 
-  const W = 560, H = height;
-  const padL = 48, padR = 14, padT = 14, padB = 30;
+  const H = height;
+  const padL = 56, padR = 26, padT = 20, padB = 36;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
   let maxV = 1;
@@ -32,7 +34,7 @@ export const CommerceGroupedBarChart: React.FC<CommerceGroupedBarChartProps> = (
   const n = points.length;
   const groupW = innerW / n;
   const sN = Math.max(1, seriesKeys.length);
-  const barW = Math.max(3, Math.min(18, (groupW * 0.7) / sN));
+  const barW = Math.max(4, Math.min(46, (groupW * 0.72) / sN));
   const groupCenter = (i: number): number => padL + groupW * i + groupW / 2;
   const step = labelStep(n);
 
@@ -50,7 +52,7 @@ export const CommerceGroupedBarChart: React.FC<CommerceGroupedBarChartProps> = (
           <span key={s.key} className="cc-legend-item"><span className={`cc-legend-swatch ${SERIES_CLASS[si % 4]}`} /> {s.label}</span>
         ))}
       </div>
-      <div className="cc-plot" style={{ position: 'relative' }}>
+      <div className="cc-plot" ref={plotRef} style={{ position: 'relative' }}>
         <svg className="cc-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label="구간별 비교">
           {[0, 0.25, 0.5, 0.75, 1].map((t) => {
             const yy = padT + innerH - innerH * t;
@@ -80,7 +82,7 @@ export const CommerceGroupedBarChart: React.FC<CommerceGroupedBarChartProps> = (
             );
           })}
         </svg>
-        {hp && <CommerceChartTooltip leftPercent={(groupCenter(hover!) / W) * 100} title={hp.label} rows={ttRows} />}
+        {hp && <CommerceChartTooltip leftPercent={Math.max((92 / Math.max(W, 1)) * 100, Math.min((groupCenter(hover!) / W) * 100, 100 - (92 / Math.max(W, 1)) * 100))} title={hp.label} rows={ttRows} />}
       </div>
     </div>
   );

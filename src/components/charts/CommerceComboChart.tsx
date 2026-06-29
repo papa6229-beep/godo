@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { won, wonShort, countFmt, niceCeil, smoothPath, labelStep } from './commerceChartUtils';
 import { CommerceChartTooltip } from './CommerceChartTooltip';
+import { useChartWidth } from './useChartWidth';
 
 // 단일 기간 월별 매출 등: 세로 막대(barValue) + 부드러운 추세선(lineValue) combo. SVG 직접 구현.
 //   ProductTeamDashboard TrendChart 패턴을 공통화 — 정상 viewBox, y grid/축, x 라벨, absolute tooltip.
@@ -26,10 +27,11 @@ export type CommerceComboChartProps = {
 
 export const CommerceComboChart: React.FC<CommerceComboChartProps> = ({ points, barLabel, lineLabel, valueFormatter = won, countFormatter = countFmt, height = 240 }) => {
   const [hover, setHover] = useState<number | null>(null);
+  const [plotRef, W] = useChartWidth(760); // 카드 실제 폭을 viewBox 폭으로 → 좌우 여백 과다 해소
   if (points.length === 0) return <p className="cc-empty">표시할 데이터가 없습니다.</p>;
 
-  const W = 560, H = height;
-  const padL = 48, padR = 14, padT = 14, padB = 30;
+  const H = height;
+  const padL = 56, padR = 26, padT = 20, padB = 36;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
   const niceMax = niceCeil(Math.max(1, ...points.map((d) => Math.max(d.barValue, d.lineValue))));
@@ -39,8 +41,11 @@ export const CommerceComboChart: React.FC<CommerceComboChartProps> = ({ points, 
   const linePts = points.map((d, i) => ({ x: x(i), y: y(d.lineValue) }));
   const line = smoothPath(linePts);
   const area = `${line} L${linePts[n - 1].x.toFixed(1)},${(padT + innerH).toFixed(1)} L${linePts[0].x.toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
-  const barW = Math.max(4, Math.min(22, innerW / n / 1.8));
+  const barW = Math.max(5, Math.min(40, innerW / n / 1.6));
   const step = labelStep(n);
+  // tooltip이 카드 밖으로 잘리지 않도록 중심 x를 px 기준 clamp 후 %로 변환
+  const halfPct = (92 / Math.max(W, 1)) * 100;
+  const ttLeftPct = hover != null ? Math.max(halfPct, Math.min((x(hover) / W) * 100, 100 - halfPct)) : 0;
 
   const hp = hover != null ? points[hover] : null;
   const ttRows = hp ? [
@@ -55,7 +60,7 @@ export const CommerceComboChart: React.FC<CommerceComboChartProps> = ({ points, 
         <span className="cc-legend-item"><span className="cc-legend-bar" /> {barLabel}</span>
         <span className="cc-legend-item"><span className="cc-legend-line" /> {lineLabel}</span>
       </div>
-      <div className="cc-plot" style={{ position: 'relative' }}>
+      <div className="cc-plot" ref={plotRef} style={{ position: 'relative' }}>
         <svg className="cc-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`${barLabel} 추이`}>
           <defs>
             <linearGradient id="ccAreaGrad" x1="0" y1="0" x2="0" y2="1">
@@ -90,7 +95,7 @@ export const CommerceComboChart: React.FC<CommerceComboChartProps> = ({ points, 
             </g>
           ))}
         </svg>
-        {hp && <CommerceChartTooltip leftPercent={(x(hover!) / W) * 100} title={hp.label} rows={ttRows} />}
+        {hp && <CommerceChartTooltip leftPercent={ttLeftPct} title={hp.label} rows={ttRows} />}
       </div>
     </div>
   );
