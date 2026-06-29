@@ -537,6 +537,13 @@
 }
 .marketing-chart-spec-graph {
   margin-top: 12px;
+  width: 100%;
+  max-width: none;
+}
+/* 중앙 패널 차트는 카드 폭을 꽉 채움(좁은 가운데 몰림 방지) */
+.marketing-chart-spec-panel,
+.marketing-smart-chart {
+  width: 100%;
 }
 
 /* legend */

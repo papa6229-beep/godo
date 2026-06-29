@@ -1,7 +1,8 @@
 /* 공통 커머스 SVG 차트 (combo / grouped vertical) — 상품팀 TrendChart 패턴 공통화 */
-.cc-chart { width: 100%; color: var(--accent-primary); }
-.cc-plot { width: 100%; }
-.cc-svg { width: 100%; height: 240px; display: block; overflow: visible; }
+/* 폭 정책(v0.1): 카드 전체 폭을 사용. 고정 max-width 금지(좌우 여백 과다 방지). */
+.cc-chart { width: 100%; max-width: none; color: var(--accent-primary); }
+.cc-plot { width: 100%; max-width: none; }
+.cc-svg { width: 100%; max-width: none; height: 240px; display: block; overflow: visible; }
 .cc-empty { color: var(--text-muted); font-size: 0.85rem; padding: 24px 0; text-align: center; }
 
 /* grid / axis */
