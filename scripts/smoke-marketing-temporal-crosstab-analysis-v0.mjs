@@ -51,14 +51,12 @@ const build = (request) => C.buildMarketingTemporalCrosstab({ orders, products, 
 const r1 = build({ timeBucket: 'month', dimensions: ['couponUsage'], metrics: ['averageOrderValue', 'orderCount', 'revenue', 'couponDiscountAmount'] });
 ok('3. 월별 쿠폰 요청 available true + rows 존재', r1.available === true && r1.rows.length > 0);
 ok('4. 쿠폰 사용(used)/미사용(unused) dimensionKey 존재', r1.rows.some((x) => x.dimensionKey === 'coupon') && r1.rows.some((x) => x.dimensionKey === 'non_coupon'));
-// baseline 월: coupon used row 없음 또는 orderCount 0 / promotion 월: coupon used 존재
-const baseMonth = new Date(nowMs - 500 * 86400000); // baseline 범위(약 1.4년 전)
-const baseKey = `${baseMonth.getFullYear()}-${String(baseMonth.getMonth() + 1).padStart(2, '0')}`;
+// Calendar Rebase v0: baseline=2024(쿠폰0), promotion=2025(쿠폰>0) 고정 달력
+const baseKey = '2024-06'; // baseline year 월
 const usedInBase = r1.rows.filter((x) => x.bucketKey === baseKey && x.dimensionKey === 'coupon');
 ok('5. baseline 월에는 쿠폰 사용 row 없음 또는 orderCount 0', usedInBase.every((x) => x.orderCount === 0));
-const promoMonth = new Date(nowMs - 60 * 86400000);
-const promoKey = `${promoMonth.getFullYear()}-${String(promoMonth.getMonth() + 1).padStart(2, '0')}`;
-ok('6. promotion 월에는 쿠폰 사용 row 존재', r1.rows.some((x) => x.bucketKey === promoKey && x.dimensionKey === 'coupon' && x.orderCount > 0));
+// promotion(2025) 월 중 쿠폰 사용 주문이 있는 월이 존재
+ok('6. promotion 월에는 쿠폰 사용 row 존재', r1.rows.some((x) => /^2025-/.test(x.bucketKey) && x.dimensionKey === 'coupon' && x.orderCount > 0));
 
 // 7-2. 연도별/시나리오 baseline vs promotion
 const r2 = build({ timeBucket: 'scenario', dimensions: ['scenario'], metrics: ['revenue', 'orderCount', 'averageOrderValue', 'couponDiscountAmount'] });
