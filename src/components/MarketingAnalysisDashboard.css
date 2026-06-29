@@ -1,0 +1,330 @@
+/* Marketing Analysis Dashboard v0 — 마케팅 분석팀 화면 (facts 표시 전용) */
+
+.marketing-dash {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 20px 24px;
+  overflow-y: auto;
+  height: 100%;
+  color: var(--text-primary);
+}
+
+/* ── 헤더 ── */
+.mkt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mkt-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.mkt-subtitle {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.mkt-refresh {
+  flex: none;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.mkt-refresh:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.mkt-guide {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+/* ── 기간 필터 ── */
+.mkt-period {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mkt-period-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mkt-period-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mkt-period-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+.mkt-period-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.mkt-period-custom input {
+  margin-left: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+.mkt-period-apply,
+.mkt-period-reset {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.mkt-period-apply {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
+}
+
+.mkt-empty-banner {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-strong, var(--line-subtle));
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* ── KPI ── */
+.mkt-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.mkt-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+}
+.mkt-kpi-card.primary {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.mkt-kpi-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.mkt-kpi-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 분석 차원 ── */
+.mkt-dim-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.mkt-dim-block {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+}
+.mkt-dim-title {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.mkt-dim-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.mkt-dim-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mkt-dim-row-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.84rem;
+  margin-bottom: 4px;
+}
+.mkt-dim-label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.mkt-dim-share {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+.mkt-dim-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-subtle);
+  overflow: hidden;
+}
+.mkt-dim-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  transition: width 0.45s ease-out;
+}
+.mkt-dim-row-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── 섹션 타이틀 ── */
+.mkt-section-title {
+  margin: 4px 0 10px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* ── insights ── */
+.mkt-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mkt-insight {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  border-left: 3px solid var(--info);
+}
+.mkt-insight.sev-positive {
+  border-left-color: var(--success);
+}
+.mkt-insight.sev-warning {
+  border-left-color: var(--warning);
+}
+.mkt-insight-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.mkt-insight-sev {
+  font-size: 0.7rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--info);
+  color: #fff;
+}
+.mkt-insight-sev.sev-positive {
+  background: var(--success);
+}
+.mkt-insight-sev.sev-warning {
+  background: var(--warning);
+}
+.mkt-insight-summary {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.mkt-insight-action {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--accent-primary);
+}
+.mkt-insight-evidence {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* ── requiredData ── */
+.mkt-required-note {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.mkt-required-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.mkt-required-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px dashed var(--line-subtle);
+  opacity: 0.92;
+}
+.mkt-required-card.locked {
+  position: relative;
+}
+.mkt-required-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.86rem;
+  margin-bottom: 6px;
+}
+.mkt-required-reason {
+  margin: 0 0 8px;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.mkt-required-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-muted);
+}
+
+.mkt-footnote {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
