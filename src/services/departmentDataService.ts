@@ -266,6 +266,15 @@ export interface RevenueOrderLite {
   paymentMethodCode?: string;
   orderChannel?: string;
   claim?: { hasClaim: boolean; claimTypes: string[]; claimAmount?: number };
+  // ── 마케팅 enrichment 가산 필드(Spec-Based Synthetic Enrichment v0) — 마케팅 분석 facts 입력용 ──
+  isFirstPurchase?: boolean;
+  memberGroupName?: string;
+  memberGroupCode?: string;
+  discountSummary?: { hasCoupon: boolean; totalCouponDiscountAmount: number; totalDiscountAmount: number };
+  discountAmount?: number;
+  useMileageAmount?: number;
+  useDepositAmount?: number;
+  rewardUseAmount?: number;
 }
 
 // 가상 매출 소스 (Universe 활성화 v0). 기본 commerce_universe_v1.
@@ -437,6 +446,24 @@ export const fetchRevenue = async (
               };
             })()
           : undefined,
+        // 마케팅 enrichment 가산 필드(있으면 그대로 — 전부 PII 아님)
+        isFirstPurchase: typeof o.isFirstPurchase === 'boolean' ? o.isFirstPurchase : undefined,
+        memberGroupName: str(o.memberGroupName) || undefined,
+        memberGroupCode: str(o.memberGroupCode) || undefined,
+        discountSummary: o.discountSummary
+          ? (() => {
+              const d = o.discountSummary as Record<string, unknown>;
+              return {
+                hasCoupon: bool(d.hasCoupon),
+                totalCouponDiscountAmount: num(d.totalCouponDiscountAmount),
+                totalDiscountAmount: num(d.totalDiscountAmount)
+              };
+            })()
+          : undefined,
+        discountAmount: o.discountAmount !== undefined ? num(o.discountAmount) : undefined,
+        useMileageAmount: o.useMileageAmount !== undefined ? num(o.useMileageAmount) : undefined,
+        useDepositAmount: o.useDepositAmount !== undefined ? num(o.useDepositAmount) : undefined,
+        rewardUseAmount: o.rewardUseAmount !== undefined ? num(o.rewardUseAmount) : undefined,
         lines: linesRaw.map((l) => ({
           goodsNo: str(l.goodsNo),
           goodsName: str(l.goodsName),
