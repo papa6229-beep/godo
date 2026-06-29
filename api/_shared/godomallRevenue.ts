@@ -36,6 +36,11 @@ export type RevenueOrderLine = {
   allCategoryCode?: string;
   categoryLabel?: string;
   productMatched: boolean;
+  // ── 마케팅 enrichment 가산 필드 (Spec-Based Synthetic Enrichment v0, optional·하위호환) ──
+  // 라인 단위 할인(주문에 "반영된 결과"만 보존, 정책/원장 아님). real은 raw에 있을 때만 채워짐.
+  goodsDiscountAmount?: number;        // goodsDcPrice (라인 상품 할인)
+  couponGoodsDiscountAmount?: number;  // couponGoodsDcPrice (라인 상품쿠폰 할인)
+  couponOrderDiscountShareAmount?: number; // 주문쿠폰의 라인 안분 금액
 };
 
 // 클레임 요약 (Commerce Data Contract v0) — raw claimData를 그대로 노출하지 않고 축약한다.
@@ -51,6 +56,20 @@ export type RevenueClaimSummary = {
   claimPaymentLabel?: string;
   claimBankCode?: string;
   claimBankLabel?: string;
+};
+
+// 할인 요약 (Spec-Based Synthetic Enrichment v0) — 주문에 "반영된 할인 결과"만 축약한다.
+// 근거: Order_Search 스펙의 totalGoodsDcPrice/totalMemberDcPrice/totalCoupon*DcPrice.
+// 정책/쿠폰원장이 아니라 "이 주문에서 얼마가 할인됐나"의 결과값만 보존(마케팅 분석용).
+export type RevenueDiscountSummary = {
+  totalGoodsDiscountAmount: number;          // totalGoodsDcPrice (상품 할인)
+  totalMemberDiscountAmount: number;         // totalMemberDcPrice (회원/등급 할인)
+  totalCouponGoodsDiscountAmount: number;    // totalCouponGoodsDcPrice
+  totalCouponOrderDiscountAmount: number;    // totalCouponOrderDcPrice
+  totalCouponDeliveryDiscountAmount: number; // totalCouponDeliveryDcPrice
+  totalCouponDiscountAmount: number;         // 쿠폰 할인 합(goods+order+delivery)
+  totalDiscountAmount: number;               // 전체 할인 합(상품+회원+쿠폰)
+  hasCoupon: boolean;                        // 쿠폰 할인 발생 주문 여부
 };
 
 export type RevenueOrder = {
@@ -86,6 +105,16 @@ export type RevenueOrder = {
   orderChannel?: string;          // 주문채널 코드 (orderChannelFl)
   orderChannelLabel?: string;     // 연결 전이면 undefined
   claimSummary?: RevenueClaimSummary;
+  // ── 마케팅 enrichment 가산 필드 (Spec-Based Synthetic Enrichment v0, optional·하위호환) ──
+  memberGroupName?: string;       // 회원그룹명 (memGroupNm)
+  memberGroupCode?: string;       // 회원그룹 코드 (memGroupNo)
+  discountSummary?: RevenueDiscountSummary; // 주문에 반영된 할인 결과(쿠폰/등급/상품)
+  useMileageAmount?: number;      // 주문 시 사용한 마일리지 (useMileage)
+  useDepositAmount?: number;      // 주문 시 사용한 예치금 (useDeposit)
+  // 금액 관계(할인/리워드 보유 주문에만 채워짐): grossAmount − discountAmount − rewardUseAmount === totalAmount
+  grossAmount?: number;           // 할인 전 = (상품매출 + 배송비)
+  discountAmount?: number;        // = discountSummary.totalDiscountAmount (+배송쿠폰)
+  rewardUseAmount?: number;       // = useMileageAmount + useDepositAmount
   dataKind?: 'real' | 'synthetic' | 'mock';                 // sourceType 파생(표기용)
   syntheticSource?: 'legacy' | 'godoRaw' | 'commerce_universe_v1'; // 생성 경로(resolver가 stamp)
 };
@@ -198,6 +227,13 @@ const mapLine = (orderNo: string, g: Raw, index: ProductIndex): RevenueOrderLine
   const lineRevenue = goodsPrice * quantity;
   const lineOrderStatus = str(g['orderStatus']);
 
+  // 라인 할인(주문 반영 결과) — raw에 키가 있을 때만 가산(real 미보유 시 undefined 유지)
+  const lineDiscount: Partial<RevenueOrderLine> = {};
+  if ('goodsDcPrice' in g) lineDiscount.goodsDiscountAmount = num(g['goodsDcPrice']);
+  if ('couponGoodsDcPrice' in g) lineDiscount.couponGoodsDiscountAmount = num(g['couponGoodsDcPrice']);
+  if ('couponOrderDcShare' in g || 'divisionCouponOrderDcPrice' in g)
+    lineDiscount.couponOrderDiscountShareAmount = num(g['couponOrderDcShare'] ?? g['divisionCouponOrderDcPrice']);
+
   const matched =
     (goodsNo ? index.byId.get(goodsNo) : undefined) ?? (goodsCd ? index.byCode.get(goodsCd) : undefined);
 
@@ -214,7 +250,8 @@ const mapLine = (orderNo: string, g: Raw, index: ProductIndex): RevenueOrderLine
       categoryCode: matched.categoryCode || 'uncategorized',
       allCategoryCode: matched.allCategoryCode || undefined,
       categoryLabel: matched.categoryCode || undefined,
-      productMatched: true
+      productMatched: true,
+      ...lineDiscount
     };
   }
   return {
@@ -228,7 +265,37 @@ const mapLine = (orderNo: string, g: Raw, index: ProductIndex): RevenueOrderLine
     lineOrderStatus,
     categoryCode: 'uncategorized',
     categoryLabel: 'unknown_product',
-    productMatched: false
+    productMatched: false,
+    ...lineDiscount
+  };
+};
+
+// raw 헤더의 할인 필드 → RevenueDiscountSummary (할인 키가 하나도 없으면 undefined).
+const DISCOUNT_KEYS = [
+  'totalGoodsDcPrice',
+  'totalMemberDcPrice',
+  'totalCouponGoodsDcPrice',
+  'totalCouponOrderDcPrice',
+  'totalCouponDeliveryDcPrice'
+] as const;
+const deriveDiscountSummary = (order: Raw): RevenueDiscountSummary | undefined => {
+  if (!DISCOUNT_KEYS.some((k) => k in order)) return undefined;
+  const goods = num(order['totalGoodsDcPrice']);
+  const member = num(order['totalMemberDcPrice']);
+  const couponGoods = num(order['totalCouponGoodsDcPrice']);
+  const couponOrder = num(order['totalCouponOrderDcPrice']);
+  const couponDelivery = num(order['totalCouponDeliveryDcPrice']);
+  const totalCoupon = couponGoods + couponOrder + couponDelivery;
+  const total = goods + member + totalCoupon;
+  return {
+    totalGoodsDiscountAmount: goods,
+    totalMemberDiscountAmount: member,
+    totalCouponGoodsDiscountAmount: couponGoods,
+    totalCouponOrderDiscountAmount: couponOrder,
+    totalCouponDeliveryDiscountAmount: couponDelivery,
+    totalCouponDiscountAmount: totalCoupon,
+    totalDiscountAmount: total,
+    hasCoupon: totalCoupon > 0
   };
 };
 
@@ -302,12 +369,26 @@ export const mapOrdersToRevenue = (
     const claimSummary = deriveClaimSummary(o, lines);
     const dataKind: 'real' | 'synthetic' | 'mock' = sourceType === 'synthetic_test' ? 'synthetic' : 'real';
 
+    // ── 마케팅 enrichment: 회원그룹 / 할인 / 마일리지·예치금 (raw 보유 시에만) ──
+    const memberGroupName = str(o['memGroupNm']) || undefined;
+    const memberGroupCode = str(o['memGroupNo']) || undefined;
+    const discountSummary = deriveDiscountSummary(o);
+    const useMileageAmount = 'useMileage' in o ? num(o['useMileage']) || undefined : undefined;
+    const useDepositAmount = 'useDeposit' in o ? num(o['useDeposit']) || undefined : undefined;
+
     const productRevenueByLines = revLines.reduce((s, l) => s + l.lineRevenue, 0);
     const productRevenueByHeader = num(o['totalGoodsPrice'] ?? o['amount'] ?? '0');
     const deliveryFee = num(o['totalDeliveryCharge'] ?? o['deliveryCharge'] ?? '0');
     const totalAmount = num(o['settlePrice'] ?? o['amount'] ?? '0') || productRevenueByLines + deliveryFee;
     const revenueMismatch =
       productRevenueByHeader > 0 && productRevenueByLines > 0 && productRevenueByHeader !== productRevenueByLines;
+
+    // 금액 관계(할인/리워드 보유 주문에만): grossAmount − discountAmount − rewardUseAmount === totalAmount
+    const rewardUseAmount = (useMileageAmount || 0) + (useDepositAmount || 0) || undefined;
+    const hasMoneyEnrichment = !!discountSummary || rewardUseAmount !== undefined;
+    const grossBase = (productRevenueByHeader > 0 ? productRevenueByHeader : productRevenueByLines) + deliveryFee;
+    const grossAmount = hasMoneyEnrichment ? grossBase : undefined;
+    const discountAmount = discountSummary ? discountSummary.totalDiscountAmount : undefined;
 
     return {
       orderId: str(o['orderId']) || orderNo,
@@ -336,6 +417,15 @@ export const mapOrdersToRevenue = (
       ...(settleKind ? { settleKind, paymentMethodCode: settleKind } : {}),
       ...(orderChannel ? { orderChannel } : {}),
       ...(claimSummary ? { claimSummary } : {}),
+      // 마케팅 enrichment 가산 (optional)
+      ...(memberGroupName ? { memberGroupName } : {}),
+      ...(memberGroupCode ? { memberGroupCode } : {}),
+      ...(discountSummary ? { discountSummary } : {}),
+      ...(useMileageAmount !== undefined ? { useMileageAmount } : {}),
+      ...(useDepositAmount !== undefined ? { useDepositAmount } : {}),
+      ...(grossAmount !== undefined ? { grossAmount } : {}),
+      ...(discountAmount !== undefined ? { discountAmount } : {}),
+      ...(rewardUseAmount !== undefined ? { rewardUseAmount } : {}),
       dataKind
     };
   });
