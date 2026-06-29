@@ -292,8 +292,9 @@ const detectDimensions = (t: string): MarketingPlannedDimension[] => {
   if (/첫구매|재구매/.test(t)) out.push('firstRepeat');
   if (/채널|네이버페이|페이코|자사몰/.test(t)) out.push('orderChannel');
   if (/리워드|마일리지|예치금|포인트/.test(t)) out.push('rewardUsage');
-  if (/카테고리/.test(t)) out.push('category');
-  if (/상품별|상품\s*매출|상품군/.test(t)) out.push('product');
+  if (/카테고리|품목군/.test(t)) out.push('category');
+  // 상품 분석 단위: "상품별/상품 매출/상품군/상품의/상품이/특정 상품/문의가 많은 상품/리뷰...상품" 등 폭넓게.
+  if (/상품별|상품\s*매출|상품군|상품의|상품이|상품에|상품\s*중|어떤\s*상품|특정\s*상품|상품\s*순위|상품\b/.test(t)) out.push('product');
   if (/baseline|promotion|시나리오/.test(t)) out.push('scenario');
   return [...new Set(out)];
 };
@@ -395,8 +396,9 @@ export function validateMarketingIntelligencePlan(input: { plan: MarketingIntell
 }
 
 // ── 집계 (deterministic) ──────────────────────────────────────────────────────
-type Acc = { revenue: number; orderCount: number; discount: number; coupon: number; reward: number; quantity: number; couponOrders: number; rewardOrders: number; firstOrders: number; firstRevenue: number; repeatOrders: number; repeatRevenue: number };
-const newAcc = (): Acc => ({ revenue: 0, orderCount: 0, discount: 0, coupon: 0, reward: 0, quantity: 0, couponOrders: 0, rewardOrders: 0, firstOrders: 0, firstRevenue: 0, repeatOrders: 0, repeatRevenue: 0 });
+//   inquiryCount/reviewCount/ratingSum/claimCount는 상품/카테고리/브랜드(goods) 차원에서만 merge됨.
+type Acc = { revenue: number; orderCount: number; discount: number; coupon: number; reward: number; quantity: number; couponOrders: number; rewardOrders: number; firstOrders: number; firstRevenue: number; repeatOrders: number; repeatRevenue: number; lineRevenue: number; inquiryCount: number; reviewCount: number; ratingSum: number; claimCount: number };
+const newAcc = (): Acc => ({ revenue: 0, orderCount: 0, discount: 0, coupon: 0, reward: 0, quantity: 0, couponOrders: 0, rewardOrders: 0, firstOrders: 0, firstRevenue: 0, repeatOrders: 0, repeatRevenue: 0, lineRevenue: 0, inquiryCount: 0, reviewCount: 0, ratingSum: 0, claimCount: 0 });
 const addOrder = (a: Acc, o: Order): void => {
   const amt = numv(o.totalAmount);
   a.revenue += amt; a.orderCount += 1;
@@ -424,7 +426,13 @@ const metricFromAcc = (a: Acc, metric: string, totals: { revenue: number; orderC
     case 'repeatPurchaseRevenue': return a.repeatRevenue;
     case 'firstPurchaseOrderCount': return a.firstOrders;
     case 'repeatPurchaseOrderCount': return a.repeatOrders;
-    default: return a.revenue;
+    // 문의/리뷰/평점/클레임 — goods 차원에서 merge된 실제 연결값(아니면 0). revenue로 둔갑 금지.
+    case 'inquiryCount': return a.inquiryCount;
+    case 'reviewCount': return a.reviewCount;
+    case 'averageRating': return a.reviewCount ? +(a.ratingSum / a.reviewCount).toFixed(2) : 0;
+    case 'claimCount': return a.claimCount;
+    // 미지원 metric은 revenue로 둔갑시키지 않고 0 (호출부에서 warning).
+    default: return 0;
   }
 };
 
@@ -440,56 +448,140 @@ const passesPlanFilters = (o: Order, plan: MarketingIntelligencePlan): boolean =
   return true;
 };
 
+// ── 기간 필터 / 분석 차원 선택 (P0 계약 복구) ─────────────────────────────────
+const GOODS_DIMS = new Set<string>(['product', 'category', 'brand']);
+const dateWithinPeriods = (dateStr: string, periods: MarketingPlannedPeriod[]): boolean => {
+  if (!periods || periods.length === 0) return true;
+  const ms = Date.parse(strv(dateStr).replace(' ', 'T'));
+  if (Number.isNaN(ms)) return false;
+  for (const p of periods) {
+    const s = p.startDate ? Date.parse(`${p.startDate}T00:00:00`) : -Infinity;
+    const e = p.endDate ? Date.parse(`${p.endDate}T23:59:59`) : Infinity;
+    if (ms >= s && ms <= e) return true;
+  }
+  return false;
+};
+export function isOrderWithinPlannedPeriods(order: Record<string, unknown>, periods: MarketingPlannedPeriod[]): boolean {
+  return dateWithinPeriods(strv((order || {}).orderDate), periods);
+}
+// 관계/진단 질문은 product/category 같은 "분석 단위" 차원을 쿠폰/리워드 같은 조건 차원보다 우선.
+const REL_DIM_PRIORITY = ['product', 'category', 'brand', 'memberGroup', 'orderChannel', 'couponUsage', 'firstRepeat', 'rewardUsage', 'scenario'];
+export function choosePrimaryAnalysisDimension(plan: MarketingIntelligencePlan): MarketingPlannedDimension | null {
+  const dims = plan.dimensions.filter((d) => d !== 'time');
+  if (dims.length === 0) return null;
+  if (plan.goal === 'relationship' || plan.goal === 'diagnose') {
+    for (const d of REL_DIM_PRIORITY) if ((dims as string[]).includes(d)) return d as MarketingPlannedDimension;
+  }
+  return dims[0];
+}
+
 // ── chartSpec 빌더 (집계 결과 → MarketingChartSpec) ───────────────────────────
 const TIME_AXIS: Record<string, string> = { day: '일', week: '주', month: '월', quarter: '분기', year: '연도', scenario: '시나리오' };
-const buildPlanChartSpec = (plan: MarketingIntelligencePlan, orders: Order[]): { chartSpec: MarketingChartSpec; evidence: MarketingIntelligenceEvidence[] } => {
+const REVIEW_INQUIRY_METRICS = new Set(['inquiryCount', 'reviewCount', 'averageRating']);
+const buildPlanChartSpec = (plan: MarketingIntelligencePlan, orders: Order[], products: Record<string, unknown>[] = [], reviews: Record<string, unknown>[] = [], inquiries: Record<string, unknown>[] = []): { chartSpec: MarketingChartSpec; evidence: MarketingIntelligenceEvidence[] } => {
   const primaryMetric = plan.executableMetrics[0] || 'revenue';
-  const counted = orders.filter((o) => isCounted(o) && passesPlanFilters(o, plan));
-  const totalsAll = { revenue: 0, orderCount: 0 };
-  for (const o of counted) { totalsAll.revenue += numv(o.totalAmount); totalsAll.orderCount += 1; }
+  const warnings: string[] = [];
+  const periodCompare = plan.comparison === 'year_over_year' && plan.periods.length >= 2;
+  // P0-1: plan.periods를 항상 execution 필터로 적용(year_over_year도 union으로 두 기간 포함 → resolveKeys가 series 분리).
+  const counted = orders.filter((o) => isCounted(o) && passesPlanFilters(o, plan) && isOrderWithinPlannedPeriods(o, plan.periods));
+
+  const dim = choosePrimaryAnalysisDimension(plan);
+  const bucket = plan.timeBucket && plan.timeBucket !== 'scenario' ? plan.timeBucket : (plan.timeBucket === 'scenario' ? 'scenario' : undefined);
+  const goodsMode = !!dim && GOODS_DIMS.has(dim) && !periodCompare;
 
   type Cell = { seriesKey: string; seriesLabel: string; bucketKey: string; bucketLabel: string; acc: Acc };
   const cells = new Map<string, Cell>();
-  const dim = plan.dimensions.find((d) => d !== 'time') as MarketingCrossTabDimension | undefined;
-  const bucket = plan.timeBucket && plan.timeBucket !== 'scenario' ? plan.timeBucket : (plan.timeBucket === 'scenario' ? 'scenario' : undefined);
-  const periodCompare = plan.comparison === 'year_over_year' && plan.periods.length >= 2;
-
-  const resolveKeys = (o: Order): { seriesKey: string; seriesLabel: string; bucketKey: string; bucketLabel: string } | null => {
-    if (periodCompare) {
-      const ms = orderMs(o);
-      const per = plan.periods.find((p) => { const s = p.startDate ? Date.parse(`${p.startDate}T00:00:00`) : -Infinity; const e = p.endDate ? Date.parse(`${p.endDate}T23:59:59`) : Infinity; return ms >= s && ms <= e; });
-      if (!per) return null;
-      const d = new Date(ms);
-      return { seriesKey: per.label, seriesLabel: per.label, bucketKey: String(d.getMonth() + 1).padStart(2, '0'), bucketLabel: `${d.getMonth() + 1}월` };
-    }
-    let seriesKey = '전체', seriesLabel = '전체';
-    if (dim) { const k = getMarketingDimensionKey(o, dim); seriesKey = k.key; seriesLabel = k.label; }
-    let bucketKey = 'all', bucketLabel = '전체';
-    if (bucket === 'scenario') { const y = strv(o.syntheticYearLabel); bucketKey = y || 'unknown'; bucketLabel = y === 'baseline' ? 'baseline' : y === 'promotion' ? 'promotion' : '미상'; }
-    else if (bucket) { bucketKey = getMarketingTimeBucketKey(strv(o.orderDate), bucket); bucketLabel = bucketKey; }
-    else if (dim) { bucketKey = seriesKey; bucketLabel = seriesLabel; }
-    return { seriesKey, seriesLabel, bucketKey, bucketLabel };
+  const cellAcc = (sKey: string, sLabel: string, bKey: string, bLabel: string): Acc => {
+    const ck = `${sKey}|${bKey}`;
+    let c = cells.get(ck);
+    if (!c) { c = { seriesKey: sKey, seriesLabel: sLabel, bucketKey: bKey, bucketLabel: bLabel, acc: newAcc() }; cells.set(ck, c); }
+    return c.acc;
+  };
+  const calBucket = (dateStr: string): { key: string; label: string } => {
+    if (bucket === 'scenario') return { key: 'all', label: '전체' }; // goods×scenario는 미지원 → 전체
+    if (bucket) { const k = getMarketingTimeBucketKey(dateStr, bucket); return { key: k, label: k }; }
+    return { key: 'all', label: '전체' };
   };
 
-  for (const o of counted) {
-    const keys = resolveKeys(o);
-    if (!keys) continue;
-    const ck = `${keys.seriesKey}|${keys.bucketKey}`;
-    let cell = cells.get(ck);
-    if (!cell) { cell = { ...keys, acc: newAcc() }; cells.set(ck, cell); }
-    addOrder(cell.acc, o);
+  let totalRevenue = 0;
+  if (goodsMode) {
+    // P0-3/4: 상품/카테고리/브랜드 = 라인(goods) 기반 집계. series=goods 차원, bucket=시간(또는 전체).
+    const prodIndex = new Map<string, Record<string, unknown>>();
+    for (const p of products) { const id = strv(p.productId) || strv(p.goodsNo); if (id) prodIndex.set(id, p); }
+    const goodsKey = (goodsNo: string, goodsName?: string): { key: string; label: string } => {
+      const p = prodIndex.get(goodsNo);
+      if (dim === 'product') return { key: goodsNo || 'unknown', label: strv(p?.productName) || goodsName || `상품 ${goodsNo || '미상'}` };
+      if (dim === 'category') { const c = strv(p?.categoryCode) || strv(p?.allCategoryCode) || 'uncategorized'; return { key: c, label: c === 'uncategorized' ? '미분류' : `카테고리 ${c}` }; }
+      const b = strv(p?.brandCode) || 'unknown'; return { key: b, label: b !== 'unknown' ? `브랜드 ${b}` : '브랜드 미연동' };
+    };
+    for (const o of counted) {
+      const cb = calBucket(strv(o.orderDate));
+      const oCoupon = hasCoupon(o), oReward = usesReward(o), oFirst = boolv(o.isFirstPurchase);
+      for (const l of (o.lines || []) as Record<string, unknown>[]) {
+        const g = strv(l.goodsNo);
+        const k = goodsKey(g, strv(l.goodsName));
+        const acc = cellAcc(k.key, k.label, cb.key, cb.label);
+        const lr = numv(l.lineRevenue);
+        acc.revenue += lr; acc.lineRevenue += lr; acc.orderCount += 1; acc.quantity += numv(l.quantity);
+        if (oCoupon) acc.couponOrders += 1; if (oReward) acc.rewardOrders += 1;
+        if (oFirst) { acc.firstOrders += 1; acc.firstRevenue += lr; } else { acc.repeatOrders += 1; acc.repeatRevenue += lr; }
+        totalRevenue += lr;
+      }
+    }
+    // 문의/리뷰 merge — 같은 goods key + 기간 내. 시간버킷이 있으면 createdAt으로 분해.
+    const mergeRows = (rows: Record<string, unknown>[], kind: 'inquiry' | 'review'): void => {
+      for (const r of rows) {
+        const g = strv(r.goodsNo) || strv(r.productId); if (!g) continue;
+        const created = strv(r.createdAt);
+        if (!dateWithinPeriods(created, plan.periods)) continue;
+        const k = goodsKey(g);
+        const cb = bucket && bucket !== 'scenario' ? calBucket(created) : { key: 'all', label: '전체' };
+        const acc = cellAcc(k.key, k.label, cb.key, cb.label);
+        if (kind === 'inquiry') acc.inquiryCount += 1; else { acc.reviewCount += 1; acc.ratingSum += numv(r.rating); }
+      }
+    };
+    if (plan.executableMetrics.some((m) => REVIEW_INQUIRY_METRICS.has(m)) || plan.goal === 'relationship' || plan.goal === 'diagnose') {
+      mergeRows(inquiries, 'inquiry'); mergeRows(reviews, 'review');
+    }
+  } else {
+    // 주문 기반 집계(시간/쿠폰/회원그룹/시나리오 등). goods 전용 metric은 여기서 0 + warning.
+    for (const o of counted) {
+      let sKey = '전체', sLabel = '전체';
+      let bKey = 'all', bLabel = '전체';
+      if (periodCompare) {
+        const ms = orderMs(o);
+        const per = plan.periods.find((p) => dateWithinPeriods(strv(o.orderDate), [p]));
+        if (!per || Number.isNaN(ms)) continue;
+        const d = new Date(ms);
+        sKey = per.label; sLabel = per.label; bKey = String(d.getMonth() + 1).padStart(2, '0'); bLabel = `${d.getMonth() + 1}월`;
+      } else {
+        if (dim) { const k = getMarketingDimensionKey(o, dim as MarketingCrossTabDimension); sKey = k.key; sLabel = k.label; }
+        if (bucket === 'scenario') { const y = strv(o.syntheticYearLabel); bKey = y || 'unknown'; bLabel = y === 'baseline' ? 'baseline' : y === 'promotion' ? 'promotion' : '미상'; }
+        else if (bucket) { bKey = getMarketingTimeBucketKey(strv(o.orderDate), bucket); bLabel = bKey; }
+        else if (dim) { bKey = sKey; bLabel = sLabel; }
+      }
+      addOrder(cellAcc(sKey, sLabel, bKey, bLabel), o);
+      totalRevenue += numv(o.totalAmount);
+    }
+    if (plan.executableMetrics.some((m) => REVIEW_INQUIRY_METRICS.has(m))) {
+      warnings.push('문의/리뷰/평점 지표는 상품·카테고리·브랜드 축에서만 집계됩니다(현재 축에서는 0으로 표시).');
+    }
   }
+  if (plan.executableMetrics.includes('claimCount')) warnings.push('클레임 수는 현재 데이터로 정확히 집계하지 않아 0으로 표시됩니다(필요: claimData).');
 
+  const totalsAll = { revenue: totalRevenue, orderCount: counted.length };
   const seriesMap = new Map<string, MarketingChartSeries>();
   for (const cell of cells.values()) {
     let s = seriesMap.get(cell.seriesKey);
     if (!s) { s = { key: cell.seriesKey, label: cell.seriesLabel, metric: primaryMetric, points: [] }; seriesMap.set(cell.seriesKey, s); }
     s.points.push({ bucketKey: cell.bucketKey, bucketLabel: cell.bucketLabel, value: metricFromAcc(cell.acc, primaryMetric, totalsAll), orderCount: cell.acc.orderCount, revenue: cell.acc.revenue, averageOrderValue: cell.acc.orderCount ? Math.round(cell.acc.revenue / cell.acc.orderCount) : 0 });
   }
+  // rankedBar(순위)면 값 큰 순 정렬, 그 외엔 bucketKey 정렬.
   for (const s of seriesMap.values()) s.points.sort((a, b) => a.bucketKey.localeCompare(b.bucketKey));
   const series = [...seriesMap.values()];
 
-  const request: MarketingCrossTabRequest = { timeBucket: (plan.timeBucket ?? 'month'), dimensions: dim ? [dim] : [], metrics: plan.executableMetrics as unknown as MarketingCrossTabRequest['metrics'] };
+  const request: MarketingCrossTabRequest = { timeBucket: (plan.timeBucket ?? 'month'), dimensions: dim ? [dim as MarketingCrossTabDimension] : [], metrics: plan.executableMetrics as unknown as MarketingCrossTabRequest['metrics'] };
+  if (counted.length < 20) warnings.push('표본 주문수가 적어 해석 시 주문수 확인이 필요합니다.');
   const chartSpec: MarketingChartSpec = {
     id: `mkt_chart_${plan.goal}`,
     title: planTitle(plan),
@@ -497,20 +589,22 @@ const buildPlanChartSpec = (plan: MarketingIntelligencePlan, orders: Order[]): {
     chartType: plan.chartRecommendation.chartType,
     primaryMetric,
     series,
-    xAxisLabel: plan.timeBucket ? TIME_AXIS[plan.timeBucket] : undefined,
+    xAxisLabel: plan.timeBucket ? TIME_AXIS[plan.timeBucket] : (dim ? (METRIC_LABEL[dim] ?? dim) : undefined),
     yAxisLabel: METRIC_LABEL[primaryMetric] ?? primaryMetric,
     unit: unitOf(primaryMetric),
     source: 'temporal_crosstab',
     request,
     available: series.length > 0,
     evidence: [],
-    warnings: counted.length < 20 ? ['표본 주문수가 적어 해석 시 주문수 확인이 필요합니다.'] : []
+    warnings
   };
+  const periodLabel = plan.periods.length ? plan.periods.map((p) => p.label).join(' / ') : '전체 기간';
   const evidence: MarketingIntelligenceEvidence[] = [
     { id: 'ev_orders', label: '분석 주문수(결제·미취소)', value: counted.length, source: 'orders' },
-    { id: 'ev_revenue', label: '분석 매출', value: totalsAll.revenue, source: 'orders' },
+    { id: 'ev_revenue', label: '분석 매출', value: totalsAll.revenue, source: goodsMode ? 'orderLines' : 'orders' },
+    { id: 'ev_period', label: '분석 기간', value: periodLabel, source: 'derived' },
     { id: 'ev_metric', label: '주 지표', value: METRIC_LABEL[primaryMetric] ?? primaryMetric, source: 'derived' },
-    { id: 'ev_basis', label: '근거 데이터 조각', value: '주문일·주문금액·쿠폰 사용 여부·회원그룹·첫구매/재구매·시나리오', source: 'derived' }
+    { id: 'ev_basis', label: '근거 데이터 조각', value: goodsMode ? '주문라인·상품·문의/리뷰(집계)·기간' : '주문일·주문금액·쿠폰 사용 여부·회원그룹·첫구매/재구매·시나리오', source: 'derived' }
   ];
   return { chartSpec, evidence };
 };
@@ -629,7 +723,7 @@ export function executeMarketingIntelligencePlan(input: { plan: MarketingIntelli
 
   const execPlan = plan.executableMetrics.length > 0 ? plan : (plan.proxyPlan ?? plan);
   const answerType: MarketingIntelligenceNarrative['answerType'] = plan.dataRequirements.length > 0 ? 'partial_with_proxy' : 'calculated';
-  const { chartSpec, evidence } = buildPlanChartSpec(execPlan, orders);
+  const { chartSpec, evidence } = buildPlanChartSpec(execPlan, orders, (input.products || []) as Record<string, unknown>[], (input.reviews || []) as Record<string, unknown>[], (input.inquiries || []) as Record<string, unknown>[]);
 
   let relationshipSummary: MarketingRelationshipSummary | undefined;
   if ((plan.goal === 'relationship' || plan.goal === 'diagnose') && plan.relationshipTargets?.length) {
