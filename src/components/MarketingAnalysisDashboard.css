@@ -328,3 +328,176 @@
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
+/* ════════ v0.1 Focused Insight Layout ════════ */
+
+/* ── 분석 지표 선택 칩 ── */
+.marketing-focus-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+}
+.marketing-focus-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex: none;
+}
+.marketing-focus-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.marketing-focus-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.marketing-focus-chip:hover {
+  border-color: var(--accent-border);
+}
+.marketing-focus-chip.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── compact KPI grid (고정 2 + 선택 + 비교) ── */
+.marketing-kpi-compact-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.mkt-kpi-card.focus {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.mkt-kpi-compare {
+  justify-content: center;
+}
+.mkt-kpi-compare-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── 메인 비교 그래프 (smart chart) ── */
+.marketing-smart-chart {
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.marketing-smart-chart-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.marketing-smart-chart-desc {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.marketing-smart-chart-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.marketing-smart-chart-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.marketing-smart-chart-bar-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+.marketing-smart-chart-bar-label {
+  color: var(--text-secondary);
+}
+.marketing-smart-chart-bar-value {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.marketing-smart-chart-bar-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--line-subtle);
+  overflow: hidden;
+}
+.marketing-smart-chart-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  transition: width 0.45s ease-out;
+}
+.marketing-smart-chart-bar-fill.grp-cnt {
+  background: var(--accent-primary-2, var(--info));
+}
+.marketing-smart-chart-bar-fill.grp-aov {
+  background: var(--success);
+}
+.marketing-smart-chart-bar-fill.grp-won {
+  background: var(--accent-primary);
+}
+.marketing-smart-chart-summary {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+/* ── AI 분석 리포트 ── */
+.marketing-ai-report .mkt-insight-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  margin-right: 4px;
+  border-radius: 4px;
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-muted);
+}
+.marketing-ai-caution {
+  margin: 8px 0 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+/* ── 세부 분석 ── */
+.marketing-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.marketing-detail-section .mkt-dim-block {
+  padding: 12px 14px;
+}
+
+/* ── requiredData 축소 ── */
+.marketing-required-compact .mkt-required-grid.compact {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+.marketing-required-compact .mkt-required-card {
+  padding: 9px 11px;
+}
+.marketing-required-compact .mkt-required-head {
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
