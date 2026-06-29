@@ -501,3 +501,235 @@
   font-size: 0.8rem;
   margin-bottom: 4px;
 }
+
+/* ════════ Dynamic chartSpec render (채팅 질문 기반) ════════ */
+.marketing-chart-spec-panel {
+  border-color: var(--accent-border);
+}
+.marketing-chart-spec-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.marketing-chart-spec-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: #fff;
+  margin-bottom: 6px;
+}
+.marketing-chart-back-btn {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-app);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.marketing-chart-back-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent-primary);
+}
+.marketing-chart-spec-graph {
+  margin-top: 12px;
+}
+
+/* legend */
+.marketing-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.marketing-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.marketing-chart-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.marketing-chart-series-label {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+/* series 색상 팔레트 */
+.s0 { background: var(--accent-primary); }
+.s1 { background: var(--success); }
+.s2 { background: var(--warning); }
+.s3 { background: var(--info); }
+.marketing-chart-line-path.s0 { stroke: var(--accent-primary); background: none; }
+.marketing-chart-line-path.s1 { stroke: var(--success); background: none; }
+.marketing-chart-line-path.s2 { stroke: var(--warning); background: none; }
+.marketing-chart-line-path.s3 { stroke: var(--info); background: none; }
+
+/* grouped bars (가로 막대 행) */
+.marketing-chart-grouped-bars,
+.marketing-chart-ranked-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.marketing-chart-bucket {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.marketing-chart-bucket-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.marketing-chart-bucket-series {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.marketing-chart-bucket-row-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+.marketing-chart-series-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.marketing-chart-series-bar-track {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line-subtle);
+  overflow: hidden;
+}
+.marketing-chart-series-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease-out;
+}
+.marketing-chart-series-value {
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  min-width: 90px;
+  text-align: right;
+}
+.marketing-chart-series-sub {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.marketing-chart-trunc {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* line chart */
+.marketing-chart-line-svg {
+  width: 100%;
+  height: 120px;
+  display: block;
+}
+.marketing-chart-line-path {
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.marketing-chart-line-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  overflow: hidden;
+}
+.marketing-chart-line-tick {
+  white-space: nowrap;
+}
+.marketing-chart-line-last {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+/* table fallback */
+.marketing-chart-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.marketing-chart-table-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-app);
+  font-size: 0.82rem;
+}
+
+/* unsupported */
+.marketing-chart-unsupported {
+  text-align: center;
+  padding: 24px 12px;
+  border: 1px dashed var(--line-subtle);
+  border-radius: 10px;
+  background: var(--bg-app);
+}
+.marketing-chart-unsupported-lock {
+  font-size: 1.6rem;
+}
+.marketing-chart-unsupported-title {
+  margin: 8px 0 2px;
+  font-weight: 600;
+}
+.marketing-chart-unsupported-desc {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.marketing-chart-required {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.marketing-chart-required-chip {
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+/* narrative report */
+.marketing-narrative-bullets {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+.marketing-narrative-evidence-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  margin: 2px 4px 0 0;
+  border-radius: 6px;
+  background: var(--bg-app);
+  border: 1px solid var(--line-subtle);
+  color: var(--text-muted);
+}
