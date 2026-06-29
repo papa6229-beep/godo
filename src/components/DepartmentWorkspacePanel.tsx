@@ -19,6 +19,7 @@ import { buildDepartmentChatContext, toChatTeam } from '../services/departmentCh
 import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
 import { runMarketingChartRequest, type MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
 import { buildMarketingIntelligenceResponseWithLlm } from '../services/marketingLlmPlannerAdapter';
+import { buildMarketingScopeInsightResponse } from '../services/marketingScopeInsightEngine';
 import { createMarketingAnalysisMemoryEntry, saveMarketingAnalysisMemoryEntry, findSimilarMarketingAnalysisMemories } from '../services/marketingAnalysisMemory';
 import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
@@ -245,7 +246,20 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     } else if (teamId === 'marketing') {
       const rev = productData.revenue;
       if (rev?.orders?.length) {
-        // 0순위: Intelligence Planner(deterministic 우선, 빈약하면 LLM planner로 계획 보강 — 숫자는 항상 코드가 계산).
+        // 0순위: Scope Insight Engine(질문→분석 범위→insight pack). 깊은 보조 분석 + 안정 chartSpec.
+        const scopeInsight = buildMarketingScopeInsightResponse({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries });
+        if (scopeInsight.handled && scopeInsight.reply && scopeInsight.artifact) {
+          setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: scopeInsight.reply }] }));
+          setMarketingChartArtifact(scopeInsight.artifact);
+          try {
+            const hints = findSimilarMarketingAnalysisMemories({ question: text, limit: 5 });
+            setMarketingMemoryHintCount(hints.length);
+            saveMarketingAnalysisMemoryEntry(createMarketingAnalysisMemoryEntry({ question: text, artifact: scopeInsight.artifact, resultType: 'calculated', plannerSource: 'marketingIntelligencePlanner' }));
+          } catch { /* ignore safely */ }
+          setSending(false);
+          return;
+        }
+        // 1순위(scope 미처리): Intelligence Planner(deterministic 우선, 빈약하면 LLM planner 보강 — 숫자는 코드가 계산).
         const intel = await buildMarketingIntelligenceResponseWithLlm({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries, callPlannerLlm: callMarketingPlannerLlm });
         if (intel.handled && intel.reply && intel.artifact) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: intel.reply as string }] }));

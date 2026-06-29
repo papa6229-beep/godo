@@ -353,8 +353,9 @@ const buildMarketingTooltipPayload = (input: { chartSpec: MarketingChartSpec; bu
   return { title, rows, delta };
 };
 
+// tooltip 영역은 항상 자리를 차지해(빈 placeholder) hover 시 레이아웃 점프/깜빡임을 방지.
 const ChartTooltip: React.FC<{ payload: MarketingTooltipPayload | null }> = ({ payload }) => {
-  if (!payload || !payload.title) return null;
+  if (!payload || !payload.title) return <div className="marketing-chart-tooltip marketing-chart-tooltip-empty" aria-hidden="true" />;
   return (
     <div className="marketing-chart-tooltip" role="status">
       <div className="marketing-chart-tooltip-title">{payload.title}</div>
@@ -440,7 +441,7 @@ const LineChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) =
             <g key={s.key}>
               <polyline className={`marketing-chart-line-path ${style.className}`} points={pts} fill="none" />
               {keys.map((bk, i) => (map.has(bk) ? (
-                <circle key={bk} className={`marketing-chart-line-dot ${style.className}`} cx={x(i)} cy={y(map.get(bk) ?? 0)} r={1.7}
+                <circle key={bk} className={`marketing-chart-line-dot ${style.className}`} cx={x(i)} cy={y(map.get(bk) ?? 0)} r={1.05}
                   onMouseEnter={() => setHover({ bk, sk: s.key })} onMouseLeave={() => setHover(null)} />
               ) : null))}
             </g>
