@@ -275,6 +275,9 @@ export interface RevenueOrderLite {
   useMileageAmount?: number;
   useDepositAmount?: number;
   rewardUseAmount?: number;
+  // Baseline Year Synthetic Expansion v0 — synthetic 전용 테스트 metadata(시간축 교차분석용, PII 아님)
+  syntheticScenario?: string;
+  syntheticYearLabel?: string;
 }
 
 // 가상 매출 소스 (Universe 활성화 v0). 기본 commerce_universe_v1.
@@ -464,6 +467,8 @@ export const fetchRevenue = async (
         useMileageAmount: o.useMileageAmount !== undefined ? num(o.useMileageAmount) : undefined,
         useDepositAmount: o.useDepositAmount !== undefined ? num(o.useDepositAmount) : undefined,
         rewardUseAmount: o.rewardUseAmount !== undefined ? num(o.rewardUseAmount) : undefined,
+        syntheticScenario: str(o.syntheticScenario) || undefined,
+        syntheticYearLabel: str(o.syntheticYearLabel) || undefined,
         lines: linesRaw.map((l) => ({
           goodsNo: str(l.goodsNo),
           goodsName: str(l.goodsName),
