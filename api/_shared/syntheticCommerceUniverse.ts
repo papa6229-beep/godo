@@ -169,6 +169,16 @@ const COHORTS: { v: CustomerCohort; w: number }[] = [
 export type SyntheticScenario = 'baseline_no_promotion' | 'promotion_year';
 export type SyntheticYearLabel = 'baseline' | 'promotion';
 
+// Synthetic Calendar Rebase v0: rolling(nowMs/7월 시작) 대신 고정 달력 기준.
+//   전체: 2024-01-01 ~ 2025-12-31 / baseline year: 2024(쿠폰 0) / promotion year: 2025(쿠폰 유지).
+//   이 metadata는 테스트·분석 구분용이며 고도몰 API 실제 필드가 아님.
+export const SYNTHETIC_CALENDAR = {
+  startDate: '2024-01-01',
+  endDate: '2025-12-31',
+  baselineYear: 2024,
+  promotionYear: 2025
+} as const;
+
 // ── 세그먼트 정의 (행동 파라미터) ────────────────────────────────────────────
 type SegDef = { key: CustomerSegment; w: number; ordLo: number; ordHi: number; refundProb: number; reviewProb: number; aovMul: number };
 const SEGMENTS: SegDef[] = [
@@ -255,9 +265,9 @@ export function buildSyntheticCommerceUniverse(
   const seed = options.seed ?? 20260626;
   const months = options.months ?? 12;
   const base = products.filter((p) => p.productId);
-  const endBase = options.endDate ? new Date(`${options.endDate}T23:59:59`) : new Date();
-  const end = Number.isNaN(endBase.getTime()) ? new Date() : endBase;
-  const windowDays = months * 30;
+  // 고정 달력 rebase: 주문은 2024(baseline)/2025(promotion)에만 생성. options.endDate는 무시(고정 달력 우선).
+  //   clamp 기준 end=2025-12-31 → 파생일(배송/확정)이 2026으로 새지 않게 잘라낸다.
+  const end = new Date(`${SYNTHETIC_CALENDAR.endDate}T23:59:59`);
   const clamp = (d: Date): Date => (d.getTime() > end.getTime() ? end : d);
   const endStr = fmtDateTime(end).slice(0, 10);
 
@@ -446,21 +456,23 @@ export function buildSyntheticCommerceUniverse(
       });
     };
 
-    // promotion year(최근 12개월): dayBack ∈ [0, windowDays]
+    // promotion year = 2025-01-01 ~ 2025-12-31 (day-of-year 분산, 쿠폰/이벤트 허용)
     if (doPromo) {
-      const dayBacks = Array.from({ length: nOrders }, () => Math.floor(Math.pow(rng(), 1.2) * windowDays)).sort((a, b) => b - a);
+      const promoStart = new Date(`${SYNTHETIC_CALENDAR.promotionYear}-01-01T00:00:00`);
+      const offsets = Array.from({ length: nOrders }, () => Math.floor(Math.pow(rng(), 1.2) * 364)).sort((a, b) => a - b);
       for (let oi = 0; oi < nOrders; oi++) {
-        const orderDate = addDays(end, -dayBacks[oi]);
+        const orderDate = addDays(promoStart, offsets[oi]);
         orderDate.setHours(8 + Math.floor(rng() * 13), Math.floor(rng() * 60), Math.floor(rng() * 60), 0);
         emitOrder(orderDate, true, 'promotion_year', 'promotion', oi === 0);
       }
     }
-    // baseline year(직전 12개월, 쿠폰/이벤트 없음): dayBack ∈ [windowDays, 2*windowDays]
+    // baseline year = 2024-01-01 ~ 2024-12-31 (쿠폰/이벤트 없음, 2024는 윤년)
     if (doBaseline) {
       const nB = intIn(rng, seg.ordLo, seg.ordHi);
-      const dayBacks = Array.from({ length: nB }, () => windowDays + Math.floor(Math.pow(rng(), 1.2) * windowDays)).sort((a, b) => b - a);
+      const baseStart = new Date(`${SYNTHETIC_CALENDAR.baselineYear}-01-01T00:00:00`);
+      const offsets = Array.from({ length: nB }, () => Math.floor(Math.pow(rng(), 1.2) * 365)).sort((a, b) => a - b);
       for (let oi = 0; oi < nB; oi++) {
-        const orderDate = addDays(end, -dayBacks[oi]);
+        const orderDate = addDays(baseStart, offsets[oi]);
         orderDate.setHours(8 + Math.floor(rng() * 13), Math.floor(rng() * 60), Math.floor(rng() * 60), 0);
         emitOrder(orderDate, false, 'baseline_no_promotion', 'baseline', false);
       }

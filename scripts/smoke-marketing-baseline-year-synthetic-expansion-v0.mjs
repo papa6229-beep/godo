@@ -114,12 +114,10 @@ ok('20. all 기간 = baseline+promotion 합산 매출', factsAll.summary.totalRe
 ok('21. baseline facts: couponOrderCount===0 & 쿠폰 할인===0', factsBase.summary.couponOrderCount === 0 && factsBase.summary.totalCouponDiscountAmount === 0);
 ok('22. promotion facts: couponOrderCount>0 & 쿠폰 할인>0', factsPromo.summary.couponOrderCount > 0 && factsPromo.summary.totalCouponDiscountAmount > 0);
 
-// custom period(날짜 범위)로도 두 연도 분리 가능
-const day = 86400000;
-const endMs = Date.parse('2026-06-26T23:59:59');
-const fmt = (ms) => new Date(ms).toISOString().slice(0, 10);
-const promoCustom = F.buildMarketingAnalysisFacts({ orders, products, period: { preset: 'custom', startDate: fmt(endMs - 300 * day), endDate: '2026-06-26' }, nowMs: endMs });
-const baseCustom = F.buildMarketingAnalysisFacts({ orders, products, period: { preset: 'custom', startDate: fmt(endMs - 700 * day), endDate: fmt(endMs - 400 * day) }, nowMs: endMs });
+// custom period(날짜 범위)로도 두 연도 분리 가능 — Calendar Rebase v0: promotion=2025, baseline=2024 고정 달력
+const endMs = Date.parse('2025-12-31T23:59:59');
+const promoCustom = F.buildMarketingAnalysisFacts({ orders, products, period: { preset: 'custom', startDate: '2025-01-01', endDate: '2025-12-31' }, nowMs: endMs });
+const baseCustom = F.buildMarketingAnalysisFacts({ orders, products, period: { preset: 'custom', startDate: '2024-01-01', endDate: '2024-12-31' }, nowMs: endMs });
 ok('23. custom promotion 기간 couponOrderCount > 0', promoCustom.summary.orderCount > 0 && promoCustom.summary.couponOrderCount > 0);
 ok('24. custom baseline 기간 couponOrderCount === 0', baseCustom.summary.orderCount > 0 && baseCustom.summary.couponOrderCount === 0);
 

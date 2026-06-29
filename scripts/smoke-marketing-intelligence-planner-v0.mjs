@@ -67,8 +67,8 @@ ok('11. "신규회원 쿠폰 사용율" handled + couponUsageRate 실행', q_new
 const q_conv = ask('신규회원의 구매전환율이 궁금해');
 ok('12. "신규회원 구매전환율" partial_with_proxy 또는 required_data + proxy chartSpec', q_conv.handled === true && ['partial_with_proxy', 'required_data'].includes(q_conv.result.narrative.answerType) && q_conv.result.requiredData.length > 0);
 ok('    구매전환율 proxy chartSpec 생성(partial이면 available true)', q_conv.result.narrative.answerType === 'required_data' || q_conv.result.primaryChartSpec.available === true);
-const q_yoy = ask('2025년과 2026년 1월부터 6월까지의 월별 매출을 비교해줘');
-ok('13. "2025/2026 월별 매출 비교" handled + 연도 series', q_yoy.handled === true && q_yoy.result.available === true && q_yoy.result.primaryChartSpec.series.length >= 2 && q_yoy.plan.comparison === 'year_over_year');
+const q_yoy = ask('2024년과 2025년 1월부터 6월까지의 월별 매출을 비교해줘');
+ok('13. "2024/2025 월별 매출 비교" handled + 연도 series', q_yoy.handled === true && q_yoy.result.available === true && q_yoy.result.primaryChartSpec.series.length >= 2 && q_yoy.plan.comparison === 'year_over_year');
 const q_seg = ask('VIP 재구매회원의 객단가가 일반회원보다 높은지 보여줘');
 ok('14. "VIP/재구매 vs 일반 객단가" handled + memberGroup 비교', q_seg.handled === true && q_seg.result.available === true && q_seg.plan.dimensions.includes('memberGroup'));
 const q_couponMonthly = ask('쿠폰 사용 고객과 미사용 고객의 객단가 차이를 월별로 보여줘');

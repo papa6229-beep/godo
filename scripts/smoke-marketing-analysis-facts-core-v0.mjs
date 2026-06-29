@@ -101,7 +101,7 @@ ok('28. facts 전체에 PII 키 없음(직접 스캔)', F.assertMarketingFactsNo
 ok('29. 분석 주문에 contact PII 없음(입력 검증)', u.orders.every((o) => F.assertMarketingFactsNoPii(o).length === 0));
 
 // ── 기간 필터 ──
-const custom = F.buildMarketingAnalysisFacts({ orders: u.orders, products, period: { preset: 'custom', startDate: '2026-06-01', endDate: '2026-06-26' }, nowMs: Date.parse('2026-06-27T00:00:00') });
+const custom = F.buildMarketingAnalysisFacts({ orders: u.orders, products, period: { preset: 'custom', startDate: '2025-06-01', endDate: '2025-06-30' }, nowMs: Date.parse('2026-06-27T00:00:00') });
 ok('30. custom 기간 필터가 주문수 축소(부분집합)', custom.summary.orderCount > 0 && custom.summary.orderCount <= s.orderCount);
 ok('31. calculateAverageOrderValue(0 케이스) === 0', F.calculateAverageOrderValue(1000, 0) === 0 && F.calculateAverageOrderValue(1000, 4) === 250);
 
