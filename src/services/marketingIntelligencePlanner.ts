@@ -50,6 +50,26 @@ export type MarketingRelationshipSummary = {
   sampleBuckets: number;
   notes: string[];
 };
+export type MarketingInsightNarrativeSections = {
+  headline: string;
+  comparisonSummary: string[];
+  largestGaps: string[];
+  patternNotes: string[];
+  possibleExplanations: string[];
+  evidence: string[];
+  requiredData: string[];
+  nextQuestions: string[];
+  causalCautions: string[];
+};
+export type MarketingComparisonInsights = {
+  totalComparison?: string;
+  largestGap?: string;
+  strongestPeriod?: string;
+  weakestPeriod?: string;
+  trendNote?: string;
+  evidence: string[];
+  warnings: string[];
+};
 export type MarketingIntelligenceNarrative = {
   title: string;
   summary: string;
@@ -60,6 +80,7 @@ export type MarketingIntelligenceNarrative = {
   causalCautions: string[];
   requiredData?: string[];
   nextQuestions?: string[];
+  sections?: MarketingInsightNarrativeSections;
 };
 export type MarketingIntelligenceResult = {
   plan: MarketingIntelligencePlan;
@@ -366,6 +387,8 @@ export function validateMarketingIntelligencePlan(input: { plan: MarketingIntell
       proxyPlan: undefined,
       warnings: ['정확 지표 대신 주문 기반 proxy 분석']
     };
+    // proxy는 계산 가능한 지표만 가지므로 chartRecommendation을 새로 산출(원 plan의 unsupported 상속 금지).
+    out.proxyPlan.chartRecommendation = recommendMarketingChartForPlan(out.proxyPlan);
     out.confidence = 'medium';
   }
   return out;
@@ -517,6 +540,52 @@ export function buildMarketingRelationshipSummary(input: { rows: { bucketKey?: s
   return { xMetric: input.xMetric, yMetric: input.yMetric, correlation: r, direction, sampleBuckets: n, notes };
 }
 
+// ── 비교 분석 인사이트 (단순 낭독 → 차이/최대격차/패턴) ───────────────────────
+const pct = (a: number, b: number): string => (b !== 0 ? `${a - b >= 0 ? '+' : ''}${(((a - b) / Math.abs(b)) * 100).toFixed(1)}%` : 'n/a');
+export function buildMarketingComparisonInsights(input: { chartSpec: MarketingChartSpec; plan: MarketingIntelligencePlan }): MarketingComparisonInsights {
+  const cs = input.chartSpec;
+  const out: MarketingComparisonInsights = { evidence: [], warnings: [] };
+  if (!cs.available || cs.series.length === 0) return out;
+  const fmt = (v: number): string => (cs.unit === 'krw' ? won(v) : cs.unit === 'percent' ? `${v}%` : `${Math.round(v)}건`);
+  const total = (s: MarketingChartSeries): number => { let t = 0; for (const p of s.points) t += p.value; return t; };
+  const series = [...cs.series].sort((a, b) => total(b) - total(a));
+
+  // 1) 시리즈 총합 비교 (상위 2개)
+  if (series.length >= 2) {
+    const a = series[0], b = series[1];
+    const ta = total(a), tb = total(b);
+    out.totalComparison = `${a.label}(${fmt(ta)})이(가) ${b.label}(${fmt(tb)})보다 ${ta >= tb ? '높게' : '낮게'} 나타납니다(차이 ${fmt(Math.abs(ta - tb))}, ${pct(ta, tb)}).`;
+    out.evidence.push(`${a.label} 총합 ${fmt(ta)}`, `${b.label} 총합 ${fmt(tb)}`);
+    // 2) 같은 버킷에서 차이가 가장 큰 구간
+    const bmapA = new Map(a.points.map((p) => [p.bucketKey, p]));
+    let gapBucket = '', gapVal = -1, gapLabel = '';
+    for (const pb of b.points) { const pa = bmapA.get(pb.bucketKey); if (!pa) continue; const g = Math.abs(pa.value - pb.value); if (g > gapVal) { gapVal = g; gapBucket = pb.bucketKey; gapLabel = pa.bucketLabel; } }
+    if (gapBucket) { const pa = bmapA.get(gapBucket)!; const pb = b.points.find((p) => p.bucketKey === gapBucket)!; out.largestGap = `가장 큰 차이가 나타난 구간은 ${gapLabel}로, ${a.label} ${fmt(pa.value)} vs ${b.label} ${fmt(pb.value)}(차이 ${fmt(gapVal)})입니다.`; }
+    // 우세 버킷 수
+    let aWins = 0, compared = 0;
+    for (const pb of b.points) { const pa = bmapA.get(pb.bucketKey); if (!pa) continue; compared++; if (pa.value > pb.value) aWins++; }
+    if (compared > 0) out.trendNote = `비교 가능한 ${compared}개 구간 중 ${aWins}개에서 ${a.label}이(가) 더 높게 나타납니다.`;
+  } else {
+    const a = series[0];
+    out.totalComparison = `${a.label} 총합은 ${fmt(total(a))}로 나타납니다.`;
+  }
+
+  // 3) 최고/최저 구간 (주 시리즈 기준)
+  const main = series[0];
+  if (main.points.length >= 2) {
+    let hi = main.points[0], lo = main.points[0];
+    for (const p of main.points) { if (p.value > hi.value) hi = p; if (p.value < lo.value) lo = p; }
+    out.strongestPeriod = `${main.label} 기준 가장 높은 구간은 ${hi.bucketLabel}(${fmt(hi.value)})입니다.`;
+    out.weakestPeriod = `${main.label} 기준 가장 낮은 구간은 ${lo.bucketLabel}(${fmt(lo.value)})입니다.`;
+  }
+
+  // 4) 표본 적은 구간 경고
+  let lowBuckets = 0;
+  for (const s of cs.series) for (const p of s.points) if ((p.orderCount ?? 0) > 0 && (p.orderCount ?? 0) <= 5) lowBuckets++;
+  if (lowBuckets > 0) out.warnings.push(`주문수가 적은(5건 이하) 구간이 ${lowBuckets}개 있어 해석 시 주문수 확인이 필요합니다.`);
+  return out;
+}
+
 // ── Chart Recommendation ──────────────────────────────────────────────────────
 export type MarketingChartRecommendation = MarketingIntelligencePlan['chartRecommendation'];
 export function recommendMarketingChartForPlan(plan: MarketingIntelligencePlan): MarketingChartRecommendation {
@@ -528,8 +597,14 @@ export function recommendMarketingChartForPlan(plan: MarketingIntelligencePlan):
     return manyCats ? { chartType: 'rankedBar', reason: '범주가 많은 구성비는 순위 막대' } : { chartType: 'donut', reason: '구성비' };
   }
   if (plan.goal === 'rank') return { chartType: 'rankedBar', reason: '순위' };
-  if (plan.goal === 'trend' || (plan.timeBucket && !plan.dimensions.find((d) => d !== 'time') && plan.comparison === 'none')) return { chartType: 'line', reason: '시간 흐름' };
-  if (plan.comparison === 'year_over_year' || plan.comparison === 'coupon_vs_non_coupon' || plan.comparison === 'segment_vs_segment' || plan.comparison === 'baseline_vs_promotion') return { chartType: 'groupedBar', reason: '두 그룹/기간 비교' };
+  // 비교형(연도/쿠폰/세그먼트/시나리오)은 groupedBar 우선 — 각 구간 차이를 나란히 보는 게 핵심(line보다 비교력↑).
+  if (plan.comparison && plan.comparison !== 'none') {
+    if (plan.comparison === 'year_over_year' && plan.timeBucket === 'month' && plan.periods.length >= 2)
+      return { chartType: 'groupedBar', reason: '월별 연도 비교는 각 월의 차이를 나란히 보는 것이 중요하므로 groupedBar가 적합합니다.' };
+    return { chartType: 'groupedBar', reason: '두 그룹/기간을 나란히 비교하는 groupedBar가 적합합니다.' };
+  }
+  // 비교가 아닌 시간 흐름 → line
+  if (plan.goal === 'trend' || (plan.timeBucket && !plan.dimensions.find((d) => d !== 'time'))) return { chartType: 'line', reason: '시간 흐름' };
   if (plan.timeBucket) return { chartType: 'groupedBar', reason: '기간별 비교' };
   return { chartType: 'rankedBar', reason: '범주 비교' };
 }
@@ -561,7 +636,10 @@ export function executeMarketingIntelligencePlan(input: { plan: MarketingIntelli
     relationshipSummary = buildRelationshipFromOrders(orders, input.reviews, input.inquiries, plan.relationshipTargets[0]);
   }
 
-  const narrative = buildIntelNarrative(answerType, evidence, chartSpec, relationshipSummary, plan.dataRequirements);
+  const comparison = (plan.goal === 'compare' || plan.goal === 'trend' || plan.goal === 'diagnose' || plan.goal === 'summary' || plan.goal === 'share')
+    ? buildMarketingComparisonInsights({ chartSpec, plan: execPlan })
+    : undefined;
+  const narrative = buildIntelNarrative(answerType, evidence, chartSpec, relationshipSummary, plan.dataRequirements, comparison);
   const result: MarketingIntelligenceResult = {
     plan, primaryChartSpec: chartSpec, supportingChartSpecs: [], narrative, evidence, ...(relationshipSummary ? { relationshipSummary } : {}),
     available: chartSpec.available, requiredData: plan.dataRequirements, piiCheck: { containsPii: false, checkedKeys: [] }
@@ -590,12 +668,15 @@ const CAUSAL_CAUTION = '관찰된 차이는 가능성으로만 해석하며, 인
 export function buildMarketingIntelligenceNarrative(input: { plan: MarketingIntelligencePlan; result: MarketingIntelligenceResult }): MarketingIntelligenceNarrative {
   return buildIntelNarrative(input.result.narrative.answerType, input.result.evidence, input.result.primaryChartSpec, input.result.relationshipSummary, input.result.requiredData);
 }
-function buildIntelNarrative(answerType: MarketingIntelligenceNarrative['answerType'], evidence: MarketingIntelligenceEvidence[], chartSpec: MarketingChartSpec, rel?: MarketingRelationshipSummary, required?: MarketingDataRequirement[]): MarketingIntelligenceNarrative {
+function buildIntelNarrative(answerType: MarketingIntelligenceNarrative['answerType'], evidence: MarketingIntelligenceEvidence[], chartSpec: MarketingChartSpec, rel?: MarketingRelationshipSummary, required?: MarketingDataRequirement[], comparison?: MarketingComparisonInsights): MarketingIntelligenceNarrative {
   const title = chartSpec.title;
   const bullets: string[] = [];
   const relationshipNotes: string[] = [];
   const causalCautions: string[] = [CAUSAL_CAUTION];
   const reqKeys = (required || []).flatMap((r) => r.requiredData);
+  const comparisonSummary: string[] = [];
+  const largestGaps: string[] = [];
+  const patternNotes: string[] = [];
 
   let summary: string;
   if (answerType === 'required_data') {
@@ -608,11 +689,22 @@ function buildIntelNarrative(answerType: MarketingIntelligenceNarrative['answerT
     summary = '현재 주문 데이터 기준으로 계산 가능합니다.';
   }
 
-  for (const s of chartSpec.series.slice(0, 4)) {
-    const last = s.points[s.points.length - 1];
-    if (!last) continue;
-    const v = chartSpec.unit === 'krw' ? won(last.value) : chartSpec.unit === 'percent' ? `${last.value}%` : `${last.value}건`;
-    bullets.push(`${s.label}: ${METRIC_LABEL[chartSpec.primaryMetric] ?? chartSpec.primaryMetric} ${v}로 나타납니다.`);
+  // 비교 인사이트(단순 낭독 대신 총합/차이/최대격차/패턴)
+  if (comparison) {
+    if (comparison.totalComparison) { comparisonSummary.push(comparison.totalComparison); bullets.push(comparison.totalComparison); }
+    if (comparison.largestGap) { largestGaps.push(comparison.largestGap); bullets.push(comparison.largestGap); }
+    if (comparison.trendNote) { patternNotes.push(comparison.trendNote); bullets.push(comparison.trendNote); }
+    if (comparison.strongestPeriod) patternNotes.push(comparison.strongestPeriod);
+    if (comparison.weakestPeriod) patternNotes.push(comparison.weakestPeriod);
+  }
+  // 비교 인사이트가 빈약하면 series 수치 보조 표시
+  if (comparisonSummary.length === 0) {
+    for (const s of chartSpec.series.slice(0, 4)) {
+      const last = s.points[s.points.length - 1];
+      if (!last) continue;
+      const v = chartSpec.unit === 'krw' ? won(last.value) : chartSpec.unit === 'percent' ? `${last.value}%` : `${last.value}건`;
+      bullets.push(`${s.label}: ${METRIC_LABEL[chartSpec.primaryMetric] ?? chartSpec.primaryMetric} ${v}로 나타납니다.`);
+    }
   }
   if (rel) {
     if (rel.correlation === null) relationshipNotes.push('표본이 적어 관계 해석이 어렵습니다.');
@@ -620,17 +712,39 @@ function buildIntelNarrative(answerType: MarketingIntelligenceNarrative['answerT
     relationshipNotes.push(...rel.notes);
   }
   const evNotes = evidence.map((e) => `${e.label}: ${typeof e.value === 'number' ? e.value.toLocaleString() : e.value}`);
+  if (comparison) for (const ev of comparison.evidence) evNotes.push(ev);
+  const warnings = comparison ? comparison.warnings : [];
+  // 가능한 해석(인과 단정 아님)
+  const possibleExplanations = comparisonSummary.length > 0
+    ? ['관찰된 차이의 배경을 확정하려면 쿠폰 노출/방문자/광고비 등 추가 데이터가 필요합니다.']
+    : [];
+  const nextQuestions = answerType === 'partial_with_proxy'
+    ? ['회원 가입일/방문 데이터가 연결되면 정확한 전환율을 계산할 수 있습니다.']
+    : (comparisonSummary.length > 0 ? ['차이가 큰 구간의 쿠폰/채널/세그먼트 분해를 추가로 볼 수 있습니다.'] : undefined);
+
+  const sections: MarketingInsightNarrativeSections = {
+    headline: summary,
+    comparisonSummary,
+    largestGaps,
+    patternNotes,
+    possibleExplanations,
+    evidence: evNotes,
+    requiredData: reqKeys,
+    nextQuestions: nextQuestions ?? [],
+    causalCautions
+  };
 
   return {
     title,
     summary,
     answerType,
-    bullets,
+    bullets: [...bullets, ...warnings],
     evidence: evNotes,
     relationshipNotes,
     causalCautions,
     ...(reqKeys.length ? { requiredData: reqKeys } : {}),
-    nextQuestions: answerType === 'partial_with_proxy' ? ['회원 가입일/방문 데이터가 연결되면 정확한 전환율을 계산할 수 있습니다.'] : undefined
+    nextQuestions,
+    sections
   };
 }
 

@@ -30,6 +30,8 @@ interface Props {
   // 채팅 질문 기반 chartSpec artifact(비영속). 있으면 중앙 그래프/AI 리포트를 이 결과로 우선 표시.
   marketingChartArtifact?: MarketingChatChartArtifact | null;
   onClearMarketingChartArtifact?: () => void;
+  // 최근 유사 분석 메모리 힌트 수(비PII). dev marker + 작은 안내용.
+  marketingMemoryHintCount?: number;
 }
 
 const PRESETS: { key: MarketingAnalysisPeriodPreset; label: string }[] = [
@@ -315,24 +317,79 @@ const seriesOrderCount = (s: MarketingChartSeries): number => {
   return t;
 };
 
+// 시리즈 시각 스타일(결정적 — Math.random/inline color 금지). 연도(2025/2026)·쿠폰·첫재구매·시나리오 구분.
+const SERIES_STYLE_MAP: Record<string, string> = {
+  coupon: 'mkt-s-coupon', non_coupon: 'mkt-s-noncoupon', first: 'mkt-s-first', repeat: 'mkt-s-repeat',
+  baseline: 'mkt-s-baseline', promotion: 'mkt-s-promotion', reward: 'mkt-s-reward', non_reward: 'mkt-s-nonreward'
+};
+const getMarketingSeriesVisualStyle = (seriesKey: string, seriesIndex: number, seriesLabel?: string): { className: string; label: string } => {
+  const label = seriesLabel ?? seriesKey;
+  const ym = /(\d{4})/.exec(seriesKey) || /(\d{4})/.exec(label); // 2025/2026 등 연도 시리즈는 짝/홀로 확실히 구분
+  if (ym) return { className: `mkt-s-year-${Number(ym[1]) % 2 === 0 ? 'even' : 'odd'}`, label };
+  const mapped = SERIES_STYLE_MAP[seriesKey];
+  if (mapped) return { className: mapped, label };
+  return { className: `s${seriesIndex % 4}`, label };
+};
+
+type MarketingTooltipPayload = { title: string; rows: { label: string; value: string }[]; delta?: string };
+const buildMarketingTooltipPayload = (input: { chartSpec: MarketingChartSpec; bucketKey?: string; seriesKey?: string }): MarketingTooltipPayload => {
+  const { chartSpec, bucketKey, seriesKey } = input;
+  const s = chartSpec.series.find((x) => x.key === seriesKey) ?? chartSpec.series[0];
+  if (!s) return { title: '', rows: [] };
+  const p = bucketKey ? s.points.find((x) => x.bucketKey === bucketKey) : undefined;
+  const value = p ? p.value : seriesTotal(s);
+  const orderCount = p ? p.orderCount : seriesOrderCount(s);
+  const title = p ? p.bucketLabel : s.label;
+  const rows = [
+    { label: s.label, value: formatMetricValue(value, chartSpec.unit) },
+    ...(orderCount != null ? [{ label: '주문수', value: `${orderCount}건` }] : [])
+  ];
+  let delta: string | undefined;
+  const other = chartSpec.series.find((x) => x.key !== s.key);
+  if (other && p) {
+    const op = other.points.find((x) => x.bucketKey === p.bucketKey);
+    if (op) { const d = p.value - op.value; const pc = op.value !== 0 ? `${d >= 0 ? '+' : ''}${((d / Math.abs(op.value)) * 100).toFixed(1)}%` : 'n/a'; delta = `${other.label} 대비 ${d >= 0 ? '+' : ''}${formatMetricValue(Math.abs(d), chartSpec.unit)} (${pc})`; }
+  }
+  return { title, rows, delta };
+};
+
+const ChartTooltip: React.FC<{ payload: MarketingTooltipPayload | null }> = ({ payload }) => {
+  if (!payload || !payload.title) return null;
+  return (
+    <div className="marketing-chart-tooltip" role="status">
+      <div className="marketing-chart-tooltip-title">{payload.title}</div>
+      {payload.rows.map((r, i) => (
+        <div key={i} className="marketing-chart-tooltip-row"><span>{r.label}</span><span className="tabular-nums">{r.value}</span></div>
+      ))}
+      {payload.delta && <div className="marketing-chart-tooltip-delta">{payload.delta}</div>}
+    </div>
+  );
+};
+
 const ChartLegend: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => (
   <div className="marketing-chart-legend">
-    {chartSpec.series.map((s, i) => (
-      <span key={s.key} className="marketing-chart-legend-item">
-        <span className={`marketing-chart-legend-dot s${i % 4}`} />
-        <span className="marketing-chart-series-label">{s.label}</span>
-      </span>
-    ))}
+    {chartSpec.series.map((s, i) => {
+      const style = getMarketingSeriesVisualStyle(s.key, i, s.label);
+      return (
+        <span key={s.key} className="marketing-chart-legend-item">
+          <span className={`marketing-chart-legend-dot ${style.className}`} />
+          <span className="marketing-chart-series-label">{s.label}</span>
+        </span>
+      );
+    })}
   </div>
 );
 
 const GroupedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+  const [hover, setHover] = useState<{ bk: string; sk: string } | null>(null);
   const { keys, labels, truncated } = unionBuckets(chartSpec);
   const maxV = Math.max(1, ...chartSpec.series.flatMap((s) => s.points.filter((p) => keys.includes(p.bucketKey)).map((p) => p.value)));
   const byBucket = chartSpec.series.map((s) => ({ s, map: new Map(s.points.map((p) => [p.bucketKey, p])) }));
+  const payload = hover ? buildMarketingTooltipPayload({ chartSpec, bucketKey: hover.bk, seriesKey: hover.sk }) : null;
   return (
     <div className="marketing-chart-grouped-bars">
       <ChartLegend chartSpec={chartSpec} />
+      <ChartTooltip payload={payload} />
       {keys.map((bk) => (
         <div className="marketing-chart-bucket" key={bk}>
           <div className="marketing-chart-bucket-label">{labels[bk] || bk}</div>
@@ -340,10 +397,12 @@ const GroupedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpe
             {byBucket.map(({ s, map }, si) => {
               const p = map.get(bk);
               const v = p?.value ?? 0;
+              const style = getMarketingSeriesVisualStyle(s.key, si, s.label);
               return (
-                <div className="marketing-chart-series-bar" key={s.key}>
+                <div className="marketing-chart-series-bar" key={s.key} tabIndex={0}
+                  onMouseEnter={() => setHover({ bk, sk: s.key })} onMouseLeave={() => setHover(null)} onFocus={() => setHover({ bk, sk: s.key })} onBlur={() => setHover(null)}>
                   <div className="marketing-chart-series-bar-track">
-                    <div className={`marketing-chart-series-fill s${si % 4}`} style={{ width: `${Math.min(100, (v / maxV) * 100)}%` }} />
+                    <div className={`marketing-chart-series-fill ${style.className}`} style={{ width: `${Math.min(100, (v / maxV) * 100)}%` }} />
                   </div>
                   <span className="marketing-chart-series-value tabular-nums">
                     {formatMetricValue(v, chartSpec.unit)}
@@ -361,19 +420,31 @@ const GroupedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpe
 };
 
 const LineChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+  const [hover, setHover] = useState<{ bk: string; sk: string } | null>(null);
   const { keys, labels, truncated } = unionBuckets(chartSpec);
   const maxV = Math.max(1, ...chartSpec.series.flatMap((s) => s.points.filter((p) => keys.includes(p.bucketKey)).map((p) => p.value)));
   const n = keys.length;
   const x = (i: number): number => (n <= 1 ? 50 : (i / (n - 1)) * 100);
   const y = (v: number): number => 38 - (v / maxV) * 36 + 1;
+  const payload = hover ? buildMarketingTooltipPayload({ chartSpec, bucketKey: hover.bk, seriesKey: hover.sk }) : null;
   return (
     <div className="marketing-chart-line">
       <ChartLegend chartSpec={chartSpec} />
+      <ChartTooltip payload={payload} />
       <svg className="marketing-chart-line-svg" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label={chartSpec.title}>
         {chartSpec.series.map((s, si) => {
+          const style = getMarketingSeriesVisualStyle(s.key, si, s.label);
           const map = new Map(s.points.map((p) => [p.bucketKey, p.value]));
           const pts = keys.map((bk, i) => `${x(i)},${y(map.get(bk) ?? 0)}`).join(' ');
-          return <polyline key={s.key} className={`marketing-chart-line-path s${si % 4}`} points={pts} fill="none" />;
+          return (
+            <g key={s.key}>
+              <polyline className={`marketing-chart-line-path ${style.className}`} points={pts} fill="none" />
+              {keys.map((bk, i) => (map.has(bk) ? (
+                <circle key={bk} className={`marketing-chart-line-dot ${style.className}`} cx={x(i)} cy={y(map.get(bk) ?? 0)} r={1.7}
+                  onMouseEnter={() => setHover({ bk, sk: s.key })} onMouseLeave={() => setHover(null)} />
+              ) : null))}
+            </g>
+          );
         })}
       </svg>
       <div className="marketing-chart-line-axis">
@@ -384,9 +455,10 @@ const LineChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) =
       <div className="marketing-chart-line-last">
         {chartSpec.series.map((s, i) => {
           const last = s.points[s.points.length - 1];
+          const style = getMarketingSeriesVisualStyle(s.key, i, s.label);
           return last ? (
             <span key={s.key} className="marketing-chart-legend-item">
-              <span className={`marketing-chart-legend-dot s${i % 4}`} />
+              <span className={`marketing-chart-legend-dot ${style.className}`} />
               {s.label} {formatMetricValue(last.value, chartSpec.unit)}
             </span>
           ) : null;
@@ -398,25 +470,32 @@ const LineChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) =
 };
 
 const RankedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+  const [hover, setHover] = useState<string | null>(null);
   const ranked = [...chartSpec.series].map((s) => ({ s, total: seriesTotal(s), orders: seriesOrderCount(s) })).sort((a, b) => b.total - a.total).slice(0, 8);
   const maxV = Math.max(1, ...ranked.map((r) => r.total));
+  const payload = hover ? buildMarketingTooltipPayload({ chartSpec, seriesKey: hover }) : null;
   if (ranked.length === 0) return <p className="mkt-dim-empty">표시할 데이터가 없습니다.</p>;
   return (
     <div className="marketing-chart-ranked-bars">
-      {ranked.map((r, i) => (
-        <div className="marketing-chart-bucket" key={r.s.key}>
-          <div className="marketing-chart-bucket-row-head">
-            <span className="marketing-chart-series-label">{r.s.label}</span>
-            <span className="marketing-chart-series-value tabular-nums">
-              {formatMetricValue(r.total, chartSpec.unit)}
-              {r.orders > 0 ? <span className="marketing-chart-series-sub"> · 주문 {r.orders}건</span> : null}
-            </span>
+      <ChartTooltip payload={payload} />
+      {ranked.map((r, i) => {
+        const style = getMarketingSeriesVisualStyle(r.s.key, i, r.s.label);
+        return (
+          <div className="marketing-chart-bucket" key={r.s.key} tabIndex={0}
+            onMouseEnter={() => setHover(r.s.key)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(r.s.key)} onBlur={() => setHover(null)}>
+            <div className="marketing-chart-bucket-row-head">
+              <span className="marketing-chart-series-label">{r.s.label}</span>
+              <span className="marketing-chart-series-value tabular-nums">
+                {formatMetricValue(r.total, chartSpec.unit)}
+                {r.orders > 0 ? <span className="marketing-chart-series-sub"> · 주문 {r.orders}건</span> : null}
+              </span>
+            </div>
+            <div className="marketing-chart-series-bar-track">
+              <div className={`marketing-chart-series-fill ${style.className}`} style={{ width: `${Math.min(100, (r.total / maxV) * 100)}%` }} />
+            </div>
           </div>
-          <div className="marketing-chart-series-bar-track">
-            <div className={`marketing-chart-series-fill s${i % 4}`} style={{ width: `${Math.min(100, (r.total / maxV) * 100)}%` }} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
@@ -490,6 +569,12 @@ const MarketingChartSpecPanel: React.FC<{ artifact: MarketingChatChartArtifact; 
           </button>
         )}
       </div>
+      {/* partial_with_proxy: 정확 지표 미계산이지만 proxy 분석이 있으면 그래프를 보여주고 requiredData는 작은 배지로. */}
+      {cs.available && artifact.requiredData && artifact.requiredData.length > 0 && (
+        <div className="marketing-chart-proxy-badge">
+          ℹ 정확 지표는 미계산 — 대신 현재 주문 데이터 기준 proxy 분석을 표시합니다. 필요 데이터: {artifact.requiredData.join(', ')}
+        </div>
+      )}
       <div className="marketing-chart-spec-graph">{renderMarketingChartSpecGraph(cs)}</div>
     </div>
   );
@@ -525,7 +610,7 @@ const MarketingNarrativeReport: React.FC<{ artifact: MarketingChatChartArtifact 
   );
 };
 
-export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products, loading, onRefresh, marketingChartArtifact, onClearMarketingChartArtifact }) => {
+export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products, loading, onRefresh, marketingChartArtifact, onClearMarketingChartArtifact, marketingMemoryHintCount }) => {
   const [preset, setPreset] = useState<MarketingAnalysisPeriodPreset>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -680,7 +765,16 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
 
       {/* ── AI 분석 리포트 — artifact 있으면 narrative 우선, 없으면 기존 facts.insights ── */}
       {marketingChartArtifact ? (
-        <MarketingNarrativeReport artifact={marketingChartArtifact} />
+        <>
+          <MarketingNarrativeReport artifact={marketingChartArtifact} />
+          <div
+            className="marketing-analysis-memory-hint"
+            data-marketing-analysis-memory-count={marketingMemoryHintCount ?? 0}
+            data-marketing-analysis-memory-used={String((marketingMemoryHintCount ?? 0) > 0)}
+          >
+            {(marketingMemoryHintCount ?? 0) > 0 ? `🧠 유사 분석 힌트 ${marketingMemoryHintCount}건 참고` : null}
+          </div>
+        </>
       ) : (
       <div className="mkt-insights marketing-ai-report">
         <h3 className="mkt-section-title">🤖 AI 분석 리포트 (관찰 기반 · 인과 단정 아님)</h3>
