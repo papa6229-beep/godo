@@ -733,3 +733,64 @@
   border: 1px solid var(--line-subtle);
   color: var(--text-muted);
 }
+
+/* ════════ Insight UX v0: series styles · tooltip · proxy · memory ════════ */
+/* 시리즈 구분 색(연도/쿠폰/첫재구매/시나리오/리워드). 막대 fill + 범례 dot 공용. */
+.marketing-chart-series-fill.mkt-s-year-even, .marketing-chart-legend-dot.mkt-s-year-even { background: var(--accent-primary); }
+.marketing-chart-series-fill.mkt-s-year-odd, .marketing-chart-legend-dot.mkt-s-year-odd { background: var(--warning); }
+.marketing-chart-series-fill.mkt-s-coupon, .marketing-chart-legend-dot.mkt-s-coupon { background: var(--accent-primary); }
+.marketing-chart-series-fill.mkt-s-noncoupon, .marketing-chart-legend-dot.mkt-s-noncoupon { background: var(--text-muted); }
+.marketing-chart-series-fill.mkt-s-first, .marketing-chart-legend-dot.mkt-s-first { background: var(--info); }
+.marketing-chart-series-fill.mkt-s-repeat, .marketing-chart-legend-dot.mkt-s-repeat { background: var(--success); }
+.marketing-chart-series-fill.mkt-s-baseline, .marketing-chart-legend-dot.mkt-s-baseline { background: var(--text-muted); }
+.marketing-chart-series-fill.mkt-s-promotion, .marketing-chart-legend-dot.mkt-s-promotion { background: var(--accent-primary); }
+.marketing-chart-series-fill.mkt-s-reward, .marketing-chart-legend-dot.mkt-s-reward { background: var(--success); }
+.marketing-chart-series-fill.mkt-s-nonreward, .marketing-chart-legend-dot.mkt-s-nonreward { background: var(--text-muted); }
+/* line path stroke */
+.marketing-chart-line-path.mkt-s-year-even { stroke: var(--accent-primary); background: none; }
+.marketing-chart-line-path.mkt-s-year-odd { stroke: var(--warning); background: none; stroke-dasharray: 4 2; }
+.marketing-chart-line-path.mkt-s-coupon, .marketing-chart-line-path.mkt-s-promotion, .marketing-chart-line-path.mkt-s-baseline { stroke: var(--accent-primary); background: none; }
+.marketing-chart-line-path.mkt-s-noncoupon, .marketing-chart-line-path.mkt-s-nonreward { stroke: var(--text-muted); background: none; stroke-dasharray: 4 2; }
+.marketing-chart-line-path.mkt-s-first { stroke: var(--info); background: none; }
+.marketing-chart-line-path.mkt-s-repeat, .marketing-chart-line-path.mkt-s-reward { stroke: var(--success); background: none; }
+/* line dots fill */
+.marketing-chart-line-dot { cursor: pointer; }
+.marketing-chart-line-dot.s0, .marketing-chart-line-dot.mkt-s-year-even, .marketing-chart-line-dot.mkt-s-coupon, .marketing-chart-line-dot.mkt-s-promotion, .marketing-chart-line-dot.mkt-s-baseline { fill: var(--accent-primary); }
+.marketing-chart-line-dot.s1, .marketing-chart-line-dot.mkt-s-repeat, .marketing-chart-line-dot.mkt-s-reward { fill: var(--success); }
+.marketing-chart-line-dot.s2, .marketing-chart-line-dot.mkt-s-year-odd { fill: var(--warning); }
+.marketing-chart-line-dot.s3, .marketing-chart-line-dot.mkt-s-first { fill: var(--info); }
+.marketing-chart-line-dot.mkt-s-noncoupon, .marketing-chart-line-dot.mkt-s-nonreward { fill: var(--text-muted); }
+
+.marketing-chart-series-bar { cursor: pointer; }
+.marketing-chart-series-bar:focus-visible, .marketing-chart-ranked-bars .marketing-chart-bucket:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 2px; border-radius: 6px; }
+
+/* tooltip (hover readout) */
+.marketing-chart-tooltip {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-elevated, var(--bg-surface));
+  border: 1px solid var(--accent-border);
+  font-size: 0.8rem;
+}
+.marketing-chart-tooltip-title { font-weight: 700; margin-bottom: 4px; }
+.marketing-chart-tooltip-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-secondary); }
+.marketing-chart-tooltip-delta { margin-top: 4px; color: var(--accent-primary); font-weight: 600; }
+
+/* proxy badge */
+.marketing-chart-proxy-badge {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+/* memory hint */
+.marketing-analysis-memory-hint {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}

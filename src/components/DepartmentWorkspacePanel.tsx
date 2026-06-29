@@ -19,6 +19,7 @@ import { buildDepartmentChatContext, toChatTeam } from '../services/departmentCh
 import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
 import { runMarketingChartRequest, type MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
 import { buildMarketingIntelligenceResponseWithLlm } from '../services/marketingLlmPlannerAdapter';
+import { createMarketingAnalysisMemoryEntry, saveMarketingAnalysisMemoryEntry, findSimilarMarketingAnalysisMemories } from '../services/marketingAnalysisMemory';
 import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 
@@ -135,6 +136,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [sending, setSending] = useState(false);
   // 마케팅 chartSpec artifact(비영속 — localStorage 미저장). 다음 작업의 중앙 smart chart가 읽어갈 payload.
   const [marketingChartArtifact, setMarketingChartArtifact] = useState<MarketingChatChartArtifact | null>(null);
+  const [marketingMemoryHintCount, setMarketingMemoryHintCount] = useState(0);
 
   useEffect(() => {
     saveDeptChatLog(chatLog);
@@ -248,6 +250,12 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         if (intel.handled && intel.reply && intel.artifact) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: intel.reply as string }] }));
           setMarketingChartArtifact(intel.artifact);
+          // 비PII 분석 메모리 저장 + 최근 유사 분석 힌트 수(저장 실패가 앱을 깨면 안 됨).
+          try {
+            const hints = findSimilarMarketingAnalysisMemories({ question: text, plan: intel.plan, limit: 5 });
+            setMarketingMemoryHintCount(hints.length);
+            saveMarketingAnalysisMemoryEntry(createMarketingAnalysisMemoryEntry({ question: text, plan: intel.plan, artifact: intel.artifact, resultType: intel.result?.narrative.answerType }));
+          } catch { /* ignore safely */ }
           setSending(false);
           return;
         }
@@ -256,6 +264,11 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         if (chart.handled) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: chart.reply }] }));
           setMarketingChartArtifact(chart.artifact ?? null);
+          try {
+            const hints = findSimilarMarketingAnalysisMemories({ question: text, limit: 5 });
+            setMarketingMemoryHintCount(hints.length);
+            saveMarketingAnalysisMemoryEntry(createMarketingAnalysisMemoryEntry({ question: text, artifact: chart.artifact ?? null, resultType: 'calculated' }));
+          } catch { /* ignore safely */ }
           setSending(false);
           return;
         }
@@ -391,6 +404,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         onRefresh={() => void loadProductTeamData()}
         marketingChartArtifact={marketingChartArtifact}
         onClearMarketingChartArtifact={() => setMarketingChartArtifact(null)}
+        marketingMemoryHintCount={marketingMemoryHintCount}
       />
     );
   };
