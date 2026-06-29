@@ -1,5 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import './MarketingAnalysisDashboard.css';
+import './charts/commerceCharts.css';
+import { CommerceComboChart, type CommerceComboChartPoint } from './charts/CommerceComboChart';
+import { CommerceGroupedBarChart, type CommerceGroupedBarChartPoint } from './charts/CommerceGroupedBarChart';
+import { resolveMarketingChartRoute } from './charts/marketingChartRoute';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { RevenueResult, AdminProductsResult } from '../services/departmentDataService';
 import {
@@ -527,8 +531,38 @@ const UnsupportedChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSp
   </div>
 );
 
+// chartSpec line(단일 월별 매출) → combo points 매핑(막대=매출, 라인=매출 추세, tooltip 주문수/전월대비).
+const toComboPoints = (chartSpec: MarketingChartSpec): CommerceComboChartPoint[] => {
+  const s = chartSpec.series[0];
+  if (!s) return [];
+  return s.points.map((p, i) => {
+    const prev = i > 0 ? s.points[i - 1].value : undefined;
+    const delta = prev != null ? p.value - prev : undefined;
+    const deltaRate = prev != null && prev !== 0 ? +(((p.value - prev) / Math.abs(prev)) * 100).toFixed(1) : undefined;
+    return { key: p.bucketKey, label: p.bucketLabel, barValue: p.value, lineValue: p.value, orderCount: p.orderCount, delta, deltaRate };
+  });
+};
+// chartSpec groupedBar(연도/세그먼트 월 비교) → grouped vertical points(구간=월, values=series).
+const toGroupedPoints = (chartSpec: MarketingChartSpec): CommerceGroupedBarChartPoint[] => {
+  const buckets: { key: string; label: string }[] = [];
+  for (const s of chartSpec.series) for (const p of s.points) if (!buckets.some((b) => b.key === p.bucketKey)) buckets.push({ key: p.bucketKey, label: p.bucketLabel });
+  buckets.sort((a, b) => a.key.localeCompare(b.key));
+  return buckets.map((b) => ({
+    key: b.key, label: b.label,
+    values: chartSpec.series.map((s) => { const pt = s.points.find((p) => p.bucketKey === b.key); return { key: s.key, label: s.label, value: pt?.value ?? 0, orderCount: pt?.orderCount }; })
+  }));
+};
+
 // chartType → 그래프 (fallback 포함). 알 수 없는 타입은 unsupported.
+//   P0: 단일 월별 매출은 combo(막대+꺾은선), 연도 비교는 vertical grouped bar(공통 SVG 컴포넌트).
 const renderMarketingChartSpecGraph = (chartSpec: MarketingChartSpec): React.ReactNode => {
+  const route = resolveMarketingChartRoute(chartSpec);
+  if (route === 'combo') {
+    return <CommerceComboChart points={toComboPoints(chartSpec)} barLabel={chartSpec.yAxisLabel || '매출'} lineLabel="추세" valueFormatter={(v) => formatMetricValue(v, chartSpec.unit)} />;
+  }
+  if (route === 'groupedVertical') {
+    return <CommerceGroupedBarChart points={toGroupedPoints(chartSpec)} valueFormatter={(v) => formatMetricValue(v, chartSpec.unit)} />;
+  }
   if (!chartSpec.available || chartSpec.chartType === 'unsupported') return <UnsupportedChart chartSpec={chartSpec} />;
   if (chartSpec.series.length === 0) return <p className="mkt-dim-empty">표시할 데이터가 없습니다.</p>;
   switch (chartSpec.chartType) {
