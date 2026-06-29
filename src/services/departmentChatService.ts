@@ -75,3 +75,22 @@ export async function chatWithTeam(
   }
   return { ok: false, text: 'AI 응답에 실패했습니다. 연결 키와 사용할 모델을 확인해 주세요.' };
 }
+
+// Marketing LLM Planner Adapter용 LLM 호출부(주입형). 분석 "계획 JSON"만 받는다(숫자 생성 금지).
+//   - 브레인 미연결 시 throw → adapter가 deterministic planner로 안전 fallback.
+//   - 신규 API route/네트워크 추가 없음(기존 chatWithProvider 재사용).
+export async function callMarketingPlannerLlm(prompt: string): Promise<string> {
+  const brain = resolveAgentBrain(TEAM_AGENT.marketing);
+  if (!isBrainConnected(brain.providerId)) throw new Error('marketing planner LLM: brain not connected');
+  const result = await chatWithProvider({
+    providerId: brain.providerId,
+    modelIdOverride: brain.modelId || undefined,
+    purpose: 'agent_run',
+    messages: [
+      { role: 'system', content: '너는 GODO 마케팅 분석 플래너다. 오직 분석 계획 JSON 하나만 출력한다. 매출/주문수/객단가/전환율 등 숫자 결과는 절대 만들지 않는다.' },
+      { role: 'user', content: prompt }
+    ]
+  });
+  if (!result.ok || !result.content) throw new Error('marketing planner LLM: empty response');
+  return result.content;
+}
