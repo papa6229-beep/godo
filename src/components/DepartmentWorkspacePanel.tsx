@@ -18,7 +18,8 @@ import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } fr
 import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
 import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
 import { runMarketingChartRequest, type MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
-import { buildMarketingIntelligenceResponse } from '../services/marketingIntelligencePlanner';
+import { buildMarketingIntelligenceResponseWithLlm } from '../services/marketingLlmPlannerAdapter';
+import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -242,8 +243,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     } else if (teamId === 'marketing') {
       const rev = productData.revenue;
       if (rev?.orders?.length) {
-        // 0순위: Intelligence Planner(질문→분석계획→capability 검증→실행). 분석 의도면 코드가 직접 답 + chartSpec artifact.
-        const intel = buildMarketingIntelligenceResponse({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries });
+        // 0순위: Intelligence Planner(deterministic 우선, 빈약하면 LLM planner로 계획 보강 — 숫자는 항상 코드가 계산).
+        const intel = await buildMarketingIntelligenceResponseWithLlm({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries, callPlannerLlm: callMarketingPlannerLlm });
         if (intel.handled && intel.reply && intel.artifact) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: intel.reply as string }] }));
           setMarketingChartArtifact(intel.artifact);

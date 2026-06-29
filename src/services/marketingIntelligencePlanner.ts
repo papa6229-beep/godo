@@ -660,13 +660,26 @@ export function buildMarketingIntelligenceResponse(input: { message: string; ord
   const capabilityMap = buildMarketingDataCapabilityMap();
   const parsed = parseMarketingQuestionToPlan({ message: input.message, nowMs, capabilityMap });
   const plan = validateMarketingIntelligencePlan({ plan: parsed, capabilityMap });
-  const result = executeMarketingIntelligencePlan({ plan, orders: input.orders, products: input.products, reviews: input.reviews, inquiries: input.inquiries, nowMs });
+  return buildMarketingResponseFromPlan({ plan, orders: input.orders, products: input.products, reviews: input.reviews, inquiries: input.inquiries, nowMs, source: 'marketingIntelligencePlanner' });
+}
 
+// 검증된 plan → 실행 + chartSpec artifact + reply (deterministic / LLM adapter 공용 코어).
+// narrative/evidence는 항상 deterministic builder가 생성한다(LLM이 narrative를 쓰지 않는다).
+export function buildMarketingResponseFromPlan(input: { plan: MarketingIntelligencePlan; orders: unknown[]; products?: unknown[]; reviews?: unknown[]; inquiries?: unknown[]; nowMs?: number; source?: 'marketingIntelligencePlanner' | 'marketingLlmPlannerAdapter' }): {
+  handled: boolean;
+  plan: MarketingIntelligencePlan;
+  result: MarketingIntelligenceResult;
+  artifact: MarketingChatChartArtifact;
+  reply: string;
+} {
+  const nowMs = input.nowMs ?? Date.now();
+  const plan = input.plan;
+  const result = executeMarketingIntelligencePlan({ plan, orders: input.orders, products: input.products, reviews: input.reviews, inquiries: input.inquiries, nowMs });
   const chartNarrative = toChartNarrative(result.narrative);
   const reply = renderIntelReply(result.narrative);
   const artifact: MarketingChatChartArtifact = {
     type: 'marketing_chart_spec',
-    source: 'marketingIntelligencePlanner',
+    source: input.source ?? 'marketingIntelligencePlanner',
     intent: plan.goal,
     plan: { goal: plan.goal, requestedMetrics: plan.requestedMetrics, executableMetrics: plan.executableMetrics, timeBucket: plan.timeBucket, dimensions: plan.dimensions, comparison: plan.comparison, periods: plan.periods, segments: plan.segments, filters: plan.filters, dataRequirements: plan.dataRequirements },
     request: result.primaryChartSpec.request,
