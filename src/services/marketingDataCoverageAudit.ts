@@ -254,7 +254,7 @@ export function auditMarketingDataCoverage(input: {
       key: 'memberGroup',
       label: '회원등급/회원그룹(memGroupNm)',
       source: 'godomall_spec',
-      status: upgrade('missing', ['memberGroup', 'memGroupNm', 'memberGrade']),
+      status: upgrade('missing', ['memberGroup', 'memberGroupName', 'memberGroupCode', 'memGroupNm', 'memGroupNo', 'memberGrade']),
       piiLevel: 'none',
       marketingUse: '회원그룹별 매출/객단가/주문수 세그먼트',
       notes: [
@@ -366,7 +366,7 @@ export function auditMarketingDataCoverage(input: {
       key: 'couponDiscount',
       label: '쿠폰/할인 적용 결과',
       source: 'godomall_spec',
-      status: upgrade('missing', ['couponGoodsDcPrice', 'totalCouponGoodsDcPrice', 'totalCouponOrderDcPrice', 'memberDcPrice']),
+      status: upgrade('missing', ['discountSummary', 'discountAmount', 'couponGoodsDcPrice', 'couponGoodsDiscountAmount', 'totalGoodsDcPrice', 'totalCouponGoodsDcPrice', 'totalCouponOrderDcPrice', 'totalMemberDcPrice', 'memberDcPrice']),
       piiLevel: 'none',
       marketingUse: '쿠폰 사용/미사용 고객군, 할인 민감 세그먼트',
       notes: [
@@ -379,7 +379,7 @@ export function auditMarketingDataCoverage(input: {
       key: 'mileageDepositUse',
       label: '주문 내 마일리지/예치금 사용액',
       source: 'godomall_spec',
-      status: upgrade('missing', ['useMileage', 'useDeposit']),
+      status: upgrade('missing', ['useMileage', 'useDeposit', 'useMileageAmount', 'useDepositAmount', 'rewardUseAmount']),
       piiLevel: 'none',
       marketingUse: '리워드 사용 성향 세그먼트',
       notes: ['synthetic 미생성', 'Order_Search 스펙에 useMileage/useDeposit 존재 → 보강 가능', 'syntheticEnrichmentNeeded']
@@ -466,6 +466,8 @@ type Flags = {
   hasBehaviorEvents: boolean;
   hasAdSpend: boolean;
   hasGa4: boolean;
+  // Spec-Based Synthetic Enrichment v0로 추가된 마일리지/예치금 사용 필드 보유 여부(미지정 시 false).
+  hasMileageDepositFields?: boolean;
 };
 
 /**
@@ -486,7 +488,8 @@ export function auditMarketingMetricAvailability(input: Flags): MarketingMetricA
     signupDate: input.hasSignupDate,
     behaviorEvents: input.hasBehaviorEvents,
     adSpend: input.hasAdSpend,
-    ga4: input.hasGa4
+    ga4: input.hasGa4,
+    mileageDepositFields: input.hasMileageDepositFields === true
   };
   const missingOf = (required: string[]): string[] => required.filter((r) => !sat[r]);
 
@@ -555,11 +558,21 @@ export function auditMarketingMetricAvailability(input: Flags): MarketingMetricA
     ]),
     orderBased('aov_by_member_group', '회원그룹별 객단가', ['orders', 'orderLines', 'memberGroup'], '그룹 매출 / 그룹 주문수'),
     orderBased('order_count_by_member_group', '회원그룹별 주문수', ['orders', 'memberGroup'], 'groupBy(memGroupNm) count'),
-    // 쿠폰 (보강 필요)
-    orderBased('coupon_user_segment', '쿠폰 사용 고객군', ['orders', 'couponDiscountFields'], 'filter(couponDcPrice>0) → memberKey set', [
-      'Order_Search totalCoupon*DcPrice 보강 시 가능'
+    // 쿠폰 (enrichment 후 available_now)
+    orderBased('coupon_user_segment', '쿠폰 사용 고객군', ['orders', 'couponDiscountFields'], 'filter(discountSummary.hasCoupon) → memberKey set', [
+      'Spec-Based Synthetic Enrichment v0 이후 available_now'
     ]),
-    orderBased('coupon_nonuser_segment', '쿠폰 미사용 고객군', ['orders', 'couponDiscountFields'], 'filter(couponDcPrice==0) → memberKey set'),
+    orderBased('coupon_nonuser_segment', '쿠폰 미사용 고객군', ['orders', 'couponDiscountFields'], 'filter(!hasCoupon) → memberKey set'),
+    orderBased('coupon_used_orders', '쿠폰 사용 주문수', ['orders', 'couponDiscountFields'], 'count(discountSummary.hasCoupon)'),
+    orderBased('coupon_used_revenue', '쿠폰 사용 매출', ['orders', 'couponDiscountFields'], 'Σ(hasCoupon 주문 totalAmount, paid)'),
+    orderBased('coupon_used_aov', '쿠폰 사용 객단가', ['orders', 'couponDiscountFields'], '쿠폰 사용 매출 / 쿠폰 사용 주문수'),
+    orderBased('coupon_unused_aov', '쿠폰 미사용 객단가', ['orders', 'couponDiscountFields'], '쿠폰 미사용 매출 / 쿠폰 미사용 주문수'),
+    orderBased('coupon_total_discount', '쿠폰 할인 총액', ['orders', 'couponDiscountFields'], 'Σ(discountSummary.totalCouponDiscountAmount)'),
+    // 마일리지/예치금 (enrichment 후 available_now)
+    orderBased('mileage_used_orders', '마일리지 사용 주문수', ['orders', 'mileageDepositFields'], 'count(useMileageAmount>0)', [
+      'Spec-Based Synthetic Enrichment v0 이후 available_now'
+    ]),
+    orderBased('deposit_used_orders', '예치금 사용 주문수', ['orders', 'mileageDepositFields'], 'count(useDepositAmount>0)'),
     // 가입 전환 (가입일 없으면 계산 금지)
     {
       key: 'signup_to_purchase_conversion',

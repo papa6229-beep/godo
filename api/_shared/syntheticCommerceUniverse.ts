@@ -57,6 +57,9 @@ export type SyntheticCustomerProfile = {
   memNo: string;
   memId: string;
   segment: CustomerSegment;
+  // 회원그룹(Spec-Based Synthetic Enrichment v0) — segment 기반 deterministic, memberKey당 고정.
+  memberGroupNm: string;
+  memberGroupCode: string;
   firstOrderDate: string;
   lastOrderDate: string;
   orderCount: number;
@@ -172,6 +175,17 @@ const CHANNEL = [
   { v: 'payco', w: 0.08 }
 ];
 
+// 회원그룹: segment → (그룹명/코드). segment가 고객당 고정이므로 같은 memberKey는 항상 같은 그룹.
+// 근거: Order_Search memGroupNm/memGroupNo. PII 아님(집계용 그룹 라벨).
+const MEMBER_GROUP_BY_SEGMENT: Record<CustomerSegment, { nm: string; code: string }> = {
+  new: { nm: '신규회원', code: 'G_NEW' },
+  returning: { nm: '재구매회원', code: 'G_REPEAT' },
+  vip_candidate: { nm: 'VIP', code: 'G_VIP' },
+  dormant_risk: { nm: '휴면위험', code: 'G_DORMANT' },
+  discount_sensitive: { nm: '재구매회원', code: 'G_REPEAT' },
+  high_refund_risk: { nm: '일반회원', code: 'G_NORMAL' }
+};
+
 // 정상 주문 상태 분포 (클레임 아닌 경우)
 const NORMAL_STATUS = [
   { v: 'confirmed', w: 0.55, code: 's1' },
@@ -249,6 +263,7 @@ export function buildSyntheticCommerceUniverse(
   for (let ci = 0; ci < customerCount; ci++) {
     const seg = pickW(SEGMENTS, rng());
     const nOrders = intIn(rng, seg.ordLo, seg.ordHi);
+    const group = MEMBER_GROUP_BY_SEGMENT[seg.key]; // memberKey당 고정(주문별로 흔들리지 않음)
     const memNo = String(100000 + ci);
     const memId = `syn_user_${pad(ci + 1)}`;
     // 고객 주문일자: 윈도우 내에서 정렬된 nOrders개
@@ -296,8 +311,70 @@ export function buildSyntheticCommerceUniverse(
         lines.push(line);
       }
       const deliveryFee = rng() < 0.2 ? 0 : rng() < 0.85 ? 2500 : 3000;
-      const settlePrice = totalGoods + deliveryFee;
       const isFirst = oi === 0;
+      const paidish = statusKey !== 'unpaid';
+
+      // ── 할인/리워드 enrichment (Spec-Based Synthetic Enrichment v0) ──
+      // Order_Search 스펙 근거(totalGoodsDcPrice/totalMemberDcPrice/totalCoupon*DcPrice/useMileage/useDeposit).
+      // 정책/원장이 아니라 "이 주문에 반영된 결과"만 생성. 일부 주문에만 발생. 음수/과다 차감 guard.
+      let goodsDc = 0, memberDc = 0, couponGoodsDc = 0, couponOrderDc = 0, couponDeliveryDc = 0;
+      let useMileage = 0, useDeposit = 0;
+      if (paidish) {
+        let couponProb = 0.18;
+        if (isFirst) couponProb += 0.17; // 첫구매 웰컴쿠폰
+        if (seg.key === 'discount_sensitive') couponProb += 0.22;
+        if (seg.key === 'vip_candidate') couponProb += 0.1;
+        if (rng() < couponProb) {
+          couponGoodsDc = Math.round(totalGoods * (0.05 + rng() * 0.1)); // 5~15%
+          if (rng() < 0.4) couponOrderDc = Math.round(totalGoods * (0.02 + rng() * 0.05));
+          if (deliveryFee > 0 && rng() < 0.3) couponDeliveryDc = deliveryFee; // 무료배송 쿠폰
+        }
+        if ((seg.key === 'vip_candidate' || seg.key === 'returning') && rng() < 0.35) {
+          memberDc = Math.round(totalGoods * (0.03 + rng() * 0.05)); // 등급 할인 3~8%
+        }
+        if (rng() < 0.1) goodsDc = Math.round(totalGoods * (0.03 + rng() * 0.04)); // 상품 프로모션
+
+        // guard: 상품측 할인 합 ≤ 상품액의 60% (초과 시 비례 축소)
+        const maxGoodsDc = Math.floor(totalGoods * 0.6);
+        const goodsSide = goodsDc + memberDc + couponGoodsDc + couponOrderDc;
+        if (goodsSide > maxGoodsDc && goodsSide > 0) {
+          const scale = maxGoodsDc / goodsSide;
+          goodsDc = Math.floor(goodsDc * scale);
+          memberDc = Math.floor(memberDc * scale);
+          couponGoodsDc = Math.floor(couponGoodsDc * scale);
+          couponOrderDc = Math.floor(couponOrderDc * scale);
+        }
+        couponDeliveryDc = Math.min(couponDeliveryDc, deliveryFee);
+
+        // 마일리지/예치금: 일부 주문, VIP/재구매에서 더 자주. 남은 결제액의 절반 이내 guard(settle≥0).
+        const remaining = totalGoods - (goodsDc + memberDc + couponGoodsDc + couponOrderDc) + (deliveryFee - couponDeliveryDc);
+        let rewardProb = 0.12;
+        if (seg.key === 'vip_candidate') rewardProb += 0.25;
+        if (seg.key === 'returning') rewardProb += 0.1;
+        if (remaining > 1000 && rng() < rewardProb) {
+          useMileage = Math.round(Math.min(remaining * 0.5, 500 + rng() * 4500));
+          if (rng() < 0.3) useDeposit = Math.round(Math.min((remaining - useMileage) * 0.5, 1000 + rng() * 5000));
+        }
+      }
+
+      // 라인 단위 쿠폰/상품 할인 안분(정보용 — 합계 계산엔 영향 없음, 헤더 할인이 권위값)
+      const allocLine = (key: string, amount: number): void => {
+        if (amount <= 0 || lines.length === 0 || totalGoods <= 0) return;
+        let allocated = 0;
+        lines.forEach((ln, idx) => {
+          const lineAmt = Number(ln.goodsPrice) * Number(ln.goodsCnt);
+          const share = idx === lines.length - 1 ? amount - allocated : Math.round(amount * (lineAmt / totalGoods));
+          allocated += share;
+          ln[key] = String(Math.max(0, share));
+        });
+      };
+      allocLine('couponGoodsDcPrice', couponGoodsDc);
+      allocLine('goodsDcPrice', goodsDc);
+
+      const discountTotal = goodsDc + memberDc + couponGoodsDc + couponOrderDc + couponDeliveryDc;
+      const rewardTotal = useMileage + useDeposit;
+      const settlePrice = Math.max(0, totalGoods + deliveryFee - discountTotal - rewardTotal);
+
       const yy = String(orderDate.getFullYear() % 100).padStart(2, '0');
       const orderNo = `${yy}${String(orderDate.getMonth() + 1).padStart(2, '0')}${String(orderDate.getDate()).padStart(2, '0')}${String(orderDate.getHours()).padStart(2, '0')}${String(orderDate.getMinutes()).padStart(2, '0')}${pad(orderSeq)}`;
 
@@ -307,8 +384,16 @@ export function buildSyntheticCommerceUniverse(
         orderChannelFl: pickW(CHANNEL, rng()).v,
         settleKind: pickW(SETTLE, rng()).v,
         firstSaleFl: isFirst ? 'y' : '',
+        memGroupNm: group.nm, memGroupNo: group.code,
         orderDate: fmtDateTime(orderDate),
         totalGoodsPrice: String(totalGoods), totalDeliveryCharge: String(deliveryFee), settlePrice: String(settlePrice),
+        ...(goodsDc ? { totalGoodsDcPrice: String(goodsDc) } : {}),
+        ...(memberDc ? { totalMemberDcPrice: String(memberDc) } : {}),
+        ...(couponGoodsDc ? { totalCouponGoodsDcPrice: String(couponGoodsDc) } : {}),
+        ...(couponOrderDc ? { totalCouponOrderDcPrice: String(couponOrderDc) } : {}),
+        ...(couponDeliveryDc ? { totalCouponDeliveryDcPrice: String(couponDeliveryDc) } : {}),
+        ...(useMileage ? { useMileage: String(useMileage) } : {}),
+        ...(useDeposit ? { useDeposit: String(useDeposit) } : {}),
         paymentDt: df.paymentDt, invoiceDt: df.invoiceDt, deliveryDt: df.deliveryDt,
         deliveryCompleteDt: df.deliveryCompleteDt, finishDt: df.finishDt, cancelDt: df.cancelDt,
         orderGoodsData: lines.length === 1 ? lines[0] : lines
@@ -333,6 +418,7 @@ export function buildSyntheticCommerceUniverse(
     const memberKey = `syn_member_${memNo}`;
     customers.push({
       customerId: `cust_${pad(ci + 1)}`, memberKey, memNo, memId, segment: seg.key,
+      memberGroupNm: group.nm, memberGroupCode: group.code,
       firstOrderDate: firstDate, lastOrderDate: lastDate, orderCount: nOrders,
       totalPaidAmount: totalPaid, averageOrderValue: nOrders ? Math.round(totalPaid / nOrders) : 0,
       repurchaseCount: Math.max(0, nOrders - 1), refundCount, reviewCount: 0,
