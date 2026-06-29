@@ -342,11 +342,15 @@ export function buildMarketingChatChartResponse(input: {
 // 중앙 그래프 렌더는 다음 작업 — 여기서는 우측 채팅 답변 + 후속 렌더용 artifact만 준비한다.
 export type MarketingChatChartArtifact = {
   type: 'marketing_chart_spec';
-  source: 'marketingChatChartSpec';
-  intent: string;
-  request: MarketingCrossTabRequest | null;
+  source: 'marketingIntelligencePlanner' | 'marketingChatChartSpec';
+  intent?: string;
+  // Intelligence Planner v0: 분석 계획/근거/필요데이터를 함께 보관(집계 결과·설명만 — raw order/PII 금지).
+  plan?: unknown;
+  request?: MarketingCrossTabRequest | null;
   chartSpec: MarketingChartSpec;
   narrative: MarketingChartNarrative;
+  evidence?: { id: string; label: string; value: string | number }[];
+  requiredData?: string[];
   createdAt: string;
 };
 
