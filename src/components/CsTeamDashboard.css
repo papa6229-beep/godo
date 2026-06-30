@@ -327,3 +327,11 @@
   .cs-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .cs-dash-two-col { grid-template-columns: 1fr; }
 }
+
+/* Department Data Source of Truth v0 — CS 기준 보조문구 */
+.cs-dash-basis-note {
+  margin: 6px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--cs-muted, #6b7280);
+}
