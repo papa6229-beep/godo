@@ -43,8 +43,10 @@ ok('17. PII 금지 정책', /PII/.test(DOC) && /금지/.test(DOC));
 
 // 18~19. future endpoint(미생성) + 실제 route 미생성
 ok('18. /api/marketing/behavior-events가 future(미생성)로만 언급', DOC.includes('/api/marketing/behavior-events') && /(미생성|향후|future)/i.test(DOC));
-ok('19. 실제 api route 파일 미생성',
-  !has('api/marketing/behavior-events.ts') && !has('api/marketing/behavior-events.js') && !has('api/marketing/behavior-events') && !has('src/api/marketing/behavior-events.ts'));
+// route는 plan 단계엔 "미생성"이었고 Endpoint v0에서 생성됨. 있으면 안전한 수집 엔드포인트여야(POST·godomall WRITE 아님).
+const routeRel19 = 'api/marketing/behavior-events.ts';
+ok('19. behavior route 없음 또는 안전한 수집 엔드포인트(POST·WRITE 아님)',
+  !has(routeRel19) || (/'POST'/.test(read(routeRel19)) && !/godomall|writeOrder/i.test(read(routeRel19))));
 
 // 20~24. 계약 상수 파일
 ok('20. marketingBehaviorCollectionPlan.ts 존재', has(PLAN_REL));

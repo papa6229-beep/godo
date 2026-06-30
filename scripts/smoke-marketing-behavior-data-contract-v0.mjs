@@ -51,9 +51,10 @@ ok('14. dataStatus.isDemo 기반 데모 배지', /dataStatus\.isDemo/.test(MODAL
 ok('15. 신규 코드에 PII 필드 문자열 없음',
   !/customerName|memberKey|rawSessionId|rawUserId|orderNo\b|\bphone\b|\bemail\b|\baddress\b|\bcontact\b/.test(NEW_CODE));
 
-// 16. 실제 수집 route 미생성
-ok('16. /api/marketing/behavior-events route 미생성',
-  !has('api/marketing/behavior-events.ts') && !has('api/marketing/behavior-events.js') && !has('api/marketing/behavior-events'));
+// 16. behavior route — 데이터 계약 단계엔 없었고, Endpoint v0에서 생성됨. 있으면 안전한 수집 엔드포인트여야.
+const routeRel16 = 'api/marketing/behavior-events.ts';
+ok('16. behavior route 없음 또는 안전한 수집 엔드포인트(POST·WRITE 아님)',
+  !has(routeRel16) || (/'POST'/.test(read(routeRel16)) && !/godomall|writeOrder/i.test(read(routeRel16))));
 
 // 17. WRITE 코드 없음(신규 코드)
 ok('17. WRITE/네트워크 호출 없음', !/fetch\(|api\/order|writeOrder|method:\s*'(POST|PUT|DELETE)'/i.test(NEW_CODE));

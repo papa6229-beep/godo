@@ -48,8 +48,10 @@ ok('12. gtag 호출 없음', !/gtag\s*\(/.test(TRACKER));
 ok('13. dataLayer push 없음', !/dataLayer/.test(TRACKER));
 ok('14. /api/marketing/behavior-events 호출 없음', !TRACKER.includes('/api/marketing/behavior-events'));
 
-// 15. 실제 api route 미생성
-ok('15. 실제 api route 파일 미생성', !has('api/marketing/behavior-events.ts') && !has('api/marketing/behavior-events') && !has('src/api/marketing/behavior-events.ts'));
+// 15. behavior route — prototype 단계엔 없었고, Endpoint v0에서 생성됨. 있으면 안전한 수집 엔드포인트여야(POST·godomall WRITE 아님).
+const routeRel15 = 'api/marketing/behavior-events.ts';
+ok('15. behavior route 없음 또는 안전한 수집 엔드포인트(POST·WRITE 아님)',
+  !has(routeRel15) || (/'POST'/.test(read(routeRel15)) && !/godomall|writeOrder/i.test(read(routeRel15))));
 
 // 16~19. data attribute 처리(tracker가 plan 상수 사용 + 리터럴은 단일 소스에)
 ok('16. data-godo-track 처리(상수 사용 + 리터럴)', /MARKETING_BEHAVIOR_DATA_ATTRIBUTES/.test(TRACKER) && COMBINED.includes('data-godo-track'));
