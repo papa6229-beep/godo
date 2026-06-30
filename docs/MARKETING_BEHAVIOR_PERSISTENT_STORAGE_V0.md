@@ -108,7 +108,7 @@ CREATE TABLE marketing_behavior_events (
 
 ## 8-1. Postgres adapter (Postgres Adapter v0 이후)
 
-**Postgres persistent backend adapter**가 추가되었다 — env-gated(`GODO_BEHAVIOR_STORAGE_BACKEND=postgres` + `DATABASE_URL`/`POSTGRES_URL`)로, 설정되면 dev_buffer가 아니라 실제 DB에 저장한다. env가 없으면 **dev_buffer fallback 유지**, 불완전하면 **pending**(거짓 persistent 표시 없음). `pg`는 lazy import(연결 시점만), 자동 DDL 없음. 문서: [MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md) · [schema](./MARKETING_BEHAVIOR_POSTGRES_SCHEMA_V0.md).
+**Postgres persistent backend adapter**가 추가되었다 — env-gated(`GODO_BEHAVIOR_STORAGE_BACKEND=postgres` + `DATABASE_URL`/`POSTGRES_URL`)로, 설정되면 dev_buffer가 아니라 실제 DB에 저장한다. env가 없으면 **dev_buffer fallback 유지**, 불완전하면 **pending**(거짓 persistent 표시 없음). `pg`는 lazy import(연결 시점만), 자동 DDL 없음. 문서: [adapter](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md) · [schema](./MARKETING_BEHAVIOR_POSTGRES_SCHEMA_V0.md) · **활성화 절차/체크리스트**: [Activation Guide](./MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md) · [Checklist](./MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_CHECKLIST_V0.md).
 
 ## 9. 다음 단계
 

@@ -56,7 +56,14 @@
 - table 미생성 상태에서 append/read는 실패할 수 있고, 그 경우 append는 dev_buffer fallback, read는 빈 배열로 안전 처리된다(secret 미노출).
 - 집계는 최근 N개(기본 1000) 기준 — 대규모 기간 집계 최적화는 후속.
 
+## 8-1. 실제 활성화 절차
+
+코드는 준비되어 있고, 실제 영속 저장을 켜는 **단계별 절차·체크리스트·실패 대응**은 별도 가이드를 따른다: **[MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md)** · [체크리스트](./MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_CHECKLIST_V0.md).
+
+- `persistentReady: true`의 의미: **adapter가 Postgres로 선택됨**(env가 올바름)을 뜻한다. `getStats`는 DB 미연결 config 기반이므로, **table 생성/insert 성공까지** 확인하려면 safe test event POST가 필요하다(가이드 4-8).
+- **table 미생성 시 POST 저장이 실패**할 수 있으며(이 경우 dev_buffer로 손실 없이 보존), 가이드 4-11의 케이스 E를 참고한다.
+
 ## 9. 다음 단계
 
-- **Vercel Postgres env 등록 + table 생성** → live 누적 수집 시작.
+- **Vercel Postgres env 등록 + table 생성** → live 누적 수집 시작. → [Activation Guide](./MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md)
 - **Godo Skin Integration Guide v0** / **Period Filter Wiring v0** / **Live behavior UI polish v0.1** / 집계 성능 최적화.

@@ -66,7 +66,7 @@ tracker → (opt-in) send adapter → POST /api/marketing/behavior-events
 
 ## 7-1. Postgres 연결 시 (Postgres Adapter v0 이후)
 
-`GODO_BEHAVIOR_STORAGE_BACKEND=postgres` + DB url이 설정되면 summary API는 **Postgres 이벤트 기반으로 집계**한다(storage interface가 동일하므로 service 변경 없음). 그래도 **raw event는 public response에 노출하지 않으며**, 응답은 여전히 aggregated insights뿐이다. 문서: [MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md).
+`GODO_BEHAVIOR_STORAGE_BACKEND=postgres` + DB url이 설정되면 summary API는 **Postgres 이벤트 기반으로 live insights를 집계**한다(storage interface가 동일하므로 service 변경 없음). 그래도 **raw event는 public response에 노출하지 않으며**, 응답은 여전히 aggregated insights뿐이다. 활성화 절차: [MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md) · adapter: [MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md).
 
 ## 8. 한계
 
