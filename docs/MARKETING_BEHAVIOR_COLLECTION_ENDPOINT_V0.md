@@ -1,5 +1,7 @@
 # Marketing Behavior Collection Endpoint v0
 
+> 📎 실제 고도몰 설치/전환 도면: [Integration Readiness](./MARKETING_BEHAVIOR_GODO_INTEGRATION_READINESS_V0.md).
+
 > **한 줄**: tracker prototype이 만든 `MarketingBehaviorEvent` payload를 **서버에서 안전하게 받는** 최소 수집 엔드포인트. validate → PII reject → allowlist sanitize → **dev in-memory buffer**까지. **DB 저장·대시보드 연결·고도몰 WRITE·GA4/GTM은 하지 않는다.**
 
 - route: [`api/marketing/behavior-events.ts`](../api/marketing/behavior-events.ts)

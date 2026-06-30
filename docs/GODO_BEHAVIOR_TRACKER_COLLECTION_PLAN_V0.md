@@ -1,5 +1,7 @@
 # GODO Behavior Tracker Script & Collection Endpoint Plan v0
 
+> 📎 실제 고도몰 설치/전환 도면: [Integration Readiness](./MARKETING_BEHAVIOR_GODO_INTEGRATION_READINESS_V0.md) · [Installation Checklist](./MARKETING_BEHAVIOR_GODO_INSTALLATION_CHECKLIST_V0.md) · [Shop Switch Runbook](./MARKETING_BEHAVIOR_SHOP_SWITCH_RUNBOOK_V0.md).
+
 > **한 줄**: 고객 행동 분석 화면(`MarketingBehaviorEvent` 계약 + `buildMarketingBehaviorInsights`)에 **실제 고객 발자국**을 넣기 전에, *어떤 발자국을 / 어떤 모양으로 / 어떻게 안전하게* 받을지 그리는 **바닥 설계도**. 이번 작업은 **설계·계약·보안 정책·구현 순서** 정리이며, 실제 route·스크립트·GA4/GTM 연결은 만들지 않는다.
 
 - 코드 계약 상수: [`src/services/marketingBehaviorCollectionPlan.ts`](../src/services/marketingBehaviorCollectionPlan.ts) — 이 문서의 설계를 머신리더블 단일 소스로 보관.

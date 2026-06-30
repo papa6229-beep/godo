@@ -1,5 +1,7 @@
 # Marketing Behavior Summary API & Live Modal Wiring v0
 
+> 📎 실제 고도몰 설치/전환 도면: [Integration Readiness](./MARKETING_BEHAVIOR_GODO_INTEGRATION_READINESS_V0.md).
+
 > **한 줄**: 행동 사슬의 마지막 칸을 연결. 고객 행동 분석 모달이 **항상 demo만** 보던 구조에서, 실제 수집 이벤트가 있으면 **안전하게 집계된 live insights**를, 없으면 기존 **demo 예시 fallback**을 보여준다. **raw event는 절대 브라우저로 나가지 않는다** — 화면엔 집계 insights만.
 
 ## 1. 목적

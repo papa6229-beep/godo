@@ -1,5 +1,7 @@
 # Marketing Behavior Tracker Send Adapter v0
 
+> 📎 실제 고도몰 스킨 삽입/전환 도면: [Integration Readiness](./MARKETING_BEHAVIOR_GODO_INTEGRATION_READINESS_V0.md) · [Installation Checklist](./MARKETING_BEHAVIOR_GODO_INSTALLATION_CHECKLIST_V0.md).
+
 > **한 줄**: tracker prototype이 만든 `MarketingBehaviorEvent` payload를 collection endpoint로 **선택적으로(opt-in)** 보내는 transport adapter. **기본값은 전송 없음** — `transport` 옵션을 명시했을 때만 보낸다. 고도몰 삽입·대시보드 wiring·DB 저장은 하지 않는다.
 
 - 코드: [`src/services/marketingBehaviorTrackerSendAdapter.ts`](../src/services/marketingBehaviorTrackerSendAdapter.ts)
