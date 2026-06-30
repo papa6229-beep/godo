@@ -22,7 +22,7 @@ const CHECK = has(CHECK_REL) ? read(CHECK_REL) : '';
 const ADAPTER_DOC = has('docs/MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md') ? read('docs/MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md') : '';
 const SUMMARY_DOC = has('docs/MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md') ? read('docs/MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md') : '';
 const ENV = has('.env.example') ? read('.env.example') : '';
-const POST_ROUTE = read('api/marketing/behavior-events.ts');
+const POST_ROUTE = read('api/marketing/[action].ts');
 
 // 1~2. 존재
 ok('1. activation guide 존재', has(GUIDE_REL));
