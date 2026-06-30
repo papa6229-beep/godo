@@ -95,6 +95,10 @@ POST /api/marketing/behavior-events
 - Origin 헤더 부재(same-origin/server-to-server/curl)는 허용.
 - ⚠️ **실제 고도몰 도메인 연결 전에 반드시 `GODO_BEHAVIOR_ALLOWED_ORIGINS`에 운영 도메인을 추가**해야 한다 (예: 실제 운영 `*.godomall.com` 형태의 정확한 도메인). 와일드카드는 쓰지 않는다.
 
+## 8-1. Storage interface (Persistent Storage v0 이후)
+
+endpoint는 이제 **storage 인터페이스**(`getMarketingBehaviorStorage()`)를 통해 저장한다 — dev buffer와 future persistent(DB/KV)를 갈아끼울 수 있다. 응답에 `mode`와 `storage.persistentReady`가 포함된다(현재 `dev_buffer` / `persistentReady: false`). 환경에 영속 백엔드 env가 감지되면 `pending`(손실 없이 dev buffer 보존 + 신호)으로 전환된다. 상세: [MARKETING_BEHAVIOR_PERSISTENT_STORAGE_V0.md](./MARKETING_BEHAVIOR_PERSISTENT_STORAGE_V0.md).
+
 ## 9. dev buffer 한계
 
 - module-level **in-memory 배열**(최대 1000개, 초과 시 FIFO 제거).

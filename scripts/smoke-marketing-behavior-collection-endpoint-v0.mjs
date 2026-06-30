@@ -31,7 +31,7 @@ const NEW = ROUTE + '\n' + VAL + '\n' + STORE;
 
 // 1~3. route
 ok('1. route 파일 존재', has(ROUTE_REL));
-ok('2. POST handler 존재', /export default function handler/.test(ROUTE) && /'POST'/.test(ROUTE));
+ok('2. POST handler 존재', /export default (?:async )?function handler/.test(ROUTE) && /'POST'/.test(ROUTE));
 ok('3. GET 허용 안 됨(405) + GET buffer dump 없음', /405/.test(ROUTE) && !/req\.method === 'GET'/.test(ROUTE));
 
 // 4~8. validator allowlist/limit/forbidden
