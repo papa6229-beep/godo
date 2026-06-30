@@ -390,6 +390,109 @@
   color: var(--text-primary);
 }
 
+/* 선택 지표 비교를 차트 헤더로 이동 — KPI 그리드 밖이라 가로 배치 + 작은 톤 */
+.marketing-inline-compare {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: flex-start;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.marketing-inline-compare .mkt-kpi-label { font-size: 0.74rem; }
+.marketing-inline-compare .mkt-kpi-compare-text { font-size: 0.84rem; color: var(--text-secondary); }
+
+/* ── 4번째 KPI: 고객 행동 분석(클릭형 진입점) ──────────────────────────────────
+ *  수치 카드가 아니라 modal 진입 버튼. hover/focus로 클릭 가능함을 명확히 보여준다.
+ *  "연결 안 됨"이 실패가 아니라 "준비 상태"로 보이도록 teal 강조 + amber 배지.        */
+.mkt-kpi-behavior {
+  cursor: pointer;
+  gap: 7px;
+  border-color: var(--accent-border);
+  background:
+    radial-gradient(circle at 100% 0%, var(--accent-glow), transparent 55%),
+    var(--bg-surface);
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  outline: none;
+  position: relative;
+}
+.mkt-kpi-behavior:hover,
+.mkt-kpi-behavior:focus-visible {
+  border-color: var(--accent-primary);
+  background:
+    radial-gradient(circle at 100% 0%, var(--accent-glow), transparent 45%),
+    var(--card-hover);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28), 0 0 0 1px var(--accent-border), 0 0 18px var(--accent-glow);
+  transform: translateY(-2px);
+}
+.mkt-kpi-behavior:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.mkt-kpi-behavior-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mkt-kpi-behavior-badge {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--warning);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mkt-kpi-behavior-value {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.1;
+}
+.mkt-kpi-behavior-unit {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: normal;
+}
+.mkt-kpi-behavior-desc { font-size: 0.74rem; line-height: 1.4; color: var(--text-secondary); }
+.mkt-kpi-behavior-hint {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  opacity: 0.85;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.mkt-kpi-behavior:hover .mkt-kpi-behavior-hint,
+.mkt-kpi-behavior:focus-visible .mkt-kpi-behavior-hint {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+/* ── 신규/재구매 고객 비교 카드(세부 분석 상단으로 이동) ── */
+.mkt-first-repeat-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  margin-bottom: 14px;
+}
+.mkt-first-repeat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.mkt-fr-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-subtle);
+}
+.mkt-fr-label { font-size: 0.74rem; color: var(--text-muted); }
+.mkt-fr-value { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); }
+.mkt-fr-note { margin: 10px 0 0; font-size: 0.74rem; color: var(--text-muted); }
+
 /* ── 메인 비교 그래프 (smart chart) ── */
 .marketing-smart-chart {
   padding: 16px 18px;
