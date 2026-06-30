@@ -1,0 +1,294 @@
+/* ────────────────────────────────────────────────────────────────────────────
+ * Marketing Customer Behavior Modal v0
+ * 행동 추적 관제 톤 — dark teal/slate. "연결 안 됨"이 실패(red)가 아니라 "준비 상태"로 보이게.
+ * 모든 색은 index.css 토큰 사용(하드코딩 최소). PII/숫자 fake 없음.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+.mcb-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-overlay, rgba(0, 0, 0, 0.72));
+  backdrop-filter: blur(5px);
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: mcb-overlay-in 0.16s ease;
+}
+@keyframes mcb-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+
+.mcb-modal {
+  width: min(1040px, 100%);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--modal-bg, #0b1218);
+  border: 1px solid var(--modal-border, #1e2c39);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--accent-border);
+  overflow: hidden;
+  animation: mcb-modal-in 0.18s ease;
+}
+@keyframes mcb-modal-in { from { opacity: 0; transform: translateY(8px) scale(0.99); } to { opacity: 1; transform: none; } }
+
+/* ── 헤더 ── */
+.mcb-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line-subtle);
+  background:
+    radial-gradient(circle at 0% 0%, var(--accent-glow), transparent 60%),
+    var(--bg-panel-strong);
+}
+.mcb-eyebrow {
+  display: inline-block;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--accent-primary);
+  margin-bottom: 6px;
+}
+.mcb-title {
+  margin: 0 0 8px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.mcb-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 760px;
+}
+.mcb-close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--line-subtle);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.mcb-close:hover { color: var(--text-primary); border-color: var(--accent-border); background: var(--card-hover); }
+.mcb-close:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+
+/* ── 본문(스크롤) ── */
+.mcb-body {
+  padding: 18px 24px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.mcb-section { display: flex; flex-direction: column; gap: 10px; }
+.mcb-section-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 650;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.mcb-section-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* ── 6-1. 상태 요약 카드 ── */
+.mcb-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.mcb-status-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  border-left: 3px solid var(--line-strong);
+}
+.mcb-status-card.status-ready { border-left-color: var(--accent-primary); }
+.mcb-status-card.status-disconnected { border-left-color: var(--warning); }
+.mcb-status-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.mcb-status-title { font-size: 0.92rem; font-weight: 650; color: var(--text-primary); }
+.mcb-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.mcb-status-badge.badge-disconnected { color: var(--warning); background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.3); }
+.mcb-status-badge.badge-ready { color: var(--accent-primary); background: var(--accent-soft); border: 1px solid var(--accent-border); }
+.mcb-status-desc { margin: 0; font-size: 0.8rem; line-height: 1.45; color: var(--text-secondary); }
+
+/* ── 6-2. 퍼널 ── */
+.mcb-funnel {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mcb-funnel-step {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  position: relative;
+}
+/* 단계 사이 연결선 느낌(아래 방향 흐름) */
+.mcb-funnel-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 27px;
+  bottom: -8px;
+  width: 1px;
+  height: 8px;
+  background: var(--line-strong);
+}
+.mcb-funnel-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+.mcb-funnel-stage { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); }
+.mcb-funnel-badge {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--line-strong);
+  white-space: nowrap;
+}
+
+/* ── 6-3. 인기 클릭 placeholder ── */
+.mcb-popular-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.mcb-popular-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mcb-popular-head { display: flex; flex-direction: column; gap: 4px; }
+.mcb-popular-title { font-size: 0.92rem; font-weight: 650; color: var(--text-primary); }
+.mcb-popular-status {
+  font-size: 0.74rem;
+  color: var(--warning);
+}
+.mcb-popular-willshow-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.mcb-popular-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.mcb-popular-item {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  padding-left: 14px;
+  position: relative;
+}
+.mcb-popular-item::before {
+  content: '–';
+  position: absolute;
+  left: 0;
+  color: var(--accent-primary);
+}
+
+/* ── 6-4. 체크리스트 ── */
+.mcb-checklist-count {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.mcb-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mcb-check-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-subtle);
+}
+.mcb-check-icon { font-size: 0.9rem; color: var(--text-muted); text-align: center; }
+.mcb-check-row.connected .mcb-check-icon { color: var(--accent-primary); }
+.mcb-check-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mcb-check-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+.mcb-check-desc { font-size: 0.76rem; color: var(--text-muted); }
+.mcb-check-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mcb-check-status.pending { color: var(--warning); background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.26); }
+.mcb-check-status.connected { color: var(--accent-primary); background: var(--accent-soft); border: 1px solid var(--accent-border); }
+
+.mcb-footnote {
+  margin: 4px 0 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-subtle);
+}
+
+/* ── 반응형 ── */
+@media (max-width: 640px) {
+  .mcb-overlay { padding: 12px; }
+  .mcb-modal { max-height: 90vh; }
+  .mcb-body { padding: 16px 16px 20px; }
+  .mcb-funnel-step { grid-template-columns: 24px 1fr; }
+  .mcb-funnel-badge { grid-column: 2; justify-self: start; }
+  .mcb-check-row { grid-template-columns: 18px 1fr; }
+  .mcb-check-status { grid-column: 2; justify-self: start; }
+}
+
+/* ── 라이트 모드 미세 보정 ── */
+[data-theme='light'] .mcb-status-badge.badge-disconnected,
+[data-theme='light'] .mcb-popular-status,
+[data-theme='light'] .mcb-check-status.pending { color: var(--warning); }

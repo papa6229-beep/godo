@@ -15,6 +15,8 @@ import {
   type MarketingInsight
 } from '../services/marketingAnalysisFacts';
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartSeries } from '../services/marketingChatChartSpec';
+import { MarketingCustomerBehaviorModal } from './MarketingCustomerBehaviorModal';
+import { CUSTOMER_BEHAVIOR_EVENTS, connectedBehaviorEventCount } from '../services/marketingCustomerBehaviorEvents';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Marketing Analysis Dashboard v0.1 — Focused Insight Layout
@@ -651,6 +653,10 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
   const [endDate, setEndDate] = useState('');
   const [appliedCustom, setAppliedCustom] = useState<{ start?: string; end?: string }>({});
   const [focus, setFocus] = useState<MarketingFocusMetric>('aov');
+  // 고객 행동 분석 modal(클릭형 KPI 진입점). 행동 데이터는 만들지 않음 — 수집 준비 상태 UI만.
+  const [behaviorModalOpen, setBehaviorModalOpen] = useState(false);
+  const behaviorConnected = connectedBehaviorEventCount(); // 현재 0
+  const behaviorTotal = CUSTOMER_BEHAVIOR_EVENTS.length; // 8
 
   const period = useMemo<MarketingAnalysisPeriod>(
     () => (preset === 'custom' ? { preset, startDate: appliedCustom.start, endDate: appliedCustom.end } : { preset }),
@@ -688,6 +694,9 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
   );
 
   const s = facts.summary;
+  // 신규/재구매 고객 비교(하단 카드용) — facts가 이미 계산한 값만 사용, 신규 집계 없음.
+  const firstRevenueShare = s.totalRevenue > 0 ? Math.round((s.firstPurchaseRevenue / s.totalRevenue) * 100) : 0;
+  const repeatRevenueShare = s.totalRevenue > 0 ? Math.round((s.repeatPurchaseRevenue / s.totalRevenue) * 100) : 0;
   const view = useMemo(() => buildFocusView(focus, facts, PERIOD_LABEL[preset]), [focus, facts, preset]);
   // 상위 3~4개만 먼저 노출(나머지는 [세부 분석]에서 확인). facts.insights.map + idx<4 가드.
   const INSIGHT_LIMIT = 4;
@@ -759,9 +768,26 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         <KpiCard label="총매출" value={s.totalRevenue} kind="won" tone="primary" />
         <KpiCard label="주문수" value={s.orderCount} kind="count" />
         <KpiCard label={view.selectedKpi.label} value={view.selectedKpi.value} kind={view.selectedKpi.kind} tone="focus" />
-        <div className="mkt-kpi-card mkt-kpi-compare">
-          <span className="mkt-kpi-label">{view.comparison.label}</span>
-          <span className="mkt-kpi-compare-text">{view.comparison.text}</span>
+        {/* 4번째 KPI — 클릭형 진입점 "고객 행동 분석" (수치 카드 아님). 클릭/Enter/Space로 modal. */}
+        <div
+          className="mkt-kpi-card mkt-kpi-behavior"
+          role="button"
+          tabIndex={0}
+          aria-label={`고객 행동 분석 — 추적 이벤트 ${behaviorConnected}/${behaviorTotal} 연결됨. 클릭하면 고객 행동 흐름 분석이 열립니다.`}
+          aria-haspopup="dialog"
+          onClick={() => setBehaviorModalOpen(true)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBehaviorModalOpen(true); } }}
+        >
+          <div className="mkt-kpi-behavior-top">
+            <span className="mkt-kpi-label">고객 행동 분석</span>
+            <span className="mkt-kpi-behavior-badge">Not connected</span>
+          </div>
+          <span className="mkt-kpi-value tabular-nums mkt-kpi-behavior-value">
+            {behaviorConnected} / {behaviorTotal}
+            <span className="mkt-kpi-behavior-unit">추적 이벤트 준비 필요</span>
+          </span>
+          <span className="mkt-kpi-behavior-desc">GA4/GTM 연결 후 실제 행동 흐름 분석 가능</span>
+          <span className="mkt-kpi-behavior-hint">클릭해서 행동 흐름 보기 →</span>
         </div>
       </div>
 
@@ -773,6 +799,11 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         <div className="marketing-smart-chart-head">
           <h3 className="mkt-section-title">선택 지표 비교 그래프 · {view.chipLabel}</h3>
           <p className="marketing-smart-chart-desc">{view.chart.desc}</p>
+          {/* 선택 지표 비교 요약(상단 KPI에서 이곳으로 이동 — focus에 따라 변함) */}
+          <div className="mkt-kpi-compare marketing-inline-compare">
+            <span className="mkt-kpi-label">{view.comparison.label}</span>
+            <span className="mkt-kpi-compare-text">{view.comparison.text}</span>
+          </div>
         </div>
         <div className="marketing-smart-chart-bars">
           {view.chart.bars.length === 0 ? (
@@ -837,6 +868,29 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
       {/* ── 세부 분석 (기존 차원 카드 재배치) ── */}
       <div className="marketing-detail-section">
         <h3 className="mkt-section-title">📂 세부 분석</h3>
+        {/* 신규/재구매 고객 비교 — 상단 KPI에서 이동(삭제 아님). facts 기존 계산값만 사용. */}
+        <div className="mkt-first-repeat-card">
+          <h4 className="mkt-dim-title">신규/재구매 고객 비교</h4>
+          <div className="mkt-first-repeat-grid">
+            <div className="mkt-fr-cell">
+              <span className="mkt-fr-label">첫구매 객단가</span>
+              <span className="mkt-fr-value tabular-nums">{won(s.firstPurchaseAverageOrderValue)}</span>
+            </div>
+            <div className="mkt-fr-cell">
+              <span className="mkt-fr-label">재구매 객단가</span>
+              <span className="mkt-fr-value tabular-nums">{won(s.repeatPurchaseAverageOrderValue)}</span>
+            </div>
+            <div className="mkt-fr-cell">
+              <span className="mkt-fr-label">첫구매 매출 비중</span>
+              <span className="mkt-fr-value tabular-nums">{firstRevenueShare}%</span>
+            </div>
+            <div className="mkt-fr-cell">
+              <span className="mkt-fr-label">재구매 매출 비중</span>
+              <span className="mkt-fr-value tabular-nums">{repeatRevenueShare}%</span>
+            </div>
+          </div>
+          <p className="mkt-fr-note">※ 첫구매/재구매는 주문 단위 관찰값이며 인과를 단정하지 않습니다.</p>
+        </div>
         <div className="mkt-dim-grid">
           <DimensionBlock title="회원그룹별 매출" markerClass="mkt-dim-memberGroup" items={facts.byMemberGroup} />
           <DimensionBlock title="주문채널별 매출" markerClass="mkt-dim-channel" items={facts.byOrderChannel} />
@@ -870,6 +924,9 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
       <p className="mkt-footnote">
         ※ 분석·관찰 facts만 제공하며, 캠페인 실행/광고 집행/회원 수정 등 외부 실행은 승인 전 하지 않습니다. (실제 WRITE 없음)
       </p>
+
+      {/* 고객 행동 분석 modal — 클릭형 KPI 진입. 닫힘 시 null 반환(MetricDrilldownModal 패턴). */}
+      <MarketingCustomerBehaviorModal isOpen={behaviorModalOpen} onClose={() => setBehaviorModalOpen(false)} />
     </div>
   );
 };
