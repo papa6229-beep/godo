@@ -5,7 +5,7 @@ import type {
   MarketingBehaviorStorageAppendResult,
   MarketingBehaviorStoredEvent
 } from './marketingBehaviorStorageTypes.js';
-import { appendMarketingBehaviorEvents, getMarketingBehaviorEventStoreStats } from './marketingBehaviorEventStore.js';
+import { appendMarketingBehaviorEvents, getMarketingBehaviorEventStoreStats, getRecentMarketingBehaviorEventsForSummary } from './marketingBehaviorEventStore.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Marketing Behavior Persistent Store — adapter selection v0
@@ -49,6 +49,9 @@ export function createDevBufferMarketingBehaviorStorage(): MarketingBehaviorStor
         persistentReady: false,
         note: 'In-memory dev buffer — 비영속(serverless 재시작/배포 시 소실). 누적 분석엔 영속 저장소 필요.'
       };
+    },
+    async getRecentEventsForAggregation(): Promise<SafeMarketingBehaviorEvent[]> {
+      return getRecentMarketingBehaviorEventsForSummary();
     }
   };
 }
@@ -64,6 +67,10 @@ export function createPendingMarketingBehaviorStorage(note: string): MarketingBe
     async getStats(): Promise<MarketingBehaviorStorageStats> {
       const s = getMarketingBehaviorEventStoreStats();
       return { mode: 'pending', eventCount: s.count, maxEvents: s.max, persistentReady: false, note };
+    },
+    // pending 모드: 영속 미준비 → summary는 live로 보지 않는다(빈 배열 → collecting 표시).
+    async getRecentEventsForAggregation(): Promise<SafeMarketingBehaviorEvent[]> {
+      return [];
     }
   };
 }

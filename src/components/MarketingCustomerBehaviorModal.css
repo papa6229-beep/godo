@@ -78,6 +78,26 @@
 .mcb-demo-badge.small { font-size: 0.64rem; padding: 1px 7px; }
 .mcb-demo-badge.small::before { content: ''; }
 
+/* ── live 배지(실제 수집 데이터) ── */
+.mcb-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-primary);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mcb-live-badge::before { content: '●'; font-size: 0.6rem; }
+.mcb-source-note { margin: 0; font-size: 0.78rem; line-height: 1.5; color: var(--text-secondary); }
+.mcb-source-note.mcb-source-live { color: var(--accent-primary); }
+.mcb-source-count { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
 /* ── 본문(스크롤) ── */
 .mcb-body { padding: 18px 24px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
 .mcb-section { display: flex; flex-direction: column; gap: 10px; }

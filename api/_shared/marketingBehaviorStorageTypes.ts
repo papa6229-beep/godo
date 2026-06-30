@@ -43,4 +43,7 @@ export interface MarketingBehaviorStorage {
     context?: { shopId?: string; schemaVersion?: number }
   ) => Promise<MarketingBehaviorStorageAppendResult>;
   getStats: () => Promise<MarketingBehaviorStorageStats>;
+  // ★ server-only: summary 집계용 최근 safe events 조회. raw event 조회 "API"로 노출하지 않는다.
+  //   (route로 dump하지 않으며, summary API는 이 결과를 집계해 insights만 반환한다.)
+  getRecentEventsForAggregation: () => Promise<SafeMarketingBehaviorEvent[]>;
 }

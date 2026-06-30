@@ -94,6 +94,10 @@ CREATE TABLE marketing_behavior_events (
 - **필요 환경변수(택1)**: `KV_REST_API_URL`+`KV_REST_API_TOKEN` / `UPSTASH_REDIS_REST_URL`+`UPSTASH_REDIS_REST_TOKEN` / `POSTGRES_URL`(또는 `DATABASE_URL`/`NEON_DATABASE_URL`) / `SUPABASE_URL`+`SUPABASE_SERVICE_ROLE_KEY`.
   - 이 중 하나가 설정되면 adapter는 현재 **`pending`** 으로 전환되어(이벤트는 dev buffer로 손실 없이 보존) "adapter 구현 필요"를 신호한다. 실제 영속화는 해당 백엔드 adapter 구현 후 `persistent`가 된다.
 
+## 7-1. Live wiring과 dev_buffer 한계 (Summary Live Wiring v0 이후)
+
+`GET /api/marketing/behavior-summary`가 storage의 최근 safe events를 서버에서 집계해 모달에 insights를 공급한다(raw event 미노출). 단 **현재는 dev_buffer 기반이라 serverless에서 비영속** — instance에 따라 데이터가 없을 수 있다. 따라서 **persistent backend 연결 전까지 live wiring은 구조 검증용**이고, 장기 누적 패턴은 persistent 승격 후 안정화된다. 문서: [MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md](./MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md).
+
 ## 8. 이번 작업에서 하지 않는 것
 
 - ❌ dashboard live wiring 없음 · 고객 행동 모달 live 연결 없음

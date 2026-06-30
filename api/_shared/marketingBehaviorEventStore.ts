@@ -37,6 +37,13 @@ export function getMarketingBehaviorEventStoreStats(): {
   return { count: buffer.length, max: MAX_BUFFER_SIZE, totalAppended, lastAppendedAt, persistent: false };
 }
 
+// ★ server-only: summary 집계용 최근 safe events 복사본 반환(최신 limit개). route 아님.
+//   raw event를 외부로 dump하지 않으며, 호출부(summary service)가 집계 후 insights만 노출한다.
+export function getRecentMarketingBehaviorEventsForSummary(limit = MAX_BUFFER_SIZE): SafeMarketingBehaviorEvent[] {
+  if (limit >= buffer.length) return [...buffer];
+  return buffer.slice(buffer.length - limit);
+}
+
 // test 전용 초기화(route 아님 — 내부 함수).
 export function clearMarketingBehaviorEventStoreForTest(): void {
   buffer = [];
