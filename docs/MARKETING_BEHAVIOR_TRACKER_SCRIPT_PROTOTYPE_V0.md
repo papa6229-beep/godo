@@ -115,5 +115,6 @@ cleanup(); // 리스너 해제
 
 ## 10. 다음 단계
 
-- **Collection Endpoint v0** — `POST /api/marketing/behavior-events` + validation + PII reject (이 prototype payload를 받는 쪽)
-- 이후 **Godo Skin Integration Guide v0** → **Live Behavior Dashboard Wiring v0**
+- **Collection Endpoint v0** ✅ — `POST /api/marketing/behavior-events` 생성됨(validation + PII reject + dev buffer). 문서: [MARKETING_BEHAVIOR_COLLECTION_ENDPOINT_V0.md](./MARKETING_BEHAVIOR_COLLECTION_ENDPOINT_V0.md)
+  - ⚠️ **단, prototype은 아직 자동 전송하지 않는다.** 엔드포인트는 생겼지만 tracker의 `fetch`/`sendBeacon` 전송은 여전히 후속(**Tracker Send Adapter v0**)이다.
+- 이후 **Godo Skin Integration Guide v0** → **Persistent Storage v0** → **Live Behavior Dashboard Wiring v0**
