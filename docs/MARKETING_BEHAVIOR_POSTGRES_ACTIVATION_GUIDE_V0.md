@@ -1,5 +1,7 @@
 # Marketing Behavior Postgres Activation Guide v0
 
+> 📎 실제 고도몰 설치/전환 전체 도면: [Integration Readiness](./MARKETING_BEHAVIOR_GODO_INTEGRATION_READINESS_V0.md) · [Installation Checklist](./MARKETING_BEHAVIOR_GODO_INSTALLATION_CHECKLIST_V0.md) · [Shop Switch Runbook](./MARKETING_BEHAVIOR_SHOP_SWITCH_RUNBOOK_V0.md).
+
 > **한 줄**: 코드는 이미 Postgres 저장을 지원한다. 하지만 **env와 table이 없으면 dev_buffer(비영속)** 로 동작한다. 이 문서는 사용자가 **Vercel 환경변수 + DB schema**를 설정해 영속 저장을 **안전하게 켜는 절차**를 안내한다. (실제 활성화는 사용자가 직접 — 이 문서는 가이드다.)
 
 - adapter: [MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md)
