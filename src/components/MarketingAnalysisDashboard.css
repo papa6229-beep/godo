@@ -980,3 +980,12 @@
 .marketing-chart-spec-panel.mkt-chart-compact .commerce-chart {
   max-height: 220px;
 }
+
+/* Chart Grammar & Compact Renderer v0 — compact 비교 막대: tooltip 카드 제거 + 여백 축소 */
+.mkt-chart-compact-bars { margin-top: 2px; }
+.mkt-chart-compact-bars .marketing-chart-bucket { margin: 4px 0; }
+.mkt-chart-compact-bars .marketing-chart-series-bar-track { height: 14px; }
+/* compact 차트에서는 hover tooltip 카드를 띄우지 않는다(값은 막대에 표시됨, 깜빡임 방지) */
+.marketing-chart-spec-panel.mkt-chart-compact .marketing-chart-tooltip { display: none !important; }
+.marketing-chart-spec-panel.mkt-chart-compact .marketing-chart-grouped-bars,
+.marketing-chart-spec-panel.mkt-chart-compact .marketing-chart-ranked-bars { padding-top: 2px; }

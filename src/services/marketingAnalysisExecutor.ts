@@ -18,6 +18,7 @@ import {
 } from './marketingAnalysisQueryCompiler';
 import type { MarketingChatChartArtifact, MarketingChartSpec } from './marketingChatChartSpec';
 import { buildMarketingAnalysisNarrative } from './marketingAnalysisNarrative';
+import { selectMarketingChartType } from './marketingChartGrammar';
 
 export interface MarketingAnalysisRow {
   label: string; value: number; revenue: number; orderCount: number; aov: number; quantity: number;
@@ -123,7 +124,9 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
     }
     const rows = groups.map((g) => aggToRow(g.label, aggregateAllValid(scoped, g.pred), metric)).sort((a, b) => b.value - a.value);
     const title = `${plan.comparison.period ? resolvePeriodToRange(plan.comparison.period, nowMs ? new Date(nowMs).getFullYear() : 0, nowMs).label + ' ' : ''}${dim === 'coupon' ? '쿠폰 사용/미사용' : dim === 'firstRepeat' ? '첫구매/재구매' : dim === 'memberGroup' ? '회원그룹별' : '주문채널별'} ${label} 비교`;
-    const chartSpec = buildChartSpec({ id: `mkt_segment_${dim}_${metric}`, title, subtitle: label, metric, chartType: 'rankedBar', compact: rows.length <= 4,
+    // 객단가/주문수/매출 세그먼트 비교는 막대 비교(2~4개=compact groupedBar, 5+=rankedBar). 도넛 아님.
+    const segChartType = selectMarketingChartType({ intent: plan.intent, metric, comparisonType: 'segmentCompare', rowCount: rows.length, suppressed: plan.chart.suppressed });
+    const chartSpec = buildChartSpec({ id: `mkt_segment_${dim}_${metric}`, title, subtitle: `${label}${rows.some((r) => r.orderCount) ? ' · 주문수' : ''}`, metric, chartType: segChartType, compact: rows.length <= 4,
       series: [{ key: metric, label, metric, points: rows.map((r) => ({ bucketKey: r.label, bucketLabel: r.label, value: r.value, orderCount: r.orderCount, revenue: r.revenue, averageOrderValue: r.aov })) }] });
     return { plan, title, metricLabel: label, rows, available: rows.some((r) => r.value > 0), unsupported: false, chartSpec, diff: diffOf(rows) };
   }
@@ -136,7 +139,7 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
       points: Array.from({ length: 12 }, (_, i) => { const a = aggregateRange(orders, y, i + 1, i + 1); return { bucketKey: `${i + 1}`, bucketLabel: `${i + 1}월`, value: valueOf(a, metric), orderCount: a.orderCount, revenue: a.revenue, averageOrderValue: a.aov }; })
     }));
     const title = `${years.join('·')}년 월별 ${label} 비교`;
-    const chartSpec = buildChartSpec({ id: `mkt_monthly_trend_${metric}`, title, subtitle: `월별 · ${label}`, metric, chartType: 'groupedBar', compact: false, series });
+    const chartSpec = buildChartSpec({ id: `mkt_monthly_trend_${metric}`, title, subtitle: `월별 · ${label}`, metric, chartType: selectMarketingChartType({ intent: plan.intent, metric, comparisonType: 'monthlyTrend', rowCount: years.length, suppressed: plan.chart.suppressed }), compact: false, series });
     const rows = years.map((y, idx) => { const tot = series[idx].points.reduce((s, p) => ({ r: s.r + (p.revenue ?? 0), c: s.c + (p.orderCount ?? 0) }), { r: 0, c: 0 }); const agg: Agg = withAov({ revenue: tot.r, orderCount: tot.c, quantity: 0, aov: 0 }); return aggToRow(`${y}년 합계`, agg, metric); });
     return { plan, title, metricLabel: label, rows, available: series.some((s) => s.points.some((p) => p.value > 0)), unsupported: false, chartSpec, diff: diffOf(rows) };
   }
@@ -148,7 +151,7 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
     const sample = resolvePeriodToRange(period, years[0], nowMs);
     const spanLabel = sample.startMonth === sample.endMonth ? `${sample.startMonth}월` : `${sample.startMonth}~${sample.endMonth}월`;
     const title = `${years.map((y) => `${y}년 ${spanLabel}`).join(' vs ')} ${label} 비교`;
-    const chartSpec = buildChartSpec({ id: `mkt_yoy_${metric}`, title, subtitle: `${spanLabel} · ${label}`, metric, chartType: 'groupedBar', compact: rows.length <= 4,
+    const chartSpec = buildChartSpec({ id: `mkt_yoy_${metric}`, title, subtitle: `${spanLabel} · ${label}`, metric, chartType: selectMarketingChartType({ intent: plan.intent, metric, comparisonType: 'yearOverYear', rowCount: rows.length, suppressed: plan.chart.suppressed }), compact: rows.length <= 4,
       series: [{ key: metric, label, metric, points: rows.map((r) => ({ bucketKey: r.label, bucketLabel: r.label, value: r.value, orderCount: r.orderCount, revenue: r.revenue, averageOrderValue: r.aov })) }] });
     return { plan, title, metricLabel: label, rows, available: rows.some((r) => r.value > 0), unsupported: false, chartSpec, diff: diffOf(rows) };
   }
@@ -159,7 +162,7 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
     const r = resolvePeriodToRange(plan.period, ctxYear, nowMs);
     const row = aggToRow(r.label, aggregateRange(orders, r.year, r.startMonth, r.endMonth), metric);
     const title = `${r.label} ${label}`;
-    const chartSpec = buildChartSpec({ id: `mkt_single_${metric}`, title, subtitle: label, metric, chartType: 'groupedBar', compact: true,
+    const chartSpec = buildChartSpec({ id: `mkt_single_${metric}`, title, subtitle: label, metric, chartType: selectMarketingChartType({ intent: plan.intent, metric, rowCount: 1, suppressed: plan.chart.suppressed }), compact: true,
       series: [{ key: metric, label, metric, points: [{ bucketKey: r.label, bucketLabel: r.label, value: row.value, orderCount: row.orderCount, revenue: row.revenue, averageOrderValue: row.aov }] }] });
     return { plan, title, metricLabel: label, rows: [row], available: row.value > 0, unsupported: false, chartSpec };
   }
