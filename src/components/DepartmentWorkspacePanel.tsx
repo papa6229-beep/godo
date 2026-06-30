@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import './DepartmentWorkspacePanel.css';
 import {
   fetchAdminProducts,
@@ -201,6 +201,15 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const team = TEAMS.find((t) => t.id === selectedTeamId) as TeamConfig;
   const messages = chatLog[selectedTeamId];
 
+  // 채팅 자동 스크롤 — 새 메시지/작성중 상태 변경 시 최하단으로(답변 높이 반영 후 rAF로 한 번 더).
+  const chatLogRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = chatLogRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    return () => cancelAnimationFrame(id);
+  }, [messages, sending, selectedTeamId]);
+
   // 가상 소스 표기(배지/요약용). 기본 Commerce Universe.
   const synSourceLabel = (): string => {
     const src = productData.revenue?.syntheticSource;
@@ -248,9 +257,10 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       if (rev?.orders?.length) {
         // 0순위: Scope Insight Engine(질문→분석 범위→insight pack). 깊은 보조 분석 + 안정 chartSpec.
         const scopeInsight = buildMarketingScopeInsightResponse({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries });
-        if (scopeInsight.handled && scopeInsight.reply && scopeInsight.artifact) {
+        if (scopeInsight.handled && scopeInsight.reply) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: scopeInsight.reply }] }));
-          setMarketingChartArtifact(scopeInsight.artifact);
+          // 차트 억제 요청("그래프 보여주지 마")이면 이전 그래프를 비우고 답변 텍스트만 표시.
+          setMarketingChartArtifact(scopeInsight.suppressChart ? null : (scopeInsight.artifact ?? null));
           try {
             const hints = findSimilarMarketingAnalysisMemories({ question: text, limit: 5 });
             setMarketingMemoryHintCount(hints.length);
@@ -537,7 +547,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           />
         )}
 
-        <div className="dept-chat-log">
+        <div className="dept-chat-log" ref={chatLogRef}>
           {messages.length === 0 ? (
             <div className="dept-chat-empty">
               <p>아직 지시한 내용이 없습니다.</p>
