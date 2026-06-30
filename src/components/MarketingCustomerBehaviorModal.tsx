@@ -3,6 +3,7 @@ import './MarketingCustomerBehaviorModal.css';
 import { CUSTOMER_BEHAVIOR_EVENTS, TOTAL_BEHAVIOR_EVENTS, connectedBehaviorEventCount } from '../services/marketingCustomerBehaviorEvents';
 import { buildMarketingBehaviorInsights } from '../services/marketingBehaviorInsights';
 import { demoMarketingBehaviorEvents } from '../services/marketingBehaviorDemoData';
+import { useMarketingBehaviorSummary } from '../hooks/useMarketingBehaviorSummary';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Marketing Customer Behavior Modal v0.1 + Data Contract v0 — 운영자 친화 행동 분석 화면
@@ -24,6 +25,12 @@ const DemoBadge: React.FC<{ small?: boolean }> = ({ small }) => (
     데모 예시
   </span>
 );
+
+const LiveBadge: React.FC = () => (
+  <span className="mcb-live-badge" title="최근 수집된 실제 고객 행동 데이터 기준">실제 수집 데이터</span>
+);
+
+type ModalDataSource = 'live' | 'demo' | 'pending' | 'error';
 
 const PctBar: React.FC<{ label: string; pct: number; tone: string; max?: number }> = ({ label, pct, tone, max = 100 }) => (
   <div className="mcb-bar-row">
@@ -48,16 +55,30 @@ export const MarketingCustomerBehaviorModal: React.FC<Props> = ({ isOpen, onClos
     return () => document.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
-  // 행동 인사이트 — 현재는 데모 input. 실 수집 시 input만 교체하면 됨(UI 불변).
-  const insights = React.useMemo(
+  // 모달 열릴 때만 안전 summary 조회(원시 이벤트 미노출 — 집계 insights만). 네트워크는 hook 내부에서만.
+  const summary = useMarketingBehaviorSummary({ enabled: isOpen });
+
+  // 데모 insights(fallback) — 승인된 "데모 예시" 수치.
+  const demoInsights = React.useMemo(
     () => buildMarketingBehaviorInsights(demoMarketingBehaviorEvents, { mode: 'demo', fallbackDemo: true }),
     []
   );
 
   if (!isOpen) return null;
 
+  // live data 있으면 live insights, 없으면 demo fallback. error/pending도 demo 유지.
+  const hasLive = summary.status === 'live' && summary.hasLiveData && summary.insights != null;
+  const dataSource: ModalDataSource = hasLive
+    ? 'live'
+    : summary.status === 'error'
+      ? 'error'
+      : summary.storageMode === 'pending'
+        ? 'pending'
+        : 'demo';
+  const insights = hasLive && summary.insights ? summary.insights : demoInsights;
+
   const connected = connectedBehaviorEventCount();
-  const isDemo = insights.dataStatus.isDemo;
+  const isDemo = !hasLive; // live가 아니면 데모 예시 배지 유지
   const { topSources } = insights.acquisition;
   const { topPaths, dropOffs, summaryCards } = insights;
   const inflowMax = topSources[0]?.sharePercent ?? 100;
@@ -82,19 +103,32 @@ export const MarketingCustomerBehaviorModal: React.FC<Props> = ({ isOpen, onClos
           <div className="mcb-header-text">
             <div className="mcb-title-row">
               <h2 id="mcb-title" className="mcb-title">고객 행동 분석</h2>
-              {isDemo && <DemoBadge />}
+              {dataSource === 'live' ? <LiveBadge /> : <DemoBadge />}
             </div>
             <p className="mcb-subtitle">
               손님이 <strong>어디서 들어와서</strong>, 쇼핑몰 안에서 <strong>어디로 이동하고</strong>,
               <strong> 무엇을 많이 누르고</strong>, <strong>어디서 빠져나가는지</strong>를 쉽게 보여주는 화면입니다.
             </p>
-            {isDemo ? (
+            {/* 데이터 소스 상태 안내 (A.live / B.demo / C.pending / D.error) */}
+            {dataSource === 'live' ? (
+              <p className="mcb-source-note mcb-source-live">
+                ✅ 최근 수집된 고객 행동을 기준으로 계산했습니다.
+                {summary.eventCount != null && (
+                  <span className="mcb-source-count"> 수집 이벤트 {summary.eventCount.toLocaleString()}건 / 세션 {(summary.sessionCount ?? 0).toLocaleString()}개</span>
+                )}
+              </p>
+            ) : dataSource === 'pending' ? (
               <p className="mcb-demo-note">
-                ※ 아래 수치는 화면 구성을 보여주기 위한 <strong>데모 예시</strong>입니다. 실제 손님 데이터가 아니며,
-                추적이 연결되면 진짜 수치로 자동 바뀝니다.
+                저장소 연결 준비 중입니다. 실제 데이터가 연결되면 자동으로 행동 패턴을 표시합니다. 지금은 <strong>데모 예시</strong>를 보여줍니다.
+              </p>
+            ) : dataSource === 'error' ? (
+              <p className="mcb-demo-note">
+                실제 행동 요약을 불러오지 못해 <strong>예시 화면</strong>을 보여줍니다.
               </p>
             ) : (
-              <p className="mcb-demo-note">{insights.dataStatus.label}</p>
+              <p className="mcb-demo-note">
+                ※ 실제 수집된 고객 행동 데이터가 아직 없어 <strong>데모 예시</strong>를 보여줍니다. 추적이 연결되면 진짜 수치로 자동 바뀝니다.
+              </p>
             )}
           </div>
           <button type="button" className="mcb-close" onClick={onClose} aria-label="닫기">×</button>
@@ -217,10 +251,16 @@ export const MarketingCustomerBehaviorModal: React.FC<Props> = ({ isOpen, onClos
             </div>
           </details>
 
-          <p className="mcb-footnote">
-            ※ 이 화면의 수치는 모두 <strong>데모 예시</strong>(가상값)입니다. 실제 방문·클릭·이탈 데이터는 만들지 않으며,
-            추적이 연결되면 같은 화면에 진짜 수치가 자동으로 채워집니다.
-          </p>
+          {dataSource === 'live' ? (
+            <p className="mcb-footnote">
+              ※ 이 화면의 수치는 최근 수집된 <strong>실제 고객 행동</strong>을 기준으로 집계했습니다. 개별 손님을 식별하는 정보는 표시하지 않습니다.
+            </p>
+          ) : (
+            <p className="mcb-footnote">
+              ※ 이 화면의 수치는 모두 <strong>데모 예시</strong>(가상값)입니다. 실제 방문·클릭·이탈 데이터는 만들지 않으며,
+              추적이 연결되면 같은 화면에 진짜 수치가 자동으로 채워집니다.
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -67,6 +67,7 @@ storage events → aggregateMarketingBehaviorPatterns() → MarketingBehaviorAgg
 
 ## 10. 다음 단계
 
+- **Summary API & Live Modal Wiring v0** ✅ — 이 builder의 convert helper(동형 포팅)가 `GET /api/marketing/behavior-summary`에서 사용되어, **raw events가 아니라 insights만** 모달에 전달된다. 문서: [MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md](./MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md).
 - **Live Behavior Dashboard Wiring v0** — storage events → aggregate → convert → 모달.
 - **Persistent backend adapter** — dev_buffer → DB/KV(`persistent` 승격).
 - **Godo Skin Integration Guide v0** — 고도몰 스킨에 tracker 삽입.
