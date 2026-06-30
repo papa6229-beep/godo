@@ -7,7 +7,7 @@
 
 ## 1. 적용 방법
 
-이 v0는 **자동 DDL을 실행하지 않는다(기본 금지)**. 아래 SQL을 DB 콘솔(psql, Vercel Postgres, Neon, Supabase SQL editor 등)에서 직접 실행하거나 별도 마이그레이션 도구로 적용한다.
+이 v0는 **자동 DDL을 실행하지 않는다(기본 금지)**. 아래 SQL을 DB 콘솔(psql, Vercel Postgres, Neon, Supabase SQL editor 등)에서 **활성화 시 1회 직접 실행**하거나 별도 마이그레이션 도구로 적용한다. 전체 활성화 절차는 [Activation Guide](./MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md) 참고. `search_term`(검색어)은 **v0에서 의도적으로 미저장**(보수적) — 아래 스키마에 컬럼 없음.
 
 ```sql
 CREATE TABLE IF NOT EXISTS marketing_behavior_events (
