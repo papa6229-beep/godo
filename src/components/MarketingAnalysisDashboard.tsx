@@ -406,16 +406,16 @@ const ChartLegend: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec })
   </div>
 );
 
-const GroupedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+const GroupedBarChart: React.FC<{ chartSpec: MarketingChartSpec; compact?: boolean }> = ({ chartSpec, compact }) => {
   const [hover, setHover] = useState<{ bk: string; sk: string } | null>(null);
   const { keys, labels, truncated } = unionBuckets(chartSpec);
   const maxV = Math.max(1, ...chartSpec.series.flatMap((s) => s.points.filter((p) => keys.includes(p.bucketKey)).map((p) => p.value)));
   const byBucket = chartSpec.series.map((s) => ({ s, map: new Map(s.points.map((p) => [p.bucketKey, p])) }));
-  const payload = hover ? buildMarketingTooltipPayload({ chartSpec, bucketKey: hover.bk, seriesKey: hover.sk }) : null;
+  const payload = !compact && hover ? buildMarketingTooltipPayload({ chartSpec, bucketKey: hover.bk, seriesKey: hover.sk }) : null;
   return (
-    <div className="marketing-chart-grouped-bars">
+    <div className={`marketing-chart-grouped-bars${compact ? ' mkt-chart-compact-bars' : ''}`}>
       <ChartLegend chartSpec={chartSpec} />
-      <ChartTooltip payload={payload} />
+      {!compact && <ChartTooltip payload={payload} />}
       {keys.map((bk) => (
         <div className="marketing-chart-bucket" key={bk}>
           <div className="marketing-chart-bucket-label">{labels[bk] || bk}</div>
@@ -445,18 +445,18 @@ const GroupedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpe
   );
 };
 
-const LineChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+const LineChart: React.FC<{ chartSpec: MarketingChartSpec; compact?: boolean }> = ({ chartSpec, compact }) => {
   const [hover, setHover] = useState<{ bk: string; sk: string } | null>(null);
   const { keys, labels, truncated } = unionBuckets(chartSpec);
   const maxV = Math.max(1, ...chartSpec.series.flatMap((s) => s.points.filter((p) => keys.includes(p.bucketKey)).map((p) => p.value)));
   const n = keys.length;
   const x = (i: number): number => (n <= 1 ? 50 : (i / (n - 1)) * 100);
   const y = (v: number): number => 38 - (v / maxV) * 36 + 1;
-  const payload = hover ? buildMarketingTooltipPayload({ chartSpec, bucketKey: hover.bk, seriesKey: hover.sk }) : null;
+  const payload = !compact && hover ? buildMarketingTooltipPayload({ chartSpec, bucketKey: hover.bk, seriesKey: hover.sk }) : null;
   return (
     <div className="marketing-chart-line">
       <ChartLegend chartSpec={chartSpec} />
-      <ChartTooltip payload={payload} />
+      {!compact && <ChartTooltip payload={payload} />}
       <svg className="marketing-chart-line-svg" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label={chartSpec.title}>
         {chartSpec.series.map((s, si) => {
           const style = getMarketingSeriesVisualStyle(s.key, si, s.label);
@@ -495,15 +495,15 @@ const LineChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) =
   );
 };
 
-const RankedBarChart: React.FC<{ chartSpec: MarketingChartSpec }> = ({ chartSpec }) => {
+const RankedBarChart: React.FC<{ chartSpec: MarketingChartSpec; compact?: boolean }> = ({ chartSpec, compact }) => {
   const [hover, setHover] = useState<string | null>(null);
   const ranked = [...chartSpec.series].map((s) => ({ s, total: seriesTotal(s), orders: seriesOrderCount(s) })).sort((a, b) => b.total - a.total).slice(0, 8);
   const maxV = Math.max(1, ...ranked.map((r) => r.total));
-  const payload = hover ? buildMarketingTooltipPayload({ chartSpec, seriesKey: hover }) : null;
+  const payload = !compact && hover ? buildMarketingTooltipPayload({ chartSpec, seriesKey: hover }) : null;
   if (ranked.length === 0) return <p className="mkt-dim-empty">표시할 데이터가 없습니다.</p>;
   return (
-    <div className="marketing-chart-ranked-bars">
-      <ChartTooltip payload={payload} />
+    <div className={`marketing-chart-ranked-bars${compact ? ' mkt-chart-compact-bars' : ''}`}>
+      {!compact && <ChartTooltip payload={payload} />}
       {ranked.map((r, i) => {
         const style = getMarketingSeriesVisualStyle(r.s.key, i, r.s.label);
         return (
@@ -578,6 +578,8 @@ const toGroupedPoints = (chartSpec: MarketingChartSpec): CommerceGroupedBarChart
 //   P0: 단일 월별 매출은 combo(막대+꺾은선), 연도 비교는 vertical grouped bar(공통 SVG 컴포넌트).
 const renderMarketingChartSpecGraph = (chartSpec: MarketingChartSpec): React.ReactNode => {
   const route = resolveMarketingChartRoute(chartSpec);
+  // compact(2~4개 비교): 값이 막대에 이미 보이므로 hover tooltip 카드 비활성(깜빡임 방지). 막대 highlight만 유지.
+  const compact = chartSpec.series.flatMap((s) => s.points).length <= 4;
   if (route === 'combo') {
     return <CommerceComboChart points={toComboPoints(chartSpec)} barLabel={chartSpec.yAxisLabel || '매출'} lineLabel="추세" valueFormatter={(v) => formatMetricValue(v, chartSpec.unit)} />;
   }
@@ -588,15 +590,15 @@ const renderMarketingChartSpecGraph = (chartSpec: MarketingChartSpec): React.Rea
   if (chartSpec.series.length === 0) return <p className="mkt-dim-empty">표시할 데이터가 없습니다.</p>;
   switch (chartSpec.chartType) {
     case 'line':
-      return <LineChart chartSpec={chartSpec} />;
+      return <LineChart chartSpec={chartSpec} compact={compact} />;
     case 'rankedBar':
     case 'donut': // fallback: rankedBar 유사
-      return <RankedBarChart chartSpec={chartSpec} />;
+      return <RankedBarChart chartSpec={chartSpec} compact={compact} />;
     case 'table':
       return <TableChart chartSpec={chartSpec} />;
     case 'groupedBar':
     case 'stackedBar': // fallback: groupedBar 유사
-      return <GroupedBarChart chartSpec={chartSpec} />;
+      return <GroupedBarChart chartSpec={chartSpec} compact={compact} />;
     default:
       return <UnsupportedChart chartSpec={chartSpec} />;
   }
