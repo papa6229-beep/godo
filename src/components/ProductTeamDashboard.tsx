@@ -7,6 +7,7 @@ import type {
   StockImpactItem
 } from '../services/departmentDataService';
 import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
+import { REVENUE_METRIC_LABELS as RV } from '../services/revenueMetricContract';
 
 // 상품관리팀 매출/재고 대시보드 v1.1
 // - 데이터: /api/godomall/orders-revenue?includeSynthetic=true (orders/summary/stockImpact)
@@ -723,8 +724,8 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
           </div>
 
           <div className="ptd-kpi-grid">
-            <KpiCard icon="💰" label="상품매출" value={kpi.revenue} money sub="배송비 제외 (라인합)" accent={KPI_ACCENT[0]} />
-            <KpiCard icon="🧾" label="총 주문" value={kpi.orderCount} unit="건" sub={`실제 ${kpi.real} · 가상 ${kpi.synth}`} accent={KPI_ACCENT[1]} />
+            <KpiCard icon="💰" label="상품매출" value={kpi.revenue} money sub={RV.grossProductRevenue.basis} accent={KPI_ACCENT[0]} />
+            <KpiCard icon="🧾" label="총 주문" value={kpi.orderCount} unit="건" sub={`${RV.orderCountAll.basis} · 실제 ${kpi.real} · 가상 ${kpi.synth}`} accent={KPI_ACCENT[1]} />
             <KpiCard icon="📈" label="판매수량" value={kpi.sold} unit="개" sub={`복구 ${kpi.restored} · 순판매 ${kpi.net}`} accent={KPI_ACCENT[2]} />
             <KpiCard
               icon="📦"
@@ -739,6 +740,12 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
               riskBadge={kpi.riskCount}
             />
           </div>
+
+          <p className="ptd-kpi-basis-note">
+            ※ <b>상품매출·총 주문</b>은 전체 주문(취소·미입금·가상 포함)의 상품 라인 기준입니다.
+            마케팅팀 <b>총매출</b>은 취소·반품 제외 <b>유효 주문 순매출</b>이라 같은 기간이어도 수치가 다릅니다.
+            (공통 정의: <code>revenueMetricContract</code>)
+          </p>
 
           <div className="ptd-row">
             <div className="ptd-panel ptd-panel-wide">

@@ -10,6 +10,9 @@
 //   - 가입→구매 전환율 / 방문→주문 / 상품조회→구매 / 장바구니 / ROAS / CTR / GA4 / SNS는 계산 금지 →
 //     requiredData notice로만 남긴다(추측 생성 금지).
 //   - 인과관계 단정 금지. "쿠폰 때문에 매출이 올랐다"(X) → "쿠폰 사용 주문의 객단가가 높게 나타났다"(O).
+//   - 매출 집계 대상(유효 주문) 판정은 revenueMetricContract.isValidOrder로 단일화(부서 공통 기준).
+
+import { isValidOrder } from './revenueMetricContract';
 
 // ── 기간/축/필수데이터 타입 ───────────────────────────────────────────────────
 export type MarketingAnalysisPeriodPreset =
@@ -269,17 +272,9 @@ export function filterMarketingOrdersByPeriod<T extends { orderDate?: unknown }>
   });
 }
 
-// 매출 집계 대상 주문: 결제완료 & 미취소 (미결제/취소는 매출 미포함)
-// 입력 형태 2종 수용: 중첩 state{paid,canceled}(universe) / 평탄 paid·canceled(RevenueOrderLite).
-const isCounted = (o: OrderLike): boolean => {
-  if (o.state && (o.state.paid !== undefined || o.state.canceled !== undefined)) {
-    return bool(o.state.paid) && !bool(o.state.canceled);
-  }
-  if (o.paid !== undefined || o.canceled !== undefined) {
-    return bool(o.paid) && !bool(o.canceled);
-  }
-  return num(o.totalAmount) > 0; // 상태 정보 없으면 금액 기준 폴백
-};
+// 매출 집계 대상 주문: 결제완료 & 미취소 (미결제/취소는 매출 미포함).
+// revenueMetricContract.isValidOrder로 단일화 — 동일 로직(중첩 state / 평탄 paid·canceled / 금액 폴백).
+const isCounted = (o: OrderLike): boolean => isValidOrder(o);
 const hasCoupon = (o: OrderLike): boolean => bool(o.discountSummary?.hasCoupon);
 const usesMileage = (o: OrderLike): boolean => num(o.useMileageAmount) > 0;
 const usesDeposit = (o: OrderLike): boolean => num(o.useDepositAmount) > 0;
