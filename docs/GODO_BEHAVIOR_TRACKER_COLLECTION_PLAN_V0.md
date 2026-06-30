@@ -184,6 +184,7 @@ Response 초안:
 |---|---|---|
 | **1** | **Marketing Behavior Tracker Script Prototype v0** ✅ *(문서: [MARKETING_BEHAVIOR_TRACKER_SCRIPT_PROTOTYPE_V0.md](./MARKETING_BEHAVIOR_TRACKER_SCRIPT_PROTOTYPE_V0.md))* | 브라우저에서 이벤트 payload **생성·debug buffer까지만** · console/debug mode · **fetch/API 전송 없음**(다음 Collection Endpoint v0에서 검토) |
 | **2** | **Collection Endpoint v0** ✅ *(문서: [MARKETING_BEHAVIOR_COLLECTION_ENDPOINT_V0.md](./MARKETING_BEHAVIOR_COLLECTION_ENDPOINT_V0.md))* | `POST /api/marketing/behavior-events` · validation/PII reject/allowlist/batch limit · **dev in-memory buffer까지만**(DB·대시보드 live wiring은 후속) · **PII reject smoke** |
+| **2.5** | **Persistent Storage v0** ✅ *(문서: [MARKETING_BEHAVIOR_PERSISTENT_STORAGE_V0.md](./MARKETING_BEHAVIOR_PERSISTENT_STORAGE_V0.md))* | endpoint를 storage 인터페이스 뒤로 정리(dev_buffer↔persistent 갈아끼움) · 영속 저장소 없으면 fake 금지·`persistentReady:false` · **누적 패턴 분석엔 영속 저장소 필요** |
 | **3** | **Godo Skin Integration Guide v0** | 고도몰 공통 레이아웃/외부 스크립트 삽입 가이드 · data attribute 적용 · 배너/카테고리/상품/검색/장바구니 selector 확인 |
 | **4** | **Live Behavior Dashboard Wiring v0** | 수집 이벤트 → `buildMarketingBehaviorInsights(liveEvents, { mode: 'live', fallbackDemo: false })` · demo/live toggle 또는 dataStatus 자동 전환 |
 | **5** | **GA4/GTM Adapter v0** | 필요 시 외부 분석 도구 데이터를 **같은 MarketingBehaviorEvent/Insights 계약**으로 변환 |

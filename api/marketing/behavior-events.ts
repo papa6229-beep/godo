@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { validateMarketingBehaviorCollectionRequest, isBehaviorOriginAllowed } from '../_shared/marketingBehaviorCollectionValidator.js';
-import { appendMarketingBehaviorEvents } from '../_shared/marketingBehaviorEventStore.js';
+import { getMarketingBehaviorStorage } from '../_shared/marketingBehaviorPersistentStore.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // POST /api/marketing/behavior-events
@@ -17,7 +17,10 @@ interface ExtendedRequest extends IncomingMessage {
   body?: unknown;
 }
 
-export default function handler(req: ExtendedRequest, res: VercelResponse) {
+const asObject = (v: unknown): Record<string, unknown> | undefined =>
+  (typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
+
+export default async function handler(req: ExtendedRequest, res: VercelResponse) {
   const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
 
   // CORS preflight 최소 지원
@@ -53,8 +56,13 @@ export default function handler(req: ExtendedRequest, res: VercelResponse) {
     return;
   }
 
-  // 수용된 이벤트만 dev buffer에 저장(DB 아님, 비영속)
-  const accepted = appendMarketingBehaviorEvents(result.acceptedEvents);
+  // 수용된 이벤트를 storage interface로 저장(dev_buffer/pending — 환경에 따라). DB WRITE 아님.
+  const client = asObject(asObject(req.body)?.client);
+  const shopId = typeof client?.shopId === 'string' ? client.shopId : undefined;
+  const schemaVersion = typeof client?.schemaVersion === 'number' ? client.schemaVersion : 0;
+  const storage = getMarketingBehaviorStorage();
+  const appendResult = await storage.appendEvents(result.acceptedEvents, { shopId, schemaVersion });
+
   const errors = [
     ...result.errors.map((reason) => ({ index: -1, reason })),
     ...result.rejected
@@ -62,9 +70,10 @@ export default function handler(req: ExtendedRequest, res: VercelResponse) {
 
   res.status(200).json({
     ok: result.ok,
-    accepted,
+    accepted: appendResult.accepted,
     rejected: result.rejected.length,
-    mode: 'dev_buffer',
+    mode: appendResult.mode,
+    storage: { mode: appendResult.mode, persistentReady: appendResult.mode === 'persistent' },
     ...(errors.length > 0 ? { errors } : {})
   });
 }
