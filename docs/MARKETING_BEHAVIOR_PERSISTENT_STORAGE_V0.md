@@ -105,6 +105,6 @@ CREATE TABLE marketing_behavior_events (
 ## 9. 다음 단계
 
 - **Persistent storage 환경변수 연결** — 위 env 설정 + 해당 backend adapter 구현(`persistent`로 승격).
-- **Aggregated Pattern Builder v0** — 저장된 이벤트 → 기간/채널/상품 누적 집계.
+- **Aggregated Pattern Builder v0** ✅ — 저장된 이벤트 → 기간/채널/상품 누적 집계. 문서: [MARKETING_BEHAVIOR_AGGREGATED_PATTERN_BUILDER_V0.md](./MARKETING_BEHAVIOR_AGGREGATED_PATTERN_BUILDER_V0.md). **storage events를 바로 UI에 연결하지 않고 이 builder를 거친다**(raw → 패턴 → insights → 모달).
 - **Live Behavior Dashboard Wiring v0** — 집계 → `buildMarketingBehaviorInsights(liveEvents, { mode: 'live' })` → 모달.
 - **Godo Skin Integration Guide v0** — 고도몰 스킨에 tracker 삽입.
