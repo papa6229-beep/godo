@@ -104,7 +104,7 @@ POST /api/marketing/behavior-events
 
 ## 10. 다음 단계
 
-- **Tracker Send Adapter v0** — prototype에 optional send(`fetch`/`sendBeacon`) 추가(이 엔드포인트로 전송).
+- **Tracker Send Adapter v0** ✅ — prototype에 optional `transport` 추가, 이 엔드포인트를 `fetch`로 호출 가능. 문서: [MARKETING_BEHAVIOR_TRACKER_SEND_ADAPTER_V0.md](./MARKETING_BEHAVIOR_TRACKER_SEND_ADAPTER_V0.md). **단, 고도몰 실제 삽입과 dashboard live wiring은 여전히 후속.**
 - **Godo Skin Integration Guide v0** — 고도몰 스킨에 tracker 삽입.
 - **Persistent Storage v0** — dev buffer → DB/로그.
 - **Live Behavior Dashboard Wiring v0** — 수집 이벤트 → `buildMarketingBehaviorInsights(liveEvents, { mode: 'live', fallbackDemo: false })`.

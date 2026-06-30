@@ -3,6 +3,7 @@ import type {
   MarketingBehaviorEventName,
   MarketingTrafficSource
 } from './marketingBehaviorTypes';
+import type { MarketingBehaviorTransport } from './marketingBehaviorTrackerSendAdapter';
 import {
   MARKETING_BEHAVIOR_SOURCE_RULES,
   MARKETING_BEHAVIOR_ALLOWED_FIELDS,
@@ -220,10 +221,13 @@ const pushDebug = (event: MarketingBehaviorEvent, debug?: boolean): void => {
 export interface TrackerPrototypeOptions {
   debug?: boolean;
   sessionIdHash?: string;
+  // 선택적 전송 어댑터. 없으면 debug buffer만(기존 동작) — 자동 전송 없음.
+  transport?: MarketingBehaviorTransport;
 }
 
 // document에 click listener를 붙여 data-godo-track 클릭 시 payload 생성. cleanup 반환.
 // 앱에 자동 장착하지 않는다 — 호출자가 명시적으로 호출/해제.
+// transport가 주어진 경우에만 endpoint로 전송(전송 실패는 click handler를 깨지 않음).
 export const attachMarketingBehaviorTrackerPrototype = (options?: TrackerPrototypeOptions): (() => void) => {
   if (typeof document === 'undefined') return () => { /* no-op (SSR/non-browser) */ };
 
@@ -239,6 +243,10 @@ export const attachMarketingBehaviorTrackerPrototype = (options?: TrackerPrototy
     const context = readMarketingPageContext();
     const event = createMarketingBehaviorEvent({ eventName: meta.eventName, sessionIdHash, traffic, context, element: meta.fields });
     pushDebug(event, options?.debug);
+    // opt-in 전송: transport가 있을 때만. 실패해도 throw 전파 없음(UI 보호).
+    if (options?.transport) {
+      void options.transport.send([event]).catch(() => { /* swallow — UI 보호 */ });
+    }
   };
 
   document.addEventListener('click', handler, true);
