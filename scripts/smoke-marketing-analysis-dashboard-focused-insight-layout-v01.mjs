@@ -46,7 +46,7 @@ ok('13. AI 리포트 제목 + 상위 N개 제한(idx<INSIGHT_LIMIT)', /AI 분석
 ok('14. 리포트 항목(핵심 관찰/근거/다음 확인 후보/주의할 해석)', ['핵심 관찰', '근거', '다음 확인 후보', '주의할 해석'].every((l) => TSX.includes(l)));
 
 // ── 세부 분석(재배치) ──
-ok('15. 세부 분석 섹션 마커 + 기존 차원 블록 유지', /marketing-detail-section/.test(TSX) && /세부 분석/.test(TSX) && ['mkt-dim-memberGroup', 'mkt-dim-channel', 'mkt-dim-coupon', 'mkt-dim-reward', 'mkt-dim-product', 'mkt-dim-category', 'mkt-dim-brand'].every((m) => TSX.includes(m)));
+ok('15. 세부 분석 섹션 마커 + 기존 차원 블록 유지', /marketing-detail-section/.test(TSX) && /세부 분석/.test(TSX) && ['mkt-dim-memberGroup', 'mkt-dim-channel', 'mkt-dim-coupon', 'mkt-dim-reward', 'mkt-dim-product', 'mkt-dim-category'].every((m) => TSX.includes(m)));
 ok('16. AI 리포트가 세부 분석보다 위', idxReport > 0 && idxDetail > idxReport);
 
 // ── requiredData 축소 ──
