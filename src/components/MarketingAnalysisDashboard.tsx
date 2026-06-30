@@ -6,6 +6,7 @@ import { CommerceGroupedBarChart, type CommerceGroupedBarChartPoint } from './ch
 import { resolveMarketingChartRoute } from './charts/marketingChartRoute';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { RevenueResult, AdminProductsResult } from '../services/departmentDataService';
+import { REVENUE_METRIC_LABELS as RV } from '../services/revenueMetricContract';
 import {
   buildMarketingAnalysisFacts,
   type MarketingAnalysisPeriod,
@@ -790,6 +791,12 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
           <span className="mkt-kpi-behavior-hint">클릭해서 행동 흐름 보기 →</span>
         </div>
       </div>
+
+      <p className="mkt-kpi-basis-note">
+        ※ <b>총매출·주문수·객단가</b>는 {RV.netOrderRevenue.basis}입니다(객단가 = 유효 매출 ÷ 유효 주문수).
+        상품관리팀 <b>상품매출</b>은 전체 주문(취소·미입금·가상 포함) 라인 기준이라 같은 기간이어도 수치가 더 큽니다.
+        (공통 정의: <code>revenueMetricContract</code>)
+      </p>
 
       {/* ── 메인 비교 그래프 — artifact 있으면 chartSpec 우선, 없으면 기존 focus chart ── */}
       {marketingChartArtifact ? (
