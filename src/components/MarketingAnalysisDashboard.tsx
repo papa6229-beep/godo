@@ -8,6 +8,7 @@ import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { RevenueResult, AdminProductsResult } from '../services/departmentDataService';
 import { OPERATIONAL_METRIC_LABELS as OP } from '../services/departmentMetricContract';
 import { buildDepartmentSourceOfTruthSnapshot } from '../services/departmentDataSourceOfTruth';
+import { MarketingDetailModal, type MarketingDetailSortKey } from './MarketingDetailModal';
 import {
   buildMarketingAnalysisFacts,
   type MarketingAnalysisPeriod,
@@ -253,28 +254,38 @@ const groupMaxOf = (bars: FocusBar[], group: string): number => {
 };
 
 // KPI 카드 (카운터 애니메이션)
-const KpiCard: React.FC<{ label: string; value: number; kind: 'won' | 'count'; tone?: string }> = ({ label, value, kind, tone }) => {
+const KpiCard: React.FC<{ label: string; value: number; kind: 'won' | 'count'; tone?: string; icon?: string; sub?: string; accent?: string }> = ({ label, value, kind, tone, icon, sub, accent }) => {
   const v = useAnimatedNumber(value, { durationMs: 420 });
   return (
-    <div className={`mkt-kpi-card ${tone || ''}`}>
-      <span className="mkt-kpi-label">{label}</span>
+    <div className={`mkt-kpi-card ${tone || ''}${accent ? ' has-accent' : ''}`} style={accent ? ({ ['--mkt-kpi-accent']: accent } as React.CSSProperties) : undefined}>
+      {accent && <span className="mkt-kpi-accent-line" aria-hidden="true" />}
+      <span className="mkt-kpi-label">{icon ? `${icon} ` : ''}{label}</span>
       <span className="mkt-kpi-value tabular-nums">
         {Math.round(v).toLocaleString()}
         {kind === 'won' ? '원' : '건'}
       </span>
+      {sub && <span className="mkt-kpi-sub">{sub}</span>}
     </div>
   );
 };
 
-// 세부 분석 차원 블록 (기존 마커 유지: mkt-dim-*)
-const DimensionBlock: React.FC<{ title: string; markerClass: string; items: MarketingDimensionMetric[]; emptyText?: string }> = ({ title, markerClass, items, emptyText }) => (
+// 세부 분석 차원 블록 (기존 마커 유지: mkt-dim-*). limit: 기본 노출 수 제한, onExpand: 전체보기 모달.
+const DimensionBlock: React.FC<{ title: string; markerClass: string; items: MarketingDimensionMetric[]; emptyText?: string; limit?: number; onExpand?: () => void }> = ({ title, markerClass, items, emptyText, limit = 4, onExpand }) => {
+  const shown = items.slice(0, limit);
+  const hasMore = items.length > limit;
+  return (
   <div className={`mkt-dim-block ${markerClass}`}>
-    <h4 className="mkt-dim-title">{title}</h4>
+    <div className="mkt-dim-head">
+      <h4 className="mkt-dim-title">{title}</h4>
+      {onExpand && items.length > 0 && (
+        <button type="button" className="mkt-dim-expand" onClick={onExpand} aria-label={`${title} 전체보기`}>전체보기 →</button>
+      )}
+    </div>
     {items.length === 0 ? (
       <p className="mkt-dim-empty">{emptyText || '표시할 데이터가 없습니다.'}</p>
     ) : (
       <ul className="mkt-dim-list">
-        {items.map((it) => (
+        {shown.map((it) => (
           <li key={it.key} className="mkt-dim-row">
             <div className="mkt-dim-row-head">
               <span className="mkt-dim-label">{it.label || '미분류'}</span>
@@ -292,8 +303,14 @@ const DimensionBlock: React.FC<{ title: string; markerClass: string; items: Mark
         ))}
       </ul>
     )}
+    {hasMore && (
+      <button type="button" className="mkt-dim-more" onClick={onExpand} aria-label={`${title} 전체 ${items.length}개 보기`}>
+        +{items.length - limit}개 더 · 전체보기
+      </button>
+    )}
   </div>
-);
+  );
+};
 
 const SEV_LABEL: Record<MarketingInsight['severity'], string> = { info: '관찰', positive: '긍정', warning: '주의' };
 
@@ -657,6 +674,11 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
   const [focus, setFocus] = useState<MarketingFocusMetric>('aov');
   // 고객 행동 분석 modal(클릭형 KPI 진입점). 행동 데이터는 만들지 않음 — 수집 준비 상태 UI만.
   const [behaviorModalOpen, setBehaviorModalOpen] = useState(false);
+  // 기본 진입 상태 최적화: 비교 그래프/AI 리포트는 사용자가 비교를 "요청"한 뒤에만 확장.
+  const [hasRequestedComparison, setHasRequestedComparison] = useState(false);
+  // 세부 분석 "전체보기" 모달(표시 전용). 카드별 전체 항목/정렬.
+  const [detailModal, setDetailModal] = useState<{ title: string; items: MarketingDimensionMetric[]; sorts: MarketingDetailSortKey[] } | null>(null);
+  const requestComparison = (key: MarketingFocusMetric) => { setFocus(key); setHasRequestedComparison(true); };
   const behaviorConnected = connectedBehaviorEventCount(); // 현재 0
   const behaviorTotal = CUSTOMER_BEHAVIOR_EVENTS.length; // 8
 
@@ -722,8 +744,7 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         </button>
       </div>
       <p className="mkt-guide">
-        고도몰 주문·상품·CS 데이터 기준으로 <strong>계산 가능한 마케팅 분석만</strong> 표시합니다. 방문자, 광고비, ROAS, GA4, SNS 성과는 외부 데이터 연결 후
-        활성화됩니다.
+        현재는 <strong>고도몰 주문·상품·CS 데이터</strong> 기준으로 분석합니다. 외부 유입/광고비/방문 행동 데이터(ROAS·GA4·SNS 등)는 연결 후 확장됩니다.
       </p>
 
       {/* ── 기간 필터 ── */}
@@ -758,7 +779,7 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         <span className="marketing-focus-label">분석 지표</span>
         <div className="marketing-focus-chips">
           {FOCUS_CHIPS.map((c) => (
-            <button key={c.key} type="button" className={`marketing-focus-chip ${focus === c.key ? 'active' : ''}`} onClick={() => setFocus(c.key)}>
+            <button key={c.key} type="button" className={`marketing-focus-chip ${focus === c.key && hasRequestedComparison ? 'active' : ''}`} onClick={() => requestComparison(c.key)}>
               {c.label}
             </button>
           ))}
@@ -769,9 +790,9 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
 
       {/* ── 고정 KPI 2 + 선택 지표 + 비교 요약 (compact) ── */}
       <div className="marketing-kpi-compact-grid mkt-kpi-grid">
-        <KpiCard label={OP.operationalRevenue.label} value={snap?.operationalRevenue ?? s.totalRevenue} kind="won" tone="primary" />
-        <KpiCard label={OP.operationalOrderCount.label} value={snap?.operationalOrderCount ?? s.orderCount} kind="count" />
-        <KpiCard label={view.selectedKpi.label} value={view.selectedKpi.value} kind={view.selectedKpi.kind} tone="focus" />
+        <KpiCard icon="💰" label={OP.operationalRevenue.label} value={snap?.operationalRevenue ?? s.totalRevenue} kind="won" tone="primary" sub={OP.operationalRevenue.basis} accent="#4f8cff" />
+        <KpiCard icon="🧾" label={OP.operationalOrderCount.label} value={snap?.operationalOrderCount ?? s.orderCount} kind="count" sub={OP.operationalOrderCount.basis} accent="#36d1c4" />
+        <KpiCard icon="🧮" label={OP.operationalAOV.label} value={snap?.operationalAOV ?? s.averageOrderValue} kind="won" tone="focus" sub={OP.operationalAOV.basis} accent="#a78bfa" />
         {/* 4번째 KPI — 클릭형 진입점 "고객 행동 분석" (수치 카드 아님). 클릭/Enter/Space로 modal. */}
         <div
           className="mkt-kpi-card mkt-kpi-behavior"
@@ -783,14 +804,14 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBehaviorModalOpen(true); } }}
         >
           <div className="mkt-kpi-behavior-top">
-            <span className="mkt-kpi-label">고객 행동 분석</span>
-            <span className="mkt-kpi-behavior-badge">Not connected</span>
+            <span className="mkt-kpi-label">🧭 고객 행동 분석</span>
+            <span className="mkt-kpi-behavior-badge">행동추적 미연결</span>
           </div>
           <span className="mkt-kpi-value tabular-nums mkt-kpi-behavior-value">
             {behaviorConnected} / {behaviorTotal}
-            <span className="mkt-kpi-behavior-unit">추적 이벤트 준비 필요</span>
+            <span className="mkt-kpi-behavior-unit">추적 이벤트 연결 준비</span>
           </span>
-          <span className="mkt-kpi-behavior-desc">GA4/GTM 연결 후 실제 행동 흐름 분석 가능</span>
+          <span className="mkt-kpi-behavior-desc">추적 연결 후 실제 행동 흐름 분석</span>
           <span className="mkt-kpi-behavior-hint">클릭해서 행동 흐름 보기 →</span>
         </div>
       </div>
@@ -801,10 +822,10 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         (공통 정의: <code>departmentMetricContract</code> · <code>revenueMetricContract</code>)
       </p>
 
-      {/* ── 메인 비교 그래프 — artifact 있으면 chartSpec 우선, 없으면 기존 focus chart ── */}
+      {/* ── 메인 비교 그래프 — artifact 우선 / 비교 요청 후에만 큰 그래프 / 기본은 compact empty ── */}
       {marketingChartArtifact ? (
         <MarketingChartSpecPanel artifact={marketingChartArtifact} onClear={onClearMarketingChartArtifact} />
-      ) : (
+      ) : hasRequestedComparison ? (
       <div className="marketing-smart-chart">
         <div className="marketing-smart-chart-head">
           <h3 className="mkt-section-title">선택 지표 비교 그래프 · {view.chipLabel}</h3>
@@ -837,6 +858,19 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         </div>
         <div className="marketing-smart-chart-summary">📌 {view.chart.summary}</div>
       </div>
+      ) : (
+      <div className="marketing-comparison-empty">
+        <h3 className="mkt-section-title">🔎 요청 기반 비교 분석</h3>
+        <p className="marketing-comparison-empty-desc">
+          비교할 지표를 선택하거나 <em>"첫구매와 재구매 객단가 비교해줘"</em>처럼 요청하면 이 영역에 그래프가 생성됩니다.
+        </p>
+        <div className="marketing-comparison-quick">
+          <button type="button" className="marketing-comparison-quick-chip" onClick={() => requestComparison('firstRepeat')}>첫구매 vs 재구매</button>
+          <button type="button" className="marketing-comparison-quick-chip" onClick={() => requestComparison('coupon')}>쿠폰 사용 vs 미사용</button>
+          <button type="button" className="marketing-comparison-quick-chip" onClick={() => requestComparison('memberGroup')}>회원그룹 비교</button>
+          <button type="button" className="marketing-comparison-quick-chip" onClick={() => requestComparison('orderChannel')}>주문채널 비교</button>
+        </div>
+      </div>
       )}
 
       {/* ── AI 분석 리포트 — artifact 있으면 narrative 우선, 없으면 기존 facts.insights ── */}
@@ -851,7 +885,7 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
             {(marketingMemoryHintCount ?? 0) > 0 ? `🧠 유사 분석 힌트 ${marketingMemoryHintCount}건 참고` : null}
           </div>
         </>
-      ) : (
+      ) : hasRequestedComparison ? (
       <div className="mkt-insights marketing-ai-report">
         <h3 className="mkt-section-title">🤖 AI 분석 리포트 (관찰 기반 · 인과 단정 아님)</h3>
         <div className="mkt-insights-list">
@@ -872,6 +906,16 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
           )}
         </div>
         <p className="marketing-ai-caution">※ 주의할 해석: 위 수치는 관찰값이며 인과관계를 단정하지 않습니다. 추가 분석은 아래 [세부 분석]에서 확인하세요.</p>
+      </div>
+      ) : (
+      <div className="marketing-ai-report-placeholder">
+        <h3 className="mkt-section-title">🤖 AI 분석 리포트</h3>
+        <p className="marketing-ai-placeholder-desc">비교 그래프가 생성되면 이 영역에 핵심 해석과 추천 액션이 표시됩니다.</p>
+        <ul className="marketing-ai-placeholder-examples">
+          <li>재구매 고객의 객단가가 왜 높은지 분석해줘</li>
+          <li>쿠폰 사용 고객과 미사용 고객을 비교해줘</li>
+          <li>VIP 매출 기여도를 요약해줘</li>
+        </ul>
       </div>
       )}
 
@@ -901,14 +945,22 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
           </div>
           <p className="mkt-fr-note">※ 첫구매/재구매는 주문 단위 관찰값이며 인과를 단정하지 않습니다.</p>
         </div>
+        {/* 마케팅 사고 흐름: 누가 샀나 → 어떻게 샀나 → 무엇이 팔렸나. 기본 노출은 제한, 전체는 모달. */}
         <div className="mkt-dim-grid">
-          <DimensionBlock title="회원그룹별 매출" markerClass="mkt-dim-memberGroup" items={facts.byMemberGroup} />
-          <DimensionBlock title="주문채널별 매출" markerClass="mkt-dim-channel" items={facts.byOrderChannel} />
-          <DimensionBlock title="쿠폰 사용/미사용 비교" markerClass="mkt-dim-coupon" items={facts.byCouponUsage} />
-          <DimensionBlock title="마일리지/예치금 사용 비교" markerClass="mkt-dim-reward" items={facts.byRewardUsage} />
-          <DimensionBlock title="상품 매출 TOP" markerClass="mkt-dim-product" items={facts.topProducts} />
-          <DimensionBlock title="카테고리 매출 TOP" markerClass="mkt-dim-category" items={facts.topCategories} />
-          <DimensionBlock title="브랜드 매출 TOP" markerClass="mkt-dim-brand" items={facts.topBrands} emptyText="브랜드 미연동 (상품 메타데이터 부족)" />
+          <DimensionBlock title="회원그룹별 매출" markerClass="mkt-dim-memberGroup" items={facts.byMemberGroup} limit={4}
+            onExpand={() => setDetailModal({ title: '회원그룹별 매출', items: facts.byMemberGroup, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
+          <DimensionBlock title="주문채널별 매출" markerClass="mkt-dim-channel" items={facts.byOrderChannel} limit={4}
+            onExpand={() => setDetailModal({ title: '주문채널별 매출', items: facts.byOrderChannel, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
+          <DimensionBlock title="쿠폰 사용/미사용 비교" markerClass="mkt-dim-coupon" items={facts.byCouponUsage} limit={4}
+            onExpand={() => setDetailModal({ title: '쿠폰 사용/미사용 비교', items: facts.byCouponUsage, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
+          <DimensionBlock title="마일리지/예치금 사용 비교" markerClass="mkt-dim-reward" items={facts.byRewardUsage} limit={4}
+            onExpand={() => setDetailModal({ title: '마일리지/예치금 사용 비교', items: facts.byRewardUsage, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
+          <DimensionBlock title="카테고리 매출 TOP" markerClass="mkt-dim-category" items={facts.topCategories} limit={4}
+            onExpand={() => setDetailModal({ title: '카테고리 매출 TOP', items: facts.topCategories, sorts: ['revenue', 'orderCount', 'sharePercent'] })} />
+          <DimensionBlock title="상품 매출 TOP" markerClass="mkt-dim-product mkt-dim-wide" items={facts.topProducts} limit={5}
+            onExpand={() => setDetailModal({ title: '상품 매출 TOP', items: facts.topProducts, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
+          <DimensionBlock title="브랜드 매출 TOP" markerClass="mkt-dim-brand" items={facts.topBrands} limit={4} emptyText="브랜드 미연동 (상품 메타데이터 부족)"
+            onExpand={() => setDetailModal({ title: '브랜드 매출 TOP', items: facts.topBrands, sorts: ['revenue', 'orderCount'] })} />
         </div>
       </div>
 
@@ -937,6 +989,16 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
 
       {/* 고객 행동 분석 modal — 클릭형 KPI 진입. 닫힘 시 null 반환(MetricDrilldownModal 패턴). */}
       <MarketingCustomerBehaviorModal isOpen={behaviorModalOpen} onClose={() => setBehaviorModalOpen(false)} />
+
+      {/* 세부 분석 전체보기 모달 — 표시 전용(검색/정렬). */}
+      <MarketingDetailModal
+        open={detailModal !== null}
+        title={detailModal?.title ?? ''}
+        periodLabel={PERIOD_LABEL[preset]}
+        items={detailModal?.items ?? []}
+        sorts={detailModal?.sorts}
+        onClose={() => setDetailModal(null)}
+      />
     </div>
   );
 };
