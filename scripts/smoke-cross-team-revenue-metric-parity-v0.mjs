@@ -33,13 +33,13 @@ ok('4. 유효 주문 판정 단일화(facts가 contract isValidOrder 사용)', /
 // 5. 객단가 denominator 명시
 ok('5. averageOrderValue denominator 명시', /averageOrderValue/.test(CONTRACT) && /orderCountValid/.test(CONTRACT) && /denominator/.test(CONTRACT));
 // 6. 상품 매출 KPI 기준 명시(contract basis 참조)
-ok('6. 상품매출 KPI 기준 명시', /revenueMetricContract/.test(PROD) && /RV\.grossProductRevenue\.basis/.test(PROD));
+ok('6. 상품 라인 매출(gross) 부서전용 분리 표시', /OP\.productLineRevenue/.test(PROD) && /(departmentMetricContract|revenueMetricContract)/.test(PROD));
 // 7. 마케팅 매출 KPI 기준 명시(contract basis 참조)
-ok('7. 마케팅 총매출 KPI 기준 명시', /revenueMetricContract/.test(MKT) && /RV\.netOrderRevenue\.basis/.test(MKT));
+ok('7. 마케팅 대표 매출 기준(operational) 명시', /OP\.operationalRevenue\.basis/.test(MKT) && /departmentMetricContract/.test(MKT));
 // 8. 두 팀 기준이 다르면 라벨/보조문구가 다름
 ok('8. 두 대시보드 기준 보조문구(basis-note) 존재', /ptd-kpi-basis-note/.test(PROD) && /mkt-kpi-basis-note/.test(MKT));
-// 9. 동일 라벨 "총매출"을 다른 계산식에 쓰지 않음(상품=상품매출 / 마케팅=총매출, 서로 다른 metric)
-ok('9. 동일 라벨을 다른 계산식에 쓰지 않음', /label="상품매출"/.test(PROD) && !/label="총매출"/.test(PROD) && /label="총매출"/.test(MKT) && !/label="상품매출"/.test(MKT));
+// 9. 헤드라인 통일 — 상품·마케팅 대표 매출이 같은 canonical(snap.operational)에서 나옴(라벨 literal 분기 제거)
+ok('9. 대표 KPI 헤드라인 통일(둘 다 snap.operational)', /snap\?\.operationalRevenue/.test(PROD) && /snap\?\.operationalRevenue/.test(MKT) && /productLineRevenue/.test(PROD) && !/value=\{kpi\.revenue\}/.test(PROD));
 
 // 13. raw event 노출 없음(대시보드/contract에 raw event dump 없음)
 ok('13. raw event 노출 없음', !/sessionIdHash|orderIdHash|eventId/.test(CONTRACT + PROD + MKT));

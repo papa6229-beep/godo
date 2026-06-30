@@ -8,6 +8,8 @@ import type {
 } from '../services/departmentDataService';
 import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
 import { REVENUE_METRIC_LABELS as RV } from '../services/revenueMetricContract';
+import { OPERATIONAL_METRIC_LABELS as OP } from '../services/departmentMetricContract';
+import { buildDepartmentSourceOfTruthSnapshot } from '../services/departmentDataSourceOfTruth';
 
 // 상품관리팀 매출/재고 대시보드 v1.1
 // - 데이터: /api/godomall/orders-revenue?includeSynthetic=true (orders/summary/stockImpact)
@@ -567,6 +569,9 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     [stockImpact, category, goodsCategory]
   );
 
+  // 전 부서 공통 운영 snapshot — 같은 revenue universe로 동일 builder 호출(부서 간 동일 값 보장).
+  const snap = useMemo(() => buildDepartmentSourceOfTruthSnapshot(revenue), [revenue]);
+
   const kpi = useMemo(() => {
     let rev = 0;
     let sold = 0;
@@ -724,8 +729,8 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
           </div>
 
           <div className="ptd-kpi-grid">
-            <KpiCard icon="💰" label="상품매출" value={kpi.revenue} money sub={RV.grossProductRevenue.basis} accent={KPI_ACCENT[0]} />
-            <KpiCard icon="🧾" label="총 주문" value={kpi.orderCount} unit="건" sub={`${RV.orderCountAll.basis} · 실제 ${kpi.real} · 가상 ${kpi.synth}`} accent={KPI_ACCENT[1]} />
+            <KpiCard icon="💰" label={OP.operationalRevenue.label} value={snap?.operationalRevenue ?? 0} money sub={OP.operationalRevenue.basis} accent={KPI_ACCENT[0]} />
+            <KpiCard icon="🧾" label={OP.operationalOrderCount.label} value={snap?.operationalOrderCount ?? 0} unit="건" sub={OP.operationalOrderCount.basis} accent={KPI_ACCENT[1]} />
             <KpiCard icon="📈" label="판매수량" value={kpi.sold} unit="개" sub={`복구 ${kpi.restored} · 순판매 ${kpi.net}`} accent={KPI_ACCENT[2]} />
             <KpiCard
               icon="📦"
@@ -741,10 +746,17 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
             />
           </div>
 
+          {/* 상품관리 전용 분석값 — 대표 운영 KPI와 분리(같은 급으로 보이지 않게) */}
+          <div className="ptd-dept-metric-row">
+            <span className="ptd-dept-metric-tag">상품관리 전용 분석</span>
+            <span className="ptd-dept-metric"><i>{OP.productLineRevenue.label}</i> <b>{won(kpi.revenue)}</b> <small>{OP.productLineRevenue.basis}</small></span>
+            <span className="ptd-dept-metric"><i>전체 주문</i> <b>{kpi.orderCount.toLocaleString()}건</b> <small>{RV.orderCountAll.basis} · 실제 {kpi.real} · 가상 {kpi.synth}</small></span>
+          </div>
+
           <p className="ptd-kpi-basis-note">
-            ※ <b>상품매출·총 주문</b>은 전체 주문(취소·미입금·가상 포함)의 상품 라인 기준입니다.
-            마케팅팀 <b>총매출</b>은 취소·반품 제외 <b>유효 주문 순매출</b>이라 같은 기간이어도 수치가 다릅니다.
-            (공통 정의: <code>revenueMetricContract</code>)
+            ※ 상단 <b>운영매출·운영 주문수</b>는 전 부서 공통 source of truth(유효 주문 기준)로 마케팅팀과 같은 값입니다.
+            <b>상품 라인 매출</b>은 전체 주문(취소·미입금·가상 포함) 라인합으로 상품관리 전용 분석값입니다.
+            (공통 정의: <code>departmentMetricContract</code> · <code>revenueMetricContract</code>)
           </p>
 
           <div className="ptd-row">

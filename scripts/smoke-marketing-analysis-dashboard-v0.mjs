@@ -39,7 +39,7 @@ ok('8. 마케팅이 dashboard 레이아웃 클래스에 포함', /team\.id === '
 ok('9. 헤더(마케팅 분석팀)', /마케팅 분석팀/.test(TSX) && /고도몰 주문\/상품\/CS 데이터 기반 분석/.test(TSX));
 ok('10. 기간 필터 마커(presets + custom)', /mkt-period/.test(TSX) && /직접 선택/.test(TSX) && /적용/.test(TSX) && /초기화/.test(TSX));
 ok('11. 기간 preset 전체/오늘/최근7일/이번달/지난달/올해', ['전체', '오늘', '최근 7일', '최근 30일', '이번 달', '지난 달', '올해'].every((l) => TSX.includes(l)));
-ok('12. KPI 그리드 + 8 KPI', /mkt-kpi-grid/.test(TSX) && ['총매출', '주문수', '객단가', '첫구매 매출', '재구매 매출', '쿠폰 사용 주문', '총 할인액', '리워드 사용액'].every((l) => TSX.includes(l)));
+ok('12. KPI 그리드 + 8 KPI(헤드라인은 공통 운영 KPI)', /mkt-kpi-grid/.test(TSX) && /OP\.operationalRevenue\.label/.test(TSX) && /OP\.operationalOrderCount\.label/.test(TSX) && ['객단가', '첫구매 매출', '재구매 매출', '쿠폰 사용 주문', '총 할인액', '리워드 사용액'].every((l) => TSX.includes(l)));
 ok('13. useAnimatedNumber 재사용', /useAnimatedNumber/.test(TSX));
 ok('14. 분석 차원 블록 마커', ['mkt-dim-memberGroup', 'mkt-dim-channel', 'mkt-dim-coupon', 'mkt-dim-reward', 'mkt-dim-product', 'mkt-dim-category', 'mkt-dim-brand'].every((m) => TSX.includes(m)));
 ok('15. 차원 라벨(회원그룹/주문채널/쿠폰/마일리지/상품/카테고리/브랜드)', ['회원그룹별 매출', '주문채널별 매출', '쿠폰 사용/미사용 비교', '마일리지/예치금 사용 비교', '상품 매출 TOP', '카테고리 매출 TOP', '브랜드 매출 TOP'].every((l) => TSX.includes(l)));

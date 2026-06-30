@@ -6,7 +6,8 @@ import { CommerceGroupedBarChart, type CommerceGroupedBarChartPoint } from './ch
 import { resolveMarketingChartRoute } from './charts/marketingChartRoute';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { RevenueResult, AdminProductsResult } from '../services/departmentDataService';
-import { REVENUE_METRIC_LABELS as RV } from '../services/revenueMetricContract';
+import { OPERATIONAL_METRIC_LABELS as OP } from '../services/departmentMetricContract';
+import { buildDepartmentSourceOfTruthSnapshot } from '../services/departmentDataSourceOfTruth';
 import {
   buildMarketingAnalysisFacts,
   type MarketingAnalysisPeriod,
@@ -696,6 +697,8 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
 
   const s = facts.summary;
   // 신규/재구매 고객 비교(하단 카드용) — facts가 이미 계산한 값만 사용, 신규 집계 없음.
+  // 전 부서 공통 운영 snapshot — 같은 revenue universe로 동일 builder 호출(상품/CS와 동일 값).
+  const snap = useMemo(() => buildDepartmentSourceOfTruthSnapshot(revenue), [revenue]);
   const firstRevenueShare = s.totalRevenue > 0 ? Math.round((s.firstPurchaseRevenue / s.totalRevenue) * 100) : 0;
   const repeatRevenueShare = s.totalRevenue > 0 ? Math.round((s.repeatPurchaseRevenue / s.totalRevenue) * 100) : 0;
   const view = useMemo(() => buildFocusView(focus, facts, PERIOD_LABEL[preset]), [focus, facts, preset]);
@@ -766,8 +769,8 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
 
       {/* ── 고정 KPI 2 + 선택 지표 + 비교 요약 (compact) ── */}
       <div className="marketing-kpi-compact-grid mkt-kpi-grid">
-        <KpiCard label="총매출" value={s.totalRevenue} kind="won" tone="primary" />
-        <KpiCard label="주문수" value={s.orderCount} kind="count" />
+        <KpiCard label={OP.operationalRevenue.label} value={snap?.operationalRevenue ?? s.totalRevenue} kind="won" tone="primary" />
+        <KpiCard label={OP.operationalOrderCount.label} value={snap?.operationalOrderCount ?? s.orderCount} kind="count" />
         <KpiCard label={view.selectedKpi.label} value={view.selectedKpi.value} kind={view.selectedKpi.kind} tone="focus" />
         {/* 4번째 KPI — 클릭형 진입점 "고객 행동 분석" (수치 카드 아님). 클릭/Enter/Space로 modal. */}
         <div
@@ -793,9 +796,9 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
       </div>
 
       <p className="mkt-kpi-basis-note">
-        ※ <b>총매출·주문수·객단가</b>는 {RV.netOrderRevenue.basis}입니다(객단가 = 유효 매출 ÷ 유효 주문수).
-        상품관리팀 <b>상품매출</b>은 전체 주문(취소·미입금·가상 포함) 라인 기준이라 같은 기간이어도 수치가 더 큽니다.
-        (공통 정의: <code>revenueMetricContract</code>)
+        ※ <b>운영매출·운영 주문수</b>는 전 부서 공통 source of truth({OP.operationalRevenue.basis})로 상품관리팀과 같은 값입니다.
+        선택 지표(객단가 등)는 기간 필터가 적용되는 마케팅 분석값입니다.
+        (공통 정의: <code>departmentMetricContract</code> · <code>revenueMetricContract</code>)
       </p>
 
       {/* ── 메인 비교 그래프 — artifact 있으면 chartSpec 우선, 없으면 기존 focus chart ── */}

@@ -29,7 +29,7 @@ ok('5. 기본 선택값 aov', /useState<MarketingFocusMetric>\('aov'\)/.test(TSX
 
 // ── compact KPI ──
 ok('6. marketing-kpi-compact-grid 마커', /marketing-kpi-compact-grid/.test(TSX));
-ok('7. 고정 KPI 총매출/주문수 중심', /label="총매출"/.test(TSX) && /label="주문수"/.test(TSX));
+ok('7. 고정 KPI 운영매출/운영 주문수 중심(공통 운영 KPI)', /OP\.operationalRevenue\.label/.test(TSX) && /OP\.operationalOrderCount\.label/.test(TSX));
 ok('8. 선택 지표 KPI + 비교 요약 카드', /view\.selectedKpi/.test(TSX) && /view\.comparison/.test(TSX) && /mkt-kpi-compare/.test(TSX));
 
 // ── smart chart ──

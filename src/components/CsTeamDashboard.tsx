@@ -973,6 +973,10 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <KpiCard label="AI 자동처리함" value={aiAutoItems.length} unit="건" sub={aiSub} icon="🤖" accent="#FBBF24" onClick={() => setIntent({ kind: 'aiAuto' })} />
         <KpiCard label="고객관리" value={cs.count} unit="명" sub={custSub} icon="👤" accent="#2DD4BF" onClick={() => setIntent({ kind: 'customer' })} />
       </div>
+      <p className="cs-dash-basis-note">
+        ※ CS 지표는 매출 KPI와 <b>별개의 업무 흐름 지표</b>입니다. 문의·리뷰·고객은 매출 대시보드와 <b>같은 Commerce Universe(safe)</b>에서 같은 기간 필터로 집계됩니다.
+        <b>고객관리 N명</b> = 주문 memberKey 기준 고유 고객 · <b>AI 자동처리함</b> = 리뷰 + 배송 문의(상품/결제/환불 제외). 고객 PII는 CS 화면에서만 표시.
+      </p>
       <div className="cs-dash-kpi-noterow">
         <p className="cs-dash-kpi-note">통계 항목을 클릭하면 관련 목록이 열립니다 · 기간을 바꾸면 KPI·통계가 함께 변경됩니다.</p>
         <div className="cs-dash-noterow-btns">
