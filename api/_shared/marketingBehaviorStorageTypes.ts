@@ -14,6 +14,9 @@ import type { SafeMarketingBehaviorEvent } from './marketingBehaviorCollectionVa
 
 export type MarketingBehaviorStorageMode = 'dev_buffer' | 'persistent' | 'pending';
 
+// 실제 저장 backend(분석/표시용). secret 아님 — 이름만.
+export type MarketingBehaviorStorageBackend = 'dev_buffer' | 'postgres' | 'pending';
+
 // 저장되는 이벤트 = sanitized event + 저장 메타. orderNo/memberKey/raw* 등은 애초에 없음(Safe 타입).
 export type MarketingBehaviorStoredEvent = SafeMarketingBehaviorEvent & {
   storedAt: string;
@@ -24,6 +27,7 @@ export type MarketingBehaviorStoredEvent = SafeMarketingBehaviorEvent & {
 export interface MarketingBehaviorStorageAppendResult {
   ok: boolean;
   mode: MarketingBehaviorStorageMode;
+  backend?: MarketingBehaviorStorageBackend;
   accepted: number;
   rejected?: number;
   errors?: Array<{ reason: string }>;
@@ -31,6 +35,7 @@ export interface MarketingBehaviorStorageAppendResult {
 
 export interface MarketingBehaviorStorageStats {
   mode: MarketingBehaviorStorageMode;
+  backend?: MarketingBehaviorStorageBackend;
   eventCount?: number;
   maxEvents?: number;
   persistentReady: boolean;

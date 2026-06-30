@@ -73,7 +73,11 @@ export default async function handler(req: ExtendedRequest, res: VercelResponse)
     accepted: appendResult.accepted,
     rejected: result.rejected.length,
     mode: appendResult.mode,
-    storage: { mode: appendResult.mode, persistentReady: appendResult.mode === 'persistent' },
+    storage: {
+      mode: appendResult.mode,
+      backend: appendResult.backend ?? appendResult.mode,
+      persistentReady: appendResult.mode === 'persistent'
+    },
     ...(errors.length > 0 ? { errors } : {})
   });
 }

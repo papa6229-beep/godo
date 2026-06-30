@@ -30,7 +30,7 @@ export interface MarketingBehaviorSummaryApiResponse {
   ok: boolean;
   hasLiveData: boolean;
   generatedAt: string;
-  storage: { mode: string; persistentReady: boolean };
+  storage: { mode: string; backend?: string; persistentReady: boolean };
   dataStatus: { mode: 'live' | 'empty' | 'collecting'; eventCount: number; sessionCount: number; rangeLabel: string; isEmpty: boolean };
   insights: SummaryInsights | null;
 }
@@ -165,7 +165,7 @@ export async function buildMarketingBehaviorSummaryResponse(options?: {
 
   const storage = getMarketingBehaviorStorage();
   const stats = await storage.getStats();
-  const storageInfo = { mode: stats.mode, persistentReady: stats.persistentReady };
+  const storageInfo = { mode: stats.mode, backend: stats.backend, persistentReady: stats.persistentReady };
   const events = await storage.getRecentEventsForAggregation();
 
   if (!Array.isArray(events) || events.length === 0) {

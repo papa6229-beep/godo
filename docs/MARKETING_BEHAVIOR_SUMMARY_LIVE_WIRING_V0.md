@@ -64,6 +64,10 @@ tracker → (opt-in) send adapter → POST /api/marketing/behavior-events
 - ❌ DB/KV adapter 구현 없음 · 고도몰 스킨 삽입 없음 · GA4/GTM 없음 · 광고 API 없음 · 고도몰 WRITE 없음
 - ❌ tracker 자동 전송 기본 활성화 없음
 
+## 7-1. Postgres 연결 시 (Postgres Adapter v0 이후)
+
+`GODO_BEHAVIOR_STORAGE_BACKEND=postgres` + DB url이 설정되면 summary API는 **Postgres 이벤트 기반으로 집계**한다(storage interface가 동일하므로 service 변경 없음). 그래도 **raw event는 public response에 노출하지 않으며**, 응답은 여전히 aggregated insights뿐이다. 문서: [MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md).
+
 ## 8. 한계
 
 - 현재 persistent backend가 없어 **dev_buffer는 serverless에서 비영속** — Vercel instance에 따라 데이터가 없을 수 있다.

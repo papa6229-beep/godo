@@ -6,6 +6,7 @@ import type {
   MarketingBehaviorStoredEvent
 } from './marketingBehaviorStorageTypes.js';
 import { appendMarketingBehaviorEvents, getMarketingBehaviorEventStoreStats, getRecentMarketingBehaviorEventsForSummary } from './marketingBehaviorEventStore.js';
+import { isPostgresMarketingBehaviorStorageConfigured, createPostgresMarketingBehaviorStorage } from './marketingBehaviorPostgresStore.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Marketing Behavior Persistent Store — adapter selection v0
@@ -38,12 +39,13 @@ export function createDevBufferMarketingBehaviorStorage(): MarketingBehaviorStor
   return {
     async appendEvents(events, context): Promise<MarketingBehaviorStorageAppendResult> {
       const n = appendMarketingBehaviorEvents(toStored(events, context));
-      return { ok: true, mode: 'dev_buffer', accepted: n, rejected: 0 };
+      return { ok: true, mode: 'dev_buffer', backend: 'dev_buffer', accepted: n, rejected: 0 };
     },
     async getStats(): Promise<MarketingBehaviorStorageStats> {
       const s = getMarketingBehaviorEventStoreStats();
       return {
         mode: 'dev_buffer',
+        backend: 'dev_buffer',
         eventCount: s.count,
         maxEvents: s.max,
         persistentReady: false,
@@ -62,11 +64,11 @@ export function createPendingMarketingBehaviorStorage(note: string): MarketingBe
   return {
     async appendEvents(events, context): Promise<MarketingBehaviorStorageAppendResult> {
       const n = appendMarketingBehaviorEvents(toStored(events, context)); // 손실 방지 fallback
-      return { ok: true, mode: 'pending', accepted: n, rejected: 0, errors: [{ reason: note }] };
+      return { ok: true, mode: 'pending', backend: 'pending', accepted: n, rejected: 0, errors: [{ reason: note }] };
     },
     async getStats(): Promise<MarketingBehaviorStorageStats> {
       const s = getMarketingBehaviorEventStoreStats();
-      return { mode: 'pending', eventCount: s.count, maxEvents: s.max, persistentReady: false, note };
+      return { mode: 'pending', backend: 'pending', eventCount: s.count, maxEvents: s.max, persistentReady: false, note };
     },
     // pending 모드: 영속 미준비 → summary는 live로 보지 않는다(빈 배열 → collecting 표시).
     async getRecentEventsForAggregation(): Promise<SafeMarketingBehaviorEvent[]> {
@@ -90,9 +92,16 @@ let cachedStorage: MarketingBehaviorStorage | null = null;
 // 현재 환경에 맞는 저장소 반환. env 미감지 → dev_buffer / 감지 → pending(손실 없이 신호).
 export function getMarketingBehaviorStorage(): MarketingBehaviorStorage {
   if (cachedStorage) return cachedStorage;
+  // 1순위: Postgres가 완전 설정(backend=postgres + url)되면 실제 persistent adapter.
+  if (isPostgresMarketingBehaviorStorageConfigured()) {
+    cachedStorage = createPostgresMarketingBehaviorStorage();
+    return cachedStorage;
+  }
+  // 2순위: 영속 backend env가 일부만 감지되면 pending(손실 없이 dev buffer 보존 + 신호).
+  // 3순위: 아무 것도 없으면 dev_buffer(현 상태). ★ 거짓 persistent 표시 안 함.
   const backend = detectPersistentBackend();
   cachedStorage = backend
-    ? createPendingMarketingBehaviorStorage(`Persistent backend detected (${backend}) — adapter 미구현, dev buffer로 임시 보존 중. 영속화하려면 해당 adapter를 구현하세요.`)
+    ? createPendingMarketingBehaviorStorage(`Persistent backend detected (${backend}) — 아직 활성화되지 않음(backend 미선택 또는 미구현), dev buffer로 임시 보존 중.`)
     : createDevBufferMarketingBehaviorStorage();
   return cachedStorage;
 }

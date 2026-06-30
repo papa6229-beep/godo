@@ -106,9 +106,13 @@ CREATE TABLE marketing_behavior_events (
 - ❌ GA4/GTM 없음 · 광고 API 없음 · 고도몰 WRITE 없음
 - ❌ local JSON/file persistence 없음
 
+## 8-1. Postgres adapter (Postgres Adapter v0 이후)
+
+**Postgres persistent backend adapter**가 추가되었다 — env-gated(`GODO_BEHAVIOR_STORAGE_BACKEND=postgres` + `DATABASE_URL`/`POSTGRES_URL`)로, 설정되면 dev_buffer가 아니라 실제 DB에 저장한다. env가 없으면 **dev_buffer fallback 유지**, 불완전하면 **pending**(거짓 persistent 표시 없음). `pg`는 lazy import(연결 시점만), 자동 DDL 없음. 문서: [MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md) · [schema](./MARKETING_BEHAVIOR_POSTGRES_SCHEMA_V0.md).
+
 ## 9. 다음 단계
 
-- **Persistent storage 환경변수 연결** — 위 env 설정 + 해당 backend adapter 구현(`persistent`로 승격).
+- **Persistent storage 환경변수 연결** — 위 env 설정 + 해당 backend adapter 구현(`persistent`로 승격). **Postgres adapter는 구현됨** — env+table만 준비하면 됨.
 - **Aggregated Pattern Builder v0** ✅ — 저장된 이벤트 → 기간/채널/상품 누적 집계. 문서: [MARKETING_BEHAVIOR_AGGREGATED_PATTERN_BUILDER_V0.md](./MARKETING_BEHAVIOR_AGGREGATED_PATTERN_BUILDER_V0.md). **storage events를 바로 UI에 연결하지 않고 이 builder를 거친다**(raw → 패턴 → insights → 모달).
 - **Live Behavior Dashboard Wiring v0** — 집계 → `buildMarketingBehaviorInsights(liveEvents, { mode: 'live' })` → 모달.
 - **Godo Skin Integration Guide v0** — 고도몰 스킨에 tracker 삽입.
