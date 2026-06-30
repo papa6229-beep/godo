@@ -45,7 +45,7 @@ ok('4. 고객 행동 분석 KPI 클릭 구조 유지(role=button/tabIndex/onKeyD
   gridBlock.includes('mkt-kpi-behavior') && /role="button"/.test(gridBlock) && /tabIndex=\{0\}/.test(gridBlock)
   && /onKeyDown=/.test(gridBlock) && /onClick=/.test(gridBlock) && /aria-label=/.test(gridBlock));
 ok('5. behavior 카드 hover/focus 스타일 유지', /\.mkt-kpi-behavior:hover/.test(DASH_CSS) && /focus-visible/.test(DASH_CSS) && /cursor:\s*pointer/.test(DASH_CSS));
-ok('6. KPI 카드 Not connected 상태 유지', DASH.includes('Not connected'));
+ok('6. KPI 카드 행동추적 미연결 상태 유지', DASH.includes('행동추적 미연결') && /behaviorConnected/.test(DASH));
 
 // ── modal v0.1: 데모 배지 + 쉬운 말 4섹션 ──
 ok('7. modal title "고객 행동 분석"', /id="mcb-title"[^>]*>고객 행동 분석</.test(MODAL));
