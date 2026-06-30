@@ -10,7 +10,8 @@
 //   - 외부(방문/광고/ROAS/GA4) 데이터는 requiredData로만 안내(추정/0 금지).
 
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartSeries, MarketingChartNarrative, MarketingChartType } from './marketingChatChartSpec';
-import { parseMarketingChatQuery, buildMarketingMonthMetricResponse } from './marketingChatQueryRouting';
+import { parseMarketingChatQuery } from './marketingChatQueryRouting';
+import { buildMarketingAnalysisResponse } from './marketingAnalysisExecutor';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 export type MarketingAnalysisScope = {
@@ -595,10 +596,11 @@ export function buildMarketingScopeInsightResponse(input: { message: string; ord
     return { handled: false, reply: '', suppressChart: false };
   }
 
-  // 특정 월 질문(단일 월 + 연도)은 broad year_compare로 가로채지 않고 canonical 지표로 직접 계산.
-  const monthResp = buildMarketingMonthMetricResponse({ message: input.message, orders: input.orders, nowMs });
-  if (monthResp) {
-    return { handled: true, artifact: monthResp.artifact, reply: monthResp.reply, suppressChart: monthResp.suppressChart };
+  // Query Compiler: 질문을 AnalysisPlan으로 컴파일해 기간(월/월범위/분기/반기)·metric·세그먼트를 정확히 계산.
+  // broad year_compare로 가로채지 않는다(저신뢰 broad만 아래 기존 분석으로 위임).
+  const analysisResp = buildMarketingAnalysisResponse({ message: input.message, orders: input.orders, nowMs });
+  if (analysisResp) {
+    return { handled: analysisResp.handled, artifact: analysisResp.artifact, reply: analysisResp.reply, suppressChart: analysisResp.suppressChart };
   }
 
   // broad 경로에서도 차트 억제 요청은 반영(아래 결과의 suppressChart로 호출부가 처리).

@@ -969,3 +969,14 @@
 .mkt-dim-more { display: block; width: 100%; margin-top: 8px; text-align: center; }
 .mkt-dim-block.mkt-dim-wide { grid-column: span 2; }
 @media (max-width: 720px) { .mkt-dim-block.mkt-dim-wide { grid-column: span 1; } }
+
+/* Analysis Query Compiler v0 — compact 비교 차트(2~4개): 12개월 차트 높이/여백을 쓰지 않음 */
+.marketing-chart-spec-panel.mkt-chart-compact .marketing-chart-spec-graph {
+  min-height: 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.marketing-chart-spec-panel.mkt-chart-compact .marketing-smart-chart-bars,
+.marketing-chart-spec-panel.mkt-chart-compact .commerce-chart {
+  max-height: 220px;
+}
