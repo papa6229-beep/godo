@@ -21,6 +21,8 @@ POST /api/marketing/behavior-events
 - **OPTIONS** — CORS preflight 최소 지원만.
 
 > **POST 수집 vs GET summary 역할 차이**: 이 endpoint(`POST /behavior-events`)는 **수집 전용**(raw event를 받아 검증/저장). 화면이 보는 집계 결과는 별도 **`GET /api/marketing/behavior-summary`**(insights만, raw event 미노출)에서 온다. **raw events를 반환하는 GET은 계속 없다.** 문서: [MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md](./MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md).
+>
+> **저장 backend**: storage adapter를 통해 저장하므로, `GODO_BEHAVIOR_STORAGE_BACKEND=postgres`+DB url이 설정되면 **Postgres에 영속 저장**된다(미설정 시 dev_buffer). 응답 `storage.backend`로 표기. 문서: [MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md](./MARKETING_BEHAVIOR_POSTGRES_ADAPTER_V0.md).
 
 ## 3. 이번 v0에서 **하는** 일
 
