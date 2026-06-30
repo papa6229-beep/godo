@@ -10,6 +10,7 @@
 //   - 외부(방문/광고/ROAS/GA4) 데이터는 requiredData로만 안내(추정/0 금지).
 
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartSeries, MarketingChartNarrative, MarketingChartType } from './marketingChatChartSpec';
+import { parseMarketingChatQuery, buildMarketingMonthMetricResponse } from './marketingChatQueryRouting';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 export type MarketingAnalysisScope = {
@@ -587,11 +588,21 @@ export function buildMarketingScopeInsightResponse(input: { message: string; ord
   result?: MarketingScopeInsightResult;
   artifact?: MarketingChatChartArtifact;
   reply: string;
+  suppressChart: boolean;
 } {
   const nowMs = input.nowMs ?? Date.now();
   if (!input.message || !ANALYSIS_SIGNAL.test(input.message) || !(input.orders && input.orders.length)) {
-    return { handled: false, reply: '' };
+    return { handled: false, reply: '', suppressChart: false };
   }
+
+  // 특정 월 질문(단일 월 + 연도)은 broad year_compare로 가로채지 않고 canonical 지표로 직접 계산.
+  const monthResp = buildMarketingMonthMetricResponse({ message: input.message, orders: input.orders, nowMs });
+  if (monthResp) {
+    return { handled: true, artifact: monthResp.artifact, reply: monthResp.reply, suppressChart: monthResp.suppressChart };
+  }
+
+  // broad 경로에서도 차트 억제 요청은 반영(아래 결과의 suppressChart로 호출부가 처리).
+  const queryParse = parseMarketingChatQuery(input.message);
   const orders = input.orders as Row[];
   const products = (input.products || []) as Row[];
   const reviews = (input.reviews || []) as Row[];
@@ -625,7 +636,7 @@ export function buildMarketingScopeInsightResponse(input: { message: string; ord
     evidence: result.evidence, requiredData, createdAt: new Date(nowMs).toISOString()
   };
   const reply = renderReply(result);
-  return { handled: true, result, artifact, reply };
+  return { handled: true, result, artifact, reply, suppressChart: queryParse.suppressChart };
 }
 
 function renderReply(result: MarketingScopeInsightResult): string {
