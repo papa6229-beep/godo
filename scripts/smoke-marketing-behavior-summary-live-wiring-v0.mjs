@@ -19,14 +19,14 @@ let pass = 0, fail = 0;
 const ok = (n, c) => { console.log(`  ${c ? 'PASS' : 'FAIL'}  ${n}`); c ? pass++ : fail++; };
 console.log('=== Marketing Behavior Summary & Live Wiring v0 smoke ===');
 
-const ROUTE_REL = 'api/marketing/behavior-summary.ts';
+const ROUTE_REL = 'api/marketing/[action].ts';
 const SERVICE_REL = 'api/_shared/marketingBehaviorSummaryService.ts';
 const HOOK_REL = 'src/hooks/useMarketingBehaviorSummary.ts';
 const DOC_REL = 'docs/MARKETING_BEHAVIOR_SUMMARY_LIVE_WIRING_V0.md';
 const ROUTE = has(ROUTE_REL) ? read(ROUTE_REL) : '';
 const SERVICE = has(SERVICE_REL) ? read(SERVICE_REL) : '';
 const STORE = read('api/_shared/marketingBehaviorEventStore.ts');
-const POST_ROUTE = read('api/marketing/behavior-events.ts');
+const POST_ROUTE = read('api/marketing/[action].ts');
 const HOOK = has(HOOK_REL) ? read(HOOK_REL) : '';
 const MODAL = read('src/components/MarketingCustomerBehaviorModal.tsx');
 const DOC = has(DOC_REL) ? read(DOC_REL) : '';

@@ -22,7 +22,7 @@ const R = has(R_REL) ? read(R_REL) : '';
 const C = has(C_REL) ? read(C_REL) : '';
 const S = has(S_REL) ? read(S_REL) : '';
 const ACT = has('docs/MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md') ? read('docs/MARKETING_BEHAVIOR_POSTGRES_ACTIVATION_GUIDE_V0.md') : '';
-const POST_ROUTE = read('api/marketing/behavior-events.ts');
+const POST_ROUTE = read('api/marketing/[action].ts');
 const NEW_DOCS = R + '\n' + C + '\n' + S;
 
 // 1~3. 존재

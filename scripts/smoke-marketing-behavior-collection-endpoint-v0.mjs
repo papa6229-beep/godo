@@ -19,7 +19,7 @@ let pass = 0, fail = 0;
 const ok = (n, c) => { console.log(`  ${c ? 'PASS' : 'FAIL'}  ${n}`); c ? pass++ : fail++; };
 console.log('=== Marketing Behavior Collection Endpoint v0 smoke ===');
 
-const ROUTE_REL = 'api/marketing/behavior-events.ts';
+const ROUTE_REL = 'api/marketing/[action].ts';
 const VAL_REL = 'api/_shared/marketingBehaviorCollectionValidator.ts';
 const STORE_REL = 'api/_shared/marketingBehaviorEventStore.ts';
 const DOC_REL = 'docs/MARKETING_BEHAVIOR_COLLECTION_ENDPOINT_V0.md';
