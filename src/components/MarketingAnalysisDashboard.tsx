@@ -795,7 +795,8 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
         <KpiCard icon="🧮" label={OP.operationalAOV.label} value={snap?.operationalAOV ?? s.averageOrderValue} kind="won" tone="focus" sub={OP.operationalAOV.basis} accent="#a78bfa" />
         {/* 4번째 KPI — 클릭형 진입점 "고객 행동 분석" (수치 카드 아님). 클릭/Enter/Space로 modal. */}
         <div
-          className="mkt-kpi-card mkt-kpi-behavior"
+          className="mkt-kpi-card mkt-kpi-behavior has-accent"
+          style={{ ['--mkt-kpi-accent']: '#fbbf24' } as React.CSSProperties}
           role="button"
           tabIndex={0}
           aria-label={`고객 행동 분석 — 추적 이벤트 ${behaviorConnected}/${behaviorTotal} 연결됨. 클릭하면 고객 행동 흐름 분석이 열립니다.`}
@@ -803,6 +804,7 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
           onClick={() => setBehaviorModalOpen(true)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBehaviorModalOpen(true); } }}
         >
+          <span className="mkt-kpi-accent-line" aria-hidden="true" />
           <div className="mkt-kpi-behavior-top">
             <span className="mkt-kpi-label">🧭 고객 행동 분석</span>
             <span className="mkt-kpi-behavior-badge">행동추적 미연결</span>
@@ -955,12 +957,10 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
             onExpand={() => setDetailModal({ title: '쿠폰 사용/미사용 비교', items: facts.byCouponUsage, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
           <DimensionBlock title="마일리지/예치금 사용 비교" markerClass="mkt-dim-reward" items={facts.byRewardUsage} limit={4}
             onExpand={() => setDetailModal({ title: '마일리지/예치금 사용 비교', items: facts.byRewardUsage, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
+          <DimensionBlock title="상품 매출 TOP" markerClass="mkt-dim-product" items={facts.topProducts} limit={5}
+            onExpand={() => setDetailModal({ title: '상품 매출 TOP', items: facts.topProducts, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
           <DimensionBlock title="카테고리 매출 TOP" markerClass="mkt-dim-category" items={facts.topCategories} limit={4}
             onExpand={() => setDetailModal({ title: '카테고리 매출 TOP', items: facts.topCategories, sorts: ['revenue', 'orderCount', 'sharePercent'] })} />
-          <DimensionBlock title="상품 매출 TOP" markerClass="mkt-dim-product mkt-dim-wide" items={facts.topProducts} limit={5}
-            onExpand={() => setDetailModal({ title: '상품 매출 TOP', items: facts.topProducts, sorts: ['revenue', 'orderCount', 'averageOrderValue'] })} />
-          <DimensionBlock title="브랜드 매출 TOP" markerClass="mkt-dim-brand" items={facts.topBrands} limit={4} emptyText="브랜드 미연동 (상품 메타데이터 부족)"
-            onExpand={() => setDetailModal({ title: '브랜드 매출 TOP', items: facts.topBrands, sorts: ['revenue', 'orderCount'] })} />
         </div>
       </div>
 

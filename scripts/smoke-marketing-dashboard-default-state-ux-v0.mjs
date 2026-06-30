@@ -44,7 +44,7 @@ console.log('  detail cards capped');
 // 12~15. 전체보기 모달
 ok('12. 전체보기 모달 컴포넌트 존재', has('src/components/MarketingDetailModal.tsx') && /MarketingDetailModal/.test(MKT));
 ok('13. 상품 매출 TOP 전체보기(onExpand)', /title: '상품 매출 TOP', items: facts\.topProducts/.test(MKT));
-ok('14. 카테고리/브랜드/회원그룹/주문채널 전체보기 패턴', ['카테고리 매출 TOP', '브랜드 매출 TOP', '회원그룹별 매출', '주문채널별 매출'].every((t) => MKT.includes(`title: '${t}', items:`)) && /onExpand=\{/.test(MKT));
+ok('14. 카테고리/상품/회원그룹/주문채널 전체보기 패턴', ['카테고리 매출 TOP', '상품 매출 TOP', '회원그룹별 매출', '주문채널별 매출'].every((t) => MKT.includes(`title: '${t}', items:`)) && /onExpand=\{/.test(MKT));
 ok('15. 모달 검색+정렬 존재', /mkt-detail-modal-search/.test(MOD) && /mkt-detail-sort-btn/.test(MOD) && /SORT_LABELS/.test(MOD));
 console.log('  modal pattern found');
 
