@@ -495,6 +495,7 @@
 
 /* ── 메인 비교 그래프 (smart chart) ── */
 .marketing-smart-chart {
+  box-sizing: border-box; /* 좁은 채팅 열에서 padding이 폭을 넘쳐 우측이 잘리지 않게 */
   padding: 16px 18px;
   border-radius: 14px;
   background: var(--bg-surface);

@@ -1,27 +1,21 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Commerce Data Query Engine v0 — "오픈북" 단일 조회·계산 엔진
+// Commerce Data Query Engine — 원시연산 조립 계산기(질문별 답변기 아님)
 //
-// 철학: 데이터는 주문·고객·상품(실/가상 동일 스펙)의 목록이다. 질문이 오면
-//   1) 읽고 2) 조건으로 거르고 3) 원하는 축으로 묶고 4) 더하기/세기/나누기/비중/최고·최저/비교 하고
-//   5) 없으면 없다고 답한다. 그게 전부다.
-//
-// 숫자는 전부 이 코드가 계산한다(LLM은 "무엇을 읽고 계산할지"만 정하고 결과를 설명만).
-// 질문에 없는 축(카테고리/고객/쿠폰 등)을 임의로 덧붙이지 않는다. broad 종합덤프 없음.
-//
-// 지원(v0):
-//   dimension: time(월) · product · category · coupon · firstRepeat · memberGroup · channel · none
-//   metric:    revenue(net) · orderCount · averageOrderValue · quantity
-//   operation: summarize · trend · argmax · argmin · extremes · rank · share · compare(yearOverYear)
-//   filters:   period + coupon/firstRepeat/memberGroup/channel/category/goods
+// LLM은 자연어 → QueryPlan(원시연산 조립 지시서)만 만든다(숫자 계산 금지).
+// 이 Executor는 QueryPlan의 원시연산을 "일반" 실행한다:
+//   read · filter · groupBy(임의 축) · seriesBy(임의 축) · aggregate · compute · sort · rank · compare · share · trend · extremes · chartShape
+// 새 질문마다 코드가 늘면 실패다. 새 질문은 QueryPlan만 달라져야 한다.
+// 숫자는 전부 이 코드가 계산한다. Data Catalog 밖(허용 축·지표 아닌 것)은 unsupported.
 // ────────────────────────────────────────────────────────────────────────────
 
 import { isValidOrder } from './revenueMetricContract';
 import { categoryDisplayName, formatSharePercent } from './productCategoryDisplay';
 import { understandCommerceQuery } from './marketingAnalyticsQueryCompilerLlm';
-import type { AnalyticsQuery, AnalyticsMetric, AnalyticsTeam } from './analyticsQueryTypes';
+import type { AnalyticsTeam } from './analyticsQueryTypes';
+import { AXIS_LABEL, METRIC_LABEL, METRIC_SOURCE, type Axis, type Metric, type QueryPlan } from './commerceQueryPlan';
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartType } from './marketingChatChartSpec';
 
-// 느슨한 주문 형태(RevenueOrderLite 및 universe 호환).
+// ── 느슨한 데이터 형태(RevenueOrderLite / universeAux 호환) ──────────────────────
 interface OrderLike {
   orderNo?: string; orderDate?: string; totalAmount?: number; paid?: boolean; canceled?: boolean;
   state?: { paid?: boolean; canceled?: boolean };
@@ -29,159 +23,257 @@ interface OrderLike {
   discountSummary?: { hasCoupon?: boolean };
   lines?: { goodsNo?: string; goodsName?: string; quantity?: number; lineRevenue?: number; categoryCode?: string }[];
 }
-export interface CommerceDataset { orders: OrderLike[]; }
+interface LineLike { goodsNo?: string; goodsName?: string; quantity?: number; lineRevenue?: number; categoryCode?: string }
+interface ReviewLike { goodsNo?: string; categoryCode?: string; rating?: number; createdAt?: string; }
+interface InquiryLike { goodsNo?: string; categoryCode?: string; createdAt?: string; }
+export interface CommerceDataset { orders: OrderLike[]; reviews?: ReviewLike[]; inquiries?: InquiryLike[]; }
 export interface CommerceQueryResult { handled: boolean; reply: string; artifact?: MarketingChatChartArtifact; suppressChart: boolean; }
 
+// ── 포맷 ──────────────────────────────────────────────────────────────────────
 const num = (v: unknown): number => { const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/[^0-9.-]/g, '')); return Number.isFinite(n) ? n : 0; };
 const won = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
 const cnt = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}건`;
 const qtyStr = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}개`;
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 const lastDay = (y: number, m: number): number => new Date(y, m, 0).getDate();
+const fmtMetric = (v: number, m: Metric): string =>
+  m === 'orderCount' || m === 'inquiryCount' || m === 'reviewCount' ? cnt(v)
+    : m === 'quantity' ? qtyStr(v)
+    : m === 'averageRating' ? `${(Math.round(v * 100) / 100).toFixed(2)}점`
+    : m === 'share' ? formatSharePercent(v)
+    : won(v);
+const chartUnit = (m: Metric, share: boolean): MarketingChartSpec['unit'] =>
+  share || m === 'share' ? 'percent'
+    : m === 'orderCount' || m === 'quantity' || m === 'inquiryCount' || m === 'reviewCount' || m === 'averageRating' ? 'count'
+    : 'krw';
 
-const METRIC_LABEL: Record<AnalyticsMetric, string> = {
-  revenue: '매출', orderCount: '주문수', averageOrderValue: '객단가', quantity: '판매수량',
-  stock: '재고', reviewCount: '리뷰수', inquiryCount: '문의수', rating: '평점', claimCount: '클레임수'
-};
-const fmtVal = (v: number, metric: AnalyticsMetric): string =>
-  metric === 'orderCount' ? cnt(v) : metric === 'quantity' ? qtyStr(v) : won(v); // revenue/AOV → 원
-
-// ── 기간 → {start,end,label,years} ──────────────────────────────────────────
-interface Range { start?: string; end?: string; label: string; years: number[]; months?: number[] }
-const monthsBetween = (s: number, e: number): number[] => { const out: number[] = []; for (let m = Math.min(s, e); m <= Math.max(s, e); m++) out.push(m); return out; };
-function orderYear(o: OrderLike): number { return Number(String(o.orderDate ?? '').slice(0, 4)); }
+// ── 기간(read·filter) ─────────────────────────────────────────────────────────
+interface Range { years: number[]; months?: number[]; start?: string; end?: string; label: string }
+const dateSlice = (s?: string): string => String(s ?? '').slice(0, 10);
+const yearOf = (s?: string): number => Number(String(s ?? '').slice(0, 4));
+const monthOf = (s?: string): number => Number(String(s ?? '').slice(5, 7));
 function datasetYears(orders: OrderLike[]): number[] {
-  return [...new Set(orders.map(orderYear).filter((y) => y >= 2000 && y <= 2100))].sort((a, b) => a - b);
+  return [...new Set(orders.map((o) => yearOf(o.orderDate)).filter((y) => y >= 2000 && y <= 2100))].sort((a, b) => a - b);
 }
-function resolvePeriod(q: AnalyticsQuery, orders: OrderLike[], nowMs: number): Range {
-  const p = q.period;
-  const yrs = p.years && p.years.length ? [...p.years].sort((a, b) => a - b) : (p.year != null ? [p.year] : []);
-  const yLabel = (y: number, sm: number, em: number): string => (sm === em ? `${y}년 ${sm}월` : sm === 1 && em === 12 ? `${y}년` : `${y}년 ${sm}~${em}월`);
-  const mk = (y: number, sm: number, em: number): Range => ({ start: `${y}-${pad2(sm)}-01`, end: `${y}-${pad2(em)}-${pad2(lastDay(y, em))}`, label: yLabel(y, sm, em), years: [y] });
-  switch (p.type) {
-    case 'dayRange': if (p.startDate && p.endDate) return { start: p.startDate, end: p.endDate, label: `${p.startDate}~${p.endDate}`, years: yrs.length ? yrs : datasetYears(orders) }; break;
-    case 'singleMonth': if (yrs[0] != null && p.month != null) return mk(yrs[0], p.month, p.month); break;
-    case 'monthRange': if (p.startMonth != null && p.endMonth != null) {
-      if (yrs.length >= 2) { const sm = Math.min(p.startMonth, p.endMonth), em = Math.max(p.startMonth, p.endMonth); return { label: `${yrs.join('·')}년 ${sm}~${em}월`, years: yrs, months: monthsBetween(sm, em) }; }
-      if (yrs[0] != null) return mk(yrs[0], Math.min(p.startMonth, p.endMonth), Math.max(p.startMonth, p.endMonth));
-    } break;
-    case 'quarter': if (yrs[0] != null && p.quarter != null) { const s = p.quarter * 3 - 2; return { ...mk(yrs[0], s, s + 2), label: `${yrs[0]}년 ${p.quarter}분기` }; } break;
-    case 'halfYear': if (yrs[0] != null && p.half != null) return { ...mk(yrs[0], p.half === 1 ? 1 : 7, p.half === 1 ? 6 : 12), label: `${yrs[0]}년 ${p.half === 1 ? '상반기' : '하반기'}` }; break;
-    case 'year': if (yrs[0] != null) { if (yrs.length >= 2) return { label: `${yrs.join('·')}년`, years: yrs }; return mk(yrs[0], 1, 12); } break;
-    case 'relative': {
-      const d = new Date(nowMs); const y = d.getFullYear(); const m = d.getMonth() + 1;
-      if (p.relativeKey === 'thisMonth') return mk(y, m, m);
-      if (p.relativeKey === 'lastMonth') { const lm = m === 1 ? 12 : m - 1; const ly = m === 1 ? y - 1 : y; return mk(ly, lm, lm); }
-      if (p.relativeKey === 'thisYear') return mk(y, 1, 12);
-      if (p.relativeKey === 'lastYear') return mk(y - 1, 1, 12);
-      break;
-    }
+function resolveRange(plan: QueryPlan, orders: OrderLike[]): Range {
+  const f = plan.filters || {};
+  const years = f.years && f.years.length ? [...f.years].sort((a, b) => a - b) : datasetYears(orders);
+  const months = f.months && f.months.length ? [...f.months].sort((a, b) => a - b) : undefined;
+  let label: string;
+  if (f.start && f.end) label = `${f.start}~${f.end}`;
+  else if (months && months.length) label = `${years.join('·')}년 ${months[0] === months[months.length - 1] ? `${months[0]}월` : `${months[0]}~${months[months.length - 1]}월`}`;
+  else if (f.years && f.years.length) label = `${years.join('·')}년`;
+  else label = '전체 기간';
+  // start/end 명시가 없으면 years/months로 경계 도출(단일해·단일월 등 정확 보존).
+  let start = f.start, end = f.end;
+  if (!start && !end && years.length === 1) {
+    const y = years[0];
+    const sm = months && months.length ? months[0] : 1;
+    const em = months && months.length ? months[months.length - 1] : 12;
+    start = `${y}-${pad2(sm)}-01`; end = `${y}-${pad2(em)}-${pad2(lastDay(y, em))}`;
   }
-  return { label: '전체 기간', years: datasetYears(orders) }; // all
+  return { years, months, start, end, label };
 }
-
-function inRange(o: OrderLike, r: Range): boolean {
-  if (r.years.length && !r.years.includes(orderYear(o))) return false;
-  if (r.months && !r.months.includes(Number(String(o.orderDate ?? '').slice(5, 7)))) return false;
-  const d = String(o.orderDate ?? '').slice(0, 10);
+const inRange = (dateStr: string | undefined, r: Range): boolean => {
+  const d = dateSlice(dateStr);
+  if (!d) return false;
+  if (r.years.length && !r.years.includes(yearOf(dateStr))) return false;
+  if (r.months && r.months.length && !r.months.includes(monthOf(dateStr))) return false;
   if (r.start && d < r.start) return false;
   if (r.end && d > r.end) return false;
   return true;
-}
-function passFilters(o: OrderLike, q: AnalyticsQuery): boolean {
-  const f = q.filters; if (!f) return true;
-  if (f.coupon === 'used' && !o.discountSummary?.hasCoupon) return false;
-  if (f.coupon === 'unused' && o.discountSummary?.hasCoupon) return false;
-  if (f.firstRepeat === 'first' && o.isFirstPurchase !== true) return false;
-  if (f.firstRepeat === 'repeat' && o.isFirstPurchase === true) return false;
+};
+function passOrderFilters(o: OrderLike, plan: QueryPlan): boolean {
+  const f = plan.filters; if (!f) return true;
+  if (f.couponUsed === true && !o.discountSummary?.hasCoupon) return false;
+  if (f.couponUsed === false && o.discountSummary?.hasCoupon) return false;
+  if (f.customerType === 'first' && o.isFirstPurchase !== true) return false;
+  if (f.customerType === 'repeat' && o.isFirstPurchase === true) return false;
   if (f.memberGroup && String(o.memberGroupName ?? '') !== f.memberGroup) return false;
   if (f.channel && String(o.orderChannel ?? '') !== f.channel) return false;
-  if (f.categoryCode && !(o.lines ?? []).some((l) => l.categoryCode === f.categoryCode)) return false;
+  if (f.category && !(o.lines ?? []).some((l) => l.categoryCode === f.category)) return false;
   if (f.goodsNo && !(o.lines ?? []).some((l) => l.goodsNo === f.goodsNo)) return false;
   return true;
 }
 
-// ── 묶기 + 집계 ──────────────────────────────────────────────────────────────
-export interface Row { key: string; label: string; value: number; revenue: number; orderCount: number; quantity: number; aov: number; share?: number }
-type Dim = AnalyticsQuery['dimension'];
-const isLineDim = (d: Dim): boolean => d === 'product' || d === 'category';
-
-// 주문 단위 그룹(time/coupon/firstRepeat/memberGroup/channel): net 매출·유효주문.
-function groupOrderDim(orders: OrderLike[], d: Dim, catFilter?: string): Map<string, { label: string; rev: number; oc: number; qty: number }> {
-  const m = new Map<string, { label: string; rev: number; oc: number; qty: number }>();
-  for (const o of orders) {
-    if (!isValidOrder(o)) continue;
-    let key = 'all', label = '전체';
-    if (d === 'time') { const ym = String(o.orderDate ?? '').slice(0, 7); key = ym; label = `${Number(ym.slice(5, 7))}월`; }
-    else if (d === 'coupon') { const u = !!o.discountSummary?.hasCoupon; key = u ? 'used' : 'unused'; label = u ? '쿠폰 사용' : '쿠폰 미사용'; }
-    else if (d === 'firstRepeat') { const fr = o.isFirstPurchase === true; key = fr ? 'first' : 'repeat'; label = fr ? '첫구매' : '재구매'; }
-    else if (d === 'memberGroup') { key = String(o.memberGroupName ?? '미분류'); label = key; }
-    else if (d === 'channel') { key = String(o.orderChannel ?? '미상'); label = key; }
-    const g = m.get(key) || { label, rev: 0, oc: 0, qty: 0 };
-    g.rev += num(o.totalAmount); g.oc += 1;
-    for (const l of o.lines ?? []) { if (catFilter && l.categoryCode !== catFilter) continue; g.qty += num(l.quantity); }
-    m.set(key, g);
-  }
-  return m;
+// ── 원시연산: grain 결정 + 축 키 추출 ────────────────────────────────────────────
+type Grain = 'order' | 'line' | 'inquiry' | 'review';
+const LINE_AXES = new Set<Axis>(['product', 'category']);
+function resolveGrain(plan: QueryPlan): Grain {
+  const src = METRIC_SOURCE[plan.metric];
+  if (src === 'inquiries') return 'inquiry';
+  if (src === 'reviews') return 'review';
+  if ((plan.groupBy && LINE_AXES.has(plan.groupBy)) || (plan.seriesBy && LINE_AXES.has(plan.seriesBy))) return 'line';
+  return 'order';
 }
-// 라인 단위 그룹(product/category): gross 라인매출.
-function groupLineDim(orders: OrderLike[], d: Dim): Map<string, { label: string; rev: number; qty: number; orderSet: Set<string> }> {
-  const m = new Map<string, { label: string; rev: number; qty: number; orderSet: Set<string> }>();
-  for (const o of orders) {
-    for (const l of o.lines ?? []) {
-      const key = d === 'category' ? String(l.categoryCode ?? 'uncategorized') : String(l.goodsNo ?? l.goodsName ?? '');
-      if (!key) continue;
-      const label = d === 'category' ? categoryDisplayName(String(l.categoryCode ?? 'uncategorized')) : String(l.goodsName || l.goodsNo || '(이름없음)');
-      const g = m.get(key) || { label, rev: 0, qty: 0, orderSet: new Set<string>() };
-      g.rev += num(l.lineRevenue); g.qty += num(l.quantity); if (o.orderNo) g.orderSet.add(o.orderNo);
-      m.set(key, g);
+type KL = { key: string; label: string };
+const productNameMap = (orders: OrderLike[]): Map<string, string> => {
+  const m = new Map<string, string>();
+  for (const o of orders) for (const l of o.lines ?? []) { const k = String(l.goodsNo ?? ''); if (k && !m.has(k)) m.set(k, String(l.goodsName || l.goodsNo || k)); }
+  return m;
+};
+// 축 키를 어떤 소스 엔티티에서든 추출(가능하면). null이면 그 축은 이 grain에서 추출 불가.
+function axisKey(axis: Axis | undefined, ctx: { order?: OrderLike; line?: LineLike; inquiry?: InquiryLike; review?: ReviewLike; date?: string; names?: Map<string, string>; monthFull?: boolean }): KL | null {
+  if (!axis) return { key: 'all', label: '전체' };
+  const nameOf = (g?: string): string => (g && ctx.names?.get(String(g))) || String(g ?? '(이름없음)');
+  const d = ctx.date;
+  switch (axis) {
+    case 'year': { const y = yearOf(d); return y ? { key: String(y), label: `${y}년` } : null; }
+    // month: 연도로 series를 나누면 MM(정렬 정렬), 그 외 다연도는 YYYY-MM으로 구분(12월이 합쳐지지 않게).
+    case 'month': { const m = monthOf(d); if (!m) return null; const y = yearOf(d); return ctx.monthFull ? { key: `${y}-${pad2(m)}`, label: `${y}년 ${m}월` } : { key: pad2(m), label: `${m}월` }; }
+    case 'product': case 'inquiryProduct': {
+      const g = ctx.line?.goodsNo ?? ctx.inquiry?.goodsNo ?? ctx.review?.goodsNo;
+      return g != null ? { key: String(g), label: nameOf(String(g)) } : null;
+    }
+    case 'category': {
+      const c = ctx.line?.categoryCode ?? ctx.inquiry?.categoryCode ?? ctx.review?.categoryCode;
+      return c != null ? { key: String(c), label: categoryDisplayName(String(c)) } : null;
+    }
+    case 'couponUsed': { if (!ctx.order) return null; const u = !!ctx.order.discountSummary?.hasCoupon; return { key: u ? 'used' : 'unused', label: u ? '쿠폰 사용' : '쿠폰 미사용' }; }
+    case 'memberGroup': { if (!ctx.order) return null; const g = String(ctx.order.memberGroupName ?? '미분류'); return { key: g, label: g }; }
+    case 'channel': { if (!ctx.order) return null; const g = String(ctx.order.orderChannel ?? '미상'); return { key: g, label: g }; }
+    case 'customerType': { if (!ctx.order) return null; const fp = ctx.order.isFirstPurchase === true; return { key: fp ? 'first' : 'repeat', label: fp ? '신규(첫구매)' : '재구매' }; }
+    case 'reviewRating': { const r = ctx.review?.rating; return r != null ? { key: String(r), label: `${r}점` } : null; }
+  }
+  return null;
+}
+
+// ── 원시연산: groupBy × seriesBy → 표(table) ─────────────────────────────────────
+interface Acc { rev: number; qty: number; orders: Set<string>; n: number; ratingSum: number }
+const newAcc = (): Acc => ({ rev: 0, qty: 0, orders: new Set(), n: 0, ratingSum: 0 });
+const metricValue = (a: Acc, m: Metric): number => {
+  switch (m) {
+    case 'revenue': case 'share': return a.rev;
+    case 'orderCount': return a.orders.size;
+    case 'quantity': return a.qty;
+    case 'averageOrderValue': return a.orders.size > 0 ? Math.round(a.rev / a.orders.size) : 0;
+    case 'inquiryCount': case 'reviewCount': return a.n;
+    case 'averageRating': return a.n > 0 ? a.ratingSum / a.n : 0;
+  }
+};
+interface Group { key: string; label: string; cells: Map<string, Acc>; total: Acc; secondary?: number }
+interface Table { groups: Group[]; series: KL[] }
+
+function tabulate(plan: QueryPlan, dataset: CommerceDataset, range: Range, names: Map<string, string>): Table {
+  const grain = resolveGrain(plan);
+  // 다연도를 연도 series로 나누지 않으면 월을 YYYY-MM으로 구분(연도 간 같은 달이 합쳐지지 않게).
+  const monthFull = range.years.length > 1 && plan.seriesBy !== 'year';
+  const groups = new Map<string, Group>();
+  const seriesMap = new Map<string, string>(); // key → label
+  const bump = (gk: KL, sk: KL, mut: (a: Acc) => void): void => {
+    let g = groups.get(gk.key);
+    if (!g) { g = { key: gk.key, label: gk.label, cells: new Map(), total: newAcc() }; groups.set(gk.key, g); }
+    let c = g.cells.get(sk.key);
+    if (!c) { c = newAcc(); g.cells.set(sk.key, c); }
+    if (!seriesMap.has(sk.key)) seriesMap.set(sk.key, sk.label);
+    mut(c); mut(g.total);
+  };
+
+  if (grain === 'order' || grain === 'line') {
+    for (const o of dataset.orders) {
+      if (!isValidOrder(o) || !inRange(o.orderDate, range) || !passOrderFilters(o, plan)) continue;
+      if (grain === 'line') {
+        for (const l of o.lines ?? []) {
+          if (plan.filters?.category && l.categoryCode !== plan.filters.category) continue;
+          if (plan.filters?.goodsNo && l.goodsNo !== plan.filters.goodsNo) continue;
+          const gk = axisKey(plan.groupBy, { order: o, line: l, date: o.orderDate, names, monthFull });
+          const sk = axisKey(plan.seriesBy, { order: o, line: l, date: o.orderDate, names, monthFull });
+          if (!gk || !sk) continue;
+          bump(gk, sk, (a) => { a.rev += num(l.lineRevenue); a.qty += num(l.quantity); if (o.orderNo) a.orders.add(o.orderNo); });
+        }
+      } else {
+        const gk = axisKey(plan.groupBy, { order: o, date: o.orderDate, names, monthFull });
+        const sk = axisKey(plan.seriesBy, { order: o, date: o.orderDate, names, monthFull });
+        if (!gk || !sk) continue;
+        let qty = 0; for (const l of o.lines ?? []) qty += num(l.quantity);
+        bump(gk, sk, (a) => { a.rev += num(o.totalAmount); a.qty += qty; if (o.orderNo) a.orders.add(o.orderNo); });
+      }
+    }
+  } else if (grain === 'inquiry') {
+    for (const iq of dataset.inquiries ?? []) {
+      if (!inRange(iq.createdAt, range)) continue;
+      if (plan.filters?.category && iq.categoryCode !== plan.filters.category) continue;
+      if (plan.filters?.goodsNo && iq.goodsNo !== plan.filters.goodsNo) continue;
+      const gk = axisKey(plan.groupBy, { inquiry: iq, date: iq.createdAt, names, monthFull });
+      const sk = axisKey(plan.seriesBy, { inquiry: iq, date: iq.createdAt, names, monthFull });
+      if (!gk || !sk) continue;
+      bump(gk, sk, (a) => { a.n += 1; });
+    }
+  } else {
+    for (const rv of dataset.reviews ?? []) {
+      if (!inRange(rv.createdAt, range)) continue;
+      if (plan.filters?.category && rv.categoryCode !== plan.filters.category) continue;
+      if (plan.filters?.goodsNo && rv.goodsNo !== plan.filters.goodsNo) continue;
+      const gk = axisKey(plan.groupBy, { review: rv, date: rv.createdAt, names, monthFull });
+      const sk = axisKey(plan.seriesBy, { review: rv, date: rv.createdAt, names, monthFull });
+      if (!gk || !sk) continue;
+      bump(gk, sk, (a) => { a.n += 1; a.ratingSum += num(rv.rating); });
     }
   }
+
+  const series: KL[] = [...seriesMap.entries()].map(([key, label]) => ({ key, label }));
+  // series 정렬: year/월 등 숫자면 오름차순, 아니면 등장순 유지.
+  series.sort((a, b) => (/^\d+$/.test(a.key) && /^\d+$/.test(b.key) ? Number(a.key) - Number(b.key) : 0));
+  return { groups: [...groups.values()], series };
+}
+
+// join(보조 지표): groupBy가 상품/문의상품이면 goodsNo로 다른 소스 지표를 붙인다.
+function computeSecondaryByProduct(plan: QueryPlan, dataset: CommerceDataset, range: Range): Map<string, number> {
+  const m = new Map<string, number>();
+  const metric = plan.secondaryMetric!;
+  const src = METRIC_SOURCE[metric];
+  const accs = new Map<string, Acc>();
+  const get = (k: string): Acc => { let a = accs.get(k); if (!a) { a = newAcc(); accs.set(k, a); } return a; };
+  if (src === 'orders') {
+    for (const o of dataset.orders) { if (!isValidOrder(o) || !inRange(o.orderDate, range) || !passOrderFilters(o, plan)) continue; for (const l of o.lines ?? []) { const k = String(l.goodsNo ?? ''); if (!k) continue; const a = get(k); a.rev += num(l.lineRevenue); a.qty += num(l.quantity); if (o.orderNo) a.orders.add(o.orderNo); } }
+  } else if (src === 'inquiries') {
+    for (const iq of dataset.inquiries ?? []) { if (!inRange(iq.createdAt, range)) continue; const k = String(iq.goodsNo ?? ''); if (!k) continue; get(k).n += 1; }
+  } else {
+    for (const rv of dataset.reviews ?? []) { if (!inRange(rv.createdAt, range)) continue; const k = String(rv.goodsNo ?? ''); if (!k) continue; const a = get(k); a.n += 1; a.ratingSum += num(rv.rating); }
+  }
+  for (const [k, a] of accs) m.set(k, metricValue(a, metric));
   return m;
 }
 
-const valueOf = (rev: number, oc: number, qty: number, metric: AnalyticsMetric): number =>
-  metric === 'revenue' ? rev : metric === 'orderCount' ? oc : metric === 'quantity' ? qty : (oc > 0 ? Math.round(rev / oc) : 0);
+// ── 정렬/차트 ────────────────────────────────────────────────────────────────
+interface Row { key: string; label: string; value: number; acc: Acc; secondary?: number }
+const rowsSingleSeries = (t: Table, metric: Metric): Row[] =>
+  t.groups.map((g) => { const acc = g.total; return { key: g.key, label: g.label, value: metricValue(acc, metric), acc, secondary: g.secondary }; });
+const sortNumericKey = (rows: Row[]): Row[] => [...rows].sort((a, b) => (/^\d+$/.test(a.key) && /^\d+$/.test(b.key) ? Number(a.key) - Number(b.key) : a.key.localeCompare(b.key)));
+const activeRows = (rows: Row[]): Row[] => { const a = rows.filter((r) => r.acc.orders.size > 0 || r.acc.n > 0 || r.value !== 0); return a.length ? a : rows; };
 
-function buildRows(orders: OrderLike[], q: AnalyticsQuery): Row[] {
-  const metric = q.metric;
-  if (isLineDim(q.dimension)) {
-    const m = groupLineDim(orders, q.dimension);
-    return [...m.entries()].map(([key, g]) => {
-      const oc = g.orderSet.size;
-      return { key, label: g.label, value: metric === 'quantity' ? g.qty : g.rev, revenue: g.rev, orderCount: oc, quantity: g.qty, aov: oc > 0 ? Math.round(g.rev / oc) : 0 };
-    });
-  }
-  const m = groupOrderDim(orders, q.dimension, q.filters?.categoryCode);
-  return [...m.entries()].map(([key, g]) => ({ key, label: g.label, value: valueOf(g.rev, g.oc, g.qty, metric), revenue: g.rev, orderCount: g.oc, quantity: g.qty, aov: g.oc > 0 ? Math.round(g.rev / g.oc) : 0 }));
-}
-
-// 활성(주문 있는) 행만 — 데이터 없는 0버킷이 최고/최저로 뽑히지 않게.
-const activeRows = (rows: Row[]): Row[] => { const a = rows.filter((r) => r.orderCount > 0 || r.value !== 0); return a.length ? a : rows; };
-const sortByTime = (rows: Row[]): Row[] => [...rows].sort((a, b) => a.key.localeCompare(b.key));
-
-// ── 차트 ────────────────────────────────────────────────────────────────────
-function chartSpec(rows: Row[], q: AnalyticsQuery, chartType: MarketingChartType, title: string, subtitle: string): MarketingChartSpec {
-  const metric = q.metric;
-  const unit: MarketingChartSpec['unit'] = q.aggregation === 'share' ? 'percent' : (metric === 'orderCount' || metric === 'quantity' ? 'count' : 'krw');
-  const timeSingleSeries = q.dimension === 'time' && (chartType === 'line');
-  if (timeSingleSeries) {
-    // 시간 추이: 단일 series × 월 points(세로 combo 렌더). bucketKey 2자리 패딩(정렬).
-    return {
-      id: `cdq_time_${metric}`, title, subtitle, chartType, primaryMetric: metric,
-      series: [{ key: metric, label: METRIC_LABEL[metric], metric, points: sortByTime(rows).map((r) => ({ bucketKey: /^\d{4}-\d{2}$/.test(r.key) ? r.key : pad2(Number(r.key) || 0), bucketLabel: r.label, value: r.value, orderCount: r.orderCount, revenue: r.revenue, quantity: r.quantity, averageOrderValue: r.aov })) }],
-      xAxisLabel: '기간', yAxisLabel: METRIC_LABEL[metric], unit, source: 'temporal_crosstab',
-      request: { timeBucket: 'month', dimensions: [], metrics: [metric] as unknown as MarketingChartSpec['request']['metrics'] },
-      available: rows.length > 0, evidence: [], warnings: []
-    };
-  }
-  // 항목당 1 series(rankedBar 관례) — extremes/rank/share/product/category.
+function rankedBarSpec(rows: Row[], metric: Metric, title: string, subtitle: string, share: boolean, chartType: MarketingChartType = 'rankedBar'): MarketingChartSpec {
   return {
-    id: `cdq_${q.dimension}_${q.aggregation}`, title, subtitle, chartType, primaryMetric: q.aggregation === 'share' ? 'share' : metric,
-    series: rows.map((r) => ({ key: r.key, label: r.label, metric, points: [{ bucketKey: r.key, bucketLabel: r.label, value: q.aggregation === 'share' ? Math.round((r.share ?? 0) * 1000) / 10 : r.value, orderCount: r.orderCount, revenue: r.revenue, quantity: r.quantity, averageOrderValue: r.aov }] })),
-    xAxisLabel: q.dimension, yAxisLabel: q.aggregation === 'share' ? '비중' : METRIC_LABEL[metric], unit, source: 'temporal_crosstab',
+    id: `cdq_${metric}_${chartType}`, title, subtitle, chartType, primaryMetric: share ? 'share' : metric,
+    series: rows.map((r) => ({ key: r.key, label: r.label, metric: metric as unknown as MarketingChartSpec['series'][number]['metric'], points: [{ bucketKey: r.key, bucketLabel: r.label, value: r.value, orderCount: r.acc.orders.size, revenue: r.acc.rev, quantity: r.acc.qty, averageOrderValue: metricValue(r.acc, 'averageOrderValue') }] })),
+    xAxisLabel: '항목', yAxisLabel: share ? '비중' : METRIC_LABEL[metric], unit: chartUnit(metric, share), source: 'temporal_crosstab',
     request: { timeBucket: 'month', dimensions: [], metrics: [metric] as unknown as MarketingChartSpec['request']['metrics'] },
     available: rows.length > 0, evidence: [], warnings: []
+  };
+}
+function comboTimeSpec(rows: Row[], metric: Metric, title: string, subtitle: string): MarketingChartSpec {
+  const t = sortNumericKey(rows);
+  return {
+    id: `cdq_time_${metric}`, title, subtitle, chartType: 'line', primaryMetric: metric,
+    series: [{ key: metric, label: METRIC_LABEL[metric], metric: metric as unknown as MarketingChartSpec['series'][number]['metric'], points: t.map((r) => ({ bucketKey: /^\d{4}-\d{2}$/.test(r.key) ? r.key : pad2(Number(r.key) || 0), bucketLabel: r.label, value: r.value, orderCount: r.acc.orders.size, revenue: r.acc.rev, quantity: r.acc.qty, averageOrderValue: metricValue(r.acc, 'averageOrderValue') })) }],
+    xAxisLabel: '기간', yAxisLabel: METRIC_LABEL[metric], unit: chartUnit(metric, false), source: 'temporal_crosstab',
+    request: { timeBucket: 'month', dimensions: [], metrics: [metric] as unknown as MarketingChartSpec['request']['metrics'] },
+    available: rows.length > 0, evidence: [], warnings: []
+  };
+}
+// seriesBy(다중 series) → grouped vertical(연도/세그먼트별 색). buckets = groupBy 축.
+function groupedSpec(t: Table, plan: QueryPlan, title: string, subtitle: string): MarketingChartSpec {
+  const metric = plan.metric;
+  const buckets = sortNumericKey(t.groups.map((g) => ({ key: g.key, label: g.label, value: 0, acc: newAcc() })));
+  return {
+    id: `cdq_grouped_${metric}`, title, subtitle, chartType: 'groupedBar', primaryMetric: metric,
+    series: t.series.map((s) => ({
+      key: s.key, label: s.label, metric: metric as unknown as MarketingChartSpec['series'][number]['metric'],
+      points: buckets.map((b) => { const g = t.groups.find((x) => x.key === b.key)!; const acc = g.cells.get(s.key) ?? newAcc(); return { bucketKey: b.key, bucketLabel: b.label, value: metricValue(acc, metric), orderCount: acc.orders.size, revenue: acc.rev, quantity: acc.qty, averageOrderValue: metricValue(acc, 'averageOrderValue') }; })
+    })),
+    xAxisLabel: plan.groupBy ? AXIS_LABEL[plan.groupBy] : '구간', yAxisLabel: METRIC_LABEL[metric], unit: chartUnit(metric, false), source: 'temporal_crosstab',
+    request: { timeBucket: 'month', dimensions: [], metrics: [metric] as unknown as MarketingChartSpec['request']['metrics'] },
+    available: t.groups.length > 0 && t.series.length > 0, evidence: [], warnings: []
   };
 }
 function artifactOf(cs: MarketingChartSpec, reply: string, bullets: string[], nowMs: number): MarketingChatChartArtifact {
@@ -193,139 +285,152 @@ function artifactOf(cs: MarketingChartSpec, reply: string, bullets: string[], no
   };
 }
 
-// ── 전 팀 공용 진입점: 이해(LLM/deterministic) → 실행. 열린 질문이면 null(→ 호출부가 기존 경로). ──
+// ── 전 팀 공용 진입점: 이해(LLM→QueryPlan) → 실행. 열린 질문이면 null(호출부가 열린 경로). ──
 export async function answerCommerceQuestion(
   message: string, dataset: CommerceDataset,
   opts?: { callLlm?: (prompt: string) => Promise<string>; nowMs?: number; team?: AnalyticsTeam }
 ): Promise<CommerceQueryResult | null> {
   if (!dataset.orders || !dataset.orders.length) return null;
-  const q = await understandCommerceQuery(message, { callLlm: opts?.callLlm, nowMs: opts?.nowMs, team: opts?.team });
-  if (!q) return null; // 데이터 조회·계산 질문이 아님(왜/전략 등) → 기존 열린 경로
-  return executeCommerceDataQuery(q, dataset, { nowMs: opts?.nowMs });
+  const plan = await understandCommerceQuery(message, { callLlm: opts?.callLlm, nowMs: opts?.nowMs, team: opts?.team });
+  if (!plan) return null;
+  return executeCommerceQueryPlan(plan, dataset, { nowMs: opts?.nowMs });
 }
 
-// ── 실행 진입점 ────────────────────────────────────────────────────────────────
-export function executeCommerceDataQuery(query: AnalyticsQuery, dataset: CommerceDataset, opts?: { nowMs?: number }): CommerceQueryResult | null {
+// ── Executor: QueryPlan 원시연산 실행 ─────────────────────────────────────────────
+export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDataset, opts?: { nowMs?: number }): CommerceQueryResult | null {
   const nowMs = opts?.nowMs ?? Date.now();
-  const all = dataset.orders || [];
-  if (!all.length) return null;
-  if (query.unsupportedReason) {
-    return { handled: true, reply: `${query.unsupportedReason}\n대신 매출·주문수·객단가·판매수량을 기간/상품/카테고리/쿠폰/회원그룹/채널 기준으로 조회·비교할 수 있습니다.`, suppressChart: true };
+  const orders = dataset.orders || [];
+  if (!orders.length) return null;
+  if (plan.unsupportedReason) {
+    return { handled: true, reply: `${plan.unsupportedReason}\n대신 매출·주문수·객단가·판매수량·문의수·리뷰/평점을 기간·상품·카테고리·쿠폰·회원그룹·채널·신규/재구매 기준으로 조회·비교할 수 있습니다.`, suppressChart: true };
   }
+  const src = METRIC_SOURCE[plan.metric];
+  if (src === 'inquiries' && !(dataset.inquiries && dataset.inquiries.length)) return { handled: true, reply: '문의 데이터가 아직 연결되어 있지 않습니다.', suppressChart: true };
+  if (src === 'reviews' && !(dataset.reviews && dataset.reviews.length)) return { handled: true, reply: '리뷰 데이터가 아직 연결되어 있지 않습니다.', suppressChart: true };
 
-  const range = resolvePeriod(query, all, nowMs);
-  const scoped = all.filter((o) => inRange(o, range) && passFilters(o, query));
-  const metric = query.metric;
+  const range = resolveRange(plan, orders);
+  const names = productNameMap(orders);
+  const metric = plan.metric;
   const label = METRIC_LABEL[metric];
   const filterNote = (() => {
-    const f = query.filters; if (!f) return '';
+    const f = plan.filters; if (!f) return '';
     const bits: string[] = [];
-    if (f.coupon) bits.push(f.coupon === 'used' ? '쿠폰 사용' : '쿠폰 미사용');
-    if (f.firstRepeat) bits.push(f.firstRepeat === 'first' ? '첫구매' : '재구매');
+    if (f.couponUsed === true) bits.push('쿠폰 사용'); if (f.couponUsed === false) bits.push('쿠폰 미사용');
+    if (f.customerType) bits.push(f.customerType === 'first' ? '신규' : '재구매');
     if (f.memberGroup) bits.push(f.memberGroup); if (f.channel) bits.push(f.channel);
     return bits.length ? ` (${bits.join('·')})` : '';
   })();
-  const scopeLabel = `${range.label}${filterNote}`;
+  const scope = `${range.label}${filterNote}`;
+  const chartOn = !plan.chartSuppressed;
 
-  if (!scoped.filter(isValidOrder).length && !isLineDim(query.dimension)) {
-    return { handled: true, reply: `${scopeLabel} 기준 해당하는 주문 데이터가 없습니다.`, suppressChart: true };
+  const table = tabulate(plan, dataset, range, names);
+  if (!table.groups.length) return { handled: true, reply: `${scope} 기준 해당하는 데이터가 없습니다.`, suppressChart: true };
+
+  // ── seriesBy 있으면 grouped 비교(연도/세그먼트별 색). trend/compare 등 모두 여기로. ──
+  if (plan.seriesBy && table.series.length >= 2) {
+    const rows = sortNumericKey(table.groups.map((g) => ({ key: g.key, label: g.label, value: 0, acc: g.total })));
+    // 각 series 총계 요약(간결).
+    const seriesTotals = table.series.map((s) => {
+      const acc = newAcc();
+      for (const g of table.groups) { const c = g.cells.get(s.key); if (c) { acc.rev += c.rev; acc.qty += c.qty; acc.n += c.n; acc.ratingSum += c.ratingSum; for (const on of c.orders) acc.orders.add(on); } }
+      return { s, value: metricValue(acc, metric) };
+    });
+    const bullets = seriesTotals.map((x) => `${x.s.label}: ${fmtMetric(x.value, metric)}`);
+    const gLabel = plan.groupBy ? AXIS_LABEL[plan.groupBy] : '구간';
+    const reply = [`${scope} ${gLabel}별 ${label}을(를) ${table.series.map((s) => s.label).join(' vs ')}로 비교했습니다.`, ...bullets].join('\n');
+    const cs = groupedSpec(table, plan, `${scope} ${label} 비교`, `${gLabel}별 · ${table.series.map((s) => s.label).join(' vs ')}`);
+    void rows;
+    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
-  let rows = buildRows(scoped, query);
-  // 여러 해를 통틀어 시간축을 물으면 "12월"이 어느 해인지 모호 → 라벨에 연도 표기.
-  if (query.dimension === 'time' && range.years.length > 1) {
-    rows = rows.map((r) => (/^\d{4}-\d{2}$/.test(r.key) ? { ...r, label: `${r.key.slice(0, 4)}년 ${Number(r.key.slice(5, 7))}월` } : r));
-  }
-  if (!rows.length) return { handled: true, reply: `${scopeLabel} 기준 데이터가 없습니다.`, suppressChart: true };
+  const rows = rowsSingleSeries(table, metric);
 
-  const op = query.aggregation;
-  const chartOn = !query.chartSuppressed;
-
-  // ── summarize: 지표 하나로 요약(차원 없음/단일) ──
-  if (op === 'summarize' || op === 'sum' || (query.dimension === 'time' && op !== 'trend' && op !== 'argmax' && op !== 'argmin' && op !== 'extremes' && op !== 'compare')) {
-    let rev = 0, oc = 0, qty = 0;
-    for (const o of scoped) { if (!isValidOrder(o)) continue; rev += num(o.totalAmount); oc += 1; for (const l of o.lines ?? []) qty += num(l.quantity); }
-    const v = valueOf(rev, oc, qty, metric);
-    const reply = `${scopeLabel} ${label}: ${fmtVal(v, metric)} (매출 ${won(rev)} · 주문 ${cnt(oc)} · 판매 ${qtyStr(qty)} · 객단가 ${won(oc > 0 ? rev / oc : 0)}).`;
-    return { handled: true, reply, suppressChart: true };
+  // ── summarize / 그룹 없음 → 하나의 수 ──
+  if (plan.operation === 'summarize' || !plan.groupBy) {
+    const a = table.groups.reduce((acc, g) => { acc.rev += g.total.rev; acc.qty += g.total.qty; acc.n += g.total.n; acc.ratingSum += g.total.ratingSum; for (const on of g.total.orders) acc.orders.add(on); return acc; }, newAcc());
+    const v = metricValue(a, metric);
+    const detail = src === 'orders'
+      ? ` (매출 ${won(a.rev)} · 주문 ${cnt(a.orders.size)} · 판매 ${qtyStr(a.qty)} · 객단가 ${won(metricValue(a, 'averageOrderValue'))})`
+      : src === 'reviews' ? ` (리뷰 ${cnt(a.n)} · 평균 ${fmtMetric(metricValue(a, 'averageRating'), 'averageRating')})` : ` (문의 ${cnt(a.n)})`;
+    return { handled: true, reply: `${scope} ${label}: ${fmtMetric(v, metric)}${detail}.`, suppressChart: true };
   }
 
-  // ── extremes: 최고 + 최저 딱 2개 비교 ──
-  if (op === 'extremes') {
+  // ── extremes: 최고 + 최저 2개 ──
+  if (plan.operation === 'extremes') {
     const act = activeRows(rows);
     const hi = act.reduce((a, b) => (b.value > a.value ? b : a));
     const lo = act.reduce((a, b) => (b.value < a.value ? b : a));
-    const two = [hi, lo];
-    const diff = hi.value - lo.value;
-    const reply = [
-      `${scopeLabel} ${label} 최고·최저 비교입니다.`,
-      `최고: ${hi.label} ${fmtVal(hi.value, metric)}`,
-      `최저: ${lo.label} ${fmtVal(lo.value, metric)}`,
-      `차이: ${fmtVal(diff, metric)}`
-    ].join('\n');
-    const cs = chartSpec(two, query, 'rankedBar', `${scopeLabel} ${label} 최고·최저`, '최고 vs 최저');
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, reply.split('\n').slice(1), nowMs) : undefined, suppressChart: query.chartSuppressed };
+    const reply = [`${scope} ${label} 최고·최저입니다.`, `최고: ${hi.label} ${fmtMetric(hi.value, metric)}`, `최저: ${lo.label} ${fmtMetric(lo.value, metric)}`, `차이: ${fmtMetric(hi.value - lo.value, metric)}`].join('\n');
+    const cs = rankedBarSpec([hi, lo], metric, `${scope} ${label} 최고·최저`, '최고 vs 최저', false);
+    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, reply.split('\n').slice(1), nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
-  // ── argmax / argmin: 극값 1개(+ 상위 3) ──
-  if (op === 'argmax' || op === 'argmin') {
+  // ── argmax / argmin ──
+  if (plan.operation === 'argmax' || plan.operation === 'argmin') {
     const act = activeRows(rows);
-    const ext = op === 'argmin' ? act.reduce((a, b) => (b.value < a.value ? b : a)) : act.reduce((a, b) => (b.value > a.value ? b : a));
-    const top = [...act].sort((a, b) => (op === 'argmin' ? a.value - b.value : b.value - a.value)).slice(0, 3);
-    const dir = op === 'argmin' ? '가장 낮았던' : '가장 높았던';
-    const bullets = top.map((r, i) => `${i + 1}. ${r.label} ${fmtVal(r.value, metric)}`);
-    const reply = [`${scopeLabel} ${label}이(가) ${dir} 것은 ${ext.label}(${fmtVal(ext.value, metric)})입니다.`, ...bullets].join('\n');
-    // 시간축이면 세로 추이(combo)로 전체 맥락 + 극값. 그 외는 rankedBar.
-    const isTime = query.dimension === 'time';
-    const cs = isTime
-      ? chartSpec(sortByTime(rows), query, 'line', `${scopeLabel} ${label} 추이`, `월별 · ${label}`)
-      : chartSpec(top, query, 'rankedBar', `${scopeLabel} ${label} ${op === 'argmin' ? '최저' : '최고'}`, label);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: query.chartSuppressed };
+    const min = plan.operation === 'argmin';
+    const ext = act.reduce((a, b) => (min ? (b.value < a.value ? b : a) : (b.value > a.value ? b : a)));
+    const top = [...act].sort((a, b) => (min ? a.value - b.value : b.value - a.value)).slice(0, 3);
+    const bullets = top.map((r, i) => `${i + 1}. ${r.label} ${fmtMetric(r.value, metric)}`);
+    const reply = [`${scope} ${label}이(가) 가장 ${min ? '낮았던' : '높았던'} 것은 ${ext.label}(${fmtMetric(ext.value, metric)})입니다.`, ...bullets].join('\n');
+    const isTime = plan.groupBy === 'month';
+    const cs = isTime ? comboTimeSpec(rows, metric, `${scope} ${label} 추이`, `월별 · ${label}`) : rankedBarSpec(top, metric, `${scope} ${label} ${min ? '최저' : '최고'}`, label, false);
+    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
-  // ── trend: 시간 추이(세로 combo) ──
-  if (op === 'trend') {
-    const t = sortByTime(rows);
+  // ── trend: 단일 series 추이(세로 combo) ──
+  if (plan.operation === 'trend') {
+    const t = sortNumericKey(rows);
     const act = activeRows(t);
     const hi = act.reduce((a, b) => (b.value > a.value ? b : a));
     const lo = act.reduce((a, b) => (b.value < a.value ? b : a));
-    const reply = `${scopeLabel} ${label} 추이입니다. 최고 ${hi.label}(${fmtVal(hi.value, metric)}), 최저 ${lo.label}(${fmtVal(lo.value, metric)}).`;
-    const cs = chartSpec(t, query, 'line', `${scopeLabel} ${label} 추이`, `월별 · ${label}`);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, [], nowMs) : undefined, suppressChart: query.chartSuppressed };
+    const reply = `${scope} ${label} 추이입니다. 최고 ${hi.label}(${fmtMetric(hi.value, metric)}), 최저 ${lo.label}(${fmtMetric(lo.value, metric)}).`;
+    const cs = comboTimeSpec(t, metric, `${scope} ${label} 추이`, `${plan.groupBy ? AXIS_LABEL[plan.groupBy] : '기간'}별 · ${label}`);
+    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, [], nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
   // ── share: 비중 ──
-  if (op === 'share') {
-    const total = rows.reduce((s, r) => s + r.revenue, 0);
-    const withShare = rows.map((r) => ({ ...r, share: total > 0 ? r.revenue / total : 0 })).sort((a, b) => b.revenue - a.revenue);
-    const bullets = withShare.map((r) => `${r.label}: ${won(r.revenue)} (${formatSharePercent(r.share ?? 0)})`);
-    const reply = [`${scopeLabel} ${query.dimension === 'category' ? '카테고리' : ''} 매출 비중입니다.`, ...bullets].join('\n');
-    const cs = chartSpec(withShare, query, 'rankedBar', `${scopeLabel} 비중`, '매출 비중(%)');
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: query.chartSuppressed };
+  if (plan.operation === 'share') {
+    const total = rows.reduce((s, r) => s + r.acc.rev, 0);
+    const withShare = rows.map((r) => ({ ...r, value: total > 0 ? r.acc.rev / total : 0 })).sort((a, b) => b.acc.rev - a.acc.rev);
+    const bullets = withShare.map((r) => `${r.label}: ${won(r.acc.rev)} (${formatSharePercent(r.value)})`);
+    const reply = [`${scope} ${plan.groupBy ? AXIS_LABEL[plan.groupBy] : ''} 비중입니다.`, ...bullets].join('\n');
+    const shareRows: Row[] = withShare.map((r) => ({ key: r.key, label: r.label, value: Math.round(r.value * 1000) / 10, acc: r.acc }));
+    const cs = rankedBarSpec(shareRows, 'share', `${scope} 비중`, '비중(%)', true);
+    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
-  // ── compare: 연도 비교(yearOverYear) — 같은 기간 여러 해 ──
-  if (op === 'compare' && query.comparison === 'yearOverYear' && range.years.length >= 2) {
-    const per = range.years.map((y) => {
-      let rev = 0, oc = 0, qty = 0;
-      for (const o of scoped) { if (orderYear(o) !== y || !isValidOrder(o)) continue; rev += num(o.totalAmount); oc += 1; for (const l of o.lines ?? []) qty += num(l.quantity); }
-      return { key: String(y), label: `${y}년`, value: valueOf(rev, oc, qty, metric), revenue: rev, orderCount: oc, quantity: qty, aov: oc > 0 ? Math.round(rev / oc) : 0 } as Row;
-    });
-    const bullets = per.map((r) => `${r.label}: ${fmtVal(r.value, metric)}`);
-    const reply = [`${scopeLabel} ${label} 연도 비교입니다.`, ...bullets].join('\n');
-    const cs = chartSpec(per, query, 'rankedBar', `${scopeLabel} ${label} 연도 비교`, label);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: query.chartSuppressed };
-  }
-
-  // ── rank(기본): 순위 ──
+  // ── rank(+join 보조 지표): 순위 ──
   {
-    const sorted = [...rows].sort((a, b) => (query.sort === 'asc' ? a.value - b.value : b.value - a.value));
-    const topN = query.topN && query.topN > 0 ? query.topN : (query.dimension === 'product' ? 5 : rows.length);
-    const shown = sorted.slice(0, Math.max(topN, 1));
-    const total = rows.reduce((s, r) => s + r.revenue, 0);
-    const bullets = shown.map((r, i) => `${i + 1}위 ${r.label}: ${fmtVal(r.value, metric)}${query.dimension === 'product' ? ` (판매 ${qtyStr(r.quantity)})` : ''}${total > 0 ? ` · 비중 ${formatSharePercent(r.revenue / total)}` : ''}`);
-    const reply = [`${scopeLabel} ${label} ${query.sort === 'asc' ? '하위' : '상위'} 순위입니다.`, ...bullets].join('\n');
-    const cs = chartSpec(shown, query, 'rankedBar', `${scopeLabel} ${label} 순위`, query.dimension === 'product' ? '상품 라인매출 기준' : label);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: query.chartSuppressed };
+    let ranked = [...rows];
+    // join: 보조 지표(예: 문의수 상위 → 그 중 매출순). groupBy가 상품/문의상품일 때 goodsNo로 붙임.
+    const joinable = plan.secondaryMetric && (plan.groupBy === 'product' || plan.groupBy === 'inquiryProduct');
+    if (joinable) {
+      const sec = computeSecondaryByProduct(plan, dataset, range);
+      ranked = ranked.map((r) => ({ ...r, secondary: sec.get(r.key) ?? 0 }));
+      // 1차 지표(예: 문의수)로 범위를 좁힌 뒤, 보조 지표(예: 매출)로 나열.
+      const pool = [...ranked].sort((a, b) => b.value - a.value).slice(0, plan.topN && plan.topN > 0 ? plan.topN : 10);
+      ranked = pool.sort((a, b) => (b.secondary ?? 0) - (a.secondary ?? 0));
+    } else {
+      ranked.sort((a, b) => (plan.sort === 'asc' ? a.value - b.value : b.value - a.value));
+      const topN = plan.topN && plan.topN > 0 ? plan.topN : (plan.groupBy === 'product' ? 5 : ranked.length);
+      ranked = ranked.slice(0, Math.max(topN, 1));
+    }
+    const total = rows.reduce((s, r) => s + r.acc.rev, 0);
+    const secLabel = plan.secondaryMetric ? METRIC_LABEL[plan.secondaryMetric] : '';
+    const bullets = ranked.map((r, i) => {
+      const base = `${i + 1}위 ${r.label}: ${fmtMetric(r.value, metric)}`;
+      if (joinable) return `${base} · ${secLabel} ${fmtMetric(r.secondary ?? 0, plan.secondaryMetric!)}`;
+      const extra = plan.groupBy === 'product' ? ` (판매 ${qtyStr(r.acc.qty)})` : '';
+      const shr = total > 0 && metric === 'revenue' ? ` · 비중 ${formatSharePercent(r.acc.rev / total)}` : '';
+      return `${base}${extra}${shr}`;
+    });
+    const head = joinable ? `${scope} ${label} 상위 항목을 ${secLabel} 순으로 정렬했습니다.` : `${scope} ${label} ${plan.sort === 'asc' ? '하위' : '상위'} 순위입니다.`;
+    const reply = [head, ...bullets].join('\n');
+    // join이면 보조 지표(매출) 막대가 더 유의미 → 보조 지표로 차트.
+    const chartRows: Row[] = joinable ? ranked.map((r) => ({ key: r.key, label: r.label, value: r.secondary ?? 0, acc: r.acc })) : ranked;
+    const chartMetric = joinable ? plan.secondaryMetric! : metric;
+    const cs = rankedBarSpec(chartRows, chartMetric, `${scope} ${joinable ? secLabel : label} 순위`, joinable ? `${label} 상위 중 ${secLabel}` : label, false);
+    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 }

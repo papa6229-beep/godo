@@ -258,7 +258,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     //   열린 질문(왜/전략)이면 null → 아래 기존 경로(분석/LLM)로. broad 종합덤프 없음.
     if (rev0?.orders?.length) {
       try {
-        const eng = await answerCommerceQuestion(text, { orders: rev0.orders }, { callLlm: callMarketingPlannerLlm, team: teamId });
+        const eng = await answerCommerceQuestion(text, { orders: rev0.orders, reviews: rev0.universeAux?.reviews, inquiries: rev0.universeAux?.inquiries }, { callLlm: callMarketingPlannerLlm, team: teamId });
         if (eng && eng.handled) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: eng.reply }] }));
           const art = eng.suppressChart ? null : (eng.artifact ?? null);
