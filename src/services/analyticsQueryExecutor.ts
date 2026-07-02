@@ -141,7 +141,7 @@ export function executeAnalyticsQuery(query: AnalyticsQuery, dataset: AnalyticsD
     const totalRev = agg.reduce((s, x) => s + x.revenue, 0);
     const rows: AnalyticsQueryRow[] = sorted.slice(0, topN).map((x) => ({
       label: x.name || '(이름 없음)', key: x.goodsNo, value: byQty ? x.quantity : x.revenue,
-      revenue: x.revenue, quantity: x.quantity, share: totalRev > 0 ? x.revenue / totalRev : 0
+      revenue: x.revenue, quantity: x.quantity, orderCount: x.orderCount, share: totalRev > 0 ? x.revenue / totalRev : 0
     }));
     const top = rows[0];
     const summaryText = top

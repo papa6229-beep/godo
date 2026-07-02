@@ -341,6 +341,16 @@ const seriesOrderCount = (s: MarketingChartSeries): number => {
   for (const p of s.points) t += p.orderCount ?? 0;
   return t;
 };
+const seriesQuantity = (s: MarketingChartSeries): number => {
+  let t = 0;
+  for (const p of s.points) t += p.quantity ?? 0;
+  return t;
+};
+const seriesRevenue = (s: MarketingChartSeries): number => {
+  let t = 0;
+  for (const p of s.points) t += p.revenue ?? 0;
+  return t;
+};
 
 // 시리즈 시각 스타일(결정적 — Math.random/inline color 금지). 연도(2025/2026)·쿠폰·첫재구매·시나리오 구분.
 const SERIES_STYLE_MAP: Record<string, string> = {
@@ -367,12 +377,17 @@ const buildMarketingTooltipPayload = (input: { chartSpec: MarketingChartSpec; bu
   if (!s) return { title: '', rows: [] };
   const p = bucketKey ? s.points.find((x) => x.bucketKey === bucketKey) : undefined;
   const value = p ? p.value : seriesTotal(s);
+  const quantity = p ? p.quantity : seriesQuantity(s);
   const orderCount = p ? p.orderCount : seriesOrderCount(s);
+  const revenue = p ? p.revenue : seriesRevenue(s);
   const title = p ? p.bucketLabel : s.label;
-  const rows = [
-    { label: s.label, value: formatMetricValue(value, chartSpec.unit) },
-    ...(orderCount != null ? [{ label: '주문수', value: `${orderCount}건` }] : [])
-  ];
+  const rows = [{ label: s.label, value: formatMetricValue(value, chartSpec.unit) }];
+  // 비중(percent) 차트: 매출을 보조로 표기(주인공은 %).
+  if (chartSpec.unit === 'percent' && revenue != null && revenue > 0) rows.push({ label: '매출', value: won(revenue) });
+  // 판매수량: 값이 있고 >0일 때만(상품 랭킹 등). quantity와 orderCount 혼동 금지.
+  if (quantity != null && quantity > 0) rows.push({ label: '판매수량', value: `${Math.round(quantity).toLocaleString()}개` });
+  // 주문수: 실제 계산돼 >0일 때만. 0/미계산이면 아예 표시하지 않음(가짜 "주문수 0건" 금지).
+  if (orderCount != null && orderCount > 0) rows.push({ label: '주문수', value: `${Math.round(orderCount).toLocaleString()}건` });
   let delta: string | undefined;
   const other = chartSpec.series.find((x) => x.key !== s.key);
   if (other && p) {

@@ -113,6 +113,11 @@ if (B) {
   ok('5. 텍스트 1위=가습기 강조 + 수량1위=선풍기 병기', !!b1 && /매출 기준 1위: 가습기/.test(b1.reply) && /판매수량 기준 1위: 선풍기/.test(b1.reply));
   ok('5. 텍스트 1위와 chart 첫 series 동일 source(가습기)', !!b1 && b1.artifact.chartSpec.series[0].label === '가습기' && /매출 기준 1위: 가습기/.test(b1.reply));
   ok('5. 외부데이터 없음 안내 미부착', !!b1 && !/방문자|광고비|ROAS|외부/.test(b1.reply));
+  // 툴팁 semantics 데이터: 판매수량(quantity)·주문건수(orderCount)가 point에 실려 있고 0 아님 → "주문수 0건" 방지, 판매수량 표시.
+  ok('5. point.quantity>0 (판매수량 표시 가능)', !!b1 && b1.artifact.chartSpec.series[0].points[0].quantity === 1);
+  ok('5. point.orderCount 실제 계산>0 (0 fallback 아님)', !!b1 && b1.artifact.chartSpec.series[0].points[0].orderCount === 1);
+  ok('5. quantity≠orderCount 혼동 없음(선풍기 판매3/주문2)', !!b1 && (() => { const s = b1.artifact.chartSpec.series.find((x) => x.label === '선풍기'); return s && s.points[0].quantity === 3 && s.points[0].orderCount === 2; })());
+  ok('5. unit=krw(상품 랭킹 매출 기준)', !!b1 && b1.artifact.chartSpec.unit === 'krw');
 
   // ── 6) product rank 그래프 요청 ──
   const b2 = run({ message: '2024년 7월 상품별 매출 순위 그래프로 보여줘', orders: ordersB });
@@ -133,6 +138,11 @@ if (B) {
     b3b.artifact.chartSpec.series.map((s) => s.label).includes('생활가전'));
   ok('7. raw code(001/003/006) 사용자 라벨 미노출', !!b3b && !b3b.artifact.chartSpec.series.some((s) => /^00[136]$/.test(s.label)) && !/00[136]/.test(b3b.reply));
   ok('7. 텍스트/차트 동일 source(1위 주방가전)', !!b3b && b3b.artifact.chartSpec.series[0].label === '주방가전' && /주방가전/.test(b3b.reply));
+  // 비중 질문: 그래프 주인공은 percent. (July: 003=50000/120000=41.7%, 001=45000=37.5%, 006=25000=20.8%)
+  ok('7. unit=percent(비중이 메인)', !!b3b && b3b.artifact.chartSpec.unit === 'percent');
+  ok('7. point.value=share percent(주방가전 41.7)', !!b3b && b3b.artifact.chartSpec.series[0].points[0].value === 41.7);
+  ok('7. 매출은 secondary로 보존(point.revenue=50000)', !!b3b && b3b.artifact.chartSpec.series[0].points[0].revenue === 50000);
+  ok('7. 매출(₩)이 메인 value가 아님(value는 %스케일 ≤100)', !!b3b && b3b.artifact.chartSpec.series.every((s) => s.points[0].value <= 100));
 
   // ── 8) 그래프 없이/텍스트로만 → chart artifact 없음 ──
   const bS = run({ message: '2024년 7월 상품별 매출 순위 그래프 없이 텍스트로만 알려줘', orders: ordersB });

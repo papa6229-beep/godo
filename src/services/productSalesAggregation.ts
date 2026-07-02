@@ -29,6 +29,7 @@ export interface ProductAgg {
   quantity: number;
   sold: number;
   restored: number;
+  orderCount: number; // 이 상품이 포함된 "주문 건수"(distinct orderNo). 판매수량(quantity)과 다름.
 }
 
 // ── 소스 필터 (대시보드 srcFilter와 동일) ──
@@ -63,19 +64,24 @@ export function filterOrdersByCategory(orders: RevenueOrderLite[], category: str
 // ── 상품별 집계 (대시보드 aggregateProducts와 동일 계산: lineRevenue 기준 gross) ──
 export function aggregateProductRanking(orders: RevenueOrderLite[], category: string = 'all'): Map<string, ProductAgg> {
   const m = new Map<string, ProductAgg>();
+  const orderSets = new Map<string, Set<string>>(); // goodsNo → 포함 주문번호 집합(주문 건수 계산)
   for (const o of orders) {
     for (const l of o.lines) {
       if (category !== 'all' && l.categoryCode !== category) continue;
       const b =
         m.get(l.goodsNo) ||
-        { goodsNo: l.goodsNo, name: l.goodsName, category: l.categoryCode, revenue: 0, quantity: 0, sold: 0, restored: 0 };
+        { goodsNo: l.goodsNo, name: l.goodsName, category: l.categoryCode, revenue: 0, quantity: 0, sold: 0, restored: 0, orderCount: 0 };
       b.revenue += l.lineRevenue;
       b.quantity += l.quantity;
       if (o.canceled) b.restored += l.quantity;
       else if (o.paid) b.sold += l.quantity;
       m.set(l.goodsNo, b);
+      let set = orderSets.get(l.goodsNo);
+      if (!set) { set = new Set(); orderSets.set(l.goodsNo, set); }
+      if (o.orderNo) set.add(o.orderNo);
     }
   }
+  for (const [g, b] of m) b.orderCount = orderSets.get(g)?.size ?? 0;
   return m;
 }
 

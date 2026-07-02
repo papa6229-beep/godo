@@ -28,14 +28,19 @@ export interface MarketingBridgeResult {
 
 const won = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
 
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
 // AnalyticsQueryResult(product executor) → MarketingChartSpec. product rank/category share 전용.
+//   - category share: "비중" 질문이므로 주인공(value/막대/라벨)은 percent, 매출은 보조(point.revenue → 툴팁 "매출").
+//   - product rank: value=매출(또는 수량), point.quantity/orderCount 보존(툴팁 "판매수량"/"주문수").
 function toMarketingChartSpec(res: AnalyticsQueryResult, chartType: MarketingChartType): MarketingChartSpec {
-  const metric = res.query.metric === 'quantity' ? 'quantity' : 'revenue';
-  const unit: MarketingChartSpec['unit'] = metric === 'quantity' ? 'count' : 'krw';
+  const isCategoryShare = res.query.dimension === 'category' && res.query.aggregation === 'share';
+  const metric: string = isCategoryShare ? 'share' : (res.query.metric === 'quantity' ? 'quantity' : 'revenue');
+  const unit: MarketingChartSpec['unit'] = isCategoryShare ? 'percent' : (metric === 'quantity' ? 'count' : 'krw');
   return {
     id: `mkt_bridge_${res.query.dimension}_${res.query.aggregation}`,
-    title: `${res.periodLabel} ${res.query.dimension === 'category' ? '카테고리 매출 비중' : '상품 매출 순위'}`,
-    subtitle: res.query.dimension === 'category' ? '매출 비중' : '상품 라인매출 기준',
+    title: `${res.periodLabel} ${isCategoryShare ? '카테고리 매출 비중' : '상품 매출 순위'}`,
+    subtitle: isCategoryShare ? '매출 비중(%) · 매출 보조' : '상품 라인매출 기준',
     chartType,
     primaryMetric: metric,
     // ★ RankedBarChart 관례: "항목당 1 series"(막대 = series 단위). raw code/goodsNo는 key에만, label은 표시명.
@@ -45,13 +50,14 @@ function toMarketingChartSpec(res: AnalyticsQueryResult, chartType: MarketingCha
       metric,
       points: [{
         bucketKey: r.key ?? r.label, bucketLabel: r.label,
-        value: metric === 'quantity' ? (r.quantity ?? r.value) : (r.revenue ?? r.value),
-        orderCount: r.orderCount, revenue: r.revenue, averageOrderValue: r.averageOrderValue,
-        ...(r.share != null ? { notes: [`비중 ${formatSharePercent(r.share)}`] } : {})
+        // 비중 질문: 주인공 값 = percent(막대·메인라벨). 그 외: 매출/수량.
+        value: isCategoryShare ? round1((r.share ?? 0) * 100) : (metric === 'quantity' ? (r.quantity ?? r.value) : (r.revenue ?? r.value)),
+        orderCount: r.orderCount, quantity: r.quantity, revenue: r.revenue, averageOrderValue: r.averageOrderValue,
+        ...(!isCategoryShare && r.share != null ? { notes: [`비중 ${formatSharePercent(r.share)}`] } : {})
       }]
     })),
-    xAxisLabel: res.query.dimension === 'category' ? '카테고리' : '상품',
-    yAxisLabel: metric === 'quantity' ? '판매수량' : '상품매출',
+    xAxisLabel: isCategoryShare ? '카테고리' : '상품',
+    yAxisLabel: isCategoryShare ? '비중' : (metric === 'quantity' ? '판매수량' : '상품매출'),
     unit, source: 'temporal_crosstab',
     request: { timeBucket: 'month', dimensions: [], metrics: [metric] as unknown as MarketingChartSpec['request']['metrics'] },
     available: res.rows.length > 0, evidence: [], warnings: []

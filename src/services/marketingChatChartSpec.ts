@@ -29,6 +29,7 @@ export type MarketingChartSeries = {
     bucketLabel: string;
     value: number;
     orderCount?: number;
+    quantity?: number;
     revenue?: number;
     averageOrderValue?: number;
     notes?: string[];
