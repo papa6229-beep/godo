@@ -237,6 +237,12 @@
   background: var(--bg-surface);
 }
 
+.dept-chat-chart {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0; /* flex 컨테이너 내부에서 차트 카드가 넘치지 않게 */
+  margin-top: 10px;
+}
 .dept-chat-log {
   flex: 1;
   min-height: 120px;
