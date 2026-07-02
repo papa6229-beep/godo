@@ -26,15 +26,12 @@ ok('analyticsQueryTypes.ts 존재', has('src/services/analyticsQueryTypes.ts'));
 ok('analyticsQueryParser.ts 존재', has('src/services/analyticsQueryParser.ts'));
 ok('analyticsQueryExecutor.ts 존재', has('src/services/analyticsQueryExecutor.ts'));
 ok('productSalesAggregation.ts 존재', has('src/services/productSalesAggregation.ts'));
-ok('analyticsQueryToMarketingPlan.ts(adapter stub) 존재', has('src/services/analyticsQueryToMarketingPlan.ts'));
 
 const DASH = read('src/components/ProductTeamDashboard.tsx');
 ok('대시보드가 productSalesAggregation import', /from '\.\.\/services\/productSalesAggregation'/.test(DASH));
 ok('대시보드 인라인 aggregateProducts 제거됨', !/const aggregateProducts = \(/.test(DASH));
 const PF = read('src/services/productTeamChatFacts.ts');
 ok('상품팀 채팅이 parseAnalyticsQuery/executeAnalyticsQuery 사용', /parseAnalyticsQuery/.test(PF) && /executeAnalyticsQuery/.test(PF));
-const ADP = read('src/services/analyticsQueryToMarketingPlan.ts');
-ok('adapter stub는 수렴 방향(TODO) 표식 + v0 null', /return null/.test(ADP) && /TODO/.test(ADP));
 
 // ── 런타임 컴파일(tsc) ──
 const tscBin = path.join(REPO, 'node_modules', 'typescript', 'bin', 'tsc');

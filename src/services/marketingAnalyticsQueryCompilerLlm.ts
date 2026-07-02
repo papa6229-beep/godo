@@ -9,13 +9,17 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import type {
-  AnalyticsQuery, AnalyticsTeam, AnalyticsMetric, AnalyticsDimension, AnalyticsAggregation, AnalyticsPeriod
+  AnalyticsQuery, AnalyticsTeam, AnalyticsMetric, AnalyticsDimension, AnalyticsAggregation, AnalyticsPeriod, AnalyticsFilters
 } from './analyticsQueryTypes';
 import { parseAnalyticsQuery } from './analyticsQueryParser';
 
 const METRICS: AnalyticsMetric[] = ['revenue', 'orderCount', 'averageOrderValue', 'quantity', 'stock', 'reviewCount', 'inquiryCount', 'rating', 'claimCount'];
 const DIMENSIONS: AnalyticsDimension[] = ['time', 'product', 'category', 'coupon', 'firstRepeat', 'memberGroup', 'channel', 'review', 'inquiry', 'customer'];
-const AGGREGATIONS: AnalyticsAggregation[] = ['sum', 'average', 'ratio', 'rank', 'argmax', 'argmin', 'trend', 'share', 'compare', 'summarize'];
+const AGGREGATIONS: AnalyticsAggregation[] = ['sum', 'average', 'ratio', 'rank', 'argmax', 'argmin', 'extremes', 'trend', 'share', 'compare', 'summarize'];
+// 데이터 조회·계산 신호(deterministic fallback에서 "열린 질문"과 구분).
+const DATA_SIGNAL_RE = /매출|주문|객단가|판매|수량|상품|카테고리|쿠폰|회원|채널|비중|순위|랭킹|추이|흐름|최고|최저|가장|피크|top\b|월별|몇\s*월|어느\s*달|분기|비교|평균|합계|(?:20)\d{2}\s*년/i;
+// 원인/전략/해석형(열린 질문) — 데이터 단순 조회가 아님 → 엔진이 처리하지 않고 열린 경로로.
+const OPEN_QUESTION_RE = /왜|이유|원인|때문|전략|제안|추천해|개선|인사이트|어떻게\s*해|분석해\s*줘\s*$/i;
 const PERIOD_TYPES = ['singleDay', 'dayRange', 'singleMonth', 'monthRange', 'quarter', 'halfYear', 'year', 'relative', 'all'];
 
 // LLM이 절대 만들면 안 되는 "계산 결과" 성격 키(숫자를 지어내면 reject).
@@ -44,26 +48,30 @@ export function buildMarketingQueryCompilerPrompt(message: string): string {
     `aggregation: ${AGGREGATIONS.join(' | ')}`,
     `period.type: ${PERIOD_TYPES.join(' | ')} (+ year, years[], month, startMonth, endMonth, quarter, half, startDate, endDate, relativeKey, recentCount)`,
     'topN?(정수), sort?("asc"|"desc"), chartRequested?(bool), chartSuppressed?(bool), unsupportedReason?(string)',
+    'filters?: { coupon?("used"|"unused"), firstRepeat?("first"|"repeat"), memberGroup?(문자열 예 "VIP"), channel?(예 "shop") } — 2~3개 조건을 엮을 때만.',
     '',
     '[규칙]',
-    '- "가장 높은/최고/제일 높은/피크 + 달/월" → dimension:time, aggregation:argmax',
-    '- "가장 낮은/최저 + 달/월" → dimension:time, aggregation:argmin',
+    '- "가장 높은/최고/피크 + 달/월" → dimension:time, aggregation:argmax / "가장 낮은/최저" → argmin',
+    '- "가장 높은 달과 낮은 달" 처럼 최고와 최저를 함께 물으면 → aggregation:extremes (딱 2개 비교)',
     '- "월별/추이/흐름" → dimension:time, aggregation:trend',
     '- "상품 순위/베스트/가장 많이 팔린 상품" → dimension:product, aggregation:rank',
     '- "카테고리 비중" → dimension:category, aggregation:share',
-    '- 객단가/AOV → metric:averageOrderValue',
-    '- 기간을 정확히 보존(예: "1~5월" → monthRange startMonth 1 endMonth 5, "2025년" → year 2025). 넓히지 마라.',
-    '- value/result/total 같은 "계산 결과" 필드는 절대 넣지 마라(숫자 금지).',
+    '- "쿠폰 쓴/VIP/재구매 …의 …" 같은 조건은 filters에. "쿠폰 사용 vs 미사용 비교"는 dimension:coupon.',
+    '- 객단가/AOV → metric:averageOrderValue. 기간은 정확히 보존(넓히지 마라).',
+    '- value/result/total 같은 "계산 결과" 필드 금지(숫자 금지).',
+    '- 데이터 조회·계산이 아니라 "왜/원인/전략/제안/인사이트" 같은 열린 질문이면 → {"notData":true} 만 출력.',
     '',
     '[예시]',
     '질문: 2025년 중 객단가 제일 쎈 달이 언제야?',
     '출력: {"metric":"averageOrderValue","dimension":"time","aggregation":"argmax","period":{"type":"year","year":2025}}',
+    '질문: 2024년과 2025년 통틀어 매출 가장 높았던 달과 낮았던 달 비교해줘',
+    '출력: {"metric":"revenue","dimension":"time","aggregation":"extremes","period":{"type":"year","years":[2024,2025]},"chartRequested":true}',
+    '질문: 2025년 3월 쿠폰 쓴 VIP 고객 매출 알려줘',
+    '출력: {"metric":"revenue","dimension":"time","aggregation":"summarize","period":{"type":"singleMonth","year":2025,"month":3},"filters":{"coupon":"used","memberGroup":"VIP"}}',
     '질문: 2025년 월별 매출 추이 그래프로 보여줘',
     '출력: {"metric":"revenue","dimension":"time","aggregation":"trend","period":{"type":"year","year":2025},"chartRequested":true}',
-    '질문: 2024년과 2025년 1월부터 5월까지 월별 객단가 비교해줘',
-    '출력: {"metric":"averageOrderValue","dimension":"time","aggregation":"trend","period":{"type":"monthRange","years":[2024,2025],"startMonth":1,"endMonth":5}}',
-    '질문: ROAS 비교해줘',
-    '출력: {"metric":"revenue","dimension":"time","aggregation":"summarize","period":{"type":"all"},"unsupportedReason":"ROAS는 광고비 데이터가 필요합니다."}',
+    '질문: 왜 3월 매출이 떨어졌어?',
+    '출력: {"notData":true}',
     '',
     `질문: ${message}`,
     '출력:'
@@ -93,8 +101,10 @@ function hasForbiddenResultKey(obj: unknown, depth = 0): boolean {
 
 export function validateAnalyticsQueryJson(obj: unknown, message: string, team: AnalyticsTeam): AnalyticsQuery | null {
   if (!obj || typeof obj !== 'object') return null;
+  const o0 = obj as Record<string, unknown>;
+  if (o0.notData === true) return null; // 열린 질문(왜/전략) → 데이터 엔진 미처리
   if (hasForbiddenResultKey(obj)) return null; // LLM이 숫자 결과를 넣으면 폐기
-  const o = obj as Record<string, unknown>;
+  const o = o0;
 
   const metric = o.metric as AnalyticsMetric;
   const dimension = o.dimension as AnalyticsDimension;
@@ -122,12 +132,22 @@ export function validateAnalyticsQueryJson(obj: unknown, message: string, team: 
   for (const u of UNSUPPORTED_CATALOG) { if (u.re.test(message)) { unsupportedReason = unsupportedReason ?? u.reason; break; } }
 
   const sort = (o.sort === 'asc' || o.sort === 'desc') ? o.sort : (aggregation === 'argmin' ? 'asc' : aggregation === 'argmax' ? 'desc' : undefined);
+  // filters(다중 조건). enum/문자열만 통과.
+  const rf = (o.filters && typeof o.filters === 'object') ? o.filters as Record<string, unknown> : undefined;
+  const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+  const filters: AnalyticsFilters | undefined = rf ? {
+    coupon: rf.coupon === 'used' || rf.coupon === 'unused' ? rf.coupon as AnalyticsFilters['coupon'] : undefined,
+    firstRepeat: rf.firstRepeat === 'first' || rf.firstRepeat === 'repeat' ? rf.firstRepeat as AnalyticsFilters['firstRepeat'] : undefined,
+    memberGroup: str(rf.memberGroup), channel: str(rf.channel), categoryCode: str(rf.categoryCode), goodsNo: str(rf.goodsNo)
+  } : undefined;
+  const hasFilter = !!filters && Object.values(filters).some((v) => v != null);
   return {
     originalQuestion: message, team, metric, dimension, aggregation,
     comparison: (period.years && period.years.length >= 2) ? (aggregation === 'trend' ? 'monthlyTrend' : 'yearOverYear') : 'none',
     period,
     topN: num(o.topN) ?? (aggregation === 'argmax' || aggregation === 'argmin' ? 1 : undefined),
     sort,
+    ...(hasFilter ? { filters } : {}),
     chartRequested: o.chartRequested === true,
     chartSuppressed: o.chartSuppressed === true,
     tableRequested: false,
@@ -152,4 +172,31 @@ export async function understandMarketingQuery(
     } catch { /* fall through to deterministic */ }
   }
   return parseAnalyticsQuery(message, { team: 'marketing', nowMs: opts.nowMs });
+}
+
+/**
+ * Commerce Data Query Engine 이해 레이어(전 팀 공용).
+ * 데이터 조회·계산 질문이면 AnalyticsQuery, "열린 질문(왜/전략)"이거나 신호가 없으면 null(→ 호출부가 열린 경로).
+ * LLM 우선(notData 판단 포함) → 실패 시 deterministic(데이터 신호 있을 때만).
+ */
+export async function understandCommerceQuery(
+  message: string,
+  opts: { callLlm?: (prompt: string) => Promise<string>; nowMs?: number; team?: AnalyticsTeam }
+): Promise<AnalyticsQuery | null> {
+  const team = opts.team ?? 'product';
+  if (opts.callLlm) {
+    try {
+      const raw = await opts.callLlm(buildMarketingQueryCompilerPrompt(message));
+      const obj = extractJsonObject(raw);
+      if (obj && typeof obj === 'object' && (obj as Record<string, unknown>).notData === true) return null; // 열린 질문
+      const q = validateAnalyticsQueryJson(obj, message, team);
+      if (q) return q;
+    } catch { /* fall through */ }
+  }
+  // deterministic fallback.
+  const q = parseAnalyticsQuery(message, { team, nowMs: opts.nowMs });
+  if (q.unsupportedReason) return q; // ROAS/방문자/전환 등 → 엔진이 "없다" 안내(fake 금지)
+  if (!DATA_SIGNAL_RE.test(message) || OPEN_QUESTION_RE.test(message)) return null; // 데이터 신호 없거나 열린 질문 → 열린 경로
+  if (q.confidence === 'low') return null; // 애매하면 열린 경로로
+  return q;
 }

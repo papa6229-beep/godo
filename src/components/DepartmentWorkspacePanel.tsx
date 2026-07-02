@@ -10,7 +10,7 @@ import {
 } from '../services/departmentDataService';
 import { ProductTeamDashboard } from './ProductTeamDashboard';
 import { CsTeamDashboard } from './CsTeamDashboard';
-import { MarketingAnalysisDashboard } from './MarketingAnalysisDashboard';
+import { MarketingAnalysisDashboard, MarketingChartSpecPanel } from './MarketingAnalysisDashboard';
 import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
 import { chatWithTeam } from '../services/departmentChatService';
 import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
@@ -18,7 +18,7 @@ import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } fr
 import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
 import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
 import { runMarketingChartRequest, type MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
-import { runMarketingAnalyticsQueryBridge } from '../services/marketingAnalyticsQueryBridge';
+import { answerCommerceQuestion } from '../services/commerceDataQueryEngine';
 import { buildMarketingIntelligenceResponseWithLlm } from '../services/marketingLlmPlannerAdapter';
 import { buildMarketingScopeInsightResponse } from '../services/marketingScopeInsightEngine';
 import { createMarketingAnalysisMemoryEntry, saveMarketingAnalysisMemoryEntry, findSimilarMarketingAnalysisMemories } from '../services/marketingAnalysisMemory';
@@ -139,6 +139,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   // 마케팅 chartSpec artifact(비영속 — localStorage 미저장). 다음 작업의 중앙 smart chart가 읽어갈 payload.
   const [marketingChartArtifact, setMarketingChartArtifact] = useState<MarketingChatChartArtifact | null>(null);
   const [marketingMemoryHintCount, setMarketingMemoryHintCount] = useState(0);
+  // Commerce Data Query Engine 결과 차트(전 팀 채팅 공용, 채팅 열에 렌더). 비영속.
+  const [engineChart, setEngineChart] = useState<MarketingChatChartArtifact | null>(null);
 
   useEffect(() => {
     saveDeptChatLog(chatLog);
@@ -242,7 +244,32 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'user', text }] }));
     setInput('');
     setSending(true);
-    // 각 팀은 자기 facts만 본다(역할 경계). 숫자는 코드가 계산한 facts만 근거.
+
+    const rev0 = productData.revenue;
+    // CS 답변 초안(업무기능)은 데이터 조회가 아님 → 엔진보다 먼저.
+    if (teamId === 'cs' && rev0?.universeAux?.inquiries?.length && rev0.orders?.length) {
+      const draft = runCsDraftRequest({ userText: text, inquiries: rev0.universeAux.inquiries, orders: rev0.orders });
+      if (draft.handled) {
+        setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: draft.reply }] }));
+        setSending(false); return;
+      }
+    }
+    // ★ 전 팀 공용 Commerce Data Query Engine — 데이터 조회·계산 질문은 여기서 끝낸다(읽고·계산, 없으면 없다).
+    //   열린 질문(왜/전략)이면 null → 아래 기존 경로(분석/LLM)로. broad 종합덤프 없음.
+    if (rev0?.orders?.length) {
+      try {
+        const eng = await answerCommerceQuestion(text, { orders: rev0.orders }, { callLlm: callMarketingPlannerLlm, team: teamId });
+        if (eng && eng.handled) {
+          setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: eng.reply }] }));
+          const art = eng.suppressChart ? null : (eng.artifact ?? null);
+          // 마케팅은 넓은 중앙 패널에, 그 외 팀은 채팅 열에 차트 표시.
+          if (teamId === 'marketing') setMarketingChartArtifact(art); else setEngineChart(art);
+          setSending(false); return;
+        }
+      } catch { /* 열린 경로로 fallback */ }
+    }
+
+    // 각 팀은 자기 facts만 본다(역할 경계). 숫자는 코드가 계산한 facts만 근거. (여기부터 "열린 질문" 경로)
     let opts: { contextNote?: string; answerGuidance?: string } | undefined;
     if (teamId === 'product') {
       // 상품팀: 기존 grounding facts(기간 파싱 등)를 우선, 미로드 시 bundle/요약 fallback.
@@ -256,20 +283,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     } else if (teamId === 'marketing') {
       const rev = productData.revenue;
       if (rev?.orders?.length) {
-        // -1순위: Analytics Query Bridge — 공통 AnalyticsQuery로 먼저 해석(지원 조합만 처리, 나머지 null→기존 경로).
-        //   기존 broken compiler/scope가 선점하지 못하게 앞단에 둔다. wrong data 반환 없음(null이면 fallback).
-        const bridge = await runMarketingAnalyticsQueryBridge({ message: text, orders: rev.orders, products: productData.products?.products, callLlm: callMarketingPlannerLlm });
-        if (bridge && bridge.handled && bridge.reply) {
-          setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: bridge.reply }] }));
-          setMarketingChartArtifact(bridge.suppressChart ? null : (bridge.artifact ?? null));
-          try {
-            const hints = findSimilarMarketingAnalysisMemories({ question: text, limit: 5 });
-            setMarketingMemoryHintCount(hints.length);
-            saveMarketingAnalysisMemoryEntry(createMarketingAnalysisMemoryEntry({ question: text, artifact: bridge.artifact ?? null, resultType: 'calculated', plannerSource: 'marketingIntelligencePlanner' }));
-          } catch { /* ignore safely */ }
-          setSending(false);
-          return;
-        }
+        // (데이터 조회·계산은 위 Commerce Data Query Engine이 이미 처리. 여기는 열린 질문용 분석 경로.)
         // 0순위: Scope Insight Engine(질문→분석 범위→insight pack). 깊은 보조 분석 + 안정 chartSpec.
         const scopeInsight = buildMarketingScopeInsightResponse({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries });
         if (scopeInsight.handled && scopeInsight.reply) {
@@ -577,6 +591,13 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           )}
           {sending && <div className="dept-chat-msg system">작성 중…</div>}
         </div>
+
+        {/* Commerce Data Query Engine 차트(전 팀 공용) — 데이터 질문 결과 그래프. */}
+        {engineChart && (
+          <div className="dept-chat-chart">
+            <MarketingChartSpecPanel artifact={engineChart} onClear={() => setEngineChart(null)} />
+          </div>
+        )}
 
         <div className="dept-chat-input-row">
           <textarea
