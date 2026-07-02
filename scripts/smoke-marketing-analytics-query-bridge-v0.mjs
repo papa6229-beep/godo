@@ -73,6 +73,45 @@ if (B) {
   ok('4b. 비월별 yearOverYear(월범위) → null(기존 compiler)', run({ message: '2024년 3월~5월과 2025년 3월~5월 매출 비교해줘', orders }) === null);
   ok('4c. 전체 12개월 월별 → null(기존 broad)', run({ message: '2024년과 2025년 월별 매출 비교해줘', orders }) === null);
   ok('4d. 세그먼트 비교 → null(기존)', run({ message: '쿠폰 사용 vs 미사용 객단가 비교', orders }) === null);
+
+  // ── Stage (b) 데이터셋: 2024년 7월 상품/카테고리 ──
+  const L = (goodsNo, goodsName, quantity, lineRevenue, categoryCode) => ({ goodsNo, goodsName, quantity, lineRevenue, categoryCode, categoryLabel: categoryCode });
+  const O = (orderNo, orderDate, lines) => ({ orderNo, orderDate, sourceType: 'synthetic_test', paid: true, canceled: false, unpaid: false, confirmed: true, totalAmount: lines.reduce((s, l) => s + l.lineRevenue, 0), productRevenueByLines: lines.reduce((s, l) => s + l.lineRevenue, 0), lines });
+  const ordersB = [
+    O('A', '2024-07-05 10:00:00', [L('G1', '선풍기', 2, 20000, '001')]),
+    O('B', '2024-07-10 11:00:00', [L('G2', '가습기', 1, 50000, '003')]),
+    O('C', '2024-07-20 12:00:00', [L('G1', '선풍기', 1, 10000, '001'), L('G3', '청소기', 1, 15000, '001')]),
+    O('D', '2025-03-15 09:00:00', [L('G1', '선풍기', 5, 100000, '001')])
+  ];
+  // July 2024: G2 매출50000/1개, G1 매출30000/3개, G3 15000/1개. 매출1위=가습기, 수량1위=선풍기.
+
+  // ── 5) product rank: "가장 많이 판매된 상품" (매출 기준) ──
+  const b1 = run({ message: '2024년 7월 매출 중 가장 많이 판매된 상품이 뭐야?', orders: ordersB });
+  ok('5. handled(product rank) + artifact rankedBar', !!b1 && b1.handled && b1.artifact?.chartSpec?.chartType === 'rankedBar');
+  ok('5. 매출 1위=가습기 명시', !!b1 && /가습기/.test(b1.reply) && /매출 기준 1위/.test(b1.reply));
+  ok('5. 수량 1위=선풍기 병기(기준 다름)', !!b1 && /판매수량 기준 1위: 선풍기/.test(b1.reply));
+  ok('5. 상품명+매출+수량 제시(총매출 축소 아님)', !!b1 && /50,000원/.test(b1.reply) && /개/.test(b1.reply));
+  ok('5. 외부데이터 없음 안내 미부착', !!b1 && !/방문자|광고비|ROAS|외부/.test(b1.reply));
+  ok('5. 7월만(2025 100000 제외 → 가습기가 1위, 선풍기 130000 아님)', !!b1 && !/130,000/.test(b1.reply));
+
+  // ── 6) product rank 그래프 요청 ──
+  const b2 = run({ message: '2024년 7월 상품별 매출 순위 그래프로 보여줘', orders: ordersB });
+  ok('6. handled + rankedBar + suppressChart=false', !!b2 && b2.handled && b2.artifact?.chartSpec?.chartType === 'rankedBar' && b2.suppressChart === false);
+  ok('6. 순위 상위=가습기(50000)>선풍기(30000)>청소기(15000)', !!b2 && b2.artifact.chartSpec.series[0].points[0].bucketLabel === '가습기' && b2.artifact.chartSpec.series[0].points[0].value === 50000);
+
+  // ── 7) category share: 표시명·raw code 미노출 ──
+  const b3 = run({ message: '2024년 7월 카테고리별 매출 비중 보여줘', orders: ordersB });
+  ok('7. handled(category share)', !!b3 && b3.handled);
+  ok('7. 표시명 사용(주방가전/생활가전) & raw code(001/003) 미노출', !!b3 && /주방가전|생활가전/.test(b3.reply) && !/00[13]/.test(b3.reply));
+  ok('7. 비중 표기(52.6%/47.4%)', !!b3 && /52\.6%/.test(b3.reply) && /47\.4%/.test(b3.reply));
+  ok('7. chart series label 표시명', !!b3 && b3.artifact.chartSpec.series[0].points.every((p) => !/^\d{3}$/.test(p.bucketLabel)));
+
+  // ── 8) unsupported: ROAS / 전환율 → fake 없이 + 대체 분석 제안 ──
+  const b4 = run({ message: 'ROAS 비교해줘', orders: ordersB });
+  ok('8a. ROAS unsupported(차트 없음, fake 없음)', !!b4 && b4.handled && b4.suppressChart === true && !b4.artifact && /ROAS|광고/.test(b4.reply));
+  ok('8a. 대체 분석 제안 포함', !!b4 && /매출|주문수|객단가|순위|비중/.test(b4.reply));
+  const b5 = run({ message: '방문자 대비 전환율 알려줘', orders: ordersB });
+  ok('8b. 전환율 unsupported', !!b5 && b5.handled && b5.suppressChart === true && /전환율|방문자|세션/.test(b5.reply));
 }
 
 console.log(`\n=== ${pass} PASS / ${fail} FAIL ===`);
