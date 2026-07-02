@@ -61,14 +61,11 @@ const SHARE_RE = /비중|구성|점유|share|퍼센트|percent/i;
 const TREND_RE = /월별|매월|달별|추이|흐름|트렌드/i;
 const COMPARE_RE = /비교|vs|대비|차이/i;
 const TOP1_RE = /가장\s*많이|가장\s*(?:높|많)|최고|1\s*위|톱\s*1|top\s*1/i;
-
-function detectAggregation(t: string, dimension: AnalyticsDimension, hasMultiYear: boolean): AnalyticsAggregation {
-  if (RANK_RE.test(t)) return 'rank';
-  if (SHARE_RE.test(t) && dimension === 'category') return 'share';
-  if (TREND_RE.test(t)) return 'trend';
-  if (COMPARE_RE.test(t) || hasMultiYear) return 'compare';
-  return 'summarize';
-}
+// argmax/argmin(최고·최저 버킷) + 시간축 신호. deterministic fallback용(LLM 이해가 1차).
+// "가장/제일" 뒤에 지표어가 끼어도("가장 객단가가 높았던") 잡도록 사이 문자를 허용.
+const ARGMAX_RE = /(?:가장|제일).{0,14}(?:높|많|크|쎈|센|비싸|잘\s*팔)|최고|최대|피크|peak|highest/i;
+const ARGMIN_RE = /(?:가장|제일).{0,14}(?:낮|적|작)|최저|최소|lowest/i;
+const TIME_WORD_RE = /월별|매월|달별|추이|흐름|트렌드|분기|상반기|하반기|몇\s*월|어느\s*(?:달|월)|무슨\s*(?:달|월)|언제|달\s*(?:중|별|마다)|월\s*중/i;
 
 function detectTopN(t: string): number | undefined {
   if (TOP1_RE.test(t)) return 1;
@@ -161,24 +158,48 @@ export function parseAnalyticsQuery(question: string, context?: { team?: Analyti
   const years = detectYears(t);
   const metric = detectMetric(t);
   let dimension = detectDimension(t);
-  const aggregation = detectAggregation(t, dimension, years.length >= 2);
 
-  // "가장 많이 판매된 상품/베스트" → 상품 랭킹으로 강제(총매출 요약으로 축소 금지: 버그 2/3).
-  if (aggregation === 'rank' && dimension !== 'category') dimension = 'product';
-  // 추이(trend)는 시간축 분석 → time 차원(예: "상품 매출 월별 추이"에서 '상품'에 끌려가지 않게).
-  if (aggregation === 'trend') dimension = 'time';
+  // 최고/최저 의도 + 시간축 신호(어느 달/몇 월/월별/추이…)를 먼저 판정.
+  const wantMin = ARGMIN_RE.test(t);
+  const wantMax = !wantMin && (ARGMAX_RE.test(t) || RANK_RE.test(t));
+  const timeSignal = TIME_WORD_RE.test(t);
+  // 상품/카테고리 신호가 없고 시간 신호만 있으면(예: "가장 객단가 높은 달") 시간축 질문으로 확정.
+  if (dimension === 'time' && timeSignal) dimension = 'time';
+
+  let aggregation: AnalyticsAggregation;
+  if (dimension === 'category' && SHARE_RE.test(t)) {
+    aggregation = 'share';
+  } else if (dimension === 'time' && (wantMax || wantMin)) {
+    aggregation = wantMin ? 'argmin' : 'argmax';               // "어느 달이 최고/최저 <지표>"
+  } else if ((dimension === 'product' || dimension === 'category') && (wantMax || wantMin || RANK_RE.test(t))) {
+    aggregation = 'rank';                                       // 상품/카테고리 순위
+  } else if (TREND_RE.test(t)) {
+    aggregation = 'trend'; dimension = 'time';                  // 월별/추이
+  } else if (COMPARE_RE.test(t) || years.length >= 2) {
+    aggregation = 'compare';
+  } else {
+    aggregation = 'summarize';
+  }
+  // rank(순위)일 때만 상품 차원 보정 — 시간 argmax/argmin은 절대 상품으로 강제하지 않음.
+  if (aggregation === 'rank' && dimension !== 'category' && dimension !== 'time') dimension = 'product';
 
   const period = parsePeriod(t, years);
   const comparison = detectComparison(t, years, aggregation);
-  const topN = aggregation === 'rank' ? (detectTopN(t) ?? undefined) : undefined;
+  const topN = aggregation === 'rank'
+    ? (detectTopN(t) ?? undefined)
+    : (aggregation === 'argmax' || aggregation === 'argmin' ? 1 : undefined);
   const sort: 'asc' | 'desc' | undefined =
-    aggregation === 'rank' ? (/낮은|적게|최저|하위|worst|bottom/i.test(t) ? 'asc' : 'desc') : undefined;
+    aggregation === 'rank' ? (wantMin || /낮은|적게|최저|하위|worst|bottom/i.test(t) ? 'asc' : 'desc')
+    : aggregation === 'argmin' ? 'asc'
+    : aggregation === 'argmax' ? 'desc'
+    : undefined;
 
   // confidence: product/category/time + 해석된 기간이면 high.
   const resolvedPeriod = period.type !== 'all' || years.length > 0;
   const known = dimension === 'product' || dimension === 'category' || dimension === 'time';
+  const opKnown = aggregation === 'rank' || aggregation === 'share' || aggregation === 'trend' || aggregation === 'argmax' || aggregation === 'argmin';
   const confidence: AnalyticsQuery['confidence'] =
-    known && (resolvedPeriod || aggregation === 'rank' || aggregation === 'share' || aggregation === 'trend') ? 'high'
+    known && (resolvedPeriod || opKnown) ? 'high'
     : known ? 'medium' : 'low';
 
   return base({ metric, dimension, aggregation, comparison, period, topN, sort, confidence });

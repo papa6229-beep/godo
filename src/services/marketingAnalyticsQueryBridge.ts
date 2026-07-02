@@ -1,19 +1,19 @@
 // ────────────────────────────────────────────────────────────────────────────
-// Marketing Analytics Query Bridge v0
+// Marketing Analytics Query Bridge (General Analytics Query Engine v0)
 //
 // 마케팅팀 채팅에서 기존 marketingScopeInsightEngine/compiler 앞단에 얹는 공통 계층 진입.
-//   질문 → parseAnalyticsQuery(team='marketing') → (지원 조합만) 처리 → MarketingChatChartArtifact.
+//   이해 = LLM(understandMarketingQuery: 질문→AnalyticsQuery, 실패 시 deterministic 파서)
+//   계산 = 코드(executor, canonical net). 설명 = narrative. 숫자는 LLM이 만들지 않는다.
 //   지원 못 하면 null → 호출부가 기존 마케팅 경로로 fallback(narrow intercept, wrong data 금지).
 //
-// v0 인터셉트 범위:
-//   Stage (a) 시간축 비교: 다연도 + 월범위 + "월별"(monthlyTrend). 기존 executor 재사용(계산 이중화 없음).
-//   Stage (b) product rank / category share / unsupported.  ← 다음 커밋에서 추가.
+// 인터셉트 범위:
+//   - time × metric × {trend, argmax, argmin}  ← General Executor(Stage 1). 구조화 질문은 broad로 새지 않음.
+//   - product rank / category share / unsupported.
 // ────────────────────────────────────────────────────────────────────────────
 
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartType } from './marketingChatChartSpec';
-import { parseAnalyticsQuery } from './analyticsQueryParser';
-import { analyticsQueryToMarketingPlan } from './analyticsQueryToMarketingPlan';
-import { buildMarketingAnalysisResponseFromPlan } from './marketingAnalysisExecutor';
+import { understandMarketingQuery } from './marketingAnalyticsQueryCompilerLlm';
+import { executeMarketingTimeMetric, isTimeMetric } from './marketingTimeMetricExecutor';
 import { executeAnalyticsQuery } from './analyticsQueryExecutor';
 import type { AnalyticsQuery, AnalyticsQueryResult } from './analyticsQueryTypes';
 import { formatSharePercent } from './productCategoryDisplay';
@@ -75,28 +75,30 @@ function artifactFrom(res: AnalyticsQueryResult, chartType: MarketingChartType, 
   };
 }
 
-export function runMarketingAnalyticsQueryBridge(input: {
-  message: string; orders: unknown[]; products?: unknown[]; nowMs?: number;
-}): MarketingBridgeResult | null {
+export async function runMarketingAnalyticsQueryBridge(input: {
+  message: string; orders: unknown[]; products?: unknown[]; nowMs?: number; callLlm?: (prompt: string) => Promise<string>;
+}): Promise<MarketingBridgeResult | null> {
   const nowMs = input.nowMs ?? Date.now();
   if (!input.message || !input.orders || !input.orders.length) return null;
 
-  const query = parseAnalyticsQuery(input.message, { team: 'marketing', nowMs });
+  // 이해 = LLM 우선(질문→AnalyticsQuery), 실패 시 deterministic 파서. 숫자는 코드가 계산.
+  const query = await understandMarketingQuery(input.message, { callLlm: input.callLlm, nowMs });
 
-  // ── Stage (a): 시간축 비교(월범위 월별) → 기존 marketing executor 재사용 ──
-  const plan = analyticsQueryToMarketingPlan(query);
-  if (plan) {
-    const resp = buildMarketingAnalysisResponseFromPlan(plan, input.orders, nowMs);
-    return { handled: resp.handled, artifact: resp.artifact, reply: resp.reply, suppressChart: resp.suppressChart, source: 'analytics_query_bridge' };
-  }
-
-  // ── Stage (b-1): unsupported(외부 미연결 데이터) — fake 없이 안내 + 내부 대체 분석 제안 ──
+  // ── unsupported(외부 미연결 데이터) — fake 없이 안내 + 내부 대체 분석 제안 ──
   if (query.unsupportedReason) {
     const reply = `${query.unsupportedReason}\n대신 기간별 매출·주문수·객단가, 상품/카테고리 순위·비중은 분석할 수 있습니다. 원하시는 기간과 지표를 알려주세요.`;
     return { handled: true, reply, suppressChart: true, source: 'analytics_query_bridge' };
   }
 
-  // ── Stage (b-2): product rank / category share → product executor 재사용(상품 라인매출 gross) ──
+  // ── time × metric × {trend, argmax, argmin} — 일반 실행(net executor 재사용) ──
+  //    구조화된 time×metric 질문은 여기서 처리하고 broad scope 덤프로 새지 않는다.
+  if (query.dimension === 'time' && isTimeMetric(query.metric) && (query.aggregation === 'trend' || query.aggregation === 'argmax' || query.aggregation === 'argmin')) {
+    const r = executeMarketingTimeMetric(query, input.orders, nowMs);
+    if (r) return { ...r, source: 'analytics_query_bridge' };
+    return { handled: true, reply: '요청하신 기간의 데이터를 찾지 못했습니다. 보유한 기간(연/월)을 알려주시면 그 기준으로 분석하겠습니다.', suppressChart: true, source: 'analytics_query_bridge' };
+  }
+
+  // ── product rank / category share → product executor 재사용(상품 라인매출 gross) ──
   const isProductRank = query.dimension === 'product' && query.aggregation === 'rank';
   const isCategoryShare = query.dimension === 'category' && query.aggregation === 'share';
   if ((isProductRank || isCategoryShare) && query.confidence === 'high') {

@@ -258,7 +258,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       if (rev?.orders?.length) {
         // -1순위: Analytics Query Bridge — 공통 AnalyticsQuery로 먼저 해석(지원 조합만 처리, 나머지 null→기존 경로).
         //   기존 broken compiler/scope가 선점하지 못하게 앞단에 둔다. wrong data 반환 없음(null이면 fallback).
-        const bridge = runMarketingAnalyticsQueryBridge({ message: text, orders: rev.orders, products: productData.products?.products });
+        const bridge = await runMarketingAnalyticsQueryBridge({ message: text, orders: rev.orders, products: productData.products?.products, callLlm: callMarketingPlannerLlm });
         if (bridge && bridge.handled && bridge.reply) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: bridge.reply }] }));
           setMarketingChartArtifact(bridge.suppressChart ? null : (bridge.artifact ?? null));
