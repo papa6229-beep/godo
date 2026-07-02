@@ -18,6 +18,7 @@ import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } fr
 import { buildDepartmentChatContext, toChatTeam } from '../services/departmentChatFacts';
 import { buildMarketingChatContext } from '../services/marketingTeamChatFacts';
 import { runMarketingChartRequest, type MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
+import { runMarketingAnalyticsQueryBridge } from '../services/marketingAnalyticsQueryBridge';
 import { buildMarketingIntelligenceResponseWithLlm } from '../services/marketingLlmPlannerAdapter';
 import { buildMarketingScopeInsightResponse } from '../services/marketingScopeInsightEngine';
 import { createMarketingAnalysisMemoryEntry, saveMarketingAnalysisMemoryEntry, findSimilarMarketingAnalysisMemories } from '../services/marketingAnalysisMemory';
@@ -255,6 +256,20 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     } else if (teamId === 'marketing') {
       const rev = productData.revenue;
       if (rev?.orders?.length) {
+        // -1순위: Analytics Query Bridge — 공통 AnalyticsQuery로 먼저 해석(지원 조합만 처리, 나머지 null→기존 경로).
+        //   기존 broken compiler/scope가 선점하지 못하게 앞단에 둔다. wrong data 반환 없음(null이면 fallback).
+        const bridge = runMarketingAnalyticsQueryBridge({ message: text, orders: rev.orders, products: productData.products?.products });
+        if (bridge && bridge.handled && bridge.reply) {
+          setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: bridge.reply }] }));
+          setMarketingChartArtifact(bridge.suppressChart ? null : (bridge.artifact ?? null));
+          try {
+            const hints = findSimilarMarketingAnalysisMemories({ question: text, limit: 5 });
+            setMarketingMemoryHintCount(hints.length);
+            saveMarketingAnalysisMemoryEntry(createMarketingAnalysisMemoryEntry({ question: text, artifact: bridge.artifact ?? null, resultType: 'calculated', plannerSource: 'marketingIntelligencePlanner' }));
+          } catch { /* ignore safely */ }
+          setSending(false);
+          return;
+        }
         // 0순위: Scope Insight Engine(질문→분석 범위→insight pack). 깊은 보조 분석 + 안정 chartSpec.
         const scopeInsight = buildMarketingScopeInsightResponse({ message: text, orders: rev.orders, products: productData.products?.products, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries });
         if (scopeInsight.handled && scopeInsight.reply) {

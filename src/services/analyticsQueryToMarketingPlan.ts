@@ -1,32 +1,57 @@
 // ────────────────────────────────────────────────────────────────────────────
-// AnalyticsQuery → MarketingAnalysisPlan Adapter (STUB) — 옵션 A (수렴 방향 표식)
+// AnalyticsQuery → MarketingAnalysisPlan Adapter (Marketing Analytics Query Bridge v0)
 //
-// 목적(작업지시서 §8): 최종적으로 부서 채팅의 질문 해석은 "하나의 AnalyticsQuery 계층"으로 수렴한다.
-//   마케팅은 현재 marketingAnalysisQueryCompiler(MarketingAnalysisPlan)를 쓰지만,
-//   다음 작업에서 이 adapter를 통해 AnalyticsQuery → MarketingAnalysisPlan으로 연결한다.
+// 목적(작업지시서 §8): 부서 채팅 질문 해석을 하나의 AnalyticsQuery 계층으로 수렴한다.
+//   마케팅 시간축 비교는 기존 marketingAnalysisExecutor를 재사용하기 위해
+//   AnalyticsQuery → MarketingAnalysisPlan으로 변환한다(계산 이중화 없음).
 //
-// ⚠️ v0에서는 런타임에 연결하지 않는다(마케팅 동작 불변). 영구 이중 파서가 되지 않도록
-//   "수렴 지점"을 코드로 남기는 스텁이다. 아래 매핑 표를 다음 작업에서 채운다.
+// v0(Stage a) 변환 범위: 다연도 "월별" 비교 + 월범위(startMonth/endMonth 보존).
+//   → compiler가 revenue 월별을 broad로 흘려보내던 버그를 우회(compiler 규칙 미변경).
+//   product rank / category share는 plan으로 표현하지 않고 bridge 전용 executor에서 처리(Stage b).
 //
-// 매핑 계획(TODO, 다음 작업 Marketing Analytics Query Bridge v0):
-//   AnalyticsQuery.metric      → MarketingAnalysisPlan.metric (revenue/orderCount/averageOrderValue/quantity)
-//   AnalyticsQuery.period      → MarketingPeriod (singleMonth/monthRange/quarter/halfYear/year/relative)
-//                                · monthRange는 "월별"과 함께 와도 보존(현재 마케팅 버그 1의 원인 차단)
-//   AnalyticsQuery.comparison  → yearOverYear / monthlyTrend / segmentCompare
-//   AnalyticsQuery.dimension   → time/coupon/firstRepeat/memberGroup/channel (+ product는 신규 rank 차원)
-//   AnalyticsQuery.aggregation → sum/ratio/rank/trend
-//   topN/sort                  → 마케팅 rank 실행기(신규) 입력
+// 수렴 TODO: 궁극적으로 마케팅 채팅 전 질문을 AnalyticsQuery 기반으로 이관한다.
 // ────────────────────────────────────────────────────────────────────────────
 
-import type { AnalyticsQuery } from './analyticsQueryTypes';
-import type { MarketingAnalysisPlan } from './marketingAnalysisQueryCompiler';
+import type { AnalyticsQuery, AnalyticsMetric } from './analyticsQueryTypes';
+import type { MarketingAnalysisPlan, MarketingAnalysisMetric } from './marketingAnalysisQueryCompiler';
+
+const toMarketingMetric = (m: AnalyticsMetric): MarketingAnalysisMetric | null => {
+  if (m === 'revenue' || m === 'orderCount' || m === 'averageOrderValue' || m === 'quantity') return m;
+  return null; // stock/reviewCount/rating/inquiryCount/claimCount는 마케팅 시간축 plan 대상 아님
+};
 
 /**
- * v0: 미구현(수렴 방향 표식용). 항상 null을 반환하며, 호출부는 기존 마케팅 컴파일러 경로를 그대로 쓴다.
- * 다음 작업에서 위 매핑 표대로 구현해 마케팅 채팅을 AnalyticsQuery 계층으로 이관한다.
+ * Stage (a): 다연도 + "월별" + (월범위/단일월) → monthlyTrend plan(startMonth/endMonth 보존).
+ * 그 외(전체 12개월 월별, 비월별 yearOverYear, 단일기간, 세그먼트 등)는 null 반환 →
+ *   기존 marketingScopeInsightEngine/compiler 경로가 처리(narrow intercept).
  */
-export function analyticsQueryToMarketingPlan(_query: AnalyticsQuery): MarketingAnalysisPlan | null {
-  // TODO(Marketing Analytics Query Bridge v0): AnalyticsQuery → MarketingAnalysisPlan 매핑 구현.
-  void _query;
-  return null;
+export function analyticsQueryToMarketingPlan(q: AnalyticsQuery): MarketingAnalysisPlan | null {
+  const metric = toMarketingMetric(q.metric);
+  if (!metric) return null;
+
+  const years = q.period.years ?? [];
+  if (q.comparison !== 'monthlyTrend' || years.length < 2) return null;
+
+  // 월범위/단일월에서만 range를 추출(범위가 명시된 경우만 bridge가 개입).
+  let startMonth = 1, endMonth = 12;
+  if (q.period.type === 'monthRange' && q.period.startMonth != null && q.period.endMonth != null) {
+    startMonth = q.period.startMonth; endMonth = q.period.endMonth;
+  } else if (q.period.type === 'singleMonth' && q.period.month != null) {
+    startMonth = q.period.month; endMonth = q.period.month;
+  }
+  // 전체 12개월 월별 비교는 기존 경로가 이미 처리 → bridge 미개입(범위 명시된 경우만 우회).
+  if (startMonth === 1 && endMonth === 12) return null;
+
+  const aggregation: MarketingAnalysisPlan['aggregation'] = 'trend';
+  return {
+    intent: 'trend',
+    metric,
+    aggregation,
+    dimension: 'time',
+    comparison: { type: 'monthlyTrend', years: [...years].sort((a, b) => a - b), startMonth: Math.min(startMonth, endMonth), endMonth: Math.max(startMonth, endMonth) },
+    chart: { requested: q.chartRequested, suppressed: q.chartSuppressed, type: q.chartSuppressed ? 'none' : 'groupedBars' },
+    answerScope: 'narrow',
+    confidence: 'high',
+    originalQuestion: q.originalQuestion
+  };
 }

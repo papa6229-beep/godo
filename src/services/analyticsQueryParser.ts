@@ -24,7 +24,8 @@ const UNSUPPORTED: { re: RegExp; reason: string }[] = [
   { re: /roas|광고\s*수익|광고비\s*대비|투자\s*대비\s*수익/i, reason: 'ROAS는 광고비·캠페인 attribution 데이터가 필요해 현재 주문 데이터만으로는 산출할 수 없습니다.' },
   { re: /방문자?\s*(?:전환|수)|방문\s*전환|visitor/i, reason: '방문/방문→주문 전환은 방문자 세션 데이터가 필요합니다.' },
   { re: /상품\s*조회\s*전환|조회수\s*전환|product\s*view/i, reason: '상품조회→구매 전환은 상품 조회 이벤트 데이터가 필요합니다.' },
-  { re: /장바구니\s*(?:이탈|포기)|cart\s*abandon/i, reason: '장바구니 이탈률은 장바구니 이벤트 데이터가 필요합니다.' }
+  { re: /장바구니\s*(?:이탈|포기)|cart\s*abandon/i, reason: '장바구니 이탈률은 장바구니 이벤트 데이터가 필요합니다.' },
+  { re: /전환\s*율|전환\s*률|conversion\s*rate/i, reason: '전환율은 방문자·세션 데이터가 필요해 현재 주문 데이터만으로는 산출할 수 없습니다.' }
 ];
 
 const detectYears = (t: string): number[] =>
