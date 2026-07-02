@@ -6,12 +6,53 @@
 // 내부 state) 데이터셋 기준으로 답하되 그 사실을 guidance로 안내한다.
 
 import type { RevenueResult } from './departmentDataService';
+import { parseAnalyticsQuery } from './analyticsQueryParser';
+import { executeAnalyticsQuery } from './analyticsQueryExecutor';
+import type { AnalyticsQueryResult } from './analyticsQueryTypes';
 
 export interface ProductTeamFacts {
   intent: string;
   periodLabel?: string;
   facts: string[];
   answerGuidance: string;
+}
+
+// AnalyticsQueryResult → ProductTeamFacts 변환. 숫자는 executor(코드)가 계산, Claude는 문장화만.
+function factsFromAnalyticsResult(result: AnalyticsQueryResult, srcLabel: string): ProductTeamFacts {
+  const q = result.query;
+  const baseFact = `데이터 기준: ${srcLabel}.`;
+  if (result.unsupported) {
+    return {
+      intent: 'analytics_unsupported', periodLabel: result.periodLabel || undefined,
+      facts: [`사용자 질문은 현재 미연결 데이터가 필요하다.`, result.unsupportedReason || result.summaryText, baseFact],
+      answerGuidance: '요청은 현재 연결된 주문 데이터로 계산할 수 없다고 솔직히 안내하라. 방문자/광고비/전환 같은 값을 추측하거나 지어내지 마라.'
+    };
+  }
+  const wonN = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
+  const lines: string[] = [];
+  if (q.dimension === 'product' && q.aggregation === 'rank') {
+    result.rows.forEach((r, i) => lines.push(`${i + 1}위 ${r.label}: 매출 ${wonN(r.revenue ?? r.value)} (판매 ${r.quantity ?? 0}개${r.share != null ? `, 비중 ${(r.share * 100).toFixed(1)}%` : ''})`));
+  } else if (q.dimension === 'category') {
+    result.rows.forEach((r) => lines.push(`${r.label}: 매출 ${wonN(r.revenue ?? r.value)}${r.share != null ? ` (${(r.share * 100).toFixed(1)}%)` : ''}`));
+  } else if (q.dimension === 'time' && q.aggregation === 'trend') {
+    result.rows.forEach((r) => lines.push(`${r.label}: 매출 ${wonN(r.revenue ?? r.value)} (주문 ${r.orderCount ?? 0}건)`));
+  } else {
+    const r = result.rows[0];
+    if (r) lines.push(`${r.label}: 매출 ${wonN(r.revenue ?? 0)}, 주문 ${r.orderCount ?? 0}건, 판매수량 ${r.quantity ?? 0}개`);
+  }
+  return {
+    intent: `analytics_${q.dimension}_${q.aggregation}`,
+    periodLabel: result.periodLabel || undefined,
+    facts: [
+      `사용자 질문 해석: ${result.periodLabel || '전체 기간'} 기준 ${q.dimension} ${q.aggregation}.`,
+      result.summaryText,
+      ...lines,
+      `상품팀 대시보드의 같은 기간 상품별 매출순위/비중/추이와 동일한 계산 기준(상품 라인매출)으로 산출했다.`,
+      baseFact
+    ],
+    answerGuidance:
+      '제공된 기간 기준 값만 사용하라. 반드시 답변에 기간 기준을 명시하라(예: "2024년 7월 기준"). 순위/비중/추이 질문에 총매출만 답하지 마라. 없는 값은 추측하지 말고, 고도몰 관리자 확인을 권하지 마라. 이 값은 상품팀 전용 상품 라인매출 기준이며 대표 운영 KPI(net)와 다를 수 있다는 점은 필요할 때만 짧게 밝혀라.'
+  };
 }
 
 // 카탈로그 taxonomy lookup (category_search/brand_search 결과 → 코드 라벨 해석).
@@ -186,6 +227,16 @@ export function buildProductTeamChatFacts(
     ?? revenue.orders.reduce((s, o) => s + (o.productRevenueByLines || 0), 0);
   const srcLabel = dataSourceLabel(revenue);
   const baseFact = `데이터 기준: ${srcLabel}. 전체 기간 상품매출 ${won(totalRevenue)}.`;
+
+  // ★ 공통 Analytics Query 계층 우선 시도 — 대시보드와 같은 계산 경로.
+  //   v0 인터셉트 범위 = 고신뢰 rank(상품순위)/share(카테고리비중) + unsupported.
+  //   추이(trend)·범위/최근N개월·단일월요약·총합·회원/세그먼트/현재화면은 기존 분기가 이미 정상 → 그대로 둔다.
+  //   (처리 불가/범위 밖이면 executor가 null 반환 → 아래 기존 fallback으로.)
+  const aq = parseAnalyticsQuery(userText, { team: 'product' });
+  if (aq.unsupportedReason || (aq.confidence === 'high' && (aq.aggregation === 'rank' || aq.aggregation === 'share'))) {
+    const res = executeAnalyticsQuery(aq, { orders: revenue.orders });
+    if (res) return factsFromAnalyticsResult(res, srcLabel);
+  }
 
   // 0) 데이터 한계 질문 (회원/세그먼트 등) — 없는 데이터는 없다고 안내
   if (LIMIT_KEYWORDS.some(k => t.includes(k))) {

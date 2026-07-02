@@ -8,7 +8,7 @@
  * 실행: node scripts/smoke-product-team-catalog-facts.mjs   (실패 시 exit 1)
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -29,6 +29,11 @@ try {
 } catch (e) {
   console.error('[smoke] tsc emit failed:\n', e.stdout?.toString() || e.message);
   process.exit(1);
+}
+// 상대 import에 .js 부여(productTeamChatFacts가 parser/executor 등 런타임 모듈을 import).
+for (const f of readdirSync(tmp).filter((x) => x.endsWith('.js'))) {
+  const p = path.join(tmp, f);
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, (mm, rel) => (rel.endsWith('.js') ? mm : `from '${rel}.js'`)));
 }
 const m = await import(pathToFileURL(path.join(tmp, 'productTeamChatFacts.js')).href);
 const build = m.buildProductTeamChatFacts;
@@ -89,7 +94,8 @@ ok('catalog 없으면 catalog_taxonomy 미발동', !!taxoNoCat && taxoNoCat.inte
 
 // 7. 기존 facts 영향 없음 (월별/순위/재고)
 ok('월별 추이 intent 불변', build('월별 추이 알려줘', revenue, catalog)?.intent === 'monthly_trend');
-ok('상품 순위 intent 불변', build('상품 순위 top', revenue, catalog)?.intent === 'top_products');
+// 상품 순위는 Department Analytics Query Layer v0로 이관 → 공통 executor 경로(analytics_product_rank).
+ok('상품 순위 → 공통 분석 계층(analytics_product_rank)', build('상품 순위 top', revenue, catalog)?.intent === 'analytics_product_rank');
 ok('재고 위험 intent 불변', build('재고 위험 상품', revenue, catalog)?.intent === 'stock_risk');
 ok('총매출 intent 불변', build('전체 매출 알려줘', revenue, catalog)?.intent === 'total_revenue');
 ok('데이터 한계 질문 불변(재구매)', build('재구매율 알려줘', revenue, catalog)?.intent === 'data_limit');
