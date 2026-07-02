@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Ranked Chart Visual Check</title>
+<!-- 실제 프로젝트 CSS를 그대로 링크(토큰 + 차트 규칙). 정적 서버 루트 기준 절대경로. -->
+<link rel="stylesheet" href="/src/index.css">
+<link rel="stylesheet" href="/src/components/MarketingAnalysisDashboard.css">
+<style> body { background:#06090c; padding:24px; } .box{ max-width:520px; } </style>
+</head>
+<body>
+<!-- 상품 랭킹(비compact, 5개) — RankedBarChart 출력 DOM 그대로 재현 -->
+<div class="box marketing-smart-chart marketing-chart-spec-panel">
+  <div class="marketing-chart-spec-graph">
+    <div class="marketing-chart-ranked-bars" id="prod">
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">가습기</span><span class="marketing-chart-series-value">826,200원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s0" style="width:100%"></div></div></div>
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">선풍기</span><span class="marketing-chart-series-value">570,150원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s1" style="width:69%"></div></div></div>
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">공기청정기</span><span class="marketing-chart-series-value">536,085원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s2" style="width:64.9%"></div></div></div>
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">밥솥</span><span class="marketing-chart-series-value">466,200원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s3" style="width:56.4%"></div></div></div>
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">청소기</span><span class="marketing-chart-series-value">248,400원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s0" style="width:30.1%"></div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 카테고리 비중(compact, 3개) -->
+<div class="box marketing-smart-chart marketing-chart-spec-panel mkt-chart-compact">
+  <div class="marketing-chart-spec-graph">
+    <div class="marketing-chart-ranked-bars mkt-chart-compact-bars" id="cat">
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">생활가전</span><span class="marketing-chart-series-value">8,832,168원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s0" style="width:100%"></div></div></div>
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">주방가전</span><span class="marketing-chart-series-value">2,870,550원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s1" style="width:32.5%"></div></div></div>
+      <div class="marketing-chart-bucket"><div class="marketing-chart-bucket-row-head"><span class="marketing-chart-series-label">공기·청정</span><span class="marketing-chart-series-value">2,334,240원</span></div><div class="marketing-chart-series-bar-track"><div class="marketing-chart-series-fill s2" style="width:26.4%"></div></div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
