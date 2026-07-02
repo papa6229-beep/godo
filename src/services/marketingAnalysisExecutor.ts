@@ -131,15 +131,20 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
     return { plan, title, metricLabel: label, rows, available: rows.some((r) => r.value > 0), unsupported: false, chartSpec, diff: diffOf(rows) };
   }
 
-  // 월별 추이 연도 비교(12개월)
+  // 월별 추이 연도 비교(기본 1~12월, startMonth/endMonth 지정 시 그 범위만 순회 — 사용자 지정 기간 보존)
   if (plan.comparison?.type === 'monthlyTrend') {
     const years = plan.comparison.years;
+    const sM = Math.min(Math.max(plan.comparison.startMonth ?? 1, 1), 12);
+    const eM = Math.min(Math.max(plan.comparison.endMonth ?? 12, 1), 12);
+    const months: number[] = [];
+    for (let m = Math.min(sM, eM); m <= Math.max(sM, eM); m++) months.push(m);
     const series = years.map((y) => ({
       key: String(y), label: `${y}년`, metric,
-      points: Array.from({ length: 12 }, (_, i) => { const a = aggregateRange(orders, y, i + 1, i + 1); return { bucketKey: `${i + 1}`, bucketLabel: `${i + 1}월`, value: valueOf(a, metric), orderCount: a.orderCount, revenue: a.revenue, averageOrderValue: a.aov }; })
+      points: months.map((m) => { const a = aggregateRange(orders, y, m, m); return { bucketKey: `${m}`, bucketLabel: `${m}월`, value: valueOf(a, metric), orderCount: a.orderCount, revenue: a.revenue, averageOrderValue: a.aov }; })
     }));
-    const title = `${years.join('·')}년 월별 ${label} 비교`;
-    const chartSpec = buildChartSpec({ id: `mkt_monthly_trend_${metric}`, title, subtitle: `월별 · ${label}`, metric, chartType: selectMarketingChartType({ intent: plan.intent, metric, comparisonType: 'monthlyTrend', rowCount: years.length, suppressed: plan.chart.suppressed }), compact: false, series });
+    const rangeLabel = (months[0] === 1 && months[months.length - 1] === 12) ? '월별' : `${months[0]}~${months[months.length - 1]}월 월별`;
+    const title = `${years.join('·')}년 ${rangeLabel} ${label} 비교`;
+    const chartSpec = buildChartSpec({ id: `mkt_monthly_trend_${metric}`, title, subtitle: `${rangeLabel} · ${label}`, metric, chartType: selectMarketingChartType({ intent: plan.intent, metric, comparisonType: 'monthlyTrend', rowCount: years.length, suppressed: plan.chart.suppressed }), compact: false, series });
     const rows = years.map((y, idx) => { const tot = series[idx].points.reduce((s, p) => ({ r: s.r + (p.revenue ?? 0), c: s.c + (p.orderCount ?? 0) }), { r: 0, c: 0 }); const agg: Agg = withAov({ revenue: tot.r, orderCount: tot.c, quantity: 0, aov: 0 }); return aggToRow(`${y}년 합계`, agg, metric); });
     return { plan, title, metricLabel: label, rows, available: series.some((s) => s.points.some((p) => p.value > 0)), unsupported: false, chartSpec, diff: diffOf(rows) };
   }
@@ -191,7 +196,15 @@ export function buildMarketingAnalysisResponse(input: { message: string; orders:
     return null;
   }
 
-  const result = executeMarketingAnalysisPlan(plan, input.orders, nowMs);
+  return buildMarketingAnalysisResponseFromPlan(plan, input.orders, nowMs);
+}
+
+// plan을 직접 받아 실행·서술·artifact를 만든다(컴파일러 우회 경로 — Marketing Analytics Query Bridge가 재사용).
+// 계산/차트/서술은 전부 기존 executor·grammar·narrative를 그대로 쓴다(이중화 없음).
+export function buildMarketingAnalysisResponseFromPlan(plan: MarketingAnalysisPlan, orders: unknown[], nowMs: number): {
+  handled: boolean; artifact?: MarketingChatChartArtifact; reply: string; suppressChart: boolean; plan: MarketingAnalysisPlan;
+} {
+  const result = executeMarketingAnalysisPlan(plan, orders, nowMs);
   const { reply, bullets, caveats } = buildMarketingAnalysisNarrative(result);
 
   if (plan.intent === 'unsupported') {

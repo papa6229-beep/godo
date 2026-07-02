@@ -22,7 +22,7 @@ export type MarketingPeriod =
 
 export type MarketingComparison =
   | { type: 'yearOverYear'; years: number[]; period: MarketingPeriod }   // 같은 기간을 여러 해로 비교
-  | { type: 'monthlyTrend'; years: number[] }                            // 12개월 월별 연도 비교
+  | { type: 'monthlyTrend'; years: number[]; startMonth?: number; endMonth?: number } // 월별 연도 비교(기본 1~12, 범위 지정 시 그 범위만)
   | { type: 'segmentCompare'; dimension: MarketingSegmentDimension; period?: MarketingPeriod };
 
 export type MarketingChartPref = {
