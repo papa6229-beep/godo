@@ -38,15 +38,18 @@ function toMarketingChartSpec(res: AnalyticsQueryResult, chartType: MarketingCha
     subtitle: res.query.dimension === 'category' ? '매출 비중' : '상품 라인매출 기준',
     chartType,
     primaryMetric: metric,
-    series: [{
-      key: metric, label: res.query.dimension === 'category' ? '카테고리' : '상품', metric,
-      points: res.rows.map((r) => ({
+    // ★ RankedBarChart 관례: "항목당 1 series"(막대 = series 단위). raw code/goodsNo는 key에만, label은 표시명.
+    series: res.rows.map((r) => ({
+      key: r.key ?? r.label,
+      label: r.label,
+      metric,
+      points: [{
         bucketKey: r.key ?? r.label, bucketLabel: r.label,
         value: metric === 'quantity' ? (r.quantity ?? r.value) : (r.revenue ?? r.value),
         orderCount: r.orderCount, revenue: r.revenue, averageOrderValue: r.averageOrderValue,
         ...(r.share != null ? { notes: [`비중 ${formatSharePercent(r.share)}`] } : {})
-      }))
-    }],
+      }]
+    })),
     xAxisLabel: res.query.dimension === 'category' ? '카테고리' : '상품',
     yAxisLabel: metric === 'quantity' ? '판매수량' : '상품매출',
     unit, source: 'temporal_crosstab',
@@ -92,14 +95,14 @@ export function runMarketingAnalyticsQueryBridge(input: {
   const isCategoryShare = query.dimension === 'category' && query.aggregation === 'share';
   if ((isProductRank || isCategoryShare) && query.confidence === 'high') {
     if (isProductRank) {
-      // 표시 개수: "가장/1위"면 1, top5/상위N이면 N, 없으면 5. 단 두 기준(매출/수량) 1위 판별용으로 전체 랭킹을 조회.
-      const wantN = query.topN ?? 5;
-      const res = executeAnalyticsQuery({ ...query, team: 'product', topN: Math.max(wantN, 8) } as AnalyticsQuery, { orders: input.orders as never[] }, { nowMs });
+      // 표시 개수: "가장/1위"(topN=1)나 미지정이면 후보군까지 top5, 명시 상위 N(>1)이면 N. 두 기준(매출/수량) 1위 판별용으로 전체 조회.
+      const displayN = (query.topN != null && query.topN > 1) ? query.topN : 5;
+      const res = executeAnalyticsQuery({ ...query, team: 'product', topN: Math.max(displayN, 8) } as AnalyticsQuery, { orders: input.orders as never[] }, { nowMs });
       if (!res || res.unsupported || res.rows.length === 0) return null;
       const full = res.rows;
       const topRev = [...full].sort((a, b) => (b.revenue ?? 0) - (a.revenue ?? 0))[0];
       const topQty = [...full].sort((a, b) => (b.quantity ?? 0) - (a.quantity ?? 0))[0];
-      const shown = full.slice(0, wantN);
+      const shown = full.slice(0, displayN);
       const bullets = shown.map((r, i) => `${i + 1}위 ${r.label}: 매출 ${won(r.revenue ?? 0)} (판매 ${r.quantity ?? 0}개${r.share != null ? `, 비중 ${formatSharePercent(r.share)}` : ''})`);
       const lines = [
         `${res.periodLabel} 기준 상품 순위입니다(상품 라인매출 gross 기준 · 대표 운영 KPI(net)와 다를 수 있음).`,
@@ -108,7 +111,8 @@ export function runMarketingAnalyticsQueryBridge(input: {
       if (topQty && topRev && topQty.label !== topRev.label) lines.push(`판매수량 기준 1위: ${topQty.label}(${topQty.quantity ?? 0}개).`);
       const reply = [...lines, ...bullets].join('\n');
       const shownRes: AnalyticsQueryResult = { ...res, rows: shown };
-      return { handled: true, artifact: artifactFrom(shownRes, 'rankedBar', reply, bullets, nowMs), reply, suppressChart: query.chartSuppressed, source: 'analytics_query_bridge' };
+      // 능동 차트 기본 ON — "그래프 없이/텍스트로만"이면 artifact 생성 안 함.
+      return { handled: true, artifact: query.chartSuppressed ? undefined : artifactFrom(shownRes, 'rankedBar', reply, bullets, nowMs), reply, suppressChart: query.chartSuppressed, source: 'analytics_query_bridge' };
     }
     // category share (productCategoryDisplay 표시명 · raw code 미노출)
     const res = executeAnalyticsQuery({ ...query, team: 'product' } as AnalyticsQuery, { orders: input.orders as never[] }, { nowMs });
@@ -116,9 +120,8 @@ export function runMarketingAnalyticsQueryBridge(input: {
     const bullets = res.rows.map((r) => `${r.label}: 매출 ${won(r.revenue ?? 0)}${r.share != null ? ` (${formatSharePercent(r.share)})` : ''}`);
     const top = res.rows[0];
     const reply = [`${res.periodLabel} 카테고리별 매출 비중입니다.`, top ? `1위 ${top.label}(${formatSharePercent(top.share ?? 0)}).` : '', ...bullets].filter(Boolean).join('\n');
-    // 비중은 chart grammar상 share 전용(도넛). 현재 렌더러는 도넛→rankedBar fallback으로 표시.
-    const chartType: MarketingChartType = query.chartRequested ? 'donut' : 'rankedBar';
-    return { handled: true, artifact: artifactFrom(res, chartType, reply, bullets, nowMs), reply, suppressChart: query.chartSuppressed, source: 'analytics_query_bridge' };
+    // 비중은 항목당 1 series의 rankedBar로 렌더(현재 렌더러상 donut도 rankedBar fallback). 능동 차트 기본 ON, 억제 시 미생성.
+    return { handled: true, artifact: query.chartSuppressed ? undefined : artifactFrom(res, 'rankedBar', reply, bullets, nowMs), reply, suppressChart: query.chartSuppressed, source: 'analytics_query_bridge' };
   }
 
   // 그 외는 기존 마케팅 경로로 위임.
