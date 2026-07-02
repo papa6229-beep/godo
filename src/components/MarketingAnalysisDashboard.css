@@ -722,8 +722,16 @@
   background: var(--line-subtle);
   overflow: hidden;
 }
+/* rankedBar는 track를 세로(column) bucket 안에 두므로 flex:1이 높이를 0으로 접는다.
+   → 랭킹/비중 막대에서는 flex를 풀고 고정 높이·전체 폭을 강제(막대가 실제로 보이게). */
+.marketing-chart-ranked-bars .marketing-chart-series-bar-track {
+  flex: 0 0 auto;
+  height: 10px;
+  width: 100%;
+}
 .marketing-chart-series-fill {
   height: 100%;
+  min-width: 2px; /* 값>0인데 비율이 아주 작아도 최소 가시 폭 확보 */
   border-radius: 999px;
   transition: width 0.4s ease-out;
 }
@@ -984,7 +992,7 @@
 /* Chart Grammar & Compact Renderer v0 — compact 비교 막대: tooltip 카드 제거 + 여백 축소 */
 .mkt-chart-compact-bars { margin-top: 2px; }
 .mkt-chart-compact-bars .marketing-chart-bucket { margin: 4px 0; }
-.mkt-chart-compact-bars .marketing-chart-series-bar-track { height: 14px; }
+.mkt-chart-compact-bars .marketing-chart-series-bar-track { flex: 0 0 auto; height: 14px; width: 100%; }
 /* compact 차트에서는 hover tooltip 카드를 띄우지 않는다(값은 막대에 표시됨, 깜빡임 방지) */
 .marketing-chart-spec-panel.mkt-chart-compact .marketing-chart-tooltip { display: none !important; }
 .marketing-chart-spec-panel.mkt-chart-compact .marketing-chart-grouped-bars,

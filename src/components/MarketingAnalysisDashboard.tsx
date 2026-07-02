@@ -347,10 +347,14 @@ const SERIES_STYLE_MAP: Record<string, string> = {
   coupon: 'mkt-s-coupon', non_coupon: 'mkt-s-noncoupon', first: 'mkt-s-first', repeat: 'mkt-s-repeat',
   baseline: 'mkt-s-baseline', promotion: 'mkt-s-promotion', reward: 'mkt-s-reward', non_reward: 'mkt-s-nonreward'
 };
-const getMarketingSeriesVisualStyle = (seriesKey: string, seriesIndex: number, seriesLabel?: string): { className: string; label: string } => {
+// rankItemMode: rankedBar의 항목(상품/카테고리) key는 goodsNo 등 숫자가 섞여 "연도 시리즈"로 오인되기 쉽다.
+//   랭킹 막대에서는 연도 감지를 끄고 세그먼트 매핑→index 팔레트로 항목별 색을 준다(time chart의 연도색은 불변).
+const getMarketingSeriesVisualStyle = (seriesKey: string, seriesIndex: number, seriesLabel?: string, rankItemMode = false): { className: string; label: string } => {
   const label = seriesLabel ?? seriesKey;
-  const ym = /(\d{4})/.exec(seriesKey) || /(\d{4})/.exec(label); // 2025/2026 등 연도 시리즈는 짝/홀로 확실히 구분
-  if (ym) return { className: `mkt-s-year-${Number(ym[1]) % 2 === 0 ? 'even' : 'odd'}`, label };
+  if (!rankItemMode) {
+    const ym = /(\d{4})/.exec(seriesKey) || /(\d{4})/.exec(label); // 2025/2026 등 연도 시리즈는 짝/홀로 확실히 구분
+    if (ym) return { className: `mkt-s-year-${Number(ym[1]) % 2 === 0 ? 'even' : 'odd'}`, label };
+  }
   const mapped = SERIES_STYLE_MAP[seriesKey];
   if (mapped) return { className: mapped, label };
   return { className: `s${seriesIndex % 4}`, label };
@@ -505,7 +509,7 @@ const RankedBarChart: React.FC<{ chartSpec: MarketingChartSpec; compact?: boolea
     <div className={`marketing-chart-ranked-bars${compact ? ' mkt-chart-compact-bars' : ''}`}>
       {!compact && <ChartTooltip payload={payload} />}
       {ranked.map((r, i) => {
-        const style = getMarketingSeriesVisualStyle(r.s.key, i, r.s.label);
+        const style = getMarketingSeriesVisualStyle(r.s.key, i, r.s.label, true);
         return (
           <div className="marketing-chart-bucket" key={r.s.key} tabIndex={0}
             onMouseEnter={() => setHover(r.s.key)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(r.s.key)} onBlur={() => setHover(null)}>
