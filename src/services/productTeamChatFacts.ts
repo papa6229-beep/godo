@@ -9,6 +9,7 @@ import type { RevenueResult } from './departmentDataService';
 import { parseAnalyticsQuery } from './analyticsQueryParser';
 import { executeAnalyticsQuery } from './analyticsQueryExecutor';
 import type { AnalyticsQueryResult } from './analyticsQueryTypes';
+import { formatSharePercent } from './productCategoryDisplay';
 
 export interface ProductTeamFacts {
   intent: string;
@@ -31,9 +32,9 @@ function factsFromAnalyticsResult(result: AnalyticsQueryResult, srcLabel: string
   const wonN = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
   const lines: string[] = [];
   if (q.dimension === 'product' && q.aggregation === 'rank') {
-    result.rows.forEach((r, i) => lines.push(`${i + 1}위 ${r.label}: 매출 ${wonN(r.revenue ?? r.value)} (판매 ${r.quantity ?? 0}개${r.share != null ? `, 비중 ${(r.share * 100).toFixed(1)}%` : ''})`));
+    result.rows.forEach((r, i) => lines.push(`${i + 1}위 ${r.label}: 매출 ${wonN(r.revenue ?? r.value)} (판매 ${r.quantity ?? 0}개${r.share != null ? `, 비중 ${formatSharePercent(r.share)}` : ''})`));
   } else if (q.dimension === 'category') {
-    result.rows.forEach((r) => lines.push(`${r.label}: 매출 ${wonN(r.revenue ?? r.value)}${r.share != null ? ` (${(r.share * 100).toFixed(1)}%)` : ''}`));
+    result.rows.forEach((r) => lines.push(`${r.label}: 매출 ${wonN(r.revenue ?? r.value)}${r.share != null ? ` (${formatSharePercent(r.share)})` : ''}`));
   } else if (q.dimension === 'time' && q.aggregation === 'trend') {
     result.rows.forEach((r) => lines.push(`${r.label}: 매출 ${wonN(r.revenue ?? r.value)} (주문 ${r.orderCount ?? 0}건)`));
   } else {

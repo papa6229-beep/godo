@@ -107,7 +107,21 @@ if (P && X) {
   // ── 6) 카테고리 비중 기간 필터 (2024 3~5월 = order E만 → 003 100%) ──
   const r2 = executeAnalyticsQuery(parseAnalyticsQuery('2024년 3월부터 5월까지 카테고리별 매출 비중 보여줘', { team: 'product' }), dataset);
   ok('r2 handled(category share)', !!r2 && !r2.unsupported && r2.query.dimension === 'category');
-  ok('r2 3~5월만 반영(003 단일, 001 없음)', !!r2 && r2.rows.length === 1 && r2.rows[0].key === '003' && r2.rows[0].revenue === 30000);
+  ok('r2 3~5월만 반영(code=003 단일, 001 없음)', !!r2 && r2.rows.length === 1 && r2.rows[0].key === '003' && r2.rows[0].revenue === 30000);
+
+  // ── 6-b) 표시 정합성: label=표시명, raw code 미노출, 공유 formatter ──
+  const DISP = await import(pathToFileURL(path.join(tmp, 'productCategoryDisplay.js')).href);
+  const rCat = executeAnalyticsQuery(parseAnalyticsQuery('2024년 7월 카테고리별 매출 비중 보여줘', { team: 'product' }), dataset);
+  // July 2024: 003=50000, 001=45000(20000+10000+15000), total=95000 → 003 52.6%, 001 47.4%
+  ok('rCat label=표시명(주방가전/생활가전), raw code 미노출',
+    !!rCat && rCat.rows[0].label === '주방가전' && rCat.rows[1].label === '생활가전' && !rCat.rows.some((r) => /^\d{3}$/.test(r.label)));
+  ok('rCat key/metadata에 code 보존', !!rCat && rCat.rows[0].key === '003' && rCat.rows[0].metadata?.categoryCode === '003');
+  ok('rCat summary에 raw code 없음 & 표시명 사용', !!rCat && !/00[13]/.test(rCat.summaryText) && /주방가전/.test(rCat.summaryText));
+  // 공유 formatter == 대시보드 pctStr((n*100).toFixed(1)+'%')
+  ok('formatSharePercent 대시보드와 동일 포맷', DISP.formatSharePercent(0.5263) === '52.6%' && DISP.formatSharePercent(0.474) === '47.4%');
+  ok('rCat 비중이 공유 formatter로 표기(52.6%/47.4%)',
+    !!rCat && DISP.formatSharePercent(rCat.rows[0].share) === '52.6%' && DISP.formatSharePercent(rCat.rows[1].share) === '47.4%');
+  ok('categoryDisplayName(uncategorized)=미분류', DISP.categoryDisplayName('uncategorized') === '미분류');
 
   // ── 7) fallback: 월 미지정 상품 순위 = 전체 기간 (G1 130000 최상위) ──
   const r3 = executeAnalyticsQuery(parseAnalyticsQuery('상품별 매출 순위 알려줘', { team: 'product' }), dataset);

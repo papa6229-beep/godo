@@ -14,6 +14,7 @@ import {
   filterOrdersByCategory,
   filterOrdersBySource
 } from '../services/productSalesAggregation';
+import { categoryDisplayName as catName, formatSharePercent as pctStr } from '../services/productCategoryDisplay';
 import { REVENUE_METRIC_LABELS as RV } from '../services/revenueMetricContract';
 import { OPERATIONAL_METRIC_LABELS as OP } from '../services/departmentMetricContract';
 import { buildDepartmentSourceOfTruthSnapshot } from '../services/departmentDataSourceOfTruth';
@@ -31,20 +32,8 @@ interface ProductTeamDashboardProps {
   onRefresh: () => void;
 }
 
-// 카테고리 코드 → 화면 표시명 (표시용 라벨 맵)
-// TODO: 추후 고도몰 카테고리 READ 연동 시 실제 카테고리명으로 대체
-const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
-  uncategorized: '미분류',
-  '001': '생활가전',
-  '003': '주방가전',
-  '006': '공기·청정',
-  '007': '계절가전',
-  C1: '생활가전',
-  C2: '주방가전',
-  C3: '공기·청정'
-};
-const catName = (code: string): string =>
-  CATEGORY_DISPLAY_NAMES[code] || (code === 'uncategorized' || !code ? '미분류' : code);
+// 카테고리 표시명/비중 포맷은 productCategoryDisplay로 공유(채팅과 동일 라벨·소수 표기).
+// catName/pctStr은 상단 import에서 alias.
 
 // 색상 위계: 청록은 강조에만, 보조는 슬레이트/블루 계열
 const TEAL = '#31D6C4';
@@ -53,7 +42,6 @@ const KPI_ACCENT = ['#31D6C4', '#5B7DB1', '#1F9AAA', '#FBBF24'];
 
 const won = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
 const qty = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}`;
-const pctStr = (n: number): string => `${(n * 100).toFixed(1)}%`;
 const wonShort = (n: number): string => {
   if (n >= 100000000) return `${(n / 100000000).toFixed(1)}억`;
   if (n >= 10000) return `${Math.round(n / 10000).toLocaleString('ko-KR')}만`;

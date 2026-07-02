@@ -23,6 +23,7 @@ import {
   filterProductOrdersByPeriod,
   buildProductSalesTrend
 } from './productSalesAggregation';
+import { categoryDisplayName, formatSharePercent } from './productCategoryDisplay';
 
 export interface AnalyticsDataset {
   orders: RevenueOrderLite[];
@@ -152,10 +153,11 @@ export function executeAnalyticsQuery(query: AnalyticsQuery, dataset: AnalyticsD
   // ── category + share ──
   if (query.dimension === 'category' && (query.aggregation === 'share' || query.aggregation === 'rank' || query.aggregation === 'summarize')) {
     const share = aggregateProductCategoryShare(scoped);
-    const rows: AnalyticsQueryRow[] = share.items.map((c) => ({ label: c.code, key: c.code, value: c.revenue, revenue: c.revenue, share: c.pct }));
+    // label/displayLabel = 사용자 친화 표시명(대시보드와 동일 helper). raw code는 key/metadata에만 보존.
+    const rows: AnalyticsQueryRow[] = share.items.map((c) => ({ label: categoryDisplayName(c.code), key: c.code, value: c.revenue, revenue: c.revenue, share: c.pct, metadata: { categoryCode: c.code } }));
     const top = rows[0];
     const summaryText = top
-      ? `${range.label} 기준 카테고리 매출 1위는 ${top.label}(${won(top.revenue ?? 0)}, ${((top.share ?? 0) * 100).toFixed(1)}%)입니다.`
+      ? `${range.label} 기준 카테고리 매출 1위는 ${top.label}(${won(top.revenue ?? 0)}, ${formatSharePercent(top.share ?? 0)})입니다.`
       : `${range.label} 기준 카테고리 데이터가 없습니다.`;
     return { query, rows, periodLabel: range.label, summaryText, chartSpec: { kind: 'share', title: `${range.label} 카테고리 비중` }, warnings: [], unsupported: false };
   }
