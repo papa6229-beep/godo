@@ -7,6 +7,13 @@ import type {
   StockImpactItem
 } from '../services/departmentDataService';
 import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
+import {
+  aggregateProductRanking as aggregateProducts,
+  aggregateProductCategoryShare,
+  filterProductOrdersByPeriod,
+  filterOrdersByCategory,
+  filterOrdersBySource
+} from '../services/productSalesAggregation';
 import { REVENUE_METRIC_LABELS as RV } from '../services/revenueMetricContract';
 import { OPERATIONAL_METRIC_LABELS as OP } from '../services/departmentMetricContract';
 import { buildDepartmentSourceOfTruthSnapshot } from '../services/departmentDataSourceOfTruth';
@@ -118,36 +125,8 @@ interface PeriodBucket {
   totalAmount: number;
 }
 
-// orders → 상품별 집계 (매출/판매/복구/수량)
-interface ProdAgg {
-  goodsNo: string;
-  name: string;
-  category: string;
-  revenue: number;
-  quantity: number;
-  sold: number;
-  restored: number;
-}
-const aggregateProducts = (
-  orders: RevenueOrderLite[],
-  category: string
-): Map<string, ProdAgg> => {
-  const m = new Map<string, ProdAgg>();
-  for (const o of orders) {
-    for (const l of o.lines) {
-      if (category !== 'all' && l.categoryCode !== category) continue;
-      const b =
-        m.get(l.goodsNo) ||
-        { goodsNo: l.goodsNo, name: l.goodsName, category: l.categoryCode, revenue: 0, quantity: 0, sold: 0, restored: 0 };
-      b.revenue += l.lineRevenue;
-      b.quantity += l.quantity;
-      if (o.canceled) b.restored += l.quantity;
-      else if (o.paid) b.sold += l.quantity;
-      m.set(l.goodsNo, b);
-    }
-  }
-  return m;
-};
+// orders → 상품별 집계는 productSalesAggregation.aggregateProductRanking로 추출(채팅과 공유).
+// 이 파일에서는 alias(aggregateProducts)로 그대로 사용한다(계산식 동일 · 대시보드 수치 불변).
 
 // ── 매출 추이 차트 (SVG, 부드러운 곡선 + 금액축 + 호버 툴팁) ──
 const TrendChart: React.FC<{ data: PeriodBucket[]; period: Period }> = ({ data, period }) => {
@@ -277,11 +256,8 @@ const windowFilter = (orders: RevenueOrderLite[], win: 'all' | 'month' | 'week' 
   return orders.filter((o) => new Date(`${o.orderDate.slice(0, 10)}T00:00:00`).getTime() >= cut);
 };
 
-const srcFilter = (orders: RevenueOrderLite[], s: 'all' | 'real' | 'synthetic'): RevenueOrderLite[] => {
-  if (s === 'all') return orders;
-  const want = s === 'real' ? 'real_godomall' : 'synthetic_test';
-  return orders.filter((o) => o.sourceType === want);
-};
+// 소스 필터는 productSalesAggregation.filterOrdersBySource로 추출(채팅과 공유).
+const srcFilter = filterOrdersBySource;
 
 // ── 상품별 매출 순위 전체보기 모달 ──
 type RankField = 'revenue' | 'quantity' | 'stock' | 'name' | 'category';
@@ -540,16 +516,10 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const effEnd = timeMode === 'all' ? dataRange.max : (rangeEnd || dataRange.max);
 
   // ★ 공통 기간 기준으로 orders 필터 → KPI/추이/도넛/순위가 모두 같은 기준(기간 범위) 공유
-  const ordersFiltered = useMemo(() => {
-    return orders.filter((o) => {
-      if (dataSrc === 'real' && o.sourceType !== 'real_godomall') return false;
-      if (dataSrc === 'synthetic' && o.sourceType !== 'synthetic_test') return false;
-      const d10 = o.orderDate.slice(0, 10);
-      if (effStart && d10 < effStart) return false;
-      if (effEnd && d10 > effEnd) return false;
-      return true;
-    });
-  }, [orders, dataSrc, effStart, effEnd]);
+  const ordersFiltered = useMemo(
+    () => filterProductOrdersByPeriod(orders, { start: effStart, end: effEnd, source: dataSrc }),
+    [orders, dataSrc, effStart, effEnd]
+  );
 
   // 매출 추이 집계 단위 = 선택한 모드 (전체·월별→월, 주간별→주, 일별→일, 직접→사용자 선택 단위)
   const trendGran: Period = useMemo(() => {
@@ -560,7 +530,7 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   }, [timeMode, customGran]);
 
   const relevantOrders = useMemo(
-    () => (category === 'all' ? ordersFiltered : ordersFiltered.filter((o) => o.lines.some((l) => l.categoryCode === category))),
+    () => filterOrdersByCategory(ordersFiltered, category),
     [ordersFiltered, category]
   );
 
@@ -615,19 +585,7 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     [relevantOrders, effStart, effEnd, trendGran, category]
   );
 
-  const categoryData = useMemo(() => {
-    const m = new Map<string, { code: string; revenue: number }>();
-    let total = 0;
-    for (const o of ordersFiltered)
-      for (const l of o.lines) {
-        const b = m.get(l.categoryCode) || { code: l.categoryCode, revenue: 0 };
-        b.revenue += l.lineRevenue;
-        total += l.lineRevenue;
-        m.set(l.categoryCode, b);
-      }
-    const arr = Array.from(m.values()).sort((a, b) => b.revenue - a.revenue);
-    return { total, items: arr.map((x) => ({ ...x, pct: total > 0 ? x.revenue / total : 0 })) };
-  }, [ordersFiltered]);
+  const categoryData = useMemo(() => aggregateProductCategoryShare(ordersFiltered), [ordersFiltered]);
 
   const ranking = useMemo(() => {
     const arr = Array.from(aggregateProducts(relevantOrders, category).values()).sort((a, b) => b.revenue - a.revenue);

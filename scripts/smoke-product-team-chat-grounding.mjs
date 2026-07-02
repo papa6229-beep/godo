@@ -4,7 +4,7 @@
  * 상품팀 채팅 facts가 Universe 12개월 데이터를 기준으로 기간 범위를 정확히 해석하는지 검증.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -21,6 +21,11 @@ try {
 } catch (e) {
   console.error('[smoke] tsc emit failed:\n', e.stdout?.toString() || e.message);
   process.exit(1);
+}
+// 상대 import에 .js 부여(productTeamChatFacts가 parser/executor 등 런타임 모듈을 import).
+for (const f of readdirSync(tmp).filter((x) => x.endsWith('.js'))) {
+  const p = path.join(tmp, f);
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, (mm, rel) => (rel.endsWith('.js') ? mm : `from '${rel}.js'`)));
 }
 const F = await import(pathToFileURL(path.join(tmp, 'productTeamChatFacts.js')).href);
 const build = F.buildProductTeamChatFacts;
