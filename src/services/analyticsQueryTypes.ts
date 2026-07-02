@@ -41,6 +41,8 @@ export type AnalyticsAggregation =
   | 'average'
   | 'ratio'
   | 'rank'
+  | 'argmax'      // 시간축 등에서 "가장 높은 버킷"(예: 객단가 최고 달)
+  | 'argmin'      // "가장 낮은 버킷"
   | 'trend'
   | 'share'
   | 'compare'
