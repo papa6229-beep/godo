@@ -65,7 +65,6 @@ const TOP1_RE = /가장\s*많이|가장\s*(?:높|많)|최고|1\s*위|톱\s*1|top
 // "가장/제일" 뒤에 지표어가 끼어도("가장 객단가가 높았던") 잡도록 사이 문자를 허용.
 const ARGMAX_RE = /(?:가장|제일).{0,14}(?:높|많|크|쎈|센|비싸|잘\s*팔)|최고|최대|피크|peak|highest/i;
 const ARGMIN_RE = /(?:가장|제일).{0,14}(?:낮|적|작)|최저|최소|lowest/i;
-const TIME_WORD_RE = /월별|매월|달별|추이|흐름|트렌드|분기|상반기|하반기|몇\s*월|어느\s*(?:달|월)|무슨\s*(?:달|월)|언제|달\s*(?:중|별|마다)|월\s*중/i;
 
 function detectTopN(t: string): number | undefined {
   if (TOP1_RE.test(t)) return 1;
@@ -159,28 +158,32 @@ export function parseAnalyticsQuery(question: string, context?: { team?: Analyti
   const metric = detectMetric(t);
   let dimension = detectDimension(t);
 
-  // 최고/최저 의도 + 시간축 신호(어느 달/몇 월/월별/추이…)를 먼저 판정.
-  const wantMin = ARGMIN_RE.test(t);
-  const wantMax = !wantMin && (ARGMAX_RE.test(t) || RANK_RE.test(t));
-  const timeSignal = TIME_WORD_RE.test(t);
-  // 상품/카테고리 신호가 없고 시간 신호만 있으면(예: "가장 객단가 높은 달") 시간축 질문으로 확정.
-  if (dimension === 'time' && timeSignal) dimension = 'time';
+  // 최고/최저 의도. "높은 …과 낮은 …"이 함께면 extremes(2개 비교).
+  const rawMax = ARGMAX_RE.test(t) || RANK_RE.test(t);
+  const rawMin = ARGMIN_RE.test(t);
+  const wantExtremes = rawMax && rawMin;                         // 최고 AND 최저
+  const wantMin = !wantExtremes && rawMin;
+  const wantMax = !wantExtremes && !wantMin && rawMax;
 
   let aggregation: AnalyticsAggregation;
   if (dimension === 'category' && SHARE_RE.test(t)) {
     aggregation = 'share';
+  } else if (wantExtremes) {
+    aggregation = 'extremes';                                    // "가장 높은 달과 낮은 달 비교"
   } else if (dimension === 'time' && (wantMax || wantMin)) {
-    aggregation = wantMin ? 'argmin' : 'argmax';               // "어느 달이 최고/최저 <지표>"
+    aggregation = wantMin ? 'argmin' : 'argmax';                 // "어느 달이 최고/최저 <지표>"
   } else if ((dimension === 'product' || dimension === 'category') && (wantMax || wantMin || RANK_RE.test(t))) {
-    aggregation = 'rank';                                       // 상품/카테고리 순위
+    aggregation = 'rank';                                        // 상품/카테고리 순위
   } else if (TREND_RE.test(t)) {
-    aggregation = 'trend'; dimension = 'time';                  // 월별/추이
+    aggregation = 'trend'; dimension = 'time';                   // 월별/추이
   } else if (COMPARE_RE.test(t) || years.length >= 2) {
     aggregation = 'compare';
   } else {
     aggregation = 'summarize';
   }
-  // rank(순위)일 때만 상품 차원 보정 — 시간 argmax/argmin은 절대 상품으로 강제하지 않음.
+  // extremes/argmax/argmin에서 상품/카테고리 신호가 없으면 시간축으로 본다("가장 매출 높은 달과 낮은 달").
+  if ((aggregation === 'extremes' || aggregation === 'argmax' || aggregation === 'argmin') && dimension !== 'product' && dimension !== 'category') dimension = 'time';
+  // rank(순위)일 때만 상품 차원 보정 — 시간 argmax/argmin/extremes는 상품으로 강제하지 않음.
   if (aggregation === 'rank' && dimension !== 'category' && dimension !== 'time') dimension = 'product';
 
   const period = parsePeriod(t, years);
@@ -197,7 +200,7 @@ export function parseAnalyticsQuery(question: string, context?: { team?: Analyti
   // confidence: product/category/time + 해석된 기간이면 high.
   const resolvedPeriod = period.type !== 'all' || years.length > 0;
   const known = dimension === 'product' || dimension === 'category' || dimension === 'time';
-  const opKnown = aggregation === 'rank' || aggregation === 'share' || aggregation === 'trend' || aggregation === 'argmax' || aggregation === 'argmin';
+  const opKnown = aggregation === 'rank' || aggregation === 'share' || aggregation === 'trend' || aggregation === 'argmax' || aggregation === 'argmin' || aggregation === 'extremes';
   const confidence: AnalyticsQuery['confidence'] =
     known && (resolvedPeriod || opKnown) ? 'high'
     : known ? 'medium' : 'low';

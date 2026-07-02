@@ -624,7 +624,7 @@ const renderMarketingChartSpecGraph = (chartSpec: MarketingChartSpec): React.Rea
 };
 
 // 채팅 질문 기반 chartSpec 패널(헤더 배지 + 그래프 + 돌아가기). 중앙 smart chart 대체.
-const MarketingChartSpecPanel: React.FC<{ artifact: MarketingChatChartArtifact; onClear?: () => void }> = ({ artifact, onClear }) => {
+export const MarketingChartSpecPanel: React.FC<{ artifact: MarketingChatChartArtifact; onClear?: () => void }> = ({ artifact, onClear }) => {
   const cs = artifact.chartSpec;
   // compact: 2~4개 비교(특정 월/월범위/분기/세그먼트)는 12개월 차트 높이를 쓰지 않고 여백을 줄인다.
   const compact = cs.series.flatMap((s) => s.points).length <= 4;

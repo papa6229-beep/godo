@@ -57,7 +57,7 @@ try { changed = execFileSync('git', ['status', '--porcelain'], { cwd: REPO }).to
 ok('14. synthetic data 생성 로직 변경 없음', !changed.some((f) => /syntheticCommerceUniverse|syntheticRevenue|syntheticGodomallOrders/.test(f)));
 ok('15. Vercel gateway 변경 없음', !changed.some((f) => /\[action\]\.ts|\[resource\]\.ts/.test(f)));
 ok('16. 고객흐름 tracking 변경 없음', !changed.some((f) => /marketingBehavior|behavior-events|behavior-summary/.test(f)));
-ok('19. unrelated UI(컴포넌트) 변경 없음', !changed.some((f) => /\.tsx$/.test(f) && !/ProductTeamDashboard|MarketingAnalysisDashboard|CsTeamDashboard/.test(f)));
+ok('19. unrelated UI(컴포넌트) 변경 없음', !changed.some((f) => /\.tsx$/.test(f) && !/ProductTeamDashboard|MarketingAnalysisDashboard|CsTeamDashboard|DepartmentWorkspacePanel/.test(f)));
 
 // 런타임: 단일 snapshot이 net 기준 운영값을 주고 gross(부서전용)와 구분되는지
 const tscBin = path.join(REPO, 'node_modules', 'typescript', 'bin', 'tsc');

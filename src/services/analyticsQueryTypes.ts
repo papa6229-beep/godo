@@ -41,12 +41,23 @@ export type AnalyticsAggregation =
   | 'average'
   | 'ratio'
   | 'rank'
-  | 'argmax'      // 시간축 등에서 "가장 높은 버킷"(예: 객단가 최고 달)
+  | 'argmax'      // "가장 높은 버킷"(예: 객단가 최고 달)
   | 'argmin'      // "가장 낮은 버킷"
+  | 'extremes'    // "가장 높은 것과 낮은 것"(최고+최저 딱 2개) 비교
   | 'trend'
   | 'share'
   | 'compare'
   | 'summarize';
+
+// 다중 조건 필터(주문/고객/상품을 2~3개 조건으로 엮어 물을 때). 없으면 전체.
+export interface AnalyticsFilters {
+  coupon?: 'used' | 'unused';
+  firstRepeat?: 'first' | 'repeat';
+  memberGroup?: string;   // 회원그룹명(예: VIP)
+  channel?: string;       // 주문채널(예: shop)
+  categoryCode?: string;  // 카테고리 코드
+  goodsNo?: string;       // 특정 상품
+}
 
 export type AnalyticsComparison =
   | 'none'
@@ -90,6 +101,7 @@ export interface AnalyticsQuery {
   period: AnalyticsPeriod;
   topN?: number;
   sort?: 'asc' | 'desc';
+  filters?: AnalyticsFilters;
   chartRequested: boolean;
   chartSuppressed: boolean;
   tableRequested: boolean;

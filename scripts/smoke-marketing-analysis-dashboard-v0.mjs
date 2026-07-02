@@ -31,7 +31,7 @@ ok('4. buildMarketingAnalysisFacts 호출', /buildMarketingAnalysisFacts\s*\(\s*
 ok('5. 대시보드 내부에 새 매출 합산 로직 없음(reduce 직접 집계 회피)', !/\.reduce\(/.test(TSX));
 
 // ── DepartmentWorkspacePanel 연결 ──
-ok('6. Panel이 MarketingAnalysisDashboard import', /import\s*\{\s*MarketingAnalysisDashboard\s*\}/.test(PANEL));
+ok('6. Panel이 MarketingAnalysisDashboard import', /import\s*\{[^}]*MarketingAnalysisDashboard[^}]*\}\s*from\s*'\.\/MarketingAnalysisDashboard'/.test(PANEL));
 ok('7. 마케팅팀 선택 시 렌더 연결', /team\.id === 'marketing'\s*\?\s*\(?\s*renderMarketingData\(\)/.test(PANEL) && /<MarketingAnalysisDashboard/.test(PANEL));
 ok('8. 마케팅이 dashboard 레이아웃 클래스에 포함', /team\.id === 'marketing'/.test(PANEL) && /dept-col-center-dashboard/.test(PANEL));
 
