@@ -139,8 +139,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   // 마케팅 chartSpec artifact(비영속 — localStorage 미저장). 다음 작업의 중앙 smart chart가 읽어갈 payload.
   const [marketingChartArtifact, setMarketingChartArtifact] = useState<MarketingChatChartArtifact | null>(null);
   const [marketingMemoryHintCount, setMarketingMemoryHintCount] = useState(0);
-  // Commerce Data Query Engine 결과 차트(전 팀 채팅 공용, 채팅 열에 렌더). 비영속.
-  const [engineChart, setEngineChart] = useState<MarketingChatChartArtifact | null>(null);
+  // Commerce Data Query Engine 결과 차트 — 팀별로 분리(각 팀 채팅창은 독립). 채팅 열에 렌더, 비영속.
+  const [engineChartByTeam, setEngineChartByTeam] = useState<Record<TeamId, MarketingChatChartArtifact | null>>({ hq: null, product: null, cs: null, marketing: null });
 
   useEffect(() => {
     saveDeptChatLog(chatLog);
@@ -262,8 +262,9 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         if (eng && eng.handled) {
           setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: eng.reply }] }));
           const art = eng.suppressChart ? null : (eng.artifact ?? null);
-          // 마케팅은 넓은 중앙 패널에, 그 외 팀은 채팅 열에 차트 표시.
-          if (teamId === 'marketing') setMarketingChartArtifact(art); else setEngineChart(art);
+          // 마케팅은 넓은 중앙 패널에, 그 외 팀은 각자 채팅 열에 차트 표시(팀별 분리).
+          if (teamId === 'marketing') setMarketingChartArtifact(art);
+          else setEngineChartByTeam((prev) => ({ ...prev, [teamId]: art }));
           setSending(false); return;
         }
       } catch { /* 열린 경로로 fallback */ }
@@ -592,10 +593,13 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           {sending && <div className="dept-chat-msg system">작성 중…</div>}
         </div>
 
-        {/* Commerce Data Query Engine 차트(전 팀 공용) — 데이터 질문 결과 그래프. */}
-        {engineChart && (
+        {/* Commerce Data Query Engine 차트 — 선택한 팀의 결과만(팀별 독립). */}
+        {engineChartByTeam[selectedTeamId] && (
           <div className="dept-chat-chart">
-            <MarketingChartSpecPanel artifact={engineChart} onClear={() => setEngineChart(null)} />
+            <MarketingChartSpecPanel
+              artifact={engineChartByTeam[selectedTeamId] as MarketingChatChartArtifact}
+              onClear={() => setEngineChartByTeam((prev) => ({ ...prev, [selectedTeamId]: null }))}
+            />
           </div>
         )}
 
