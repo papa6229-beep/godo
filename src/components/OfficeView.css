@@ -68,3 +68,21 @@
     min-height: 400px;
   }
 }
+
+/* 중앙 하단 팀 지시+파일 바 (Quick Task Add 대체) */
+.office-directive { display: flex; flex-direction: column; gap: 6px; }
+.office-directive-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-surface); border: 1px solid var(--line-subtle); border-radius: 10px; }
+.office-directive-label { font-size: 12px; font-weight: 700; color: var(--accent-primary, #31D6C4); white-space: nowrap; }
+.office-directive-team { font-size: 12px; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-primary); }
+.office-directive-input { flex: 1; min-width: 0; font-size: 13px; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-primary); }
+.office-directive-input:focus { outline: none; border-color: var(--accent-primary); }
+.office-directive-attach { font-size: 14px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--line-subtle); background: var(--bg-app); cursor: pointer; }
+.office-directive-attach:hover { border-color: var(--accent-primary); }
+.office-directive-btn { font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 7px; border: none; background: var(--accent-primary, #31D6C4); color: #08221f; cursor: pointer; white-space: nowrap; }
+.office-directive-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.office-directive-files { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px; }
+.office-directive-reading { font-size: 11px; color: var(--text-muted); }
+.office-directive-file { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-subtle); background: var(--bg-surface); color: var(--text-secondary); }
+.office-directive-file-size { color: var(--text-muted); font-size: 10px; }
+.office-directive-file-x { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 0 0 3px; }
+.office-directive-file-x:hover { color: #e5484d; }

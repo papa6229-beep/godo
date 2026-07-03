@@ -26,6 +26,8 @@ interface ChatConsoleProps {
   onUpdateAgents: (items: Agent[]) => void;
   isLarge?: boolean;
   isSimulating?: boolean;
+  // 있으면 하단 Quick Task Add 바를 이 슬롯으로 대체(오늘의 운영: 팀 지시+파일 바).
+  quickBarSlot?: React.ReactNode;
 }
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
@@ -40,7 +42,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   agents,
   onUpdateAgents,
   isLarge = false,
-  isSimulating = false
+  isSimulating = false,
+  quickBarSlot
 }) => {
   // 탭 이동/새로고침 후에도 유지되도록 localStorage에서 복원 (없으면 환영 메시지)
   const [messages, setMessages] = useState<ControlChatMessage[]>(() => loadHqMessages());
@@ -593,11 +596,12 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 가로형 퀵 태스크 추가 바 (Quick Task Add Bar) */}
+      {/* 하단 바 — 슬롯이 있으면 그것으로 대체(오늘의 운영: 팀 지시+파일), 없으면 Quick Task Add */}
+      {quickBarSlot !== undefined ? quickBarSlot : (
       <div className="chat-quick-task-bar">
         <span className="quick-bar-label">⚡ Quick Task Add</span>
-        <input 
-          type="text" 
+        <input
+          type="text"
           value={quickTaskTitle}
           onChange={(e) => setQuickTaskTitle(e.target.value)}
           placeholder="예: 리뷰 답글 초안 만들어줘"
@@ -606,7 +610,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             if (e.key === 'Enter') handleQuickTaskAdd();
           }}
         />
-        <select 
+        <select
           value={quickTaskAgent}
           onChange={(e) => setQuickTaskAgent(e.target.value)}
           className="quick-bar-select"
@@ -617,14 +621,15 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             </option>
           ))}
         </select>
-        <button 
-          type="button" 
+        <button
+          type="button"
           onClick={handleQuickTaskAdd}
           className="quick-bar-btn"
         >
           ADD
         </button>
       </div>
+      )}
 
       <div className="chat-templates">
         {templates.map((tpl, i) => (

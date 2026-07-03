@@ -4,6 +4,7 @@ import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import { ChatConsole } from './ChatConsole';
 import { ExecutiveBriefing } from './ExecutiveBriefing';
+import { HqDirectiveComposer } from './HqDirectiveComposer';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { NativeAgentRun, DepartmentDefinition } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
@@ -11,11 +12,14 @@ import { TeamOperationsBoard } from './TeamOperationsBoard';
 import { DeptActivityModal } from './DeptActivityModal';
 import { OperationBriefingModal } from './OperationBriefingModal';
 import { defaultDepartments, defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
-import type { DeptTeamId } from '../types/teamMessage';
+import { postTeamMessage } from '../services/teamMessageCenter';
+import { logActivity } from '../services/activityLedger';
+import { DEPT_TEAM_META, type DeptTeamId, type TeamMessageAttachment } from '../types/teamMessage';
+import './OfficeView.css';
 
 // 부서 카드 id → 활동 원장 팀 id (manager=총괄→hq)
 const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing' };
-import './OfficeView.css';
+const HQ_ACTOR = { kind: 'human' as const, teamId: 'hq' as DeptTeamId, label: '최고관리자' };
 
 interface OfficeViewProps {
   agents: Agent[];
@@ -61,6 +65,13 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
 }) => {
   const [selectedDept, setSelectedDept] = useState<DepartmentDefinition | null>(null);
   const [briefingModalOpen, setBriefingModalOpen] = useState(false);
+
+  // 최고관리자 → 팀 지시(메시지+파일). 팀 inbox로 발송 + 활동 원장 기록.
+  const sendDirective = (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => {
+    const title = text || (attachments.length ? '자료 전달' : '지시');
+    const posted = postTeamMessage({ from: HQ_ACTOR, toTeam, kind: 'info', title, body: '', attachments });
+    logActivity({ teamId: 'hq', type: 'message_sent', status: 'info', title, detail: `${DEPT_TEAM_META[toTeam].name}에 지시${attachments.length ? ` · 첨부 ${attachments.length}` : ''}`, actor: HQ_ACTOR, relatedTeam: toTeam, refId: posted.id });
+  };
 
   const scenarioDescriptions: Record<ValidationScenarioType, string> = {
     normal: '정상 운영: 재고 수량 양호, 고객 미답변 문의 없음, 평점 5점 만족',
@@ -108,6 +119,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           onUpdateAgents={onUpdateAgents}
           isLarge={true}
           isSimulating={isSimulating}
+          quickBarSlot={<HqDirectiveComposer onSend={sendDirective} />}
         />
       </div>
 
