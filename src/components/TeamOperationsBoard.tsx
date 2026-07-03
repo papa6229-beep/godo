@@ -48,7 +48,6 @@ const DEPT_LABEL: Record<string, string> = {
 export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
   departments,
   agents,
-  lastRunJobs,
   lastRunResults,
   lastRunHandoffs,
   activeScenario,
@@ -74,20 +73,22 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
     const s = teamSummary(activity, teamId, since);
     const isDeptDisabled = !departments.find(d => d.id === deptId)?.enabled;
 
+    // 부서의 현재 업무 상태 기준(최고관리자 지시가 아니라 부서가 실제 진행/완료/승인대기 하는 것).
     let statusText = '대기 중';
     let statusClass = 'idle';
     if (isDeptDisabled) { statusText = '비활성화'; statusClass = 'disabled'; }
     else if (s.pending > 0) { statusText = '승인 대기'; statusClass = 'needs_review'; }
-    else if (s.total > 0) { statusText = '정상 운영'; statusClass = 'completed'; }
+    else if (s.inProgress > 0) { statusText = '진행 중'; statusClass = 'active'; }
+    else if (s.done > 0 || s.total > 0) { statusText = '정상 운영'; statusClass = 'completed'; }
 
     const recent = activityForTeam(activity, teamId, since)[0];
     const recentActivity = recent ? (recent.detail || recent.title) : null;
 
     return {
-      jobsCount:     s.taskRunTotal,   // 진행(오늘 자동업무 수)
-      resultsCount:  s.taskRunDone,    // 완료
+      jobsCount:     s.inProgress,     // 진행(현재 진행 중)
+      resultsCount:  s.done,           // 완료
       outgoing:      s.messagesSent,   // 전달
-      approvalCount: s.pending,        // 승인 대기(주의)
+      approvalCount: s.pending,        // 승인·확인 대기
       statusText,
       statusClass,
       recentActivity,
@@ -97,20 +98,12 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
   const totalDepts   = departments.filter(d => d.enabled).length;
   const totalHandoffs = lastRunHandoffs.length;
   const totalApproval = lastRunResults.filter(r => r.approvalRequired).length + approvalItems.length;
-  const hasRun = lastRunJobs.length > 0;
 
   const recentHandoffs = lastRunHandoffs.slice(-3).reverse();
 
   const briefingSummary = managerBriefing
     ? managerBriefing.split('\n').find(l => l.trim() && !l.startsWith('#') && !l.startsWith('>'))?.replace(/^[*-]\s*/, '').trim()
     : null;
-
-  // 현재 운영 상태 표시 텍스트
-  const operationStatusText = isSimulating
-    ? '🛰️ 운영 진행 중'
-    : hasRun
-    ? '✅ 오늘 운영 완료'
-    : '⏳ 운영 대기 중';
 
   return (
     <div className="team-operations-board">
@@ -120,9 +113,6 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
           <span className="board-badge">AI 부서 현황</span>
           <h3 className="board-title">부서 관제 보드</h3>
         </div>
-        <span className={`ops-status-chip ${isSimulating ? 'running' : hasRun ? 'done' : 'idle'}`}>
-          {operationStatusText}
-        </span>
       </div>
 
       {/* 오늘의 부서 요약 */}
@@ -140,11 +130,6 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
         <div className={`summary-stat ${totalApproval > 0 ? 'alert' : ''}`}>
           <span className="summary-num">{totalApproval}</span>
           <span className="summary-lbl">승인 대기</span>
-        </div>
-        <div className="summary-divider" />
-        <div className="summary-stat">
-          <span className="summary-num">{hasRun ? '정상' : '대기'}</span>
-          <span className="summary-lbl">운영 상태</span>
         </div>
       </div>
 

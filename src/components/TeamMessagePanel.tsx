@@ -92,15 +92,15 @@ export const TeamMessagePanel: React.FC<Props> = ({ teamId, messages, onPost, on
     <div className="tmsg-panel">
       <div className="tmsg-tabs">
         <button type="button" className={`tmsg-tab ${tab === 'inbox' ? 'active' : ''}`} onClick={() => setTab('inbox')}>
-          받은 요청{unread > 0 && <span className="tmsg-tab-badge">{unread}</span>}
+          받은 메시지{unread > 0 && <span className="tmsg-tab-badge">{unread}</span>}
         </button>
-        <button type="button" className={`tmsg-tab ${tab === 'outbox' ? 'active' : ''}`} onClick={() => setTab('outbox')}>보낸 요청</button>
-        <button type="button" className={`tmsg-tab tmsg-tab-new ${tab === 'compose' ? 'active' : ''}`} onClick={() => setTab('compose')}>+ 새 요청</button>
+        <button type="button" className={`tmsg-tab ${tab === 'outbox' ? 'active' : ''}`} onClick={() => setTab('outbox')}>보낸 메시지</button>
+        <button type="button" className={`tmsg-tab tmsg-tab-new ${tab === 'compose' ? 'active' : ''}`} onClick={() => setTab('compose')}>+ 새 메시지</button>
       </div>
 
       {tab === 'inbox' && (
         <div className="tmsg-list">
-          {inbox.length === 0 ? <p className="tmsg-empty">받은 요청이 없습니다.</p> : inbox.map((m) => (
+          {inbox.length === 0 ? <p className="tmsg-empty">받은 메시지가 없습니다.</p> : inbox.map((m) => (
             <div key={m.id} className={`tmsg-item ${!m.readByTo ? 'is-unread' : ''}`} onMouseEnter={() => !m.readByTo && onMarkRead(m.id)}>
               <div className="tmsg-item-head">
                 <span className="tmsg-from">{DEPT_TEAM_META[m.from.teamId].emoji} {DEPT_TEAM_META[m.from.teamId].name}{m.from.kind === 'agent' ? ' · AI' : ''}</span>
@@ -127,7 +127,7 @@ export const TeamMessagePanel: React.FC<Props> = ({ teamId, messages, onPost, on
 
       {tab === 'outbox' && (
         <div className="tmsg-list">
-          {outbox.length === 0 ? <p className="tmsg-empty">보낸 요청이 없습니다.</p> : outbox.map((m) => (
+          {outbox.length === 0 ? <p className="tmsg-empty">보낸 메시지가 없습니다.</p> : outbox.map((m) => (
             <div key={m.id} className="tmsg-item">
               <div className="tmsg-item-head">
                 <span className="tmsg-from">→ {DEPT_TEAM_META[m.toTeam].emoji} {DEPT_TEAM_META[m.toTeam].name}</span>
@@ -177,7 +177,7 @@ export const TeamMessagePanel: React.FC<Props> = ({ teamId, messages, onPost, on
               ))}
             </div>
           )}
-          <button type="button" className="tmsg-send" onClick={send} disabled={!canSend}>요청 보내기</button>
+          <button type="button" className="tmsg-send" onClick={send} disabled={!canSend}>메시지 보내기</button>
           <p className="tmsg-compose-note">※ 현재는 이 브라우저(운영자) 기준 데모입니다. 실사용 시 각 팀이 각자 화면에서 실시간으로 주고받게 됩니다.</p>
         </div>
       )}

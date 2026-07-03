@@ -244,14 +244,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             {theme === 'dark' ? 'Light' : 'Dark'}
           </button>
 
-          <button
-            className={`header-run-btn ${isSimulating ? 'running' : ''}`}
-            onClick={onStartSimulation}
-            disabled={isSimulating}
-          >
-            {isSimulating ? '🛰️ 운영 중' : '▶ START OPERATION'}
-          </button>
-
           <div className="header-nav-tabs">
             {/* ── 운영 메뉴 (매일 쓰는 핵심) ── */}
             <button
