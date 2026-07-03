@@ -444,11 +444,14 @@ const AllProductsModal: React.FC<{
 };
 
 // KPI 카드 (카운트업)
-const KpiCard: React.FC<{ icon: string; label: string; value: number; money?: boolean; unit?: string; sub: React.ReactNode; accent: string; riskBadge?: number }> = ({ icon, label, value, money, unit, sub, accent, riskBadge }) => {
+const KpiCard: React.FC<{ icon: string; label: string; value: number; money?: boolean; unit?: string; sub: React.ReactNode; accent: string; riskBadge?: number; filterBadge?: string }> = ({ icon, label, value, money, unit, sub, accent, riskBadge, filterBadge }) => {
   const v = useCountUp(value);
   return (
     <div className="ptd-kpi-card" style={{ borderLeftColor: accent }}>
-      <div className="ptd-kpi-label">{icon} {label}</div>
+      <div className="ptd-kpi-label">
+        {icon} {label}
+        {filterBadge && <span className="ptd-kpi-filter-badge" title="현재 선택한 필터 범위로 계산한 값입니다">필터: {filterBadge}</span>}
+      </div>
       <div className="ptd-kpi-value">
         {money ? won(v) : qty(v)}{unit && <span className="ptd-kpi-unit">{unit}</span>}
         {riskBadge != null && riskBadge > 0 && <span className="ptd-kpi-risk">위험 {riskBadge}</span>}
@@ -527,8 +530,12 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     [stockImpact, category, goodsCategory]
   );
 
-  // 전 부서 공통 운영 snapshot — 같은 revenue universe로 동일 builder 호출(부서 간 동일 값 보장).
-  const snap = useMemo(() => buildDepartmentSourceOfTruthSnapshot(revenue), [revenue]);
+  // 현재 필터(카테고리·기간·데이터소스) 범위의 운영 대표값 — 전 부서 공통 builder를 필터된 주문에 재적용(정의 동일).
+  // 필터 없음(전체)이면 relevantOrders=전체 주문 → 전사 대표값과 동일 → 마케팅팀 parity 유지.
+  const filteredSnap = useMemo(
+    () => (revenue ? buildDepartmentSourceOfTruthSnapshot({ ...revenue, orders: relevantOrders }) : null),
+    [revenue, relevantOrders]
+  );
 
   const kpi = useMemo(() => {
     let rev = 0;
@@ -598,6 +605,17 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const periodText = timeMode === 'all' ? '전체 기간' : `${effStart || '…'} ~ ${effEnd || '…'}`;
   const periodBasisLabel = `${granLabel} · ${periodText}`;
 
+  // 현재 적용 범위(KPI가 전사 전체와 다른 이유 표시용). 필터 없으면 '전체'.
+  const isFiltered = category !== 'all' || timeMode !== 'all' || dataSrc !== 'all';
+  const scopeText = (() => {
+    if (!isFiltered) return '전체';
+    const parts: string[] = [];
+    if (category !== 'all') parts.push(catName(category));
+    if (timeMode !== 'all') parts.push(periodText);
+    if (dataSrc !== 'all') parts.push(dataSrc === 'real' ? '실제 데이터' : '가상 데이터');
+    return parts.join(' · ');
+  })();
+
   // 모드 전환 시, 범위가 비어 있으면 데이터 전체 기간을 기본값으로 채운다.
   const selectMode = (mode: 'all' | 'month' | 'week' | 'day' | 'custom') => {
     setTimeMode(mode);
@@ -657,12 +675,20 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
       ) : (
         <>
           <div className="ptd-filterbar">
+            {/* 1차 조건 = 기간 (CS팀과 통일). KPI·추이·구성·순위가 모두 이 기준을 공유 */}
+            <div className="ptd-filter-group ptd-filter-group-period">
+              <span className="ptd-filter-label">기간</span>
+              {renderPeriodControl()}
+            </div>
+            {/* 카테고리 = 보조 필터. 드롭다운(상품·카테고리 늘어나도 안 무너짐) */}
             <div className="ptd-filter-group">
               <span className="ptd-filter-label">카테고리</span>
-              <button className={`ptd-chip ${category === 'all' ? 'active' : ''}`} onClick={() => setCategory('all')}>전체</button>
-              {categoryOptions.map((c) => (
-                <button key={c.code} className={`ptd-chip ${category === c.code ? 'active' : ''}`} onClick={() => setCategory(c.code)}>{catName(c.code)}</button>
-              ))}
+              <select className="ptd-select" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="카테고리 선택">
+                <option value="all">전체 카테고리</option>
+                {categoryOptions.map((c) => (
+                  <option key={c.code} value={c.code}>{catName(c.code)}</option>
+                ))}
+              </select>
             </div>
             <div className="ptd-filter-group">
               <span className="ptd-filter-label">데이터</span>
@@ -670,14 +696,14 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
                 <button key={v} className={`ptd-chip ${dataSrc === v ? 'active' : ''}`} onClick={() => setDataSrc(v)}>{label}</button>
               ))}
             </div>
-            <span className="ptd-filter-basis">기간 기준: <b>{periodBasisLabel}</b> <small>(매출추이·도넛 카드에서 변경)</small></span>
+            <span className="ptd-filter-basis ptd-filter-scope">적용 범위: <b>{scopeText}</b></span>
             <button type="button" className="ptd-reset" onClick={resetFilters}>↺ 초기화</button>
           </div>
 
           <div className="ptd-kpi-grid">
-            <KpiCard icon="💰" label={OP.operationalRevenue.label} value={snap?.operationalRevenue ?? 0} money sub={OP.operationalRevenue.basis} accent={KPI_ACCENT[0]} />
-            <KpiCard icon="🧾" label={OP.operationalOrderCount.label} value={snap?.operationalOrderCount ?? 0} unit="건" sub={OP.operationalOrderCount.basis} accent={KPI_ACCENT[1]} />
-            <KpiCard icon="📈" label="판매수량" value={kpi.sold} unit="개" sub={`복구 ${kpi.restored} · 순판매 ${kpi.net}`} accent={KPI_ACCENT[2]} />
+            <KpiCard icon="💰" label={OP.operationalRevenue.label} value={filteredSnap?.operationalRevenue ?? 0} money sub={OP.operationalRevenue.basis} accent={KPI_ACCENT[0]} filterBadge={isFiltered ? scopeText : undefined} />
+            <KpiCard icon="🧾" label={OP.operationalOrderCount.label} value={filteredSnap?.operationalOrderCount ?? 0} unit="건" sub={OP.operationalOrderCount.basis} accent={KPI_ACCENT[1]} filterBadge={isFiltered ? scopeText : undefined} />
+            <KpiCard icon="📈" label="판매수량" value={kpi.sold} unit="개" sub={`복구 ${kpi.restored} · 순판매 ${kpi.net}`} accent={KPI_ACCENT[2]} filterBadge={isFiltered ? scopeText : undefined} />
             <KpiCard
               icon="📦"
               label="재고 위험 상품"
@@ -689,6 +715,7 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
               }
               accent={KPI_ACCENT[3]}
               riskBadge={kpi.riskCount}
+              filterBadge={category !== 'all' ? catName(category) : undefined}
             />
           </div>
 
@@ -700,7 +727,8 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
           </div>
 
           <p className="ptd-kpi-basis-note">
-            ※ 상단 <b>운영매출·운영 주문수</b>는 전 부서 공통 source of truth(유효 주문 기준)로 마케팅팀과 같은 값입니다.
+            ※ 상단 <b>운영매출·운영 주문수</b>는 전 부서 공통 source of truth(유효 주문 기준)입니다.
+            필터를 적용하면 선택한 범위로 좁혀 계산하며, <b>전체 기준일 때 마케팅팀과 같은 값</b>입니다.
             <b>상품 라인 매출</b>은 전체 주문(취소·미입금·가상 포함) 라인합으로 상품관리 전용 분석값입니다.
             (공통 정의: <code>departmentMetricContract</code> · <code>revenueMetricContract</code>)
           </p>
@@ -709,13 +737,11 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
             <div className="ptd-panel ptd-panel-wide">
               <div className="ptd-panel-head">
                 <h3>매출 추이 <span className="ptd-panel-meta">기준: {periodBasisLabel}</span></h3>
-                {renderPeriodControl()}
               </div>
               <TrendChart data={trend} period={trendGran} />
             </div>
             <div className="ptd-panel">
               <div className="ptd-panel-head"><h3>매출 구성</h3><span className="ptd-panel-meta">카테고리 비중</span></div>
-              {renderPeriodControl()}
               <div className="ptd-donut-basis">기준: <b>{periodBasisLabel}</b></div>
               {categoryData.items.length === 0 || categoryData.total <= 0 ? (
                 <p className="ptd-muted">표시할 데이터가 없습니다.</p>

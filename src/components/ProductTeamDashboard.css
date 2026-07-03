@@ -61,7 +61,8 @@
 .ptd-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .ptd-kpi-card { background: var(--bg-surface); border: 1px solid var(--line-subtle); border-left: 3px solid var(--ptd-teal); border-radius: 12px; padding: 14px; transition: transform 0.14s ease, box-shadow 0.14s ease; }
 .ptd-kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18); }
-.ptd-kpi-label { font-size: 12px; color: var(--text-secondary); }
+.ptd-kpi-label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ptd-kpi-filter-badge { font-size: 10px; font-weight: 600; color: var(--ptd-teal); background: color-mix(in srgb, var(--ptd-teal) 14%, transparent); border: 1px solid color-mix(in srgb, var(--ptd-teal) 40%, transparent); border-radius: 999px; padding: 1px 7px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .ptd-kpi-value { margin-top: 8px; font-size: 24px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .ptd-kpi-unit { font-size: 14px; font-weight: 500; color: var(--text-muted); }
 .ptd-kpi-risk { font-size: 11px; font-weight: 700; color: #fff; background: var(--ptd-danger); border-radius: 999px; padding: 2px 8px; }
@@ -96,6 +97,10 @@
 .ptd-filter-basis { font-size: 11px; color: var(--text-muted); display: inline-flex; align-items: baseline; gap: 4px; }
 .ptd-filter-basis b { color: var(--ptd-teal); font-weight: 600; }
 .ptd-filter-basis small { opacity: 0.7; }
+/* 기간을 1차 필터로 승격 — 필터바에서 왼쪽 정렬 유지, 범위 표시는 우측으로 밀기 */
+.ptd-filter-group-period { align-items: center; }
+.ptd-filter-scope { margin-left: auto; }
+.ptd-filter-scope + .ptd-reset { margin-left: 12px; }
 
 /* 매출 추이 차트 */
 .ptd-trend { position: relative; }
