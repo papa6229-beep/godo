@@ -5,6 +5,21 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>godo</title>
+    <!-- 디자인팀 상세페이지 생성기(이식) 전용 Tailwind — preflight(전역 리셋) 꺼서 GODO 기존 스타일은 불변 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      window.tailwind = window.tailwind || {};
+      window.tailwind.config = {
+        corePlugins: { preflight: false },
+        theme: { extend: {
+          fontFamily: { sans: ['"Fira Sans"', 'Pretendard', '-apple-system', 'system-ui', 'sans-serif'], mono: ['"Fira Code"', 'monospace'] },
+          colors: { brand: { bg: '#020617', surface: '#0F172A', cta: '#22C55E' } }
+        } }
+      };
+    </script>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
   </head>
   <body>
     <div id="root"></div>
