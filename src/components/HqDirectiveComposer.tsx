@@ -3,7 +3,7 @@ import { DEPT_TEAM_META, type DeptTeamId, type TeamMessageAttachment } from '../
 
 // 오늘의 운영 중앙 하단 — 최고관리자가 팀장에게 메시지 + 간단한 파일을 보내는 바(Quick Task Add 대체).
 
-const DIRECTIVE_TEAMS: DeptTeamId[] = ['product', 'cs', 'marketing'];
+const DIRECTIVE_TEAMS: DeptTeamId[] = ['product', 'cs', 'marketing', 'design'];
 const fmtSize = (n: number): string => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}MB` : n >= 1000 ? `${Math.round(n / 1000)}KB` : `${n}B`);
 
 interface Props {

@@ -12,7 +12,7 @@ import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
 // AI 직원 → 자동 업무: 팀 AI 에이전트가 자동 수행할 업무와 승인모드를 정의·편집.
 // 여기서 저장하면 부서 보드의 자동 업무 탭과 실행기가 그대로 소비한다(Studio↔실행 연결).
 
-const TEAMS: DeptTeamId[] = ['hq', 'product', 'cs', 'marketing'];
+const TEAMS: DeptTeamId[] = ['hq', 'product', 'cs', 'marketing', 'design'];
 const FOCI: AgentTaskFocus[] = ['overview', 'sales', 'inventory', 'cs'];
 const MODES: AgentTaskApprovalMode[] = ['auto', 'approval', 'draft'];
 const SCHED_KINDS: AgentTaskScheduleKind[] = ['manual', 'daily', 'weekly'];

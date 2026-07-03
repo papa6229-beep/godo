@@ -2,7 +2,8 @@ export type DepartmentId =
   | 'manager'
   | 'product'
   | 'cs'
-  | 'marketing';
+  | 'marketing'
+  | 'design';
 
 export type AgentRole =
   | 'manager'

@@ -2,13 +2,14 @@
 //  총괄(hq)=오늘의 운영 등 전체 · 팀장(product/cs/marketing)=본인 팀 보드만.
 //  ※ 진짜 로그인/권한 격리는 2단계(백엔드). 지금은 데모용 역할 전환.
 
-export type ViewerRole = 'hq' | 'product' | 'cs' | 'marketing';
+export type ViewerRole = 'hq' | 'product' | 'cs' | 'marketing' | 'design';
 
 export const VIEWER_ROLES: { id: ViewerRole; label: string; emoji: string; short: string }[] = [
   { id: 'hq', label: '총괄 관리자', emoji: '🏛️', short: '총괄' },
   { id: 'product', label: '상품관리팀장', emoji: '🏷️', short: '상품' },
   { id: 'cs', label: 'CS팀장', emoji: '💬', short: 'CS' },
-  { id: 'marketing', label: '마케팅팀장', emoji: '📊', short: '마케팅' }
+  { id: 'marketing', label: '마케팅팀장', emoji: '📊', short: '마케팅' },
+  { id: 'design', label: '디자인팀장', emoji: '🎨', short: '디자인' }
 ];
 
 const STORAGE_KEY = 'godo_viewer_role_v0';

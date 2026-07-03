@@ -32,6 +32,14 @@ export const defaultDepartments: DepartmentDefinition[] = [
     leadAgentId: 'marketing_lead',
     memberAgentIds: ['marketing_lead', 'trend_researcher', 'campaign_planner'],
     enabled: true
+  },
+  {
+    id: 'design',
+    name: '디자인팀',
+    description: '상품 상세페이지·섬네일 제작 및 상품등록 준비를 담당하는 웹디자인 부서',
+    leadAgentId: 'design_lead',
+    memberAgentIds: ['design_lead'],
+    enabled: true
   }
 ];
 
@@ -151,6 +159,19 @@ export const defaultNativeAgents: NativeAgentDefinition[] = [
     description: '타겟 쿠폰 발행 조건 설계, 푸시 메시지 카피라이팅 및 시즌별 이벤트 제안 상세 기획서를 도출합니다.',
     skills: ['할인 쿠폰 발행 조건 설계', '메시지 카피라이팅', '프로모션 테마 디자인'],
     modelPreference: 'local_gemma',
+    enabled: true
+  },
+
+  // 5. 디자인팀
+  {
+    id: 'design_lead',
+    name: '디자인 팀장 AI (DSN-L)',
+    departmentId: 'design',
+    role: 'team_lead',
+    title: '웹디자인 팀장',
+    description: '상품 자료를 받아 상세페이지·섬네일을 제작하고 상품명·문구를 도출하며 등록 준비 데이터를 완성합니다.',
+    skills: ['상세페이지 제작', '섬네일 디자인', '상품 문구/카피 생성', '상품등록 준비'],
+    modelPreference: 'cloud_optional',
     enabled: true
   }
 ];

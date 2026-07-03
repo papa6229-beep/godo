@@ -309,6 +309,6 @@ export function buildDepartmentChatContext(
   };
 }
 
-// panel team id(hq/product/cs/marketing) → ChatTeam
-export const toChatTeam = (teamId: 'hq' | 'product' | 'cs' | 'marketing'): ChatTeam =>
-  teamId === 'hq' ? 'manager' : teamId;
+// panel team id → ChatTeam (design은 커머스 채팅팀이 아니며, 호출부에서 미리 분기되어 여기 도달 안 함 → manager로 폴백)
+export const toChatTeam = (teamId: 'hq' | 'product' | 'cs' | 'marketing' | 'design'): ChatTeam =>
+  teamId === 'hq' || teamId === 'design' ? 'manager' : teamId;
