@@ -3,7 +3,9 @@
 
 .dept-workspace {
   display: grid;
-  grid-template-columns: 22% 56% 22%;
+  /* 좌측 팀선택 = 콘텐츠에 맞춘 고정 좁은 폭(텍스트 대비 과폭 제거), 남는 폭은 중앙+채팅에.
+     채팅창(우측)을 기존 22%보다 넓게(≈1fr) 확보. 모든 팀 공통. */
+  grid-template-columns: 210px minmax(0, 1.9fr) minmax(0, 1fr);
   gap: 12px;
   height: 100%;
   width: 100%;
