@@ -24,6 +24,12 @@ import { buildMarketingScopeInsightResponse } from '../services/marketingScopeIn
 import { createMarketingAnalysisMemoryEntry, saveMarketingAnalysisMemoryEntry, findSimilarMarketingAnalysisMemories } from '../services/marketingAnalysisMemory';
 import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
+import { TeamMessagePanel } from './TeamMessagePanel';
+import {
+  loadTeamMessages, subscribeTeamMessages, postTeamMessage, resolveTeamMessage, markInboxRead,
+  unreadCountFor, type CreateTeamMessageInput
+} from '../services/teamMessageCenter';
+import type { TeamMessage, TeamMessageStatus } from '../types/teamMessage';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -141,6 +147,15 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [marketingMemoryHintCount, setMarketingMemoryHintCount] = useState(0);
   // Commerce Data Query Engine 결과 차트 — 팀별로 분리(각 팀 채팅창은 독립). 채팅 열에 렌더, 비영속.
   const [engineChartByTeam, setEngineChartByTeam] = useState<Record<TeamId, MarketingChatChartArtifact | null>>({ hq: null, product: null, cs: null, marketing: null });
+  // 우측 패널 모드 — AI 팀장 지시(chat) / 팀 간 요청(messages).
+  const [rightTab, setRightTab] = useState<'chat' | 'messages'>('chat');
+  // 팀 간 소통 메시지(스토어). 다른 탭/미래 에이전트 쓰기도 storage 이벤트로 반영.
+  const [teamMessages, setTeamMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
+  useEffect(() => subscribeTeamMessages(() => setTeamMessages(loadTeamMessages())), []);
+  const refreshTeamMessages = () => setTeamMessages(loadTeamMessages());
+  const handlePostTeamMessage = (input: CreateTeamMessageInput) => { postTeamMessage(input); refreshTeamMessages(); };
+  const handleResolveTeamMessage = (id: string, status: TeamMessageStatus) => { resolveTeamMessage(id, status, { kind: 'human', teamId: selectedTeamId, label: '운영자' }); refreshTeamMessages(); };
+  const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, { kind: 'human', teamId: selectedTeamId, label: '운영자' }); refreshTeamMessages(); };
 
   useEffect(() => {
     saveDeptChatLog(chatLog);
@@ -483,6 +498,9 @@ export const DepartmentWorkspacePanel: React.FC = () => {
               <div className="dept-team-card-top">
                 <span className="dept-team-emoji">{t.emoji}</span>
                 <span className="dept-team-name">{t.name}</span>
+                {unreadCountFor(teamMessages, t.id) > 0 && (
+                  <span className="dept-team-unread" title={`받은 요청 ${unreadCountFor(teamMessages, t.id)}건`}>{unreadCountFor(teamMessages, t.id)}</span>
+                )}
               </div>
               <p className="dept-team-role">{t.roleSummary}</p>
               <div className="dept-team-meta">
@@ -562,10 +580,32 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       {/* ── 우측: 팀별 명령 채팅창 (미리보기, 실제 호출 없음) ── */}
       <aside className="dept-col dept-col-right">
         <div className="dept-col-head">
-          <h3>{team.chatTitle}</h3>
-          <p className="dept-col-sub">선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.</p>
+          <h3>{rightTab === 'chat' ? team.chatTitle : `${team.name} · 팀 간 소통`}</h3>
+          <p className="dept-col-sub">
+            {rightTab === 'chat'
+              ? '선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.'
+              : '다른 팀에 지원·확인을 요청하고, 받은 요청을 처리합니다.'}
+          </p>
         </div>
 
+        <div className="dept-right-tabs">
+          <button type="button" className={`dept-right-tab ${rightTab === 'chat' ? 'active' : ''}`} onClick={() => setRightTab('chat')}>💬 AI 팀장 지시</button>
+          <button type="button" className={`dept-right-tab ${rightTab === 'messages' ? 'active' : ''}`} onClick={() => setRightTab('messages')}>
+            📨 팀 간 요청{unreadCountFor(teamMessages, selectedTeamId) > 0 && <span className="dept-right-tab-badge">{unreadCountFor(teamMessages, selectedTeamId)}</span>}
+          </button>
+        </div>
+
+        {rightTab === 'messages' && (
+          <TeamMessagePanel
+            teamId={selectedTeamId}
+            messages={teamMessages}
+            onPost={handlePostTeamMessage}
+            onResolve={handleResolveTeamMessage}
+            onMarkRead={handleMarkTeamMessageRead}
+          />
+        )}
+
+        {rightTab === 'chat' && (<>
         {/* dev/smoke marker — 마케팅 chartSpec artifact(비영속). 중앙 그래프 렌더는 다음 작업. JSON/PII 미노출. */}
         {team.id === 'marketing' && marketingChartArtifact && (
           <div
@@ -624,6 +664,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         <p className="dept-chat-disclaimer">
           ※ 분석·정리·초안까지만 제공하며, 실제 발송·수정·캠페인 실행은 승인 전 하지 않습니다.
         </p>
+        </>)}
       </aside>
     </div>
   );
