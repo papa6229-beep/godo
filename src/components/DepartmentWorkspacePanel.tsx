@@ -10,6 +10,7 @@ import {
 } from '../services/departmentDataService';
 import { ProductTeamDashboard } from './ProductTeamDashboard';
 import { CsTeamDashboard } from './CsTeamDashboard';
+import { DesignTeamDashboard } from './DesignTeamDashboard';
 import { MarketingAnalysisDashboard, MarketingChartSpecPanel } from './MarketingAnalysisDashboard';
 import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
 import { chatWithTeam } from '../services/departmentChatService';
@@ -55,7 +56,7 @@ import { logActivity } from '../services/activityLedger';
 //   총괄팀      → 모든 팀 요약 + Approval Queue
 // ────────────────────────────────────────────────────────────────────────────
 
-type TeamId = 'hq' | 'product' | 'cs' | 'marketing';
+type TeamId = 'hq' | 'product' | 'cs' | 'marketing' | 'design';
 
 interface TeamConfig {
   id: TeamId;
@@ -129,6 +130,20 @@ const TEAMS: TeamConfig[] = [
     chatTitle: '마케팅팀에게 지시하기',
     chatPlaceholder: '예: 인기 상품 기준으로 캠페인 후보를 뽑아줘',
     futureDataNote: '다음 단계 연결 예정: Sales / Products / Campaign 데이터'
+  },
+  {
+    id: 'design',
+    emoji: '🎨',
+    name: '디자인팀',
+    roleSummary: '상세페이지·섬네일 제작 및 상품등록 준비',
+    lead: '디자인 AI',
+    members: ['상세페이지 생성 AI'],
+    mission: '상품 상세페이지·섬네일을 제작하고 상품등록을 준비합니다.',
+    dashboardTitle: '디자인팀 워크스페이스',
+    dashboardDesc: '상품팀에서 온 제작 요청을 받아 상세페이지·섬네일을 작업하고 등록을 준비합니다.',
+    chatTitle: '디자인팀에게 지시하기',
+    chatPlaceholder: '예: 신상품 상세페이지 만들어줘',
+    futureDataNote: '다음 단계 연결 예정: 상세페이지 생성기 · 상품 제작 요청 큐'
   }
 ];
 
@@ -163,7 +178,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [marketingChartArtifact, setMarketingChartArtifact] = useState<MarketingChatChartArtifact | null>(null);
   const [marketingMemoryHintCount, setMarketingMemoryHintCount] = useState(0);
   // Commerce Data Query Engine 결과 차트 — 팀별로 분리(각 팀 채팅창은 독립). 채팅 열에 렌더, 비영속.
-  const [engineChartByTeam, setEngineChartByTeam] = useState<Record<TeamId, MarketingChatChartArtifact | null>>({ hq: null, product: null, cs: null, marketing: null });
+  const [engineChartByTeam, setEngineChartByTeam] = useState<Record<TeamId, MarketingChatChartArtifact | null>>({ hq: null, product: null, cs: null, marketing: null, design: null });
   // 우측 패널 모드 — AI 팀장 지시(chat) / 팀 간 요청(messages) / 자동 업무(tasks).
   const [rightTab, setRightTab] = useState<'chat' | 'messages' | 'tasks'>('chat');
   // 팀 간 소통 메시지(스토어). 다른 탭/미래 에이전트 쓰기도 storage 이벤트로 반영.
@@ -298,6 +313,14 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     setSending(true);
 
     const rev0 = productData.revenue;
+    // 디자인팀: 커머스 데이터 팀이 아님 → 커머스/분석 경로를 타지 않고 일반 AI 응답(스캐폴드; 이후 생성기·요청 큐 연결).
+    if (teamId === 'design') {
+      const res = await chatWithTeam(teamId, text, {
+        answerGuidance: '디자인팀 AI로서 상세페이지·섬네일 제작과 상품등록 준비 관점에서 도와라. 판매/매출 통계는 상품·마케팅팀 소관임을 안내하고, 실제 발송/등록은 승인 전 하지 않는다.'
+      });
+      setChatLog((prev) => ({ ...prev, [teamId]: [...prev[teamId], { role: 'system', text: res.text }] }));
+      setSending(false); return;
+    }
     // CS 답변 초안(업무기능)은 데이터 조회가 아님 → 엔진보다 먼저.
     if (teamId === 'cs' && rev0?.universeAux?.inquiries?.length && rev0.orders?.length) {
       const draft = runCsDraftRequest({ userText: text, inquiries: rev0.universeAux.inquiries, orders: rev0.orders });
@@ -515,6 +538,9 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     );
   };
 
+  // 디자인팀 워크스페이스 — 커머스 데이터 불필요(작업 보드). 제작 요청 큐는 팀 메시지에서 파생.
+  const renderDesignData = () => <DesignTeamDashboard messages={teamMessages} />;
+
   return (
     <div className="dept-workspace">
       {/* ── 좌측: 부서 선택 / 팀 정보 ── */}
@@ -572,13 +598,15 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       </aside>
 
       {/* ── 중앙: 팀별 업무 대시보드 ── */}
-      <section className={`dept-col dept-col-center ${team.id === 'product' || team.id === 'cs' || team.id === 'marketing' ? 'dept-col-center-dashboard' : ''}`}>
+      <section className={`dept-col dept-col-center ${team.id === 'product' || team.id === 'cs' || team.id === 'marketing' || team.id === 'design' ? 'dept-col-center-dashboard' : ''}`}>
         {team.id === 'product' ? (
           renderProductData()
         ) : team.id === 'cs' ? (
           renderCsData()
         ) : team.id === 'marketing' ? (
           renderMarketingData()
+        ) : team.id === 'design' ? (
+          renderDesignData()
         ) : (
           <>
             <div className="dept-col-head">

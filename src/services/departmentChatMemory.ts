@@ -4,7 +4,7 @@
 // HQ 채팅(hqChatMemory)과는 별도 저장소를 사용한다.
 // 탭 이동/새로고침 후에도 각 팀 대화가 유지되며, 팀 간 대화가 섞이지 않는다.
 
-export type DeptTeamId = 'hq' | 'product' | 'cs' | 'marketing';
+export type DeptTeamId = 'hq' | 'product' | 'cs' | 'marketing' | 'design';
 
 export interface DeptChatMessage {
   role: 'user' | 'system';
@@ -16,7 +16,7 @@ export type DeptChatLog = Record<DeptTeamId, DeptChatMessage[]>;
 const STORAGE_KEY = 'godo_department_chat_messages_v0';
 const MAX_PER_TEAM = 50;
 
-const emptyLog = (): DeptChatLog => ({ hq: [], product: [], cs: [], marketing: [] });
+const emptyLog = (): DeptChatLog => ({ hq: [], product: [], cs: [], marketing: [], design: [] });
 
 export function loadDeptChatLog(): DeptChatLog {
   const base = emptyLog();

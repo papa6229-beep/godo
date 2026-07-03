@@ -9,7 +9,7 @@
 //  - 지금은 localStorage(단일 브라우저·데모). 데이터 모델은 백엔드(공용 DB+실시간)로
 //    그대로 이관 가능하게 설계(2단계에서 스토어 구현만 교체).
 
-export type DeptTeamId = 'hq' | 'product' | 'cs' | 'marketing';
+export type DeptTeamId = 'hq' | 'product' | 'cs' | 'marketing' | 'design';
 
 // 요청 유형 — 지원요청 / 확인요청 / 일반전달
 export type TeamMessageKind = 'support' | 'confirm' | 'info';
@@ -63,7 +63,8 @@ export const DEPT_TEAM_META: Record<DeptTeamId, { name: string; emoji: string }>
   hq: { name: '총괄팀', emoji: '🏛️' },
   product: { name: '상품관리팀', emoji: '🏷️' },
   cs: { name: 'CS팀', emoji: '💬' },
-  marketing: { name: '마케팅팀', emoji: '📊' }
+  marketing: { name: '마케팅팀', emoji: '📊' },
+  design: { name: '디자인팀', emoji: '🎨' }
 };
 
 export const TEAM_MESSAGE_KIND_META: Record<TeamMessageKind, { label: string; emoji: string }> = {

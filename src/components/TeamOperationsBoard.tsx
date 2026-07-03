@@ -9,7 +9,7 @@ import type { ActivityEvent } from '../types/activityLedger';
 import './TeamOperationsBoard.css';
 
 // 부서 카드 id → 활동 원장 팀 id (manager=총괄→hq)
-const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing' };
+const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing', design: 'design' };
 const localMidnightIso = (): string => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
 
 interface TeamOperationsBoardProps {

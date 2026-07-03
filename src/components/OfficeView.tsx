@@ -19,7 +19,7 @@ import { DEPT_TEAM_META, type DeptTeamId, type TeamMessageAttachment } from '../
 import './OfficeView.css';
 
 // 부서 카드 id → 활동 원장 팀 id (manager=총괄→hq)
-const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing' };
+const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing', design: 'design' };
 const HQ_ACTOR = { kind: 'human' as const, teamId: 'hq' as DeptTeamId, label: '최고관리자' };
 
 interface OfficeViewProps {

@@ -9,7 +9,7 @@ import type { TeamMessage } from '../types/teamMessage';
 // 오늘의 운영 우측 — 팀별 "오늘 크리티컬(승인·확인 필요)" 업무만. 최고관리자 읽기 전용.
 //  크리티컬 = ① 승인 대기/진행 중 활동(원장) ② 미처리 팀 간 요청(팀 메시지).
 
-const TEAMS: DeptTeamId[] = ['product', 'cs', 'marketing', 'hq'];
+const TEAMS: DeptTeamId[] = ['product', 'cs', 'marketing', 'design', 'hq'];
 
 const localMidnightIso = (): string => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
 const shortTime = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };

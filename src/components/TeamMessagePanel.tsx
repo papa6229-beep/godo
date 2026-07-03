@@ -19,7 +19,7 @@ interface Props {
   onMarkRead: (id: string) => void;
 }
 
-const TEAM_IDS: DeptTeamId[] = ['hq', 'product', 'cs', 'marketing'];
+const TEAM_IDS: DeptTeamId[] = ['hq', 'product', 'cs', 'marketing', 'design'];
 const KINDS: TeamMessageKind[] = ['support', 'confirm', 'info'];
 const fmtSize = (n: number): string => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}MB` : n >= 1000 ? `${Math.round(n / 1000)}KB` : `${n}B`);
 const shortTime = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
