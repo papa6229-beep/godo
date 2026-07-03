@@ -568,5 +568,11 @@
 
 
 
-/* 오늘의 운영 HQ 채팅 커머스 질의 그래프 */
-.chat-commerce-chart { margin: 4px 0 8px; box-sizing: border-box; }
+/* 오늘의 운영 HQ 채팅 커머스 질의 그래프 — 부서 채팅(.dept-chat-chart)과 동일 규칙 */
+.chat-commerce-chart {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;            /* flex(overflow:hidden) 컨테이너에서 차트가 넘쳐 잘리지 않게 */
+  padding: 0 15px 6px;     /* 메시지 영역과 좌우 정렬 */
+  margin-top: 6px;
+}
