@@ -26,6 +26,7 @@ import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 import { TeamMessagePanel } from './TeamMessagePanel';
 import { AgentTaskPanel } from './AgentTaskPanel';
+import { loadRole, subscribeRole, isHqRole, type ViewerRole } from '../services/sessionRole';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import { loadAgentTasks, subscribeAgentTasks } from '../services/agentTaskStore';
 import type { AgentTaskSpec } from '../types/agentTask';
@@ -143,7 +144,17 @@ type ChatMessage = DeptChatMessage;
 
 
 export const DepartmentWorkspacePanel: React.FC = () => {
-  const [selectedTeamId, setSelectedTeamId] = useState<TeamId>('hq');
+  // 세션 역할 — 팀장이면 본인 팀만 보이고 선택됨(총괄은 전체).
+  const [role, setRole] = useState<ViewerRole>(loadRole);
+  const [selectedTeamId, setSelectedTeamId] = useState<TeamId>(() => { const r = loadRole(); return isHqRole(r) ? 'hq' : (r as TeamId); });
+  // 역할 변경 시(구독 콜백=이벤트 핸들러) 역할·선택 팀 동기화. 팀장이면 본인 팀 고정.
+  useEffect(() => subscribeRole(() => {
+    const r = loadRole();
+    setRole(r);
+    if (!isHqRole(r)) setSelectedTeamId(r as TeamId);
+  }), []);
+  const hqView = isHqRole(role);
+  const visibleTeams = hqView ? TEAMS : TEAMS.filter((t) => t.id === role);
   // 팀별 채팅 기록 — localStorage에서 복원(탭 이동/새로고침 유지, 팀별 분리)
   const [chatLog, setChatLog] = useState<Record<TeamId, ChatMessage[]>>(() => loadDeptChatLog());
   const [input, setInput] = useState('');
@@ -509,12 +520,12 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       {/* ── 좌측: 부서 선택 / 팀 정보 ── */}
       <aside className="dept-col dept-col-left">
         <div className="dept-col-head">
-          <h3>부서 선택</h3>
-          <p className="dept-col-sub">팀을 선택해 업무 공간을 전환하세요.</p>
+          <h3>{hqView ? '부서 선택' : '내 팀'}</h3>
+          <p className="dept-col-sub">{hqView ? '팀을 선택해 업무 공간을 전환하세요.' : '본인 팀 업무 공간입니다.'}</p>
         </div>
 
         <div className="dept-team-list">
-          {TEAMS.map((t) => (
+          {visibleTeams.map((t) => (
             <button
               key={t.id}
               type="button"
