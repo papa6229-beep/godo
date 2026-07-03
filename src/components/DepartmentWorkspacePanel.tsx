@@ -25,6 +25,8 @@ import { createMarketingAnalysisMemoryEntry, saveMarketingAnalysisMemoryEntry, f
 import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 import { TeamMessagePanel } from './TeamMessagePanel';
+import { AgentTaskPanel } from './AgentTaskPanel';
+import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import {
   loadTeamMessages, subscribeTeamMessages, postTeamMessage, resolveTeamMessage, markInboxRead,
   unreadCountFor, type CreateTeamMessageInput
@@ -147,8 +149,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [marketingMemoryHintCount, setMarketingMemoryHintCount] = useState(0);
   // Commerce Data Query Engine 결과 차트 — 팀별로 분리(각 팀 채팅창은 독립). 채팅 열에 렌더, 비영속.
   const [engineChartByTeam, setEngineChartByTeam] = useState<Record<TeamId, MarketingChatChartArtifact | null>>({ hq: null, product: null, cs: null, marketing: null });
-  // 우측 패널 모드 — AI 팀장 지시(chat) / 팀 간 요청(messages).
-  const [rightTab, setRightTab] = useState<'chat' | 'messages'>('chat');
+  // 우측 패널 모드 — AI 팀장 지시(chat) / 팀 간 요청(messages) / 자동 업무(tasks).
+  const [rightTab, setRightTab] = useState<'chat' | 'messages' | 'tasks'>('chat');
   // 팀 간 소통 메시지(스토어). 다른 탭/미래 에이전트 쓰기도 storage 이벤트로 반영.
   const [teamMessages, setTeamMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
   useEffect(() => subscribeTeamMessages(() => setTeamMessages(loadTeamMessages())), []);
@@ -186,6 +188,8 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   // 팀 선택 — 어느 팀이든 처음 선택하면 공용 데이터 1회 로드(부서별 facts bundle 재료).
   const handleSelectTeam = (id: TeamId) => {
     setSelectedTeamId(id);
+    // 자동 업무 탭에 있는데 새 팀에 자동 업무가 없으면(총괄팀 등) 지시 탭으로 복귀.
+    if (rightTab === 'tasks' && agentTasksForTeam(id).length === 0) setRightTab('chat');
     if (!productData.loaded && !productData.loading) {
       void loadProductTeamData();
     }
@@ -580,11 +584,13 @@ export const DepartmentWorkspacePanel: React.FC = () => {
       {/* ── 우측: 팀별 명령 채팅창 (미리보기, 실제 호출 없음) ── */}
       <aside className="dept-col dept-col-right">
         <div className="dept-col-head">
-          <h3>{rightTab === 'chat' ? team.chatTitle : `${team.name} · 팀 간 소통`}</h3>
+          <h3>{rightTab === 'chat' ? team.chatTitle : rightTab === 'messages' ? `${team.name} · 팀 간 소통` : `${team.name} · 자동 업무`}</h3>
           <p className="dept-col-sub">
             {rightTab === 'chat'
               ? '선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.'
-              : '다른 팀에 지원·확인을 요청하고, 받은 요청을 처리합니다.'}
+              : rightTab === 'messages'
+                ? '다른 팀에 지원·확인을 요청하고, 받은 요청을 처리합니다.'
+                : 'AI 에이전트가 정해진 업무를 수행하고 결과를 담당 팀에 보고합니다.'}
           </p>
         </div>
 
@@ -593,6 +599,9 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           <button type="button" className={`dept-right-tab ${rightTab === 'messages' ? 'active' : ''}`} onClick={() => setRightTab('messages')}>
             📨 팀 간 요청{unreadCountFor(teamMessages, selectedTeamId) > 0 && <span className="dept-right-tab-badge">{unreadCountFor(teamMessages, selectedTeamId)}</span>}
           </button>
+          {agentTasksForTeam(selectedTeamId).length > 0 && (
+            <button type="button" className={`dept-right-tab ${rightTab === 'tasks' ? 'active' : ''}`} onClick={() => setRightTab('tasks')}>🤖 자동 업무</button>
+          )}
         </div>
 
         {rightTab === 'messages' && (
@@ -602,6 +611,14 @@ export const DepartmentWorkspacePanel: React.FC = () => {
             onPost={handlePostTeamMessage}
             onResolve={handleResolveTeamMessage}
             onMarkRead={handleMarkTeamMessageRead}
+          />
+        )}
+
+        {rightTab === 'tasks' && (
+          <AgentTaskPanel
+            teamId={selectedTeamId}
+            revenue={productData.revenue}
+            onRan={refreshTeamMessages}
           />
         )}
 

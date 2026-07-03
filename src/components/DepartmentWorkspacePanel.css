@@ -677,3 +677,20 @@
 .tmsg-send { padding: 9px; border-radius: 8px; border: none; background: var(--accent-primary, #31D6C4); color: #08221f; font-weight: 700; font-size: 13px; cursor: pointer; }
 .tmsg-send:disabled { opacity: 0.45; cursor: not-allowed; }
 .tmsg-compose-note { font-size: 11px; color: var(--text-muted); line-height: 1.4; word-break: keep-all; }
+
+/* ── 팀 자동 업무 패널 ── */
+.atask-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow-y: auto; }
+.atask-intro { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0 0 12px; word-break: keep-all; }
+.atask-intro-sub { font-size: 11px; color: var(--text-muted); }
+.atask-empty { font-size: 12px; color: var(--text-muted); text-align: center; padding: 24px 0; }
+.atask-list { display: flex; flex-direction: column; gap: 10px; }
+.atask-item { border: 1px solid var(--line-subtle); border-radius: 10px; padding: 12px; background: var(--bg-surface); }
+.atask-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.atask-title { font-size: 13px; font-weight: 700; color: var(--text-primary); word-break: keep-all; }
+.atask-sched { font-size: 11px; font-weight: 600; color: var(--accent-primary, #31D6C4); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.atask-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+.atask-agent { font-weight: 600; color: var(--text-secondary); }
+.atask-result { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent-primary, #31D6C4) 30%, transparent); font-size: 11px; color: var(--accent-primary, #31D6C4); font-weight: 600; }
+.atask-result-body { margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--text-secondary); line-height: 1.45; word-break: keep-all; }
+.atask-run { margin-top: 10px; width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--accent-primary, #31D6C4); background: transparent; color: var(--accent-primary, #31D6C4); font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.14s ease; }
+.atask-run:hover { background: var(--accent-soft); }
