@@ -32,6 +32,7 @@ export type MarketingChartSeries = {
     quantity?: number;
     revenue?: number;
     averageOrderValue?: number;
+    secondaryLabel?: string;
     notes?: string[];
   }[];
 };

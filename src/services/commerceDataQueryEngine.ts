@@ -236,7 +236,7 @@ function computeSecondaryByProduct(plan: QueryPlan, dataset: CommerceDataset, ra
 }
 
 // ── 정렬/차트 ────────────────────────────────────────────────────────────────
-interface Row { key: string; label: string; value: number; acc: Acc; secondary?: number }
+interface Row { key: string; label: string; value: number; acc: Acc; secondary?: number; secondaryLabel?: string }
 const rowsSingleSeries = (t: Table, metric: Metric): Row[] =>
   t.groups.map((g) => { const acc = g.total; return { key: g.key, label: g.label, value: metricValue(acc, metric), acc, secondary: g.secondary }; });
 const sortNumericKey = (rows: Row[]): Row[] => [...rows].sort((a, b) => (/^\d+$/.test(a.key) && /^\d+$/.test(b.key) ? Number(a.key) - Number(b.key) : a.key.localeCompare(b.key)));
@@ -245,7 +245,7 @@ const activeRows = (rows: Row[]): Row[] => { const a = rows.filter((r) => r.acc.
 function rankedBarSpec(rows: Row[], metric: Metric, title: string, subtitle: string, share: boolean, chartType: MarketingChartType = 'rankedBar'): MarketingChartSpec {
   return {
     id: `cdq_${metric}_${chartType}`, title, subtitle, chartType, primaryMetric: share ? 'share' : metric,
-    series: rows.map((r) => ({ key: r.key, label: r.label, metric: metric as unknown as MarketingChartSpec['series'][number]['metric'], points: [{ bucketKey: r.key, bucketLabel: r.label, value: r.value, orderCount: r.acc.orders.size, revenue: r.acc.rev, quantity: r.acc.qty, averageOrderValue: metricValue(r.acc, 'averageOrderValue') }] })),
+    series: rows.map((r) => ({ key: r.key, label: r.label, metric: metric as unknown as MarketingChartSpec['series'][number]['metric'], points: [{ bucketKey: r.key, bucketLabel: r.label, value: r.value, orderCount: r.acc.orders.size, revenue: r.acc.rev, quantity: r.acc.qty, averageOrderValue: metricValue(r.acc, 'averageOrderValue'), secondaryLabel: r.secondaryLabel }] })),
     xAxisLabel: '항목', yAxisLabel: share ? '비중' : METRIC_LABEL[metric], unit: chartUnit(metric, share), source: 'temporal_crosstab',
     request: { timeBucket: 'month', dimensions: [], metrics: [metric] as unknown as MarketingChartSpec['request']['metrics'] },
     available: rows.length > 0, evidence: [], warnings: []
@@ -428,7 +428,10 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     const head = joinable ? `${scope} ${label} 상위 항목을 ${secLabel} 순으로 정렬했습니다.` : `${scope} ${label} ${plan.sort === 'asc' ? '하위' : '상위'} 순위입니다.`;
     const reply = [head, ...bullets].join('\n');
     // join이면 보조 지표(매출) 막대가 더 유의미 → 보조 지표로 차트.
-    const chartRows: Row[] = joinable ? ranked.map((r) => ({ key: r.key, label: r.label, value: r.secondary ?? 0, acc: r.acc })) : ranked;
+    // join: 막대는 보조 지표(매출)지만, 1차 지표(문의수)를 데이터라벨로 각 막대에 노출.
+    const chartRows: Row[] = joinable
+      ? ranked.map((r) => ({ key: r.key, label: r.label, value: r.secondary ?? 0, acc: r.acc, secondaryLabel: `${label} ${fmtMetric(r.value, metric)}` }))
+      : ranked;
     const chartMetric = joinable ? plan.secondaryMetric! : metric;
     const cs = rankedBarSpec(chartRows, chartMetric, `${scope} ${joinable ? secLabel : label} 순위`, joinable ? `${label} 상위 중 ${secLabel}` : label, false);
     return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
