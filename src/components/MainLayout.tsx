@@ -79,8 +79,8 @@ interface MainLayoutProps {
   onUpdateSkills: (items: SkillItem[]) => void;
   onUpdateTools: (items: ToolItem[]) => void;
   onUpdatePermissionMatrix: (items: PermissionMatrixItem[]) => void;
-  activeSubTab: 'brain' | 'agent' | 'skills' | 'tools' | 'permissions' | 'import_export';
-  onChangeSubTab: (tab: 'brain' | 'agent' | 'skills' | 'tools' | 'permissions' | 'import_export') => void;
+  activeSubTab: 'brain' | 'agent' | 'agent_tasks' | 'skills' | 'tools' | 'permissions' | 'import_export';
+  onChangeSubTab: (tab: 'brain' | 'agent' | 'agent_tasks' | 'skills' | 'tools' | 'permissions' | 'import_export') => void;
   selectedAgentId: string | null;
   onSelectAgentId: (id: string | null) => void;
   onSelectBrainId: (id: string | null) => void;

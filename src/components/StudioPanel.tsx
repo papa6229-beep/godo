@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { BrainKnowledgeItem, BrainCategory, ImportanceLevel, SourceType } from '../types/brain';
 import type { Agent, LogEntry } from '../types';
 import type { SkillItem, ToolItem, PermissionMatrixItem } from '../types/studio';
+import { AgentTaskStudio } from './AgentTaskStudio';
 import type { TaskPermission, TaskRiskLevel } from '../types/task';
 import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule } from '../types/engine';
 import type { BrainProviderId } from '../types/aiProvider';
@@ -44,8 +45,8 @@ interface StudioPanelProps {
   onAddLog: (text: string, type: LogEntry['type'], agentName?: string) => void;
   
   // 연동 포커스용
-  activeSubTab: 'brain' | 'agent' | 'skills' | 'tools' | 'permissions' | 'import_export';
-  onChangeSubTab: (tab: 'brain' | 'agent' | 'skills' | 'tools' | 'permissions' | 'import_export') => void;
+  activeSubTab: 'brain' | 'agent' | 'agent_tasks' | 'skills' | 'tools' | 'permissions' | 'import_export';
+  onChangeSubTab: (tab: 'brain' | 'agent' | 'agent_tasks' | 'skills' | 'tools' | 'permissions' | 'import_export') => void;
   selectedBrainId: string | null;
   onSelectBrainId: (id: string | null) => void;
   selectedAgentId: string | null;
@@ -583,6 +584,9 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
         <button className={`studio-tab-btn ${activeSubTab === 'agent' ? 'active' : ''}`} onClick={() => onChangeSubTab('agent')}>
           🤖 Agent Editor
         </button>
+        <button className={`studio-tab-btn ${activeSubTab === 'agent_tasks' ? 'active' : ''}`} onClick={() => onChangeSubTab('agent_tasks')}>
+          🗓️ 자동 업무
+        </button>
         <button className={`studio-tab-btn ${activeSubTab === 'skills' ? 'active' : ''}`} onClick={() => onChangeSubTab('skills')}>
           ⚡ Skill Registry
         </button>
@@ -944,6 +948,11 @@ export const StudioPanel: React.FC<StudioPanelProps> = ({
               </form>
             </main>
           </div>
+        )}
+
+        {/* --- B2. 자동 업무 (팀 AI 에이전트 자동 수행 업무 · 승인모드) --- */}
+        {activeSubTab === 'agent_tasks' && (
+          <AgentTaskStudio />
         )}
 
         {/* --- C. Skill Registry --- */}

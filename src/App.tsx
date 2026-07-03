@@ -228,7 +228,7 @@ function App() {
   }, [manualCommands]);
 
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [studioSubTab, setStudioSubTab] = useState<'brain' | 'agent' | 'skills' | 'tools' | 'permissions' | 'import_export'>('brain');
+  const [studioSubTab, setStudioSubTab] = useState<'brain' | 'agent' | 'agent_tasks' | 'skills' | 'tools' | 'permissions' | 'import_export'>('brain');
 
   // LocalStorage 자동 동기화 훅
   useEffect(() => {

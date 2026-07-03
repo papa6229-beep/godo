@@ -27,6 +27,8 @@ import { runCsDraftRequest } from '../services/csDraftRuntime';
 import { TeamMessagePanel } from './TeamMessagePanel';
 import { AgentTaskPanel } from './AgentTaskPanel';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
+import { loadAgentTasks, subscribeAgentTasks } from '../services/agentTaskStore';
+import type { AgentTaskSpec } from '../types/agentTask';
 import {
   loadTeamMessages, subscribeTeamMessages, postTeamMessage, resolveTeamMessage, markInboxRead,
   unreadCountFor, type CreateTeamMessageInput
@@ -174,6 +176,10 @@ export const DepartmentWorkspacePanel: React.FC = () => {
     refreshTeamMessages();
   };
   const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, { kind: 'human', teamId: selectedTeamId, label: '운영자' }); refreshTeamMessages(); };
+  // 자동 업무 스펙(Studio에서 편집) — 스토어에서 로드, 편집 시 storage 이벤트로 반영.
+  const [agentTasks, setAgentTasks] = useState<AgentTaskSpec[]>(() => loadAgentTasks());
+  useEffect(() => subscribeAgentTasks(() => setAgentTasks(loadAgentTasks())), []);
+  const tasksForSelectedTeam = agentTasksForTeam(agentTasks, selectedTeamId);
 
   useEffect(() => {
     saveDeptChatLog(chatLog);
@@ -205,7 +211,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const handleSelectTeam = (id: TeamId) => {
     setSelectedTeamId(id);
     // 자동 업무 탭에 있는데 새 팀에 자동 업무가 없으면(총괄팀 등) 지시 탭으로 복귀.
-    if (rightTab === 'tasks' && agentTasksForTeam(id).length === 0) setRightTab('chat');
+    if (rightTab === 'tasks' && agentTasksForTeam(agentTasks, id).length === 0) setRightTab('chat');
     if (!productData.loaded && !productData.loading) {
       void loadProductTeamData();
     }
@@ -615,7 +621,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           <button type="button" className={`dept-right-tab ${rightTab === 'messages' ? 'active' : ''}`} onClick={() => setRightTab('messages')}>
             📨 팀 간 요청{unreadCountFor(teamMessages, selectedTeamId) > 0 && <span className="dept-right-tab-badge">{unreadCountFor(teamMessages, selectedTeamId)}</span>}
           </button>
-          {agentTasksForTeam(selectedTeamId).length > 0 && (
+          {tasksForSelectedTeam.length > 0 && (
             <button type="button" className={`dept-right-tab ${rightTab === 'tasks' ? 'active' : ''}`} onClick={() => setRightTab('tasks')}>🤖 자동 업무</button>
           )}
         </div>
@@ -633,6 +639,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         {rightTab === 'tasks' && (
           <AgentTaskPanel
             teamId={selectedTeamId}
+            tasks={tasksForSelectedTeam}
             revenue={productData.revenue}
             onRan={refreshTeamMessages}
           />

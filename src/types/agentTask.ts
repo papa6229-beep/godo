@@ -18,6 +18,9 @@ export interface AgentTaskSchedule {
 // 같은 canonical snapshot에서 팀별로 어떤 지표를 부각할지.
 export type AgentTaskFocus = 'overview' | 'sales' | 'inventory' | 'cs';
 
+// 승인 모드 — 자동 완료 / 승인 후 보고(등록) / 확인·수정 후 등록.
+export type AgentTaskApprovalMode = 'auto' | 'approval' | 'draft';
+
 export interface AgentTaskSpec {
   id: string;
   teamId: DeptTeamId;        // 수행 팀
@@ -28,7 +31,18 @@ export interface AgentTaskSpec {
   reportTo: DeptTeamId;      // 보고 대상 팀
   reportKind: TeamMessageKind;
   schedule: AgentTaskSchedule;
+  approvalMode: AgentTaskApprovalMode;
 }
+
+export const APPROVAL_MODE_META: Record<AgentTaskApprovalMode, { label: string; short: string; desc: string }> = {
+  auto: { label: '자동 완료', short: '자동', desc: 'AI가 승인 없이 완료까지 수행' },
+  approval: { label: '승인 후 보고', short: '승인', desc: 'AI가 결과안을 만들고 사람 승인 후 등록' },
+  draft: { label: '검토·수정 후 등록', short: '검토', desc: 'AI 초안을 사람이 확인·수정해 직접 등록' }
+};
+
+export const FOCUS_META: Record<AgentTaskFocus, string> = {
+  overview: '종합', sales: '매출', inventory: '재고', cs: 'CS'
+};
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 

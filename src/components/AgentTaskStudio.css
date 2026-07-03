@@ -1,0 +1,29 @@
+.ats-panel { display: flex; flex-direction: column; gap: 14px; padding: 4px; }
+.ats-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ats-title { margin: 0; font-size: 16px; color: var(--text-primary); }
+.ats-sub { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); max-width: 620px; word-break: keep-all; line-height: 1.5; }
+.ats-head-actions { display: flex; gap: 8px; }
+.ats-add, .ats-reset { font-size: 12px; padding: 7px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line-subtle); }
+.ats-add { background: var(--accent-primary, #31D6C4); color: #08221f; font-weight: 700; border-color: transparent; }
+.ats-reset { background: transparent; color: var(--text-muted); }
+.ats-reset:hover { color: var(--text-primary); border-color: var(--accent-border); }
+
+.ats-team-group { display: flex; flex-direction: column; gap: 8px; }
+.ats-team-label { font-size: 13px; font-weight: 700; color: var(--text-secondary); padding: 4px 2px; border-bottom: 1px dashed var(--line-subtle); }
+
+.ats-card { border: 1px solid var(--line-subtle); border-radius: 10px; padding: 12px; background: var(--bg-surface); display: flex; flex-direction: column; gap: 10px; }
+.ats-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.ats-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); min-width: 110px; }
+.ats-field.ats-grow { flex: 1; min-width: 180px; }
+.ats-field span { font-weight: 600; }
+.ats-field input, .ats-field select { font-size: 13px; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-primary); }
+.ats-field input:focus, .ats-field select:focus { outline: none; border-color: var(--accent-primary); }
+
+.ats-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.ats-mode-desc { font-size: 11px; color: var(--text-muted); word-break: keep-all; }
+.ats-card-actions { display: flex; gap: 8px; }
+.ats-save { font-size: 12px; padding: 6px 14px; border-radius: 7px; border: 1px solid var(--accent-primary, #31D6C4); background: var(--accent-primary, #31D6C4); color: #08221f; font-weight: 700; cursor: pointer; }
+.ats-save:disabled { opacity: 0.4; cursor: default; background: transparent; color: var(--text-muted); border-color: var(--line-subtle); }
+.ats-del { font-size: 12px; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line-subtle); background: transparent; color: var(--text-muted); cursor: pointer; }
+.ats-del:hover { color: #e5484d; border-color: #e5484d; }
+.ats-empty { font-size: 12px; color: var(--text-muted); text-align: center; padding: 24px 0; }
