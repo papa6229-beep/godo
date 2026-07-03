@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Agent } from '../types';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
@@ -14,6 +14,7 @@ import { OperationBriefingModal } from './OperationBriefingModal';
 import { defaultDepartments, defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { postTeamMessage } from '../services/teamMessageCenter';
 import { logActivity } from '../services/activityLedger';
+import { fetchRevenue, type RevenueOrderLite } from '../services/departmentDataService';
 import { DEPT_TEAM_META, type DeptTeamId, type TeamMessageAttachment } from '../types/teamMessage';
 import './OfficeView.css';
 
@@ -65,6 +66,16 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
 }) => {
   const [selectedDept, setSelectedDept] = useState<DepartmentDefinition | null>(null);
   const [briefingModalOpen, setBriefingModalOpen] = useState(false);
+
+  // HQ 채팅 통계/그래프용 커머스 데이터(부서 채팅과 동일 소스). 로컬 dev엔 API 없을 수 있음(그땐 콘솔 기본 응답).
+  const [commerceData, setCommerceData] = useState<{ orders: RevenueOrderLite[]; reviews?: unknown[]; inquiries?: unknown[] } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetchRevenue(true, 'commerce_universe_v1', { includeUniverseAux: true })
+      .then((rev) => { if (alive && rev?.orders?.length) setCommerceData({ orders: rev.orders, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries }); })
+      .catch(() => { /* 데이터 없음 — 콘솔 기본 경로 */ });
+    return () => { alive = false; };
+  }, []);
 
   // 최고관리자 → 팀 지시(메시지+파일). 팀 inbox로 발송 + 활동 원장 기록.
   const sendDirective = (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => {
@@ -120,6 +131,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           isLarge={true}
           isSimulating={isSimulating}
           quickBarSlot={<HqDirectiveComposer onSend={sendDirective} />}
+          commerceData={commerceData}
         />
       </div>
 

@@ -7,6 +7,11 @@ import type { ControlChatMessage, ControlTaskCandidate } from '../types/controlC
 import { processControlChat } from '../services/controlChatService';
 import { getGlobalBrainSelection, providerLabel, isBrainConnected } from '../services/aiBrainSettings';
 import { loadHqMessages, saveHqMessages } from '../services/hqChatMemory';
+import { answerCommerceQuestion } from '../services/commerceDataQueryEngine';
+import { callMarketingPlannerLlm } from '../services/departmentChatService';
+import { MarketingChartSpecPanel } from './MarketingAnalysisDashboard';
+import type { MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
+import type { RevenueOrderLite } from '../services/departmentDataService';
 import './ChatConsole.css';
 
 function generateMessageId(prefix: string): string {
@@ -28,6 +33,8 @@ interface ChatConsoleProps {
   isSimulating?: boolean;
   // 있으면 하단 Quick Task Add 바를 이 슬롯으로 대체(오늘의 운영: 팀 지시+파일 바).
   quickBarSlot?: React.ReactNode;
+  // 있으면 통계/그래프 질문을 부서 채팅과 동일한 Commerce Query 엔진으로 답한다(오늘의 운영 HQ 채팅).
+  commerceData?: { orders: RevenueOrderLite[]; reviews?: unknown[]; inquiries?: unknown[] } | null;
 }
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
@@ -43,8 +50,11 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   onUpdateAgents,
   isLarge = false,
   isSimulating = false,
-  quickBarSlot
+  quickBarSlot,
+  commerceData
 }) => {
+  // 커머스 질의 결과 차트(오늘의 운영 HQ 채팅). 비영속.
+  const [commerceChart, setCommerceChart] = useState<MarketingChatChartArtifact | null>(null);
   // 탭 이동/새로고침 후에도 유지되도록 localStorage에서 복원 (없으면 환영 메시지)
   const [messages, setMessages] = useState<ControlChatMessage[]>(() => loadHqMessages());
   const [inputValue, setInputValue] = useState('');
@@ -364,6 +374,26 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     setInputValue('');
     setIsTyping(true);
 
+    // 통계/그래프 질문이면 부서 채팅과 동일한 Commerce Query 엔진으로 먼저 답한다(데이터 있을 때).
+    if (commerceData?.orders?.length) {
+      try {
+        const eng = await answerCommerceQuestion(
+          text,
+          { orders: commerceData.orders, reviews: commerceData.reviews as never, inquiries: commerceData.inquiries as never },
+          { callLlm: callMarketingPlannerLlm, team: 'hq' }
+        );
+        if (eng && eng.handled) {
+          const aiMsg: ControlChatMessage = {
+            id: generateMessageId('msg-ai'), role: 'assistant', content: eng.reply, createdAt: getFormattedTime()
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+          setCommerceChart(eng.suppressChart ? null : (eng.artifact ?? null));
+          setIsTyping(false);
+          return;
+        }
+      } catch { /* 커머스 질의 실패 시 기존 콘솔 경로로 폴백 */ }
+    }
+
     try {
       const response = await processControlChat(
         text,
@@ -595,6 +625,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* 커머스 질의 결과 그래프(오늘의 운영 HQ 채팅) */}
+      {commerceChart && (
+        <div className="chat-commerce-chart">
+          <MarketingChartSpecPanel artifact={commerceChart} onClear={() => setCommerceChart(null)} />
+        </div>
+      )}
 
       {/* 하단 바 — 슬롯이 있으면 그것으로 대체(오늘의 운영: 팀 지시+파일), 없으면 Quick Task Add */}
       {quickBarSlot !== undefined ? quickBarSlot : (

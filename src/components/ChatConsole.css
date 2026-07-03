@@ -567,3 +567,6 @@
 .missing-fields-strong { color: var(--danger); }
 
 
+
+/* 오늘의 운영 HQ 채팅 커머스 질의 그래프 */
+.chat-commerce-chart { margin: 4px 0 8px; box-sizing: border-box; }
