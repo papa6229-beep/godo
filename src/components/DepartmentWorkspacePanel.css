@@ -52,6 +52,8 @@
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--text-muted);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .dept-team-emoji {
@@ -99,14 +101,19 @@
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.4;
+  word-break: keep-all;      /* 한국어: 어절 단위 줄바꿈(단어 중간 안 끊김) */
+  overflow-wrap: anywhere;   /* 아주 긴 토큰만 강제 줄바꿈(넘침 방지) */
 }
 
 .dept-team-meta {
   display: flex;
+  flex-wrap: wrap;           /* 좁은 폭에서 팀장/팀원 줄이 겹치지 않게 감싸기 */
   justify-content: space-between;
+  gap: 2px 8px;
   font-size: 11px;
   color: var(--text-muted);
 }
+.dept-team-meta > span { white-space: nowrap; }
 
 /* ── 좌측: 선택 팀 상세 ── */
 .dept-team-detail {
@@ -147,6 +154,8 @@
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.45;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* ── 중앙: 대시보드 ── */
