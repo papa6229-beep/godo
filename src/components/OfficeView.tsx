@@ -8,9 +8,13 @@ import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { NativeAgentRun, DepartmentDefinition } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
 import { TeamOperationsBoard } from './TeamOperationsBoard';
-import { DepartmentCommandPanel } from './DepartmentCommandPanel';
+import { DeptActivityModal } from './DeptActivityModal';
 import { OperationBriefingModal } from './OperationBriefingModal';
 import { defaultDepartments, defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
+import type { DeptTeamId } from '../types/teamMessage';
+
+// 부서 카드 id → 활동 원장 팀 id (manager=총괄→hq)
+const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing' };
 import './OfficeView.css';
 
 interface OfficeViewProps {
@@ -53,11 +57,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
   lastNativeAgentRun,
 
   validationScenario,
-  onScenarioChange,
-  uploadedFiles,
-  onAddFileMetadata,
-  manualCommands,
-  onAddManualCommand
+  onScenarioChange
 }) => {
   const [selectedDept, setSelectedDept] = useState<DepartmentDefinition | null>(null);
   const [briefingModalOpen, setBriefingModalOpen] = useState(false);
@@ -116,20 +116,11 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
         <ExecutiveBriefing />
       </div>
 
-      {/* 부서 상세 워크스페이스 모달 */}
+      {/* 부서 업무 확인 — 활동 원장 기반(읽기 전용) */}
       {selectedDept && (
-        <DepartmentCommandPanel
-          isOpen={!!selectedDept}
+        <DeptActivityModal
+          teamId={DEPT_TO_TEAM[selectedDept.id] ?? (selectedDept.id as DeptTeamId)}
           onClose={() => setSelectedDept(null)}
-          department={selectedDept}
-          agents={defaultNativeAgents}
-          lastRunJobs={lastNativeAgentRun ? lastNativeAgentRun.jobs : []}
-          lastRunResults={lastNativeAgentRun ? lastNativeAgentRun.results : []}
-          lastRunHandoffs={lastNativeAgentRun ? lastNativeAgentRun.handoffs : []}
-          onAddManualCommand={onAddManualCommand}
-          onAddFileMetadata={onAddFileMetadata}
-          uploadedFiles={uploadedFiles[selectedDept.id] || []}
-          manualCommands={manualCommands[selectedDept.id] || []}
         />
       )}
 
