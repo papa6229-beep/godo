@@ -122,6 +122,9 @@ if (E && C) {
   ok('(join) 문의 있는 상품만(G4 문의0 제외)', !!j?.handled && !/건조기/.test(j.reply));
   ok('(join) 문의 상위 풀을 매출순 정렬: 1위=가습기(매출50000)', !!j && /1위 가습기/.test(j.reply) && /매출/.test(j.reply) && /문의/.test(j.reply));
   ok('(join) 차트 생성(매출 막대)', !!j?.artifact && j.artifact.chartSpec.series.length >= 3);
+  ok('(join) 각 막대에 1차 지표(문의수) 데이터라벨 부착', !!j?.artifact
+    && j.artifact.chartSpec.series.every((s) => typeof s.points?.[0]?.secondaryLabel === 'string' && /문의/.test(s.points[0].secondaryLabel))
+    && j.artifact.chartSpec.series.some((s) => /가습기/.test(s.label) && /1건/.test(s.points[0].secondaryLabel)));
   const jNo = exec({ metric: 'inquiryCount', operation: 'rank', groupBy: 'product' }, { orders: dsJoin.orders }, {});
   ok('(join) 문의 데이터 없으면 "없다"(허구 금지)', !!jNo?.handled && /문의 데이터/.test(jNo.reply));
 

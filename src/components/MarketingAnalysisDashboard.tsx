@@ -516,7 +516,7 @@ const LineChart: React.FC<{ chartSpec: MarketingChartSpec; compact?: boolean }> 
 
 const RankedBarChart: React.FC<{ chartSpec: MarketingChartSpec; compact?: boolean }> = ({ chartSpec, compact }) => {
   const [hover, setHover] = useState<string | null>(null);
-  const ranked = [...chartSpec.series].map((s) => ({ s, total: seriesTotal(s), orders: seriesOrderCount(s) })).sort((a, b) => b.total - a.total).slice(0, 8);
+  const ranked = [...chartSpec.series].map((s) => ({ s, total: seriesTotal(s), orders: seriesOrderCount(s), secLabel: s.points[0]?.secondaryLabel })).sort((a, b) => b.total - a.total).slice(0, 8);
   const maxV = Math.max(1, ...ranked.map((r) => r.total));
   const payload = !compact && hover ? buildMarketingTooltipPayload({ chartSpec, seriesKey: hover }) : null;
   if (ranked.length === 0) return <p className="mkt-dim-empty">표시할 데이터가 없습니다.</p>;
@@ -532,7 +532,7 @@ const RankedBarChart: React.FC<{ chartSpec: MarketingChartSpec; compact?: boolea
               <span className="marketing-chart-series-label">{r.s.label}</span>
               <span className="marketing-chart-series-value tabular-nums">
                 {formatMetricValue(r.total, chartSpec.unit)}
-                {r.orders > 0 ? <span className="marketing-chart-series-sub"> · 주문 {r.orders}건</span> : null}
+                {r.secLabel ? <span className="marketing-chart-series-sub"> · {r.secLabel}</span> : r.orders > 0 ? <span className="marketing-chart-series-sub"> · 주문 {r.orders}건</span> : null}
               </span>
             </div>
             <div className="marketing-chart-series-bar-track">
