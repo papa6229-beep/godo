@@ -45,17 +45,48 @@ export interface RunAgentTaskContext {
   nowMs?: number;
 }
 
-// 작업 실행: canonical 계산 → AI-에이전트 명의로 보고 메시지 발신. 반환: 발신 메시지 + 본문.
-export function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { posted: TeamMessage; body: string } {
-  const snap = buildDepartmentSourceOfTruthSnapshot(ctx.revenue, ctx.nowMs != null ? { nowMs: ctx.nowMs } : {});
-  const { title, body } = formatTaskReport(spec, snap);
-  const from: TeamMessageActor = { kind: 'agent', teamId: spec.teamId, label: spec.agentLabel, agentId: spec.agentId };
-  const posted = postTeamMessage({ from, toTeam: spec.reportTo, kind: spec.reportKind, title, body }, ctx.nowIso);
-  // 업무 활동 원장 기록 — 오늘의 운영/HQ 채팅이 이 기록을 읽어 집계·표시.
+const agentActor = (spec: AgentTaskSpec): TeamMessageActor => ({ kind: 'agent', teamId: spec.teamId, label: spec.agentLabel, agentId: spec.agentId });
+
+// canonical 계산만(발신·기록 없음). approval/draft에서 사람 검토용 본문 생성.
+export function computeAgentReport(spec: AgentTaskSpec, revenue: RevenueResult | null, nowMs?: number): { title: string; body: string } {
+  const snap = buildDepartmentSourceOfTruthSnapshot(revenue, nowMs != null ? { nowMs } : {});
+  return formatTaskReport(spec, snap);
+}
+
+// 최종 보고 발신 + 원장 기록. resolvedByHuman=true(승인/검토 후)면 approval(done)로도 남긴다.
+export function postAgentReport(spec: AgentTaskSpec, report: { title: string; body: string }, ctx: RunAgentTaskContext, opts?: { resolvedByHuman?: boolean }): { posted: TeamMessage } {
+  const from = agentActor(spec);
+  const posted = postTeamMessage({ from, toTeam: spec.reportTo, kind: spec.reportKind, title: report.title, body: report.body }, ctx.nowIso);
   logActivity({
     teamId: spec.teamId, type: 'task_run', status: 'done',
-    title: spec.title, detail: `${body} → ${DEPT_TEAM_META[spec.reportTo].name}에 보고`,
+    title: spec.title, detail: `${report.body} → ${DEPT_TEAM_META[spec.reportTo].name}에 보고`,
     actor: from, relatedTeam: spec.reportTo, refId: posted.id
   }, ctx.nowIso);
-  return { posted, body };
+  if (opts?.resolvedByHuman) {
+    logActivity({ teamId: spec.teamId, type: 'approval', status: 'done', title: `${spec.title} 승인/등록`, actor: { kind: 'human', teamId: spec.teamId, label: '운영자' }, refId: posted.id }, ctx.nowIso);
+  }
+  return { posted };
+}
+
+// 자동 완료 경로(approvalMode='auto' 또는 스케줄러): 계산 → 발신 → 원장(done).
+export function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { posted: TeamMessage; body: string } {
+  const report = computeAgentReport(spec, ctx.revenue, ctx.nowMs);
+  const { posted } = postAgentReport(spec, report, ctx);
+  return { posted, body: report.body };
+}
+
+// 승인/검토 경로: 계산 → 원장(task_run, pending)만. 발신은 사람 승인 후(approveAgentTask).
+export function stageApprovalTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { title: string; body: string } {
+  const report = computeAgentReport(spec, ctx.revenue, ctx.nowMs);
+  logActivity({
+    teamId: spec.teamId, type: 'task_run', status: 'pending',
+    title: spec.title, detail: `${report.body} (승인 대기)`,
+    actor: agentActor(spec), relatedTeam: spec.reportTo
+  }, ctx.nowIso);
+  return report;
+}
+
+// 사람이 승인/수정한 본문으로 최종 발신 + 원장(done + approval).
+export function approveAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, body: string): { posted: TeamMessage } {
+  return postAgentReport(spec, { title: spec.title, body }, ctx, { resolvedByHuman: true });
 }

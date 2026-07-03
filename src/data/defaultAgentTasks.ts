@@ -14,7 +14,8 @@ export const DEFAULT_AGENT_TASKS: AgentTaskSpec[] = [
     focus: 'inventory',
     reportTo: 'hq',
     reportKind: 'info',
-    schedule: { kind: 'daily', at: '09:00' }
+    schedule: { kind: 'daily', at: '09:00' },
+    approvalMode: 'approval'
   },
   {
     id: 'task-marketing-daily',
@@ -25,7 +26,8 @@ export const DEFAULT_AGENT_TASKS: AgentTaskSpec[] = [
     focus: 'sales',
     reportTo: 'hq',
     reportKind: 'info',
-    schedule: { kind: 'daily', at: '09:30' }
+    schedule: { kind: 'daily', at: '09:30' },
+    approvalMode: 'auto'
   },
   {
     id: 'task-cs-daily',
@@ -36,9 +38,11 @@ export const DEFAULT_AGENT_TASKS: AgentTaskSpec[] = [
     focus: 'cs',
     reportTo: 'hq',
     reportKind: 'info',
-    schedule: { kind: 'daily', at: '09:00' }
+    schedule: { kind: 'daily', at: '09:00' },
+    approvalMode: 'draft'
   }
 ];
 
-export const agentTasksForTeam = (teamId: string): AgentTaskSpec[] =>
-  DEFAULT_AGENT_TASKS.filter((t) => t.teamId === teamId);
+// (편의) 스펙 배열에서 팀별 필터 — 스토어/기본 모두에 사용.
+export const agentTasksForTeam = (list: AgentTaskSpec[], teamId: string): AgentTaskSpec[] =>
+  list.filter((t) => t.teamId === teamId);

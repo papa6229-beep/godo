@@ -86,7 +86,18 @@ if (R && A && TC) {
   ok('10. 발신자 actor=AI 에이전트(agentId 포함)', msg.from.kind === 'agent' && msg.from.agentId === 'a' && msg.from.teamId === 'product');
   ok('11. 보고 제목=작업명', msg.title === '재고·매출 일일 점검');
 
-  // 4) 기본 스펙 파일 로드(선언형)
+  // 4) 승인 경로: stageApprovalTask → 원장 pending(발신 없음), approveAgentTask → 발신 + approval(done)
+  const ledger = () => JSON.parse(store.get('godo_activity_ledger_v0') || '[]');
+  store.clear();
+  const specAppr = { ...specInv, id: 't2', approvalMode: 'approval' };
+  const staged = R.stageApprovalTask(specAppr, { revenue: null, nowIso: NOW });
+  ok('12. stage: 본문 생성', typeof staged.body === 'string');
+  ok('13. stage: 원장 task_run(pending)만·메시지 발신 없음', ledger().filter((e) => e.type === 'task_run' && e.status === 'pending').length === 1 && TC.inboxFor(TC.loadTeamMessages(), 'hq').length === 0);
+  const appr = R.approveAgentTask(specAppr, { revenue: null, nowIso: NOW }, '사람이 승인한 본문');
+  ok('14. approve: 발신됨(승인 본문)', !!appr?.posted && TC.inboxFor(TC.loadTeamMessages(), 'hq').some((m) => m.id === appr.posted.id && m.body === '사람이 승인한 본문'));
+  ok('15b. approve: 원장에 approval(done) 기록', ledger().some((e) => e.type === 'approval' && e.status === 'done'));
+
+  // 5) 기본 스펙 파일 로드(선언형)
   // (defaultAgentTasks는 컴파일 그래프 밖 — 존재/형태만 위에서 확인)
 }
 
