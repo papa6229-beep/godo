@@ -611,7 +611,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
             {rightTab === 'chat'
               ? '선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.'
               : rightTab === 'messages'
-                ? '다른 팀에 지원·확인을 요청하고, 받은 요청을 처리합니다.'
+                ? '다른 팀·최고관리자와 메시지를 주고받습니다(지시·요청·보고·답변).'
                 : 'AI 에이전트가 정해진 업무를 수행하고 결과를 담당 팀에 보고합니다.'}
           </p>
         </div>
@@ -619,7 +619,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
         <div className="dept-right-tabs">
           <button type="button" className={`dept-right-tab ${rightTab === 'chat' ? 'active' : ''}`} onClick={() => setRightTab('chat')}>💬 AI 팀장 지시</button>
           <button type="button" className={`dept-right-tab ${rightTab === 'messages' ? 'active' : ''}`} onClick={() => setRightTab('messages')}>
-            📨 팀 간 요청{unreadCountFor(teamMessages, selectedTeamId) > 0 && <span className="dept-right-tab-badge">{unreadCountFor(teamMessages, selectedTeamId)}</span>}
+            📨 팀 간 메시지{unreadCountFor(teamMessages, selectedTeamId) > 0 && <span className="dept-right-tab-badge">{unreadCountFor(teamMessages, selectedTeamId)}</span>}
           </button>
           {tasksForSelectedTeam.length > 0 && (
             <button type="button" className={`dept-right-tab ${rightTab === 'tasks' ? 'active' : ''}`} onClick={() => setRightTab('tasks')}>🤖 자동 업무</button>

@@ -27,15 +27,15 @@ export const ExecutiveBriefing: React.FC = () => {
   const byTeam = useMemo(() => {
     const map: Record<string, CriticalItem[]> = {};
     for (const t of TEAMS) map[t] = [];
-    // ① 승인 대기/진행 중 활동
+    // ① 승인 대기 자동업무(진행 중은 이미 처리 중이므로 제외)
     for (const e of activitySince(activity, since)) {
-      if (e.status === 'pending' || e.status === 'in_progress') {
-        (map[e.teamId] ||= []).push({ id: e.id, team: e.teamId, kind: 'approval', title: e.title, note: e.status === 'pending' ? '승인 대기' : '진행 중', at: e.at });
+      if (e.status === 'pending') {
+        (map[e.teamId] ||= []).push({ id: e.id, team: e.teamId, kind: 'approval', title: e.title, note: '승인 대기', at: e.at });
       }
     }
-    // ② 미처리 팀 간 요청(받은 팀 기준)
+    // ② 아직 손대지 않은(open) 받은 메시지 — 진행 중/완료는 제외(중복·처리중 제거)
     for (const m of messages) {
-      if (m.status !== 'done') {
+      if (m.status === 'open') {
         (map[m.toTeam] ||= []).push({ id: m.id, team: m.toTeam, kind: 'request', title: m.title, note: `${DEPT_TEAM_META[m.from.teamId].name}의 ${TEAM_MESSAGE_KIND_META[m.kind].label}`, at: m.createdAt });
       }
     }
@@ -69,7 +69,7 @@ export const ExecutiveBriefing: React.FC = () => {
                   <span className="exb-crit-dot" />
                   <div className="exb-crit-body">
                     <div className="exb-crit-title">{it.title}</div>
-                    <div className="exb-crit-note">{it.kind === 'approval' ? '🤖 자동업무' : '📨 팀 간 요청'} · {it.note}</div>
+                    <div className="exb-crit-note">{it.kind === 'approval' ? '🤖 자동업무' : '📨 팀 간 메시지'} · {it.note}</div>
                   </div>
                   <span className="exb-crit-time">{shortTime(it.at)}</span>
                 </div>

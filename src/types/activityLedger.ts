@@ -35,6 +35,9 @@ export interface TeamActivitySummary {
   taskRunDone: number;
   messagesSent: number;
   approvals: number;
-  pending: number;           // 대기/진행 중(주의 대상)
+  // 현재 상태(refId로 dedup, 최신 상태 기준) — 부서가 실제로 진행/완료/승인대기 중인 건수.
+  inProgress: number;        // 진행 중
+  done: number;              // 완료
+  pending: number;           // 승인·확인 대기(pending 상태만)
   lastAt?: string;
 }

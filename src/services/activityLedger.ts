@@ -84,6 +84,16 @@ export const activityForTeam = (list: ActivityEvent[], teamId: DeptTeamId, since
 export function teamSummary(list: ActivityEvent[], teamId: DeptTeamId, sinceIso?: string): TeamActivitySummary {
   const rows = activityForTeam(list, teamId, sinceIso);
   const taskRuns = rows.filter((e) => e.type === 'task_run');
+  // 현재 상태 집계 — 같은 항목(refId)은 최신 이벤트 하나로 dedup(진행중→완료 이중집계 방지).
+  // 전달(message_sent)은 "행위" 카운트라 상태 집계에서 제외.
+  const latest = new Map<string, ActivityEvent>();
+  const noRef: ActivityEvent[] = [];
+  for (const e of rows) {
+    if (e.type === 'message_sent') continue;
+    if (e.refId) { const p = latest.get(e.refId); if (!p || e.at > p.at) latest.set(e.refId, e); }
+    else noRef.push(e);
+  }
+  const items = [...latest.values(), ...noRef];
   return {
     teamId,
     total: rows.length,
@@ -91,7 +101,9 @@ export function teamSummary(list: ActivityEvent[], teamId: DeptTeamId, sinceIso?
     taskRunDone: taskRuns.filter((e) => e.status === 'done').length,
     messagesSent: rows.filter((e) => e.type === 'message_sent').length,
     approvals: rows.filter((e) => e.type === 'approval' && e.status === 'done').length,
-    pending: rows.filter((e) => e.status === 'pending' || e.status === 'in_progress').length,
+    inProgress: items.filter((e) => e.status === 'in_progress').length,
+    done: items.filter((e) => e.status === 'done').length,
+    pending: items.filter((e) => e.status === 'pending').length,
     lastAt: rows[0]?.at
   };
 }
