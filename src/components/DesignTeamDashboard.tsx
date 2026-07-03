@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import './DesignTeamDashboard.css';
 import { inboxFor } from '../services/teamMessageCenter';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, TEAM_MESSAGE_STATUS_META, type TeamMessage } from '../types/teamMessage';
+import DetailPageBuilder from './detailBuilder/DetailPageBuilder';
 
 // 디자인팀 워크스페이스 — 커머스 대시보드가 아니라 "작업 보드".
 // 상품팀 등에서 온 제작 요청(팀 메시지)을 큐로 보여주고, 상세페이지 생성기(다음 단계)를 담을 자리.
@@ -11,6 +12,7 @@ interface Props { messages: TeamMessage[] }
 const shortTime = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
+  const [builderOpen, setBuilderOpen] = useState(false);
   const requests = useMemo(() => inboxFor(messages, 'design'), [messages]);
   const open = requests.filter((m) => m.status !== 'done');
   const doneCount = requests.length - open.length;
@@ -28,15 +30,28 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
         </div>
       </div>
 
-      {/* 상세페이지 생성기 자리(다음 단계 이식) */}
+      {/* 상세페이지 생성기(이식됨) */}
       <div className="dtd-generator-slot">
         <div className="dtd-gen-icon">🖼️</div>
         <div className="dtd-gen-body">
           <h3 className="dtd-gen-title">상세페이지 생성기</h3>
-          <p className="dtd-gen-desc">다음 단계에서 <b>상세페이지·섬네일 생성기</b>가 이곳에 연결됩니다. (상품명·문구는 GODO AI로 생성)</p>
+          <p className="dtd-gen-desc">상세페이지·섬네일을 제작하고 이미지로 내보냅니다. 문구는 <b>디자인팀 AI</b>로 생성(AI 직원 설정에서 연결).</p>
         </div>
-        <span className="dtd-gen-tag">연결 예정</span>
+        <button type="button" className="dtd-gen-open" onClick={() => setBuilderOpen(true)}>생성기 열기 →</button>
       </div>
+
+      {/* 생성기 전체화면 오버레이 */}
+      {builderOpen && (
+        <div className="dtd-builder-overlay">
+          <div className="dtd-builder-bar">
+            <span className="dtd-builder-bar-title">🖼️ 상세페이지 생성기</span>
+            <button type="button" className="dtd-builder-close" onClick={() => setBuilderOpen(false)}>✕ 닫기</button>
+          </div>
+          <div className="dtd-builder-body">
+            <DetailPageBuilder />
+          </div>
+        </div>
+      )}
 
       {/* 제작 요청 큐 */}
       <div className="dtd-section-head">
