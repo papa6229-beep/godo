@@ -19,6 +19,7 @@ import { DepartmentWorkspacePanel } from './DepartmentWorkspacePanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
+import { loadRole, saveRole, subscribeRole, VIEWER_ROLES, isHqRole, type ViewerRole } from '../services/sessionRole';
 import './MainLayout.css';
 
 // 관리/설정성 메뉴 — 우측 "관리자 설정" 드롭다운으로 묶음 (라우팅 키/화면 동작은 그대로)
@@ -191,6 +192,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   theme,
   onToggleTheme,
 }) => {
+  // 세션 역할(뷰어) — 총괄=전체, 팀장=본인 팀 보드만. 1단계 데모 전환.
+  const [role, setRoleState] = useState<ViewerRole>(loadRole);
+  useEffect(() => subscribeRole(() => setRoleState(loadRole())), []);
+  const hq = isHqRole(role);
+  // 팀장 역할이면 접근 가능한 탭은 부서 업무 관장뿐 → 다른 탭이면 강제 이동.
+  useEffect(() => {
+    if (!hq && activeTab !== 'department') setActiveTab('department');
+  }, [hq, activeTab, setActiveTab]);
+  const changeRole = (r: ViewerRole) => { saveRole(r); setRoleState(r); };
+
   // 관리자 설정 드롭다운 (외부 클릭/ESC 닫기)
   const [adminOpen, setAdminOpen] = useState(false);
   const adminRef = useRef<HTMLDivElement>(null);
@@ -232,6 +243,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             <span className="badge-blink"></span>
             LOCAL APP MODE
           </span>
+          {/* 역할 전환(데모) — 실제 로그인/권한 격리는 다음 단계(백엔드) */}
+          <label className="role-switcher" title="지금 누구로 보는가 (데모 전환 · 실제 로그인은 다음 단계)">
+            <span className="role-switcher-ico">👤</span>
+            <select className="role-switcher-sel" value={role} onChange={(e) => changeRole(e.target.value as ViewerRole)}>
+              {VIEWER_ROLES.map((r) => <option key={r.id} value={r.id}>{r.emoji} {r.label}</option>)}
+            </select>
+          </label>
         </div>
 
         <div className="header-right">
@@ -246,13 +264,16 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
           <div className="header-nav-tabs">
             {/* ── 운영 메뉴 (매일 쓰는 핵심) ── */}
-            <button
-              className={`nav-tab-btn ${activeTab === 'office' ? 'active' : ''}`}
-              onClick={() => setActiveTab('office')}
-              title="오늘의 운영 현황"
-            >
-              🏢 오늘의 운영
-            </button>
+            {/* 오늘의 운영: 총괄 관리자 전용 */}
+            {hq && (
+              <button
+                className={`nav-tab-btn ${activeTab === 'office' ? 'active' : ''}`}
+                onClick={() => setActiveTab('office')}
+                title="오늘의 운영 현황 (총괄 전용)"
+              >
+                🏢 오늘의 운영
+              </button>
+            )}
             <button
               className={`nav-tab-btn ${activeTab === 'department' ? 'active' : ''}`}
               onClick={() => setActiveTab('department')}
@@ -260,23 +281,28 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             >
               🗂️ 부서 업무 관장
             </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'agents' ? 'active' : ''}`}
-              onClick={() => setActiveTab('agents')}
-              title="AI 직원 현황"
-            >
-              🤖 AI 직원
-            </button>
-            <button
-              className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
-              onClick={() => setActiveTab('calendar')}
-              title="일자별 운영 캘린더 및 일지"
-            >
-              📅 운영일지
-            </button>
+            {hq && (
+              <button
+                className={`nav-tab-btn ${activeTab === 'agents' ? 'active' : ''}`}
+                onClick={() => setActiveTab('agents')}
+                title="AI 직원 현황"
+              >
+                🤖 AI 직원
+              </button>
+            )}
+            {hq && (
+              <button
+                className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
+                onClick={() => setActiveTab('calendar')}
+                title="일자별 운영 캘린더 및 일지"
+              >
+                📅 운영일지
+              </button>
+            )}
 
-            {/* ── 관리/설정 드롭다운 ── */}
-            <div className="nav-divider" aria-hidden="true"></div>
+            {/* ── 관리/설정 드롭다운 (총괄 전용) ── */}
+            {hq && <div className="nav-divider" aria-hidden="true"></div>}
+            {hq && (
             <div className="nav-admin" ref={adminRef}>
               <button
                 type="button"
@@ -310,6 +336,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       </header>
