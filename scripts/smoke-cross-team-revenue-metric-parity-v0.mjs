@@ -38,8 +38,11 @@ ok('6. 상품 라인 매출(gross) 부서전용 분리 표시', /OP\.productLine
 ok('7. 마케팅 대표 매출 기준(operational) 명시', /OP\.operationalRevenue\.basis/.test(MKT) && /departmentMetricContract/.test(MKT));
 // 8. 두 팀 기준이 다르면 라벨/보조문구가 다름
 ok('8. 두 대시보드 기준 보조문구(basis-note) 존재', /ptd-kpi-basis-note/.test(PROD) && /mkt-kpi-basis-note/.test(MKT));
-// 9. 헤드라인 통일 — 상품·마케팅 대표 매출이 같은 canonical(snap.operational)에서 나옴(라벨 literal 분기 제거)
-ok('9. 대표 KPI 헤드라인 통일(둘 다 snap.operational)', /snap\?\.operationalRevenue/.test(PROD) && /snap\?\.operationalRevenue/.test(MKT) && /productLineRevenue/.test(PROD) && !/value=\{kpi\.revenue\}/.test(PROD));
+// 9. 헤드라인 통일 — 상품·마케팅 대표 매출이 같은 canonical operational에서 나옴(gross 아님).
+//    상품팀은 필터 반영 위해 filteredSnap(= canonical builder를 필터된 주문에 재적용)을 씀 → 전체 선택 시 마케팅과 동일값.
+ok('9. 대표 KPI 헤드라인 통일(둘 다 canonical operational)', /(?:snap|filteredSnap)\?\.operationalRevenue/.test(PROD) && /snap\?\.operationalRevenue/.test(MKT) && /productLineRevenue/.test(PROD) && !/value=\{kpi\.revenue\}/.test(PROD));
+// 9b. 상품팀 filteredSnap은 canonical builder를 필터된 주문(relevantOrders)에 재적용 — 전체=canonical(parity), 필터=범위값.
+ok('9b. 상품 헤드라인 필터 반영(canonical builder 재적용)', /const filteredSnap =/.test(PROD) && /buildDepartmentSourceOfTruthSnapshot\(\{ \.\.\.revenue, orders: relevantOrders \}\)/.test(PROD));
 
 // 13. raw event 노출 없음(대시보드/contract에 raw event dump 없음)
 ok('13. raw event 노출 없음', !/sessionIdHash|orderIdHash|eventId/.test(CONTRACT + PROD + MKT));

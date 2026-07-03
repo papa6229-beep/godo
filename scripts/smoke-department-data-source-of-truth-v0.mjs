@@ -33,13 +33,13 @@ ok('5. operationalAOV 정의 존재', /operationalAOV/.test(DMC) && /operational
 ok('6. productLineRevenue가 부서 전용값으로 분리', /productLineRevenue/.test(DMC) && /전용/.test(DMC));
 
 // 7~9. 대시보드가 canonical 사용
-ok('7. Product 상단 대표 매출이 canonical operationalRevenue 사용', /buildDepartmentSourceOfTruthSnapshot/.test(PROD) && /snap\?\.operationalRevenue/.test(PROD) && /OP\.operationalRevenue\.label/.test(PROD));
+ok('7. Product 상단 대표 매출이 canonical operationalRevenue 사용', /buildDepartmentSourceOfTruthSnapshot/.test(PROD) && /(?:snap|filteredSnap)\?\.operationalRevenue/.test(PROD) && /OP\.operationalRevenue\.label/.test(PROD));
 ok('8. Marketing 상단 대표 매출이 canonical operationalRevenue 사용', /buildDepartmentSourceOfTruthSnapshot/.test(MKT) && /snap\?\.operationalRevenue/.test(MKT) && /OP\.operationalOrderCount\.label/.test(MKT));
 ok('9. CS 주요 숫자 audit 포함(같은 universe·기준 보조문구)', /cs-dash-basis-note/.test(CS) && /Commerce Universe/.test(CS) && /csUniverse/.test(SOT));
 
 // 10~11. 같은 이름/같은 급 KPI 기준 통일
-ok('10. 같은 이름 KPI 독립 계산 안 함(헤드라인은 snap, gross 아님)', !/value=\{kpi\.revenue\}/.test(PROD) && /value=\{snap\?\.operationalRevenue/.test(PROD));
-ok('11. 같은 급 대표 KPI가 같은 기준(둘 다 snap.operational)', /snap\?\.operationalRevenue/.test(PROD) && /snap\?\.operationalRevenue/.test(MKT) && /snap\?\.operationalOrderCount/.test(PROD) && /snap\?\.operationalOrderCount/.test(MKT));
+ok('10. 같은 이름 KPI 독립 계산 안 함(헤드라인은 canonical snapshot, gross 아님)', !/value=\{kpi\.revenue\}/.test(PROD) && /value=\{(?:snap|filteredSnap)\?\.operationalRevenue/.test(PROD));
+ok('11. 같은 급 대표 KPI가 같은 기준(둘 다 canonical operational)', /(?:snap|filteredSnap)\?\.operationalRevenue/.test(PROD) && /snap\?\.operationalRevenue/.test(MKT) && /(?:snap|filteredSnap)\?\.operationalOrderCount/.test(PROD) && /snap\?\.operationalOrderCount/.test(MKT));
 
 // 12~13. 문서화
 ok('12. 상품 라인 매출 vs 운영 매출 차이 문서화', /상품 라인 매출/.test(DOC) && /operationalRevenue/.test(DOC) && /부서 전용/.test(DOC));
