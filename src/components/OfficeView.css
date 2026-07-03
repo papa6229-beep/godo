@@ -68,17 +68,3 @@
     min-height: 400px;
   }
 }
-
-/* HQ 지시/보고 좌측 헤더 */
-.office-col-head { margin-bottom: 10px; }
-.office-col-title { margin: 0; font-size: 15px; color: var(--text-primary); }
-.office-col-sub { margin: 3px 0 0; font-size: 11px; color: var(--text-muted); word-break: keep-all; }
-
-/* 중앙 하단 팀 지시 바 (Quick Task Add 대체) */
-.office-directive-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-surface); border: 1px solid var(--line-subtle); border-radius: 10px; }
-.office-directive-label { font-size: 12px; font-weight: 700; color: var(--accent-primary, #31D6C4); white-space: nowrap; }
-.office-directive-team { font-size: 12px; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-primary); }
-.office-directive-input { flex: 1; min-width: 0; font-size: 13px; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-primary); }
-.office-directive-input:focus { outline: none; border-color: var(--accent-primary); }
-.office-directive-btn { font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 7px; border: none; background: var(--accent-primary, #31D6C4); color: #08221f; cursor: pointer; white-space: nowrap; }
-.office-directive-btn:hover { filter: brightness(1.05); }

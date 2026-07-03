@@ -1,23 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import type { Agent } from '../types';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import { ChatConsole } from './ChatConsole';
 import { ExecutiveBriefing } from './ExecutiveBriefing';
-import { TeamMessagePanel } from './TeamMessagePanel';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
-import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
+import type { NativeAgentRun, DepartmentDefinition } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
-import {
-  loadTeamMessages, subscribeTeamMessages, postTeamMessage, resolveTeamMessage, markInboxRead,
-  type CreateTeamMessageInput
-} from '../services/teamMessageCenter';
-import { logActivity } from '../services/activityLedger';
-import { DEPT_TEAM_META, type DeptTeamId, type TeamMessage, type TeamMessageStatus } from '../types/teamMessage';
+import { TeamOperationsBoard } from './TeamOperationsBoard';
+import { DepartmentCommandPanel } from './DepartmentCommandPanel';
+import { OperationBriefingModal } from './OperationBriefingModal';
+import { defaultDepartments, defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import './OfficeView.css';
-
-// 오늘의 운영 = 최고관리자 관제(읽기) + HQ 지시/보고.
-//  좌: HQ 지시/보고(팀 메시지) · 중앙: HQ AI 채팅 + 팀 지시 바 · 우: 전사 브리핑(활동 원장)
 
 interface OfficeViewProps {
   agents: Agent[];
@@ -34,6 +28,8 @@ interface OfficeViewProps {
   onUpdateAgents: (items: Agent[]) => void;
   onAddLog: (text: string, type: 'info' | 'success' | 'warning' | 'error' | 'agent', agentName?: string) => void;
   lastNativeAgentRun?: NativeAgentRun | null;
+
+  // Native Runtime Verification props
   validationScenario: ValidationScenarioType;
   onScenarioChange: (scenario: ValidationScenarioType) => void;
   uploadedFiles: Record<string, { name: string; size: number; type: string; timestamp: string }[]>;
@@ -41,26 +37,6 @@ interface OfficeViewProps {
   manualCommands: Record<string, { text: string; timestamp: string }[]>;
   onAddManualCommand: (deptId: string, text: string) => void;
 }
-
-const HQ_ACTOR = { kind: 'human' as const, teamId: 'hq' as DeptTeamId, label: '최고관리자' };
-const DIRECTIVE_TEAMS: DeptTeamId[] = ['product', 'cs', 'marketing'];
-
-// 중앙 채팅 하단 — 팀에 지시 보내기 바(Quick Task Add 대체).
-const HqDirectiveBar: React.FC<{ onSend: (team: DeptTeamId, text: string) => void }> = ({ onSend }) => {
-  const [team, setTeam] = useState<DeptTeamId>('product');
-  const [text, setText] = useState('');
-  const send = () => { if (!text.trim()) return; onSend(team, text.trim()); setText(''); };
-  return (
-    <div className="office-directive-bar">
-      <span className="office-directive-label">📣 팀에 지시</span>
-      <select className="office-directive-team" value={team} onChange={(e) => setTeam(e.target.value as DeptTeamId)}>
-        {DIRECTIVE_TEAMS.map((t) => <option key={t} value={t}>{DEPT_TEAM_META[t].emoji} {DEPT_TEAM_META[t].name}</option>)}
-      </select>
-      <input className="office-directive-input" value={text} placeholder="예: 품절 상품 응대 우선 처리해주세요" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); }} />
-      <button type="button" className="office-directive-btn" onClick={send}>보내기</button>
-    </div>
-  );
-};
 
 export const OfficeView: React.FC<OfficeViewProps> = ({
   agents,
@@ -73,51 +49,51 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
   onReject,
   activeOperationsData,
   onUpdateAgents,
-  onAddLog
+  onAddLog,
+  lastNativeAgentRun,
+
+  validationScenario,
+  onScenarioChange,
+  uploadedFiles,
+  onAddFileMetadata,
+  manualCommands,
+  onAddManualCommand
 }) => {
-  const [teamMessages, setTeamMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
-  useEffect(() => subscribeTeamMessages(() => setTeamMessages(loadTeamMessages())), []);
-  const refresh = () => setTeamMessages(loadTeamMessages());
+  const [selectedDept, setSelectedDept] = useState<DepartmentDefinition | null>(null);
+  const [briefingModalOpen, setBriefingModalOpen] = useState(false);
 
-  const handlePost = (input: CreateTeamMessageInput) => {
-    const posted = postTeamMessage(input);
-    logActivity({ teamId: 'hq', type: 'message_sent', status: 'info', title: input.title || '지시', detail: `${DEPT_TEAM_META[input.toTeam].name}에 지시`, actor: input.from, relatedTeam: input.toTeam, refId: posted.id });
-    refresh();
+  const scenarioDescriptions: Record<ValidationScenarioType, string> = {
+    normal: '정상 운영: 재고 수량 양호, 고객 미답변 문의 없음, 평점 5점 만족',
+    low_stock: '재고 부족: 시그니처 세트·마사지 오일 재고 고갈 → 마케팅 캠페인 자동 배제',
+    cs_negative: 'CS 이슈: 마사지 오일 피부 트러블 민원 → 마케팅 보류 및 캠페인 카피 경고',
+    disabled_marketing: '마케팅팀 정지: 마케팅 에이전트 전체 비활성화 → 관련 업무 생략'
   };
-  const handleResolve = (id: string, status: TeamMessageStatus) => {
-    resolveTeamMessage(id, status, HQ_ACTOR);
-    if (status === 'done' || status === 'in_progress') {
-      const msg = teamMessages.find((m) => m.id === id);
-      logActivity({ teamId: 'hq', type: 'approval', status: status === 'done' ? 'done' : 'in_progress', title: msg?.title || '요청 처리', actor: HQ_ACTOR, refId: id });
-    }
-    refresh();
-  };
-  const handleMarkRead = (id: string) => { markInboxRead(id, HQ_ACTOR); refresh(); };
-
-  const sendDirective = (team: DeptTeamId, text: string) => {
-    handlePost({ from: HQ_ACTOR, toTeam: team, kind: 'info', title: text, body: '' });
-  };
-
-  const directiveBar = useMemo(() => <HqDirectiveBar onSend={sendDirective} />, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="office-view-container">
-      {/* 1열 (좌측): HQ 지시/보고 — 팀에 지시 발송 + 팀 보고 수신 */}
+      {/* 1열 (좌측): AI 부서 관제 보드 */}
       <div className="office-left-column">
-        <div className="office-col-head">
-          <h3 className="office-col-title">🏛️ HQ 지시 / 보고</h3>
-          <p className="office-col-sub">각 팀에 지시를 보내고, 팀·AI의 보고를 확인·처리합니다.</p>
-        </div>
-        <TeamMessagePanel
-          teamId="hq"
-          messages={teamMessages}
-          onPost={handlePost}
-          onResolve={handleResolve}
-          onMarkRead={handleMarkRead}
+        <TeamOperationsBoard
+          departments={defaultDepartments}
+          agents={defaultNativeAgents}
+          lastRunJobs={lastNativeAgentRun ? lastNativeAgentRun.jobs : []}
+          lastRunResults={lastNativeAgentRun ? lastNativeAgentRun.results : []}
+          lastRunHandoffs={lastNativeAgentRun ? lastNativeAgentRun.handoffs : []}
+          activeScenario={validationScenario}
+          onScenarioChange={onScenarioChange}
+          scenarioDescription={scenarioDescriptions[validationScenario]}
+          onSelectDepartment={(dept) => setSelectedDept(dept)}
+          onStartSimulation={onStartSimulation}
+          isSimulating={isSimulating}
+          managerBriefing={lastNativeAgentRun?.managerBriefing ?? null}
+          onOpenBriefingModal={() => setBriefingModalOpen(true)}
+          approvalItems={approvalQueue}
+          onApprove={onApprove}
+          onReject={onReject}
         />
       </div>
 
-      {/* 2열 (중앙): 총괄 매니저 콘솔 + 팀 지시 바 */}
+      {/* 2열 (중앙): 총괄 매니저 콘솔 */}
       <div className="office-center-column">
         <ChatConsole
           activeOperationsData={activeOperationsData}
@@ -132,14 +108,42 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           onUpdateAgents={onUpdateAgents}
           isLarge={true}
           isSimulating={isSimulating}
-          quickBarSlot={directiveBar}
         />
       </div>
 
-      {/* 3열 (우측): 전사 브리핑(활동 원장, 읽기 전용) */}
+      {/* 3열 (우측): 전사 브리핑(활동 원장 기반, 읽기 전용) — 오늘의할일/승인대기 대체 */}
       <div className="office-right-column">
         <ExecutiveBriefing />
       </div>
+
+      {/* 부서 상세 워크스페이스 모달 */}
+      {selectedDept && (
+        <DepartmentCommandPanel
+          isOpen={!!selectedDept}
+          onClose={() => setSelectedDept(null)}
+          department={selectedDept}
+          agents={defaultNativeAgents}
+          lastRunJobs={lastNativeAgentRun ? lastNativeAgentRun.jobs : []}
+          lastRunResults={lastNativeAgentRun ? lastNativeAgentRun.results : []}
+          lastRunHandoffs={lastNativeAgentRun ? lastNativeAgentRun.handoffs : []}
+          onAddManualCommand={onAddManualCommand}
+          onAddFileMetadata={onAddFileMetadata}
+          uploadedFiles={uploadedFiles[selectedDept.id] || []}
+          manualCommands={manualCommands[selectedDept.id] || []}
+        />
+      )}
+
+      {/* 종합 브리핑 모달 */}
+      {briefingModalOpen && lastNativeAgentRun && (
+        <OperationBriefingModal
+          isOpen={briefingModalOpen}
+          onClose={() => setBriefingModalOpen(false)}
+          lastRun={lastNativeAgentRun}
+          approvalItems={approvalQueue}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      )}
     </div>
   );
 };
