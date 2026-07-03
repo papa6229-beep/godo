@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import type { Agent } from '../types';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
-import { TaskBoard } from './TaskBoard';
 import { ChatConsole } from './ChatConsole';
+import { ExecutiveBriefing } from './ExecutiveBriefing';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { NativeAgentRun, DepartmentDefinition } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
@@ -47,8 +47,6 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
   onAddTask,
   onApprove,
   onReject,
-  onSelectTask,
-  onSelectApproval,
   activeOperationsData,
   onUpdateAgents,
   onAddLog,
@@ -113,21 +111,9 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
         />
       </div>
 
-      {/* 3열 (우측): Today's Tasks + Approval Queue */}
+      {/* 3열 (우측): 전사 브리핑(활동 원장 기반, 읽기 전용) — 오늘의할일/승인대기 대체 */}
       <div className="office-right-column">
-        <TaskBoard
-          tasks={tasks}
-          agents={agents}
-          isSimulating={isSimulating}
-          approvalQueue={approvalQueue}
-          onStartSimulation={onStartSimulation}
-          onAddTask={onAddTask}
-          onApprove={onApprove}
-          onReject={onReject}
-          onSelectTask={onSelectTask}
-          onSelectApproval={onSelectApproval}
-          hideAddTask={true}
-        />
+        <ExecutiveBriefing />
       </div>
 
       {/* 부서 상세 워크스페이스 모달 */}
