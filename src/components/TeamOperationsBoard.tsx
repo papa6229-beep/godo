@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { DepartmentDefinition, NativeAgentDefinition, AgentJob, AgentResult, AgentHandoff } from '../engine/nativeAgentRuntime/types';
 import type { ApprovalItem } from '../types/approval';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
-import { MetricDrilldownModal, type MetricType } from './MetricDrilldownModal';
 import { HandoffDetailModal } from './HandoffDetailModal';
+import { loadActivity, subscribeActivity, teamSummary, activityForTeam } from '../services/activityLedger';
+import type { DeptTeamId } from '../types/teamMessage';
+import type { ActivityEvent } from '../types/activityLedger';
 import './TeamOperationsBoard.css';
+
+// 부서 카드 id → 활동 원장 팀 id (manager=총괄→hq)
+const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing' };
+const localMidnightIso = (): string => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
 
 interface TeamOperationsBoardProps {
   departments: DepartmentDefinition[];
@@ -39,12 +45,6 @@ const DEPT_LABEL: Record<string, string> = {
   manager: '총괄 HQ',
 };
 
-interface DrilldownState {
-  deptId: string;
-  deptName: string;
-  metricType: MetricType;
-}
-
 export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
   departments,
   agents,
@@ -60,57 +60,34 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
   managerBriefing,
   onOpenBriefingModal,
   approvalItems = [],
-  onApprove,
-  onReject,
 }) => {
   const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [drilldown, setDrilldown] = useState<DrilldownState | null>(null);
   const [selectedHandoff, setSelectedHandoff] = useState<AgentHandoff | null>(null);
 
-  const openDrilldown = (deptId: string, deptName: string, metricType: MetricType) => {
-    setDrilldown({ deptId, deptName, metricType });
-  };
+  // ── 활동 원장 연동: 카드 숫자·상태를 실제 팀 업무(자동업무·전달·승인)에서 도출 ──
+  const [activity, setActivity] = useState<ActivityEvent[]>(() => loadActivity());
+  useEffect(() => subscribeActivity(() => setActivity(loadActivity())), []);
+  const since = localMidnightIso();
 
   const getDeptStats = (deptId: string) => {
-    const deptJobs     = lastRunJobs.filter(j => j.departmentId === deptId);
-    const deptResults  = lastRunResults.filter(r => r.departmentId === deptId);
-    const outgoing     = lastRunHandoffs.filter(h => h.fromDepartmentId === deptId).length;
-    const deptApprovals = approvalItems.filter(a => a.requestedByAgentId.startsWith(deptId)).length;
+    const teamId = DEPT_TO_TEAM[deptId] ?? (deptId as DeptTeamId);
+    const s = teamSummary(activity, teamId, since);
+    const isDeptDisabled = !departments.find(d => d.id === deptId)?.enabled;
 
     let statusText = '대기 중';
     let statusClass = 'idle';
+    if (isDeptDisabled) { statusText = '비활성화'; statusClass = 'disabled'; }
+    else if (s.pending > 0) { statusText = '승인 대기'; statusClass = 'needs_review'; }
+    else if (s.total > 0) { statusText = '정상 운영'; statusClass = 'completed'; }
 
-    const hasFailed = deptJobs.some(j => j.status === 'failed') || deptResults.some(r => r.status === 'failed');
-    const isRunning = deptJobs.some(j => j.status === 'running');
-    const isCompleted = deptJobs.length > 0 && deptJobs.every(j => j.status === 'completed' || j.status === 'failed');
-    const isDeptDisabled = !departments.find(d => d.id === deptId)?.enabled;
-    const approvalCount = deptResults.filter(r => r.approvalRequired).length;
-
-    if (isDeptDisabled) {
-      statusText = '비활성화';
-      statusClass = 'disabled';
-    } else if (hasFailed) {
-      statusText = '확인 필요';
-      statusClass = 'blocked';
-    } else if (approvalCount > 0 || deptApprovals > 0) {
-      statusText = '승인 대기';
-      statusClass = 'needs_review';
-    } else if (isRunning) {
-      statusText = '분석 중';
-      statusClass = 'active';
-    } else if (isCompleted) {
-      statusText = outgoing > 0 ? '협업 중' : '정상 운영';
-      statusClass = 'completed';
-    }
-
-    const lastResult = deptResults[deptResults.length - 1];
-    const recentActivity = lastResult?.summary || (deptJobs[0]?.objective ?? null);
+    const recent = activityForTeam(activity, teamId, since)[0];
+    const recentActivity = recent ? (recent.detail || recent.title) : null;
 
     return {
-      jobsCount:     deptJobs.length,
-      resultsCount:  deptResults.length,
-      outgoing,
-      approvalCount: approvalCount + deptApprovals,
+      jobsCount:     s.taskRunTotal,   // 진행(오늘 자동업무 수)
+      resultsCount:  s.taskRunDone,    // 완료
+      outgoing:      s.messagesSent,   // 전달
+      approvalCount: s.pending,        // 승인 대기(주의)
       statusText,
       statusClass,
       recentActivity,
@@ -195,44 +172,21 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
                 </span>
               </div>
 
-              {/* ─── KPI 클릭 가능 칩 ─── */}
+              {/* ─── 오늘 업무 KPI(활동 원장 · 클릭 시 부서 업무 확인) ─── */}
               <div className="dept-card-stats">
-                <button
-                  className={`stat-chip clickable ${stats.jobsCount > 0 ? '' : 'zero'}`}
-                  onClick={() => stats.jobsCount > 0 && openDrilldown(dept.id, dept.name, 'in_progress')}
-                  title="진행 중 업무 상세 보기"
-                  disabled={stats.jobsCount === 0}
-                >
+                <button className={`stat-chip clickable ${stats.jobsCount > 0 ? '' : 'zero'}`} onClick={() => onSelectDepartment(dept)} title="오늘 진행한 자동업무">
                   <span className="chip-num">{stats.jobsCount}</span>
                   <span className="chip-lbl">진행</span>
                 </button>
-
-                <button
-                  className={`stat-chip clickable ${stats.resultsCount > 0 ? '' : 'zero'}`}
-                  onClick={() => stats.resultsCount > 0 && openDrilldown(dept.id, dept.name, 'completed')}
-                  title="처리 완료 결과 상세 보기"
-                  disabled={stats.resultsCount === 0}
-                >
+                <button className={`stat-chip clickable ${stats.resultsCount > 0 ? '' : 'zero'}`} onClick={() => onSelectDepartment(dept)} title="완료한 업무">
                   <span className="chip-num">{stats.resultsCount}</span>
                   <span className="chip-lbl">완료</span>
                 </button>
-
-                <button
-                  className={`stat-chip clickable ${stats.outgoing > 0 ? '' : 'zero'}`}
-                  onClick={() => stats.outgoing > 0 && openDrilldown(dept.id, dept.name, 'handoff')}
-                  title="부서 간 전달 상세 보기"
-                  disabled={stats.outgoing === 0}
-                >
+                <button className={`stat-chip clickable ${stats.outgoing > 0 ? '' : 'zero'}`} onClick={() => onSelectDepartment(dept)} title="팀 간 전달">
                   <span className="chip-num">{stats.outgoing}</span>
                   <span className="chip-lbl">전달</span>
                 </button>
-
-                <button
-                  className={`stat-chip clickable ${stats.approvalCount > 0 ? 'chip-alert' : 'zero'}`}
-                  onClick={() => stats.approvalCount > 0 && openDrilldown(dept.id, dept.name, 'approval')}
-                  title="승인 대기 항목 보기"
-                  disabled={stats.approvalCount === 0}
-                >
+                <button className={`stat-chip clickable ${stats.approvalCount > 0 ? 'chip-alert' : 'zero'}`} onClick={() => onSelectDepartment(dept)} title="승인·확인 필요">
                   <span className="chip-num">{stats.approvalCount}</span>
                   <span className="chip-lbl">승인</span>
                 </button>
@@ -248,7 +202,7 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
                 className="dept-enter-btn"
                 onClick={() => onSelectDepartment(dept)}
               >
-                부서 보기 →
+                부서 업무 확인 →
               </button>
             </div>
           );
@@ -345,25 +299,6 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
           </div>
         )}
       </div>
-
-      {/* MetricDrilldownModal */}
-      {drilldown && (
-        <MetricDrilldownModal
-          isOpen={!!drilldown}
-          onClose={() => setDrilldown(null)}
-          departmentId={drilldown.deptId}
-          departmentName={drilldown.deptName}
-          metricType={drilldown.metricType}
-          jobs={lastRunJobs.filter(j => j.departmentId === drilldown.deptId)}
-          results={lastRunResults.filter(r => r.departmentId === drilldown.deptId)}
-          handoffs={lastRunHandoffs.filter(
-            h => h.fromDepartmentId === drilldown.deptId || h.toDepartmentId === drilldown.deptId
-          )}
-          approvalItems={approvalItems.filter(a => a.requestedByAgentId.startsWith(drilldown.deptId))}
-          onApprove={onApprove}
-          onReject={onReject}
-        />
-      )}
 
       {/* HandoffDetailModal */}
       {selectedHandoff && (
