@@ -55,6 +55,10 @@ const levelKo = (l: StockLevel): string => (l === 'danger' ? '위험' : l === 'w
 // 매출추이 단위 (버킷 생성은 productDashboardTrendBuckets.ts로 분리)
 type Period = 'month' | 'week' | 'day';
 
+// 기간 프리셋 — CS팀(csDashboardTimeFilter)과 동일 구성. 상대기간은 데이터 최신 주문일 기준(합성데이터 대응).
+type PeriodPreset = 'all' | 'today' | '7d' | '30d' | 'month' | 'custom';
+const PERIOD_PRESETS: [PeriodPreset, string][] = [['all', '전체'], ['today', '오늘'], ['7d', '최근 7일'], ['30d', '최근 30일'], ['month', '이번 달'], ['custom', '직접']];
+
 const niceCeil = (v: number): number => {
   if (v <= 0) return 1;
   const mag = Math.pow(10, Math.floor(Math.log10(v)));
@@ -465,11 +469,10 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const [category, setCategory] = useState('all');
   const [dataSrc, setDataSrc] = useState<'all' | 'real' | 'synthetic'>('all');
   // ★ 공통 기간 기준 (shared) — KPI/매출추이/도넛/상품순위가 모두 이 하나를 공유
-  // timeMode = 집계 단위(전체/월별/주간별/일별/직접). 기간은 공유 날짜 범위(rangeStart~rangeEnd).
-  const [timeMode, setTimeMode] = useState<'all' | 'month' | 'week' | 'day' | 'custom'>('all');
+  // periodPreset = CS팀과 동일 프리셋(전체/오늘/최근7일/최근30일/이번달/직접). 직접은 rangeStart~rangeEnd.
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
-  const [customGran, setCustomGran] = useState<Period>('day');
   const [rankOpen, setRankOpen] = useState(false);
   const [allOpen, setAllOpen] = useState(false);
 
@@ -502,9 +505,21 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     return { min, max };
   }, [orders]);
 
-  // 적용 기간: 전체는 데이터 전체, 그 외는 선택 범위(미지정 시 데이터 전체)
-  const effStart = timeMode === 'all' ? dataRange.min : (rangeStart || dataRange.min);
-  const effEnd = timeMode === 'all' ? dataRange.max : (rangeEnd || dataRange.max);
+  // 적용 기간(YYYY-MM-DD) — 프리셋별. 상대기간(오늘/7·30일/이번달)은 데이터 최신 주문일(dataRange.max) 기준.
+  //   합성/과거 데이터라 실제 '오늘'을 쓰면 빈 화면이 되므로 데이터 최신일을 앵커로 삼는다(기존 상품팀 로직과 동일 취지).
+  const { effStart, effEnd } = useMemo(() => {
+    const { min, max } = dataRange;
+    if (!min || !max) return { effStart: min, effEnd: max };
+    if (periodPreset === 'all') return { effStart: min, effEnd: max };
+    if (periodPreset === 'custom') return { effStart: rangeStart || min, effEnd: rangeEnd || max };
+    if (periodPreset === 'today') return { effStart: max, effEnd: max };
+    if (periodPreset === 'month') return { effStart: `${max.slice(0, 7)}-01`, effEnd: max };
+    const days = periodPreset === '7d' ? 7 : 30;
+    // UTC 자정으로 파싱·계산·포맷(로컬 파싱 후 toISOString은 +9 시간대에서 하루 밀림).
+    const startMs = Date.parse(`${max}T00:00:00Z`) - (days - 1) * 86400000;
+    const startStr = new Date(startMs).toISOString().slice(0, 10);
+    return { effStart: startStr < min ? min : startStr, effEnd: max };
+  }, [periodPreset, rangeStart, rangeEnd, dataRange]);
 
   // ★ 공통 기간 기준으로 orders 필터 → KPI/추이/도넛/순위가 모두 같은 기준(기간 범위) 공유
   const ordersFiltered = useMemo(
@@ -512,13 +527,17 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
     [orders, dataSrc, effStart, effEnd]
   );
 
-  // 매출 추이 집계 단위 = 선택한 모드 (전체·월별→월, 주간별→주, 일별→일, 직접→사용자 선택 단위)
+  // 매출 추이 집계 단위 — 프리셋에서 자동 도출(오늘/최근7·30일/이번달→일, 전체→월, 직접→기간 폭 기준).
   const trendGran: Period = useMemo(() => {
-    if (timeMode === 'all' || timeMode === 'month') return 'month';
-    if (timeMode === 'week') return 'week';
-    if (timeMode === 'day') return 'day';
-    return customGran;
-  }, [timeMode, customGran]);
+    if (periodPreset === 'all') return 'month';
+    if (periodPreset === 'custom') {
+      const s = Date.parse(`${effStart}T00:00:00Z`);
+      const e = Date.parse(`${effEnd}T00:00:00Z`);
+      const span = Number.isNaN(s) || Number.isNaN(e) ? 0 : (e - s) / 86400000;
+      return span > 90 ? 'month' : span > 21 ? 'week' : 'day';
+    }
+    return 'day'; // today / 7d / 30d / month(이번 달)
+  }, [periodPreset, effStart, effEnd]);
 
   const relevantOrders = useMemo(
     () => filterOrdersByCategory(ordersFiltered, category),
@@ -594,57 +613,53 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const resetFilters = () => {
     setCategory('all');
     setDataSrc('all');
-    setTimeMode('all');
+    setPeriodPreset('all');
     setRangeStart('');
     setRangeEnd('');
-    setCustomGran('day');
   };
 
   // 표시용: 집계 단위 + 기간
   const granLabel = trendGran === 'month' ? '월별' : trendGran === 'week' ? '주간별' : '일별';
-  const periodText = timeMode === 'all' ? '전체 기간' : `${effStart || '…'} ~ ${effEnd || '…'}`;
+  const presetLabel = PERIOD_PRESETS.find(([k]) => k === periodPreset)?.[1] ?? '전체';
+  const periodText = periodPreset === 'all'
+    ? '전체 기간'
+    : periodPreset === 'custom'
+      ? `${effStart || '…'} ~ ${effEnd || '…'}`
+      : `${presetLabel} (${effStart} ~ ${effEnd})`;
   const periodBasisLabel = `${granLabel} · ${periodText}`;
 
   // 현재 적용 범위(KPI가 전사 전체와 다른 이유 표시용). 필터 없으면 '전체'.
-  const isFiltered = category !== 'all' || timeMode !== 'all' || dataSrc !== 'all';
+  const isFiltered = category !== 'all' || periodPreset !== 'all' || dataSrc !== 'all';
   const scopeText = (() => {
     if (!isFiltered) return '전체';
     const parts: string[] = [];
     if (category !== 'all') parts.push(catName(category));
-    if (timeMode !== 'all') parts.push(periodText);
+    if (periodPreset !== 'all') parts.push(periodText);
     if (dataSrc !== 'all') parts.push(dataSrc === 'real' ? '실제 데이터' : '가상 데이터');
     return parts.join(' · ');
   })();
 
-  // 모드 전환 시, 범위가 비어 있으면 데이터 전체 기간을 기본값으로 채운다.
-  const selectMode = (mode: 'all' | 'month' | 'week' | 'day' | 'custom') => {
-    setTimeMode(mode);
-    if (mode !== 'all' && !rangeStart && !rangeEnd) {
+  // '직접'으로 전환 시 범위가 비어 있으면 데이터 전체 기간을 기본값으로 채운다.
+  const selectPreset = (p: PeriodPreset) => {
+    setPeriodPreset(p);
+    if (p === 'custom' && !rangeStart && !rangeEnd) {
       setRangeStart(dataRange.min);
       setRangeEnd(dataRange.max);
     }
   };
 
-  // 추이/도넛 카드가 공유하는 기간 기준 컨트롤 (양쪽에서 렌더 → 같은 state)
+  // KPI/추이/도넛/순위가 공유하는 기간 프리셋 컨트롤(CS팀과 동일 구성). '직접'만 날짜 입력 노출.
   const renderPeriodControl = () => (
     <div className="ptd-period-ctl">
-      {([['all', '전체'], ['month', '월별'], ['week', '주간별'], ['day', '일별'], ['custom', '직접']] as const).map(([v, l]) => (
-        <button key={v} type="button" className={`ptd-seg ${timeMode === v ? 'active' : ''}`} onClick={() => selectMode(v)}>{l}</button>
+      {PERIOD_PRESETS.map(([v, l]) => (
+        <button key={v} type="button" className={`ptd-seg ${periodPreset === v ? 'active' : ''}`} onClick={() => selectPreset(v)}>{l}</button>
       ))}
-      {timeMode !== 'all' && (
+      {periodPreset === 'custom' && (
         <span className="ptd-daterange">
           <input type="date" className="ptd-date-input" value={rangeStart} max={rangeEnd || undefined} onChange={(e) => setRangeStart(e.target.value)} aria-label="시작일" />
           <span className="ptd-date-sep">~</span>
           <input type="date" className="ptd-date-input" value={rangeEnd} min={rangeStart || undefined} onChange={(e) => setRangeEnd(e.target.value)} aria-label="종료일" />
           <button type="button" className="ptd-seg" onClick={() => { setRangeStart(''); setRangeEnd(''); }}>초기화</button>
-        </span>
-      )}
-      {timeMode === 'custom' && (
-        <span className="ptd-custom-gran">
-          <span className="ptd-custom-gran-label">단위</span>
-          {([['month', '월'], ['week', '주'], ['day', '일']] as const).map(([v, l]) => (
-            <button key={v} type="button" className={`ptd-seg ${customGran === v ? 'active' : ''}`} onClick={() => setCustomGran(v)}>{l}</button>
-          ))}
         </span>
       )}
     </div>
