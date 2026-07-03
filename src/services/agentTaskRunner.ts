@@ -5,6 +5,8 @@
 
 import { buildDepartmentSourceOfTruthSnapshot } from './departmentDataSourceOfTruth';
 import { postTeamMessage } from './teamMessageCenter';
+import { logActivity } from './activityLedger';
+import { DEPT_TEAM_META } from '../types/teamMessage';
 import type { RevenueResult } from './departmentDataService';
 import type { DepartmentSourceOfTruthSnapshot } from './departmentDataSourceOfTruth';
 import type { AgentTaskSpec } from '../types/agentTask';
@@ -49,5 +51,11 @@ export function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { p
   const { title, body } = formatTaskReport(spec, snap);
   const from: TeamMessageActor = { kind: 'agent', teamId: spec.teamId, label: spec.agentLabel, agentId: spec.agentId };
   const posted = postTeamMessage({ from, toTeam: spec.reportTo, kind: spec.reportKind, title, body }, ctx.nowIso);
+  // 업무 활동 원장 기록 — 오늘의 운영/HQ 채팅이 이 기록을 읽어 집계·표시.
+  logActivity({
+    teamId: spec.teamId, type: 'task_run', status: 'done',
+    title: spec.title, detail: `${body} → ${DEPT_TEAM_META[spec.reportTo].name}에 보고`,
+    actor: from, relatedTeam: spec.reportTo, refId: posted.id
+  }, ctx.nowIso);
   return { posted, body };
 }

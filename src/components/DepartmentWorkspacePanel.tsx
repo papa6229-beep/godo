@@ -32,6 +32,8 @@ import {
   unreadCountFor, type CreateTeamMessageInput
 } from '../services/teamMessageCenter';
 import type { TeamMessage, TeamMessageStatus } from '../types/teamMessage';
+import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META } from '../types/teamMessage';
+import { logActivity } from '../services/activityLedger';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -155,8 +157,22 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [teamMessages, setTeamMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
   useEffect(() => subscribeTeamMessages(() => setTeamMessages(loadTeamMessages())), []);
   const refreshTeamMessages = () => setTeamMessages(loadTeamMessages());
-  const handlePostTeamMessage = (input: CreateTeamMessageInput) => { postTeamMessage(input); refreshTeamMessages(); };
-  const handleResolveTeamMessage = (id: string, status: TeamMessageStatus) => { resolveTeamMessage(id, status, { kind: 'human', teamId: selectedTeamId, label: '운영자' }); refreshTeamMessages(); };
+  const handlePostTeamMessage = (input: CreateTeamMessageInput) => {
+    const posted = postTeamMessage(input);
+    // 활동 원장: 팀 간 전달 기록.
+    logActivity({ teamId: input.from.teamId, type: 'message_sent', status: 'info', title: input.title || '팀 간 요청', detail: `${DEPT_TEAM_META[input.toTeam].name}에 ${TEAM_MESSAGE_KIND_META[input.kind].label}`, actor: input.from, relatedTeam: input.toTeam, refId: posted.id });
+    refreshTeamMessages();
+  };
+  const handleResolveTeamMessage = (id: string, status: TeamMessageStatus) => {
+    const actor = { kind: 'human' as const, teamId: selectedTeamId, label: '운영자' };
+    resolveTeamMessage(id, status, actor);
+    // 활동 원장: 완료 처리 = 처리 활동 기록(대기/완료 상태 반영).
+    if (status === 'done' || status === 'in_progress') {
+      const msg = teamMessages.find((m) => m.id === id);
+      logActivity({ teamId: selectedTeamId, type: 'approval', status: status === 'done' ? 'done' : 'in_progress', title: msg?.title || '요청 처리', detail: msg ? `${DEPT_TEAM_META[msg.from.teamId].name}의 요청 처리` : undefined, actor, refId: id });
+    }
+    refreshTeamMessages();
+  };
   const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, { kind: 'human', teamId: selectedTeamId, label: '운영자' }); refreshTeamMessages(); };
 
   useEffect(() => {
