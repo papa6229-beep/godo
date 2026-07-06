@@ -45,4 +45,6 @@
 .dtd-builder-bar-title { font-size: 13px; font-weight: 700; }
 .dtd-builder-close { font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: transparent; color: #fff; cursor: pointer; }
 .dtd-builder-close:hover { background: rgba(255,255,255,0.1); }
-.dtd-builder-body { flex: 1; min-height: 0; overflow: auto; }
+/* 생성기는 내부에서 자체 스크롤을 처리한다. 오버레이 body가 스크롤되면
+   scrollIntoView(좌↔우 동기화) 시 미리보기가 살짝 밀리므로 여기서는 스크롤 금지. */
+.dtd-builder-body { flex: 1; min-height: 0; overflow: hidden; }

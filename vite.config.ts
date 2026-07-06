@@ -43,6 +43,13 @@ function aiChatDevPlugin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), aiChatDevPlugin()],
+  // 이식된 상세페이지 생성기의 react-rnd(react-draggable) 드래그 복구.
+  // react-draggable/build/cjs/Draggable.js 의 log()가 `process.env.DRAGGABLE_DEBUG`를
+  // 참조하는데, 브라우저엔 process가 없어 드래그 시작 시 ReferenceError로 드래그가 죽음.
+  // 해당 표현식만 false로 치환해 예외 제거(다른 process 참조/NODE_ENV엔 영향 없음).
+  define: {
+    'process.env.DRAGGABLE_DEBUG': 'false',
+  },
   server: {
     proxy: {
       // LM Studio 로컬 프록시. Windows의 localhost->IPv6(::1) 미스를 피하려 IPv4 127.0.0.1로 고정.
