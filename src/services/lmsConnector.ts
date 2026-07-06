@@ -135,9 +135,11 @@ export async function getModels(
  * 성공 기준: HTTP 200 && content 존재. (object 검증은 호출측에서 debug.objectType로 수행)
  */
 export async function getChatCompletion(
-  messages: Array<{ role: string; content: string }>,
+  // content는 string(텍스트) 또는 멀티모달 파트 배열([{type:'text'},{type:'image_url'}])을 그대로 통과시킨다.
+  messages: Array<{ role: string; content: unknown }>,
   modelId: string,
-  endpoint: string = DEFAULT_ENDPOINT
+  endpoint: string = DEFAULT_ENDPOINT,
+  opts?: { temperature?: number; maxTokens?: number }
 ): Promise<{
   success: boolean;
   content?: string;
@@ -153,10 +155,18 @@ export async function getChatCompletion(
   const debug: LmsCallDebug = { method: 'POST', finalUrl, upstreamUrl };
 
   try {
+    const body: Record<string, unknown> = {
+      model: modelId,
+      messages,
+      temperature: opts?.temperature ?? 0.7
+    };
+    // max_tokens 미지정 시 LM Studio 기본값이 다중섹션 문구를 중간에 자를 수 있어 명시 전달.
+    if (opts?.maxTokens && opts.maxTokens > 0) body.max_tokens = opts.maxTokens;
+
     const response = await fetchWithTimeout(finalUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ model: modelId, messages, temperature: 0.7 })
+      body: JSON.stringify(body)
     }, CHAT_TIMEOUT_MS);
     debug.status = response.status;
 

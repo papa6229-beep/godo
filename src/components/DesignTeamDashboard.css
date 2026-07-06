@@ -6,6 +6,18 @@
 .dtd-count { font-size: 12px; color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--line-subtle); border-radius: 999px; padding: 4px 12px; }
 .dtd-count b { color: var(--text-primary); font-size: 14px; }
 
+/* 디자인 AI 두뇌 연결 카드 */
+.dtd-brain { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--line-subtle); border-radius: 12px; background: var(--bg-surface); }
+.dtd-brain-icon { font-size: 22px; }
+.dtd-brain-body { flex: 1; min-width: 0; }
+.dtd-brain-title { margin: 0; font-size: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+.dtd-brain-status { font-size: 11px; font-weight: 700; }
+.dtd-brain-status.on { color: var(--accent-primary, #31D6C4); }
+.dtd-brain-status.off { color: var(--text-muted); }
+.dtd-brain-desc { margin: 3px 0 0; font-size: 12px; color: var(--text-secondary); word-break: keep-all; line-height: 1.5; }
+.dtd-brain-note { color: var(--text-muted); }
+.dtd-brain-select { flex-shrink: 0; font-size: 12px; font-weight: 600; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-subtle); background: var(--bg-app); color: var(--text-primary); cursor: pointer; }
+
 .dtd-generator-slot { display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px dashed color-mix(in srgb, var(--accent-primary, #31D6C4) 45%, transparent); border-radius: 12px; background: var(--accent-soft); }
 .dtd-gen-icon { font-size: 28px; }
 .dtd-gen-body { flex: 1; min-width: 0; }

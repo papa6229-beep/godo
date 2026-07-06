@@ -57,7 +57,11 @@ const chatWithLmStudio = async (
   }
 
   // 2) chat completion 실호출 (lmsConnector 내부 90s timeout 적용)
-  const chatRes = await getChatCompletion(request.messages, detected, endpoint);
+  //    요청의 temperature/maxTokens를 전달(다중섹션 문구가 중간에 잘리지 않도록).
+  const chatRes = await getChatCompletion(request.messages, detected, endpoint, {
+    temperature: request.temperature,
+    maxTokens: request.maxTokens
+  });
   const isChatCompletion = chatRes.debug.objectType === 'chat.completion';
   const ok = chatRes.success && isChatCompletion && !!chatRes.content;
 
