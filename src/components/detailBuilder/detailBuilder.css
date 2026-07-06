@@ -1,0 +1,90 @@
+/*
+ * 상세페이지 생성기(이식) 전용 스코프 리셋.
+ * 원본(detail-page-builder)은 Tailwind CDN 기본값(preflight ON)에서 제작됨.
+ * GODO는 전역 스타일 보호를 위해 index.html에서 preflight를 껐으므로,
+ * 여기서 preflight(리셋)를 **생성기 루트(.detail-builder-root) 하위로만** 되살린다.
+ * 규칙 특이도는 :where()로 0으로 낮춰, Tailwind 유틸리티가 항상 우선되게 한다
+ * (원본 preflight의 base-layer 우선순위와 동일). → GODO 전역에는 전혀 영향 없음.
+ *
+ * 이식 회귀 수정: 이미지 원본크기(사이즈 디테일)·중앙정렬·박스 계산 어긋남 복구.
+ */
+
+/* 1) box-sizing: border-box — Tailwind 크기/여백 유틸리티의 전제 */
+:where(.detail-builder-root),
+:where(.detail-builder-root) :where(*, ::before, ::after) {
+  box-sizing: border-box;
+}
+
+/* 2) 미디어 요소 블록화 (mx-auto 중앙정렬·baseline 여백 제거) */
+:where(.detail-builder-root) :where(img, svg, video, canvas, audio, iframe, embed, object) {
+  display: block;
+  vertical-align: middle;
+}
+
+/* 3) 이미지/영상 크기 상한 — 원본 크기 폭주 방지(사이즈 디테일 등) */
+:where(.detail-builder-root) :where(img, video) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 4) 기본 여백 리셋 (Tailwind 간격 유틸리티가 여백을 전담) */
+:where(.detail-builder-root) :where(h1, h2, h3, h4, h5, h6, p, blockquote, figure, pre, hr, ul, ol, dl, dd) {
+  margin: 0;
+}
+:where(.detail-builder-root) :where(h1, h2, h3, h4, h5, h6) {
+  font-size: inherit;
+  font-weight: inherit;
+}
+:where(.detail-builder-root) :where(ul, ol) {
+  list-style: none;
+  padding: 0;
+}
+
+/* 5) 폼/버튼/링크 상속 (원본 preflight subset) */
+:where(.detail-builder-root) :where(button, input, optgroup, select, textarea) {
+  font-family: inherit;
+  font-size: 100%;
+  font-weight: inherit;
+  line-height: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+}
+:where(.detail-builder-root) :where(button, select) {
+  text-transform: none;
+}
+:where(.detail-builder-root) :where(button, [type='button'], [type='reset'], [type='submit']) {
+  -webkit-appearance: button;
+  background-color: transparent;
+  background-image: none;
+  cursor: pointer;
+}
+:where(.detail-builder-root) :where(a) {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+/*
+ * 원본 index.html <style>의 CSS 변수 복구 (그림자/간격).
+ * Preview/Editor가 shadow-[var(--shadow-xl)] 등으로 참조. 생성기 루트에만 정의.
+ */
+.detail-builder-root {
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.25);
+}
+
+/* 원본의 .font-montserrat (미로드 시 sans 폴백 — 원본과 동일 동작) */
+.detail-builder-root .font-montserrat {
+  font-family: 'Montserrat', 'Fira Sans', Pretendard, sans-serif;
+}

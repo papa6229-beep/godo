@@ -9,6 +9,9 @@ import Editor from "./components/Editor";
 import Preview from "./components/Preview";
 import ThumbnailPreview from "./components/ThumbnailPreview";
 import { generateCopywriting } from "./services/geminiService";
+// 이식 회귀 수정: 원본은 Tailwind preflight ON에서 제작 → GODO는 전역 preflight를 꺼서
+// 이미지 크기/중앙정렬/박스 계산이 어긋남. 생성기 루트로만 스코프된 리셋을 되살린다.
+import "./detailBuilder.css";
 
 const App: React.FC = () => {
   const [data, setData] = useState<ProductData>(INITIAL_PRODUCT_DATA);
@@ -385,7 +388,10 @@ const App: React.FC = () => {
 
   return (
     // ✅ 화면 전체 높이 고정 (overflow-hidden) -> 내부에서 스크롤 처리
-    <div className="h-screen flex flex-col bg-[#020617] font-sans overflow-hidden text-slate-200">
+    // detail-builder-root: 스코프 preflight 리셋 적용 지점(detailBuilder.css)
+    // h-full: 오버레이(.dtd-builder-body)에 정확히 맞춤. h-screen(100vh)이면 상단바만큼
+    // 넘쳐서 오버레이가 스크롤되고, scrollIntoView 시 미리보기가 살짝 밀리는 문제가 생김.
+    <div className="detail-builder-root h-full flex flex-col bg-[#020617] font-sans overflow-hidden text-slate-200">
       {/* 헤더 */}
       <nav className="bg-[#020617]/90 backdrop-blur-md border-white/5 border-b px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-lg flex-shrink-0 h-[70px]">
         <div className="flex items-center gap-3">
