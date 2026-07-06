@@ -3,6 +3,11 @@ import './DesignTeamDashboard.css';
 import { inboxFor } from '../services/teamMessageCenter';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, TEAM_MESSAGE_STATUS_META, type TeamMessage } from '../types/teamMessage';
 import DetailPageBuilder from './detailBuilder/DetailPageBuilder';
+import { getAgentBrainChoice, setAgentBrainChoice, isBrainConnected, getGlobalBrainSelection, providerLabel } from '../services/aiBrainSettings';
+import type { BrainProviderId } from '../types/aiProvider';
+
+// 디자인팀 문구 생성 AI(두뇌)의 대상 키. geminiService의 resolveAgentBrain('design')과 일치시킨다.
+const DESIGN_AGENT_ID = 'design';
 
 // 디자인팀 워크스페이스 — 커머스 대시보드가 아니라 "작업 보드".
 // 상품팀 등에서 온 제작 요청(팀 메시지)을 큐로 보여주고, 상세페이지 생성기(다음 단계)를 담을 자리.
@@ -17,6 +22,17 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
   const open = requests.filter((m) => m.status !== 'done');
   const doneCount = requests.length - open.length;
 
+  // 디자인 AI 두뇌 연결(넣었다 뺐다). 성인상품이라 기본값 = 로컬 무검열(Super Gemma / LM Studio).
+  // 한 번도 지정 안 했으면(전체 기본=Claude는 성인 거부) 로컬 무검열로 기본 연결하고 저장한다.
+  const [brainChoice, setBrainChoice] = useState<'global' | BrainProviderId>(() => {
+    const saved = getAgentBrainChoice(DESIGN_AGENT_ID);
+    if (saved === 'global') { setAgentBrainChoice(DESIGN_AGENT_ID, 'local_lmstudio'); return 'local_lmstudio'; }
+    return saved;
+  });
+  const changeBrain = (v: 'global' | BrainProviderId) => { setAgentBrainChoice(DESIGN_AGENT_ID, v); setBrainChoice(v); };
+  const activeProvider: BrainProviderId = brainChoice === 'global' ? getGlobalBrainSelection().providerId : brainChoice;
+  const brainConnected = isBrainConnected(activeProvider);
+
   return (
     <div className="dtd">
       <div className="dtd-header">
@@ -28,6 +44,22 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
           <span className="dtd-count"><b>{open.length}</b> 진행/대기</span>
           <span className="dtd-count"><b>{doneCount}</b> 완료</span>
         </div>
+      </div>
+
+      {/* 디자인 AI 두뇌 연결 (문구 생성 AI) */}
+      <div className="dtd-brain">
+        <span className="dtd-brain-icon">🧠</span>
+        <div className="dtd-brain-body">
+          <h3 className="dtd-brain-title">
+            디자인 AI 두뇌
+            <span className={`dtd-brain-status ${brainConnected ? 'on' : 'off'}`}>{brainConnected ? '● 연결됨' : '○ 미연결'}</span>
+          </h3>
+          <p className="dtd-brain-desc">상세페이지 <b>문구</b>를 생성하는 AI. 성인 상품은 클라우드가 거부하므로 <b>로컬 무검열(Super Gemma)</b> 권장. <span className="dtd-brain-note">(현재 이미지 인식(vision) 미지원 모델 → 스펙 텍스트 기반)</span></p>
+        </div>
+        <select className="dtd-brain-select" value={brainChoice} onChange={(e) => changeBrain(e.target.value as 'global' | BrainProviderId)}>
+          <option value="local_lmstudio">🦙 Super Gemma (로컬 무검열)</option>
+          <option value="global">전체 기본 AI ({providerLabel(getGlobalBrainSelection().providerId)})</option>
+        </select>
       </div>
 
       {/* 상세페이지 생성기(이식됨) */}
