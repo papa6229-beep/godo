@@ -88,3 +88,57 @@
 .detail-builder-root .font-montserrat {
   font-family: 'Montserrat', 'Fira Sans', Pretendard, sans-serif;
 }
+
+/* =============================================================================
+ * 테마 스킨 — 에디터 크롬만 GODO 라이트/다크(<html data-theme>)를 따라간다.
+ * 미리보기 캔버스(#detail-page-container·섬네일 = 만들 상품)는 흰 "종이"로 유지.
+ * 크롬 = 상단바(nav) + 좌측 에디터(aside) + 미리보기 주변 여백(main>section).
+ * 벤더 TSX는 손대지 않고, Tailwind 색 토큰을 테마 변수로 리매핑한다.
+ * 리매핑은 :is(nav, aside)로 스코프해 미리보기 캔버스에는 절대 닿지 않는다.
+ * 색 변수: --bg-app/-surface/-elevated · --text-primary/-secondary/-muted · --line-subtle (src/index.css)
+ * ============================================================================= */
+
+/* --- 큰 표면(구조 선택자로 확실히 오버라이드) --- */
+div.detail-builder-root { background: var(--bg-app); color: var(--text-primary); }
+.detail-builder-root nav { background: var(--bg-surface); border-color: var(--line-subtle); }
+.detail-builder-root aside { background: var(--bg-surface); border-color: var(--line-subtle); }
+.detail-builder-root main > section { background: var(--bg-app); }  /* 미리보기 주변 여백 */
+
+/* 테마 전환 시 부드럽게 */
+.detail-builder-root nav,
+.detail-builder-root aside,
+.detail-builder-root main > section { transition: background-color .25s ease, border-color .25s ease; }
+
+/* --- 크롬 배경 토큰 리매핑 (nav/aside 내부만) --- */
+.detail-builder-root :is(nav, aside) [class*="bg-[#020617]"] { background-color: var(--bg-surface); }
+.detail-builder-root :is(nav, aside) [class*="bg-[#0F172A]"] { background-color: var(--bg-app); }      /* 입력/카드 = 살짝 리세스 */
+.detail-builder-root :is(nav, aside) [class~="bg-white/5"]  { background-color: var(--bg-elevated); }  /* 패널 카드 = 살짝 융기 */
+.detail-builder-root :is(nav, aside) [class~="bg-white/10"] { background-color: var(--bg-elevated); }
+
+/* --- 크롬 텍스트 토큰 리매핑 --- */
+.detail-builder-root :is(nav, aside) [class~="text-white"],
+.detail-builder-root :is(nav, aside) [class~="text-slate-200"] { color: var(--text-primary); }
+.detail-builder-root :is(nav, aside) [class~="text-slate-300"],
+.detail-builder-root :is(nav, aside) [class~="text-slate-400"] { color: var(--text-secondary); }
+.detail-builder-root :is(nav, aside) [class~="text-slate-500"],
+.detail-builder-root :is(nav, aside) [class~="text-gray-400"]  { color: var(--text-muted); }
+
+/* --- 크롬 보더 토큰 리매핑 --- */
+.detail-builder-root :is(nav, aside) [class~="border-white/5"],
+.detail-builder-root :is(nav, aside) [class~="border-white/10"] { border-color: var(--line-subtle); }
+
+/* --- 입력 필드: 텍스트/플레이스홀더 테마 --- */
+.detail-builder-root aside input,
+.detail-builder-root aside textarea { color: var(--text-primary); }
+.detail-builder-root aside input::placeholder,
+.detail-builder-root aside textarea::placeholder { color: var(--text-muted); opacity: 1; }
+
+/* --- 섹션 헤더 타이포 정리: 무거운 mono-black → 정제된 sans --- */
+.detail-builder-root aside h2 {
+  font-family: 'Fira Sans', Pretendard, -apple-system, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.detail-builder-root aside h3 { color: var(--text-secondary); }
