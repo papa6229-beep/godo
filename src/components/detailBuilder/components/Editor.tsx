@@ -142,9 +142,12 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
   // --- 핸들러 함수들 ---
   
   // 스크롤 이동
+  // preview-top(헤더)은 상품명+영문명+메인이미지까지 포함한 큰 요소라 center로 맞추면
+  // 최상단의 상품명이 화면 위로 밀려 안 보인다. 상품명은 상세페이지 맨 위이므로 start로
+  // 맞춰 상품명이 보이게 한다. 나머지 섹션은 center 유지.
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: id === 'preview-top' ? 'start' : 'center' });
   };
 
   // 텍스트 변경
