@@ -142,12 +142,25 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
   // --- 핸들러 함수들 ---
   
   // 스크롤 이동
-  // preview-top(헤더)은 상품명+영문명+메인이미지까지 포함한 큰 요소라 center로 맞추면
-  // 최상단의 상품명이 화면 위로 밀려 안 보인다. 상품명은 상세페이지 맨 위이므로 start로
-  // 맞춰 상품명이 보이게 한다. 나머지 섹션은 center 유지.
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: id === 'preview-top' ? 'start' : 'center' });
+    if (!el) return;
+    // 상품명은 상세페이지 최상단 → 미리보기 스크롤 컨테이너를 맨 위(0)로 보낸다.
+    // scrollIntoView(start)는 컨테이너 p-8 패딩만큼(≈32px) 불필요하게 스크롤돼,
+    // 이미 맨 위인 디폴트 상태에서도 미리보기가 살짝 움직이는 문제가 있음.
+    // top으로 보내면 이미 맨 위면 그대로, 아래면 맨 위로 올라온다.
+    if (id === 'preview-top') {
+      // 실제 스크롤 컨테이너(overflow auto/scroll + 넘침)를 찾아 맨 위로.
+      let sc: HTMLElement | null = el.parentElement;
+      while (sc) {
+        const oy = getComputedStyle(sc).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && sc.scrollHeight > sc.clientHeight) break;
+        sc = sc.parentElement;
+      }
+      if (sc) sc.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   // 텍스트 변경
