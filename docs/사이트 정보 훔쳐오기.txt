@@ -1,0 +1,55 @@
+(() => {
+  const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  const esc = (s) => clean(s).replace(/\|/g, '\\|');
+
+  const tableToMarkdown = (table) => {
+    const rows = [...table.querySelectorAll('tr')].map((tr) =>
+      [...tr.children].map((cell) => esc(cell.innerText))
+    );
+
+    if (!rows.length) return '';
+
+    const maxCols = Math.max(...rows.map((row) => row.length));
+    const normalize = (row) => row.concat(Array(maxCols - row.length).fill(''));
+
+    const header = normalize(rows[0]);
+    const divider = Array(maxCols).fill('---');
+    const body = rows.slice(1).map(normalize);
+
+    return [
+      `| ${header.join(' | ')} |`,
+      `| ${divider.join(' | ')} |`,
+      ...body.map((row) => `| ${row.join(' | ')} |`)
+    ].join('\n');
+  };
+
+  const parts = [
+    '# Godomall Order_Search API Spec Export',
+    '',
+    `URL: ${location.href}`,
+    `ExportedAt: ${new Date().toISOString()}`,
+    ''
+  ];
+
+  document.querySelectorAll('h1,h2,h3,h4,h5,table').forEach((el) => {
+    if (/^H[1-5]$/.test(el.tagName)) {
+      const level = Number(el.tagName.slice(1)) + 1;
+      parts.push(`\n${'#'.repeat(level)} ${clean(el.innerText)}\n`);
+    }
+
+    if (el.tagName === 'TABLE') {
+      parts.push('\n' + tableToMarkdown(el) + '\n');
+    }
+  });
+
+  const blob = new Blob([parts.join('\n')], {
+    type: 'text/markdown;charset=utf-8'
+  });
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'godomall_order_search_spec.md';
+  a.click();
+
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+})();

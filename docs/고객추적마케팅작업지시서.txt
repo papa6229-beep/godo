@@ -1,0 +1,29 @@
+실운영몰 런칭 직전이야.
+
+현재 main HEAD는 [현재 HEAD]이고,
+고객흐름 tracking pipeline은 Ready-to-Install 상태야.
+
+운영몰은 [기존 테스트몰 전환 / 새 고도몰 쇼핑몰]이야.
+운영 도메인은 [도메인]이고,
+Vercel env 등록 상태는 다음과 같아.
+
+- GODOMALL_* env: 등록 완료 / 예정
+- GODO_BEHAVIOR_STORAGE_BACKEND=postgres: 등록 완료 / 예정
+- DATABASE_URL 또는 POSTGRES_URL: 등록 완료 / 예정
+- GODO_BEHAVIOR_ALLOWED_ORIGINS: 등록 완료 / 예정
+- Postgres schema SQL: 실행 완료 / 예정
+- 상품 등록: 완료 / 진행 중
+- 결제 연동: 완료 / 진행 중
+
+docs/MARKETING_BEHAVIOR_GODO_INTEGRATION_READINESS_V0.md
+docs/MARKETING_BEHAVIOR_GODO_INSTALLATION_CHECKLIST_V0.md
+docs/MARKETING_BEHAVIOR_SHOP_SWITCH_RUNBOOK_V0.md
+기준으로
+
+1. 실운영 연결 순서
+2. Claude Code 작업지시서
+3. 내가 직접 해야 할 Vercel/DB/고도몰 관리자 작업
+4. 검수 체크리스트
+5. rollback 방법
+
+을 정리해줘.
