@@ -445,7 +445,7 @@ const Preview = forwardRef<HTMLDivElement, PreviewProps>(({ data, onOptionLayout
             >
               {data.productNameKr || "상품명"}
             </div>
-            <h3 className="text-5xl font-black text-gray-900 mb-6 uppercase">{data.featureTitle || "특징"}</h3>
+            <h3 className="text-3xl font-black text-gray-900 mb-6 uppercase">{data.featureTitle || "특징"}</h3>
              <div className="w-10 h-1 bg-gray-800"></div>
           </div>
 
@@ -480,7 +480,7 @@ const Preview = forwardRef<HTMLDivElement, PreviewProps>(({ data, onOptionLayout
               {data.productNameKr || "상품명"}
             </div>
             <span className="font-serif text-4xl font-bold italic text-gray-200 mb-[-20px] z-0">Point.01</span>
-            <h3 className="text-6xl font-black text-gray-900 z-10" style={{ textShadow: '2px 2px 0px #fff' }}>{data.point1Title || "POINT 01"}</h3>
+            <h3 className="text-4xl font-black text-gray-900 z-10" style={{ textShadow: '2px 2px 0px #fff' }}>{data.point1Title || "POINT 01"}</h3>
              <div className="w-1 h-12 bg-gray-300 mt-4"></div>
           </div>
 
@@ -521,7 +521,7 @@ const Preview = forwardRef<HTMLDivElement, PreviewProps>(({ data, onOptionLayout
               {data.productNameKr || "상품명"}
             </div>
             <span className="font-serif text-4xl font-bold italic text-gray-200 mb-[-20px] z-0">Point.02</span>
-            <h3 className="text-6xl font-black text-gray-900 z-10" style={{ textShadow: '2px 2px 0px #fff' }}>{data.point2Title || "POINT 02"}</h3>
+            <h3 className="text-4xl font-black text-gray-900 z-10" style={{ textShadow: '2px 2px 0px #fff' }}>{data.point2Title || "POINT 02"}</h3>
              <div className="w-1 h-12 bg-gray-300 mt-4"></div>
           </div>
 
