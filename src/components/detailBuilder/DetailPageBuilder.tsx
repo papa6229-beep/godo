@@ -403,18 +403,17 @@ const App: React.FC = () => {
             <span className="text-xs text-green-400">v3.0</span>
           </h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button
             onClick={toggleAllWatermarks}
-            className="px-3 py-2 border border-purple-200 text-purple-600 bg-purple-50 rounded text-sm font-bold hover:bg-purple-100 transition-all duration-200 ease-out flex items-center gap-2 hover:shadow-[var(--shadow-md)]"
+            className={`db-btn db-btn--ghost${
+              data.watermarkSettings &&
+              Object.values(data.watermarkSettings).some((s: any) => s.show)
+                ? " is-active"
+                : ""
+            }`}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -428,30 +427,26 @@ const App: React.FC = () => {
               ? "끄기"
               : "켜기"}
           </button>
-          <div className="w-px h-8 bg-white/10 mx-1"></div>
-          <button
-            onClick={saveTemporary}
-            className="px-3 py-2 border border-blue-500/30 text-blue-400 bg-blue-500/10 rounded text-sm font-bold hover:bg-blue-500/20 transition-all duration-200 ease-out hover:shadow-[var(--shadow-md)]"
-          >
+          <div className="db-divider"></div>
+          <button onClick={saveTemporary} className="db-btn db-btn--ghost">
             임시 저장
           </button>
-          <button
-            onClick={loadTemporary}
-            className="px-3 py-2 border border-white/10 text-slate-300 bg-white/5 rounded text-sm font-bold hover:bg-white/10 transition-all duration-200 ease-out hover:shadow-[var(--shadow-md)]"
-          >
+          <button onClick={loadTemporary} className="db-btn db-btn--ghost">
             불러오기
           </button>
-          <div className="w-px h-8 bg-white/10 mx-1"></div>
-          <button
-            onClick={exportThumbnails}
-            className="px-4 py-2 border border-white/10 text-slate-300 rounded text-sm font-bold hover:bg-white/10 transition-all duration-200 ease-out hover:shadow-[var(--shadow-md)]"
-          >
+          <div className="db-divider"></div>
+          <button onClick={exportThumbnails} className="db-btn db-btn--ghost">
             썸네일 저장
           </button>
-          <button
-            onClick={exportDetailPage}
-            className="px-4 py-2 bg-[#22C55E] text-black rounded text-sm font-bold hover:bg-[#16A34A] shadow-[var(--shadow-lg)] hover:shadow-[var(--shadow-xl)] transition-all duration-200 ease-out"
-          >
+          <button onClick={exportDetailPage} className="db-btn db-btn--primary">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
+              />
+            </svg>
             전체 이미지 저장
           </button>
         </div>
