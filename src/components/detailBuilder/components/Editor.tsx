@@ -457,7 +457,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                     <div className="mb-3">
                         <input 
                             type="text" 
-                            className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-[11px] placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
+                            className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
+                        style={{ fontSize: '8px' }}
                             placeholder="섹션 타이틀 (기본값: 특징)"
                             value={data.featureTitle || ''} 
                             onChange={(e) => onChange(prev => ({ ...prev, featureTitle: e.target.value }))}
@@ -483,7 +484,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                     <div className="mb-3">
                     <input 
                         type="text" 
-                        className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-[11px] placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
+                        className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
+                        style={{ fontSize: '8px' }}
                         placeholder="섹션 타이틀 (기본값: POINT 01)"
                         value={data.point1Title || ''} 
                         onChange={(e) => onChange(prev => ({ ...prev, point1Title: e.target.value }))}
@@ -512,7 +514,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                  <div className="mb-3">
                     <input 
                         type="text" 
-                        className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-[11px] placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
+                        className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
+                        style={{ fontSize: '8px' }}
                         placeholder="섹션 타이틀 (기본값: POINT 02)"
                         value={data.point2Title || ''} 
                         onChange={(e) => onChange(prev => ({ ...prev, point2Title: e.target.value }))}
