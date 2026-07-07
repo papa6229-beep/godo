@@ -541,8 +541,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
 
       {/* AI Button */}
       <div className="sticky bottom-0 z-50 bg-[#020617]/90 border-t border-white/10 p-4 -mx-6 shadow-2xl backdrop-blur-md">
-        <button onClick={onGenerateAI} disabled={isLoading} className={`w-full py-4 rounded-xl font-black text-lg shadow-[var(--shadow-lg)] transform transition-all duration-200 ease-out flex items-center justify-center gap-2 ${isLoading ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-[#22C55E] text-black hover:bg-[#16A34A] hover:scale-[1.01] hover:shadow-[var(--shadow-xl)]'}`}>
-          {isLoading ? <>AI가 문구 작성중...</> : <>✨ AI 문구 자동 생성하기</>}
+        <button onClick={onGenerateAI} disabled={isLoading} className="db-cta">
+          {isLoading ? <><span className="db-cta-spin"></span>AI가 문구 작성중...</> : <>✨ AI 문구 자동 생성하기</>}
         </button>
       </div>
     </div>
