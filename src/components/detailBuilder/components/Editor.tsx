@@ -178,6 +178,18 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
     }));
   };
 
+  // [고도몰] KEY FEATURE 3블록 변경 (idx 0~2, sub: 'title' | 'desc')
+  const handleKeyFeatureChange = (idx: number, sub: 'title' | 'desc') => (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+    const val = e.target.value;
+    onChange(prev => {
+      const base = (prev.keyFeatures && prev.keyFeatures.length === 3)
+        ? prev.keyFeatures
+        : [{ title: '', desc: '' }, { title: '', desc: '' }, { title: '', desc: '' }];
+      const kf = base.map((item, i) => i === idx ? { ...item, [sub]: val } : item);
+      return { ...prev, keyFeatures: kf };
+    });
+  };
+
   // 이미지 업로드
   const handleImageChange = (key: keyof ProductData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -380,19 +392,50 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
               </div>
             ))}
          </div>
-         <Textarea label="AI 생성 참고용 핵심 요약" value={data.aiSummary} placeholder="예: 강력한 진동, 부드러운 실리콘 재질..." rows={2} targetId="preview-spec" onChange={handleTextChange('aiSummary')} />
-         
-         {/* [추가] 동영상 삽입 (800x450) */}
-         <div className="mt-4 pt-4 border-t border-dashed border-white/10">
-            <ImageUploader 
-                label="동영상 삽입 (이미지)" 
-                subLabel="800x450 권장" 
-                value={data.videoInsertImage} 
-                targetId="preview-spec" 
-                onChange={handleImageChange('videoInsertImage')} 
-                onDelete={() => onChange(prev => ({ ...prev, videoInsertImage: null }))}
-            />
-         </div>
+         {isGodo ? (
+           /* [고도몰] AI 생성 참고용 핵심 특징 3블록 — 메인특징=직접입력(필수, AI 핵심참고), 특징설명=AI 생성 가능 */
+           <div className="mt-2 space-y-4" onClick={() => scrollTo('preview-feature')}>
+             <div className="text-xs font-bold text-emerald-400/90 uppercase tracking-wider">AI 생성 참고용 핵심 특징 (KEY FEATURE)</div>
+             {[0, 1, 2].map((idx) => (
+               <div key={idx} className="p-3 rounded-lg bg-[#0F172A]/40 border border-white/10 space-y-2">
+                 <label className="block text-xs font-bold text-slate-400">메인특징 {idx + 1} <span className="text-rose-400">*직접입력</span></label>
+                 <input
+                   type="text"
+                   className="w-full p-2 border border-white/10 bg-[#0F172A]/60 text-slate-100 rounded text-sm font-bold outline-none focus:ring-1 focus:ring-[#22C55E] placeholder-slate-600"
+                   value={data.keyFeatures?.[idx]?.title || ''}
+                   onChange={handleKeyFeatureChange(idx, 'title')}
+                   onFocus={() => scrollTo('preview-feature')}
+                   placeholder={`예: ${idx === 0 ? '10단 강력 진동' : idx === 1 ? '부드러운 실리콘' : '방수 IPX7'}`}
+                 />
+                 <Textarea
+                   label={`특징 설명 ${idx + 1} (AI 생성 가능)`}
+                   value={data.keyFeatures?.[idx]?.desc || ''}
+                   placeholder="AI가 메인특징을 참고해 작성 · 직접 입력도 가능"
+                   rows={2}
+                   targetId="preview-feature"
+                   onChange={handleKeyFeatureChange(idx, 'desc')}
+                 />
+               </div>
+             ))}
+             <p className="text-[11px] text-slate-500 leading-relaxed">※ 입력한 <b className="text-slate-400">메인특징 3개</b>는 AI가 전체 문구를 생성할 때 핵심 참고자료로 사용됩니다.</p>
+           </div>
+         ) : (
+           <>
+             <Textarea label="AI 생성 참고용 핵심 요약" value={data.aiSummary} placeholder="예: 강력한 진동, 부드러운 실리콘 재질..." rows={2} targetId="preview-spec" onChange={handleTextChange('aiSummary')} />
+
+             {/* [추가] 동영상 삽입 (800x450) — 고도몰 모드에선 비활성(숨김, 필드는 유지) */}
+             <div className="mt-4 pt-4 border-t border-dashed border-white/10">
+                <ImageUploader
+                    label="동영상 삽입 (이미지)"
+                    subLabel="800x450 권장"
+                    value={data.videoInsertImage}
+                    targetId="preview-spec"
+                    onChange={handleImageChange('videoInsertImage')}
+                    onDelete={() => onChange(prev => ({ ...prev, videoInsertImage: null }))}
+                />
+             </div>
+           </>
+         )}
       </section>
 
       {/* 4. 패키지 이미지 정보 (분리됨) */}
