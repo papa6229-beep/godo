@@ -130,7 +130,7 @@ export const generateCopywriting = async (
     keyIdxs.forEach((i) => {
       const tag = `[KEY${i + 1}]`;
       activeSlots.push(tag);
-      structureGuide += `${tag}\n(핵심특징 "${kf[i].title.trim()}"에 대한 4~5줄 설명)\n`;
+      structureGuide += `${tag}\n(핵심특징 "${kf[i].title.trim()}"에 대한 한 줄 설명 — 25자 내외, 줄바꿈 없이)\n`;
     });
   } else {
     activeSlots.push("[FEATURE]");
@@ -198,7 +198,8 @@ export const generateCopywriting = async (
     // 고도몰: 항목별 설명을 keyFeatures[].desc로. title은 사용자 입력 유지.
     out.keyFeatures = [0, 1, 2].map((i) => ({
       title: kf[i]?.title || "",
-      desc: keyIdxs.includes(i) ? extract(`[KEY${i + 1}]`) : (kf[i]?.desc || ""),
+      // ④ 특징설명은 1줄 — 줄바꿈 제거
+      desc: (keyIdxs.includes(i) ? extract(`[KEY${i + 1}]`) : (kf[i]?.desc || "")).replace(/\n+/g, " ").trim(),
     }));
   } else {
     out.aiFeatureDesc = extract("[FEATURE]");

@@ -433,9 +433,11 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
             ))}
          </div>
          {isGodo ? (
-           /* [고도몰] AI 생성 참고용 핵심 특징 3블록 — 메인특징=직접입력(필수, AI 핵심참고), 특징설명=AI 생성 가능 */
+           /* [고도몰] KEY FEATURE — feature 이미지(③ 상단) + 핵심특징 3블록(제목 직접입력 + 설명 1줄 ④) */
            <div className="mt-2 space-y-4" onClick={() => scrollTo('preview-feature')}>
              <div className="text-xs font-bold text-emerald-400/90 uppercase tracking-wider">AI 생성 참고용 핵심 특징 (KEY FEATURE)</div>
+             {/* ③ feature 이미지 삽입 영역을 핵심특징 입력 위로 */}
+             <ImageUploader label="Feature 이미지 (KEY FEATURE 좌측)" value={data.featureImage} targetId="preview-feature" onChange={handleImageChange('featureImage')} onDelete={() => onChange(prev => ({ ...prev, featureImage: null }))} onApplyWatermark={() => applyWatermark('featureImage')} isWatermarkOn={data.watermarkSettings?.['featureImage']?.show} />
              {[0, 1, 2].map((idx) => (
                <div key={idx} className="p-3 rounded-lg bg-[#0F172A]/40 border border-white/10 space-y-2">
                  <label className="block text-xs font-bold text-slate-400">메인특징 {idx + 1} <span className="text-rose-400">*직접입력</span></label>
@@ -447,14 +449,17 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                    onFocus={() => scrollTo('preview-feature')}
                    placeholder={`예: ${idx === 0 ? '10단 강력 진동' : idx === 1 ? '부드러운 실리콘' : '방수 IPX7'}`}
                  />
-                 <Textarea
-                   label={`특징 설명 ${idx + 1} (AI 생성 가능)`}
-                   value={data.keyFeatures?.[idx]?.desc || ''}
-                   placeholder="AI가 메인특징을 참고해 작성 · 직접 입력도 가능"
-                   rows={2}
-                   targetId="preview-feature"
-                   onChange={handleKeyFeatureChange(idx, 'desc')}
-                 />
+                 <div>
+                   <label className="block text-[11px] font-bold text-slate-500 mb-1">특징 설명 {idx + 1} <span className="font-normal">(1줄 · AI 생성 가능)</span></label>
+                   <input
+                     type="text"
+                     className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E] placeholder-slate-600"
+                     value={(data.keyFeatures?.[idx]?.desc || '').replace(/\n+/g, ' ')}
+                     onChange={handleKeyFeatureChange(idx, 'desc')}
+                     onFocus={() => scrollTo('preview-feature')}
+                     placeholder="한 줄 설명 · 직접 입력 또는 AI 생성"
+                   />
+                 </div>
                </div>
              ))}
              <p className="text-[11px] text-slate-500 leading-relaxed">※ 입력한 <b className="text-slate-400">메인특징 3개</b>는 AI가 전체 문구를 생성할 때 핵심 참고자료로 사용됩니다.</p>
@@ -530,15 +535,11 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
       <section className="space-y-6">
          <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">✨ 상세 포인트</h2>
          
-         {/* Feature */}
+         {/* Feature — ③ 고도몰은 위 KEY FEATURE 블록(스펙 섹션)으로 이관되어 여기선 숨김 */}
+         {!isGodo && (
          <div className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-feature')}>
-            <h3 className="font-bold text-slate-300 mb-3">Feature (핵심 특징){isGodo ? ' 이미지' : ''}</h3>
-            {isGodo ? (
-                <>
-                    <ImageUploader label="Feature Image (KEY FEATURE 좌측)" value={data.featureImage} targetId="preview-feature" onChange={handleImageChange('featureImage')} onDelete={() => onChange(prev => ({ ...prev, featureImage: null }))} onApplyWatermark={() => applyWatermark('featureImage')} isWatermarkOn={data.watermarkSettings?.['featureImage']?.show} />
-                    <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">※ 설명 문구는 위 <b className="text-slate-400">핵심특징 3블록</b>이 대체합니다. KEY FEATURE 부제는 스펙 <b className="text-slate-400">'특징'</b>이 자동으로 붙습니다.</p>
-                </>
-            ) : data.featureImage || data.aiFeatureDesc ? (
+            <h3 className="font-bold text-slate-300 mb-3">Feature (핵심 특징)</h3>
+            {data.featureImage || data.aiFeatureDesc ? (
                 <>
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-xs font-bold text-slate-400">Main</span>
@@ -560,6 +561,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                 <button onClick={() => { enableSlot('featureImage'); enableSlot('aiFeatureDesc'); }} className="w-full py-6 border-2 border-dashed border-white/10 rounded-lg text-slate-500 font-bold hover:border-blue-400/50 hover:text-blue-400 hover:bg-blue-900/10 transition-all duration-200 ease-out shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]">+ Feature 섹션 추가하기</button>
             )}
          </div>
+         )}
 
          {/* Point 1 */}
          <div className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-point1')}>
@@ -574,8 +576,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                     <input 
                         type="text" 
                         className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
-                        placeholder="섹션 타이틀 (기본값: POINT 01)"
-                        value={data.point1Title || ''} 
+                        placeholder={isGodo ? "제품의 첫번째 특징을 입력해주세요" : "섹션 타이틀 (기본값: POINT 01)"}
+                        value={data.point1Title || ''}
                         onChange={(e) => onChange(prev => ({ ...prev, point1Title: e.target.value }))}
                     />
                 </div>
@@ -606,8 +608,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                     <input 
                         type="text" 
                         className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm placeholder-slate-500 outline-none focus:ring-1 focus:ring-[#22C55E]"
-                        placeholder="섹션 타이틀 (기본값: POINT 02)"
-                        value={data.point2Title || ''} 
+                        placeholder={isGodo ? "제품의 두번째 특징을 입력해주세요" : "섹션 타이틀 (기본값: POINT 02)"}
+                        value={data.point2Title || ''}
                         onChange={(e) => onChange(prev => ({ ...prev, point2Title: e.target.value }))}
                     />
                  </div>
