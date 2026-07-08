@@ -7,10 +7,15 @@ import React, { forwardRef } from 'react';
 import { Rnd } from 'react-rnd';
 import type { ProductData } from '../types';
 
-// 고도몰 브랜딩(footer·저작권). 사장님 확정 시 이 한 곳만 교체. [1.4에서 섬네일과 함께 확정]
+// 고도몰 브랜딩 단일 소스(footer·섬네일 공용). ⚠️ 사장님 확정 시 이 한 곳만 교체(현재 플레이스홀더).
 export const GODO_BRAND = {
-  name: 'GODO MALL',
+  footerName: 'GODO MALL',
   copyright: 'COPYRIGHT © GODO MALL. ALL RIGHTS RESERVED.',
+  // 섬네일 오버레이용
+  thumbBadge: 'SINCE 2026',
+  thumbSlogan: '프리미엄 셀렉트 스토어',
+  thumbName: '고도몰',
+  thumbUrl: 'godomall.co.kr',
 };
 
 const isGradient = (color: string) => !!color && color.toLowerCase().includes('gradient');
@@ -333,7 +338,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onPack
         {/* ===== Footer (고도몰 브랜딩 · 1.4에서 확정) ===== */}
         <footer className="py-16 text-center bg-gray-900">
           <div className="mb-3">
-            <span className="text-2xl font-black" style={themedText(themeColor)}>{GODO_BRAND.name}</span>
+            <span className="text-2xl font-black" style={themedText(themeColor)}>{GODO_BRAND.footerName}</span>
           </div>
           <p className="text-gray-500 text-xs tracking-[0.2em] font-medium">{GODO_BRAND.copyright}</p>
         </footer>

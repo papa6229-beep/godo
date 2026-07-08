@@ -2,6 +2,7 @@
 import React, { forwardRef } from 'react';
 import { Rnd } from 'react-rnd';
 import type { ProductData } from '../types';
+import { GODO_BRAND } from './PreviewGodo';
 
 interface ThumbnailPreviewProps {
   data: ProductData;
@@ -10,10 +11,16 @@ interface ThumbnailPreviewProps {
   hidePackage?: boolean;
   externalScale?: number; // App에서 축소해서 보여줄 때의 비율 (Rnd 드래그 보정용)
   onLayoutChange?: (layout: { x: number, y: number, width: number, height: number }) => void;
+  layoutMode?: 'bananamall' | 'godo';
 }
 
-const ThumbnailPreview = forwardRef<HTMLDivElement, ThumbnailPreviewProps>(({ data, width, height, hidePackage, externalScale = 1, onLayoutChange }, ref) => {
+const ThumbnailPreview = forwardRef<HTMLDivElement, ThumbnailPreviewProps>(({ data, width, height, hidePackage, externalScale = 1, onLayoutChange, layoutMode = 'bananamall' }, ref) => {
   const image = data.thumbnailImage || data.mainImage;
+
+  // 브랜딩(모드별). 고도몰 값은 GODO_BRAND 단일 소스에서.
+  const brand = layoutMode === 'godo'
+    ? { badge: GODO_BRAND.thumbBadge, slogan: GODO_BRAND.thumbSlogan, name: GODO_BRAND.thumbName, url: GODO_BRAND.thumbUrl }
+    : { badge: 'SINCE 1999', slogan: '대한민국 No.1 성인용품점', name: '바나나몰', url: 'bananamall.co.kr' };
 
   // 썸네일 크기에 따른 스케일 비율 계산 (기준: 500px 너비)
   const scale = width / 500;
@@ -66,13 +73,13 @@ const ThumbnailPreview = forwardRef<HTMLDivElement, ThumbnailPreviewProps>(({ da
               height: `${20 * scale}px`
             }}
           >
-            SINCE 1999
+            {brand.badge}
           </div>
-          <span 
+          <span
             className="text-gray-800 font-bold tracking-tight bg-white/60 backdrop-blur-[1px] px-1 rounded"
             style={{ fontSize: `${13 * scale}px` }}
           >
-            대한민국 No.1 성인용품점
+            {brand.slogan}
           </span>
         </div>
 
@@ -85,7 +92,7 @@ const ThumbnailPreview = forwardRef<HTMLDivElement, ThumbnailPreviewProps>(({ da
               textShadow: `${1 * scale}px 0 0 currentColor`
             }}
           >
-            바나나몰
+            {brand.name}
           </span>
           <span 
             className="font-light text-gray-400"
@@ -109,7 +116,7 @@ const ThumbnailPreview = forwardRef<HTMLDivElement, ThumbnailPreviewProps>(({ da
           className="text-gray-800 font-bold tracking-wide mt-1"
           style={{ fontSize: `${18 * scale}px` }}
         >
-          bananamall.co.kr
+          {brand.url}
         </div>
       </div>
 

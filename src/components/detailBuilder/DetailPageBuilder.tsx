@@ -526,6 +526,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
                             height={preset.height}
                             hidePackage={preset.hidePackage}
                             externalScale={200 / preset.width}
+                            layoutMode={layoutMode}
                             onLayoutChange={handleThumbnailPackageLayoutChange}
                             ref={(el) => (thumbnailRefs.current[i] = el)}
                           />
