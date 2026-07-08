@@ -76,14 +76,24 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
     : [{ title: '', desc: '' }, { title: '', desc: '' }, { title: '', desc: '' }];
   const featureSubtitle = (summaryInfo?.feature || '').trim(); // ⑤ 스펙 '특징' → KEY FEATURE 부제 자동
 
-  // 스펙 가로행: 채워진 항목만(타입/재질/치수/무게/전원). '특징'은 여기 아니라 KEY FEATURE 부제로.
-  const specRow = [
+  // 스펙 2행 배치(②): 1행 타입/재질/치수, 2행 무게/전원(좌측 → 우측 패키지에 안 가림). 채워진 항목만.
+  const specRow1 = [
     { label: '타입', value: summaryInfo?.type },
     { label: '재질', value: summaryInfo?.material },
     { label: '치수', value: summaryInfo?.size },
+  ].filter((s) => (s.value || '').trim());
+  const specRow2 = [
     { label: '무게', value: summaryInfo?.weight },
     { label: '전원', value: summaryInfo?.power },
   ].filter((s) => (s.value || '').trim());
+  const hasSpec = specRow1.length > 0 || specRow2.length > 0;
+  const SpecCol = ({ s }: { s: { label: string; value: string } }) => (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 text-sm font-bold text-gray-500 whitespace-nowrap"><span>{s.label}</span><Dot color={accent} size={9} /></div>
+      <Hairline color="#111827" thickness={2} className="my-2" />
+      <div className="text-[15px] font-black text-gray-900 break-keep leading-snug">{s.value}</div>
+    </div>
+  );
 
   // 워터마크 렌더러
   const RenderWatermark = ({ targetKey }: { targetKey: string }) => {
@@ -112,8 +122,16 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
 
   // Point 섹션 렌더 (01/02 동일 레이아웃: 제목 → 부제 → 설명 → 이미지)
   const renderPoint = (num: string, sectionId: string, title: string | undefined, blocks: [string | undefined, string | null | undefined, string][], topDivider: boolean) => {
-    const active = title || blocks.some(([desc, img]) => desc || img);
-    if (!active) return null;
+    // ⑥ '__ENABLED__' 센티넬(빈 활성 슬롯)은 실제 값이 아님 → 정리.
+    const cleanBlocks = blocks.map(([descRaw, imgRaw, key]) => ({
+      desc: (descRaw && descRaw !== '__ENABLED__') ? descRaw : '',
+      imgReal: imgRaw && imgRaw !== '__ENABLED__' ? imgRaw : '',
+      imgEnabled: imgRaw === '__ENABLED__',
+      key,
+    }));
+    const cleanTitle = (title && title !== '__ENABLED__') ? title : '';
+    const active = cleanTitle || cleanBlocks.some((b) => b.desc || b.imgReal || b.imgEnabled);
+    if (!active) return <div id={sectionId} />; // ⑧ 비활성이어도 스크롤 앵커 유지
     return (
       <React.Fragment>
         {topDivider && (
@@ -122,27 +140,33 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         <section id={sectionId} className="px-[50px]" style={{ paddingTop: sp.section, paddingBottom: sp.section }}>
           <Dot color={accent} size={22} />
           <h2 className={`${SECTION_HEADING} mt-4`}>Point {num}</h2>
-          {title && (
+          {cleanTitle && (
             <p className="flex items-center gap-2 text-2xl font-black text-gray-900 mt-3 break-keep">
-              {title} <Dot color={accent} size={12} />
+              {cleanTitle} <Dot color={accent} size={12} />
             </p>
           )}
           <div className="flex flex-col" style={{ marginTop: sp.heading, gap: sp.element }}>
-            {blocks.map(([desc, img, key], i) => (
-              <React.Fragment key={i}>
-                {desc && (
-                  <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
-                    {renderHighlightText(desc, themeColor)}
-                  </p>
-                )}
-                {img && (
-                  <div className="relative w-full overflow-hidden rounded-2xl">
-                    <img src={img} className="w-full h-auto block" alt={`point-${num}-${i}`} />
-                    <RenderWatermark targetKey={key} />
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
+            {cleanBlocks.map((b, i) => {
+              if (!b.desc && !b.imgReal && !b.imgEnabled) return null;
+              return (
+                <React.Fragment key={i}>
+                  {b.desc && (
+                    <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
+                      {renderHighlightText(b.desc, themeColor)}
+                    </p>
+                  )}
+                  {b.imgReal && (
+                    <div className="relative w-full overflow-hidden rounded-2xl">
+                      <img src={b.imgReal} className="w-full h-auto block" alt={`point-${num}-${i}`} />
+                      <RenderWatermark targetKey={b.key} />
+                    </div>
+                  )}
+                  {!b.imgReal && b.imgEnabled && (
+                    <div className="w-full rounded-2xl bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 font-black text-2xl" style={{ height: 240 }}>이미지 영역</div>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
         </section>
       </React.Fragment>
@@ -189,20 +213,13 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
               {productNameEn || 'PRODUCT ENGLISH NAME'}
             </p>
 
-            {/* 스펙 가로행 — 라벨●/가로라인/값. 긴 값도 컬럼 내 줄바꿈(⑨) */}
-            <div id="preview-spec" className="mt-10">
-              {specRow.length > 0 && (
-                <div className="flex gap-5 items-start">
-                  {specRow.map((s, i) => (
-                    <div key={i} className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 text-sm font-bold text-gray-500 whitespace-nowrap">
-                        <span>{s.label}</span><Dot color={accent} size={9} />
-                      </div>
-                      <Hairline color="#111827" thickness={2} className="my-2" />
-                      <div className="text-[15px] font-black text-gray-900 break-keep leading-snug">{s.value}</div>
-                    </div>
-                  ))}
-                </div>
+            {/* 스펙 2행(②) — 1행 타입/재질/치수, 2행 무게/전원(좌측). 라벨●/가로라인/값, 긴 값 줄바꿈(⑨) */}
+            <div id="preview-spec" className="mt-10 space-y-4">
+              {specRow1.length > 0 && (
+                <div className="grid grid-cols-3 gap-5">{specRow1.map((s, i) => <SpecCol key={i} s={s} />)}</div>
+              )}
+              {specRow2.length > 0 && (
+                <div className="grid grid-cols-3 gap-5">{specRow2.map((s, i) => <SpecCol key={i} s={s} />)}</div>
               )}
             </div>
 
@@ -218,7 +235,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                 className="group z-20"
               >
                 <div className="w-full h-full flex flex-col select-none cursor-move">
-                  <div className="w-full flex-1 bg-white rounded-2xl shadow-[var(--shadow-lg)] border border-gray-100 overflow-hidden flex items-center justify-center">
+                  <div className="w-full flex-1 bg-white rounded-2xl border-2 border-gray-900 overflow-hidden flex items-center justify-center">
                     {packageImage ? (
                       <img src={packageImage} className="w-full h-full object-contain p-2 pointer-events-none" alt="Package" />
                     ) : (
@@ -260,9 +277,9 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                     <Dot color={accent} size={12} />
                     <span className="font-black text-lg text-gray-900 break-keep">{(f.title || '').trim() || `핵심특징 ${i + 1}`}</span>
                   </div>
-                  {(f.desc || '').trim() && (
-                    <p className="text-sm font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
-                      {renderHighlightText(f.desc, themeColor)}
+                  {((f.desc || '').trim() && f.desc !== '__ENABLED__') && (
+                    <p className="text-sm font-medium text-gray-600 leading-snug break-keep truncate">
+                      {renderHighlightText((f.desc || '').replace(/\n+/g, ' '), themeColor)}
                     </p>
                   )}
                 </div>
@@ -285,6 +302,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         )}
 
         {/* ===== OPTION CHECK — 자유 배치(Rnd) 복원 ⑫ ===== */}
+        {options.length === 0 && <div id="preview-option" />}
         {options.length > 0 && (
           <section
             id="preview-option"
@@ -336,6 +354,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         ], true)}
 
         {/* ===== SIZE ===== */}
+        {!(sizeImage || (summaryInfo?.weight || '').trim()) && <div id="preview-size" />}
         {(sizeImage || (summaryInfo?.weight || '').trim()) && (
           <section id="preview-size" className="px-[50px] bg-gray-50" style={{ paddingTop: sp.section, paddingBottom: sp.section }}>
             <h2 className={SECTION_HEADING}>SIZE</h2>
