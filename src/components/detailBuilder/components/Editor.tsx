@@ -296,16 +296,20 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
     return (
         <div className="mt-4 pt-4 border-t border-dashed border-white/10 animate-fade-in-down">
             <div className="text-xs font-bold text-slate-500 mb-2 uppercase">{prefix} - {n}</div>
-            {isImgActive ? (
-                <ImageUploader label={`Image ${prefix === 'point1' ? '1' : '2'}-${n}`} value={(data as any)[imgKey]} targetId={targetId} onDelete={() => removeSlot(imgKey)} onChange={handleImageChange(imgKey)} onApplyWatermark={() => applyWatermark(imgKey)} isWatermarkOn={data.watermarkSettings?.[imgKey]?.show} />
-            ) : (
-                <button onClick={() => enableSlot(imgKey)} className="w-full py-2 mb-4 border border-dashed border-white/10 rounded text-xs text-slate-500 hover:bg-white/5 transition-all duration-200 ease-out shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]">+ 이미지 추가</button>
-            )}
-            {isDescActive ? (
-                <Textarea label={`설명 ${prefix === 'point1' ? '1' : '2'}-${n}`} value={(data as any)[descKey]} placeholder="AI 작성 영역" targetId={targetId} onDelete={() => removeSlot(descKey)} onChange={handleTextChange(descKey)} />
-            ) : (
-                <button onClick={() => enableSlot(descKey)} className="w-full py-2 border border-dashed border-white/10 rounded text-xs text-slate-500 hover:bg-white/5 transition-all duration-200 ease-out shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]">+ 설명 추가</button>
-            )}
+            {(() => {
+                const imgEl = isImgActive ? (
+                    <ImageUploader key="img" label={`Image ${prefix === 'point1' ? '1' : '2'}-${n}`} value={(data as any)[imgKey]} targetId={targetId} onDelete={() => removeSlot(imgKey)} onChange={handleImageChange(imgKey)} onApplyWatermark={() => applyWatermark(imgKey)} isWatermarkOn={data.watermarkSettings?.[imgKey]?.show} />
+                ) : (
+                    <button key="img" onClick={() => enableSlot(imgKey)} className="w-full py-2 border border-dashed border-white/10 rounded text-xs text-slate-500 hover:bg-white/5 transition-all duration-200 ease-out shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]">+ 이미지 추가</button>
+                );
+                const descEl = isDescActive ? (
+                    <Textarea key="desc" label={`설명 ${prefix === 'point1' ? '1' : '2'}-${n}`} value={(data as any)[descKey]} placeholder="AI 작성 영역" targetId={targetId} onDelete={() => removeSlot(descKey)} onChange={handleTextChange(descKey)} />
+                ) : (
+                    <button key="desc" onClick={() => enableSlot(descKey)} className="w-full py-2 border border-dashed border-white/10 rounded text-xs text-slate-500 hover:bg-white/5 transition-all duration-200 ease-out shadow-[var(--shadow-sm)] hover:shadow-[var(--shadow-md)]">+ 설명 추가</button>
+                );
+                // ⑩ 고도몰: 미리보기와 동일하게 설명 → 이미지 순서
+                return isGodo ? [descEl, <div key="gap" className="h-2" />, imgEl] : [imgEl, <div key="gap" className="h-2" />, descEl];
+            })()}
         </div>
     );
   };
@@ -492,8 +496,13 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          
          {/* Feature */}
          <div className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-feature')}>
-            <h3 className="font-bold text-slate-300 mb-3">Feature (핵심 특징)</h3>
-            {data.featureImage || data.aiFeatureDesc ? (
+            <h3 className="font-bold text-slate-300 mb-3">Feature (핵심 특징){isGodo ? ' 이미지' : ''}</h3>
+            {isGodo ? (
+                <>
+                    <ImageUploader label="Feature Image (KEY FEATURE 좌측)" value={data.featureImage} targetId="preview-feature" onChange={handleImageChange('featureImage')} onDelete={() => onChange(prev => ({ ...prev, featureImage: null }))} onApplyWatermark={() => applyWatermark('featureImage')} isWatermarkOn={data.watermarkSettings?.['featureImage']?.show} />
+                    <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">※ 설명 문구는 위 <b className="text-slate-400">핵심특징 3블록</b>이 대체합니다. KEY FEATURE 부제는 스펙 <b className="text-slate-400">'특징'</b>이 자동으로 붙습니다.</p>
+                </>
+            ) : data.featureImage || data.aiFeatureDesc ? (
                 <>
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-xs font-bold text-slate-400">Main</span>
@@ -534,8 +543,11 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                         onChange={(e) => onChange(prev => ({ ...prev, point1Title: e.target.value }))}
                     />
                 </div>
-                <ImageUploader label="Image 1-1" value={data.point1Image1} targetId="preview-point1" onChange={handleImageChange('point1Image1')} onDelete={() => removeSlot('point1Image1')} onApplyWatermark={() => applyWatermark('point1Image1')} isWatermarkOn={data.watermarkSettings?.['point1Image1']?.show} />
-                <Textarea label="설명 1-1" value={data.aiPoint1Desc} placeholder="AI 작성 영역" targetId="preview-point1" onChange={handleTextChange('aiPoint1Desc')} onDelete={() => removeSlot('aiPoint1Desc')} />
+                {(() => {
+                    const img = <ImageUploader key="i" label="Image 1-1" value={data.point1Image1} targetId="preview-point1" onChange={handleImageChange('point1Image1')} onDelete={() => removeSlot('point1Image1')} onApplyWatermark={() => applyWatermark('point1Image1')} isWatermarkOn={data.watermarkSettings?.['point1Image1']?.show} />;
+                    const desc = <Textarea key="d" label="설명 1-1" value={data.aiPoint1Desc} placeholder="AI 작성 영역" targetId="preview-point1" onChange={handleTextChange('aiPoint1Desc')} onDelete={() => removeSlot('aiPoint1Desc')} />;
+                    return isGodo ? [desc, img] : [img, desc];
+                })()}
                 
                 {renderSubPoint(2, 'point1', 'preview-point1')}
                 {renderSubPoint(3, 'point1', 'preview-point1')}
@@ -563,8 +575,11 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
                         onChange={(e) => onChange(prev => ({ ...prev, point2Title: e.target.value }))}
                     />
                  </div>
-                 <ImageUploader label="Image 2-1" value={data.point2Image1} targetId="preview-point2" onChange={handleImageChange('point2Image1')} onDelete={() => removeSlot('point2Image1')} onApplyWatermark={() => applyWatermark('point2Image1')} isWatermarkOn={data.watermarkSettings?.['point2Image1']?.show} />
-                 <Textarea label="설명 2-1" value={data.aiPoint2Desc} placeholder="AI 작성 영역" targetId="preview-point2" onChange={handleTextChange('aiPoint2Desc')} onDelete={() => removeSlot('aiPoint2Desc')} />
+                 {(() => {
+                    const img = <ImageUploader key="i" label="Image 2-1" value={data.point2Image1} targetId="preview-point2" onChange={handleImageChange('point2Image1')} onDelete={() => removeSlot('point2Image1')} onApplyWatermark={() => applyWatermark('point2Image1')} isWatermarkOn={data.watermarkSettings?.['point2Image1']?.show} />;
+                    const desc = <Textarea key="d" label="설명 2-1" value={data.aiPoint2Desc} placeholder="AI 작성 영역" targetId="preview-point2" onChange={handleTextChange('aiPoint2Desc')} onDelete={() => removeSlot('aiPoint2Desc')} />;
+                    return isGodo ? [desc, img] : [img, desc];
+                 })()}
                  
                  {renderSubPoint(2, 'point2', 'preview-point2')}
                  {renderSubPoint(3, 'point2', 'preview-point2')}
