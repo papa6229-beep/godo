@@ -13,6 +13,7 @@ import { getModels, getChatCompletion } from "../../../services/lmsConnector";
 // 섹션 태그 → ProductData 이미지 필드 매핑 (해당 섹션의 실제 사진을 vision으로 묘사)
 const SLOT_IMAGE_FIELD: Record<string, keyof ProductData> = {
   "[FEATURE]": "featureImage",
+  "[KEYIMG]": "featureImage", // [고도몰] KEY FEATURE 좌측 이미지(vision 참고용, 구조태그 아님)
   "[POINT1_1]": "point1Image1",
   "[POINT1_2]": "point1Image2",
   "[POINT1_3]": "point1Image3",
@@ -117,9 +118,26 @@ export const generateCopywriting = async (
     throw new Error('디자인팀 AI가 연결되어 있지 않습니다.\nAI 직원 설정에서 디자인팀 AI(로컬 언센서드 권장)를 먼저 연결해주세요.');
   }
 
+  // [고도몰] KEY FEATURE 3블록: 사용자가 메인특징(title)을 넣었으면 그 항목별 설명을 생성.
+  const kf = Array.isArray(data.keyFeatures) ? data.keyFeatures : [];
+  const keyIdxs = [0, 1, 2].filter((i) => (kf[i]?.title || "").trim());
+  const useKeyFeatures = keyIdxs.length > 0;
+
   // 어떤 섹션 문구를 생성할지(입력된 이미지/설명 유무로 판단).
-  const activeSlots: string[] = ["[FEATURE]", "[POINT1_1]"];
-  let structureGuide = `[FEATURE]\n(메인 특징 요약)\n[POINT1_1]\n(포인트1-1 설명)\n`;
+  const activeSlots: string[] = [];
+  let structureGuide = "";
+  if (useKeyFeatures) {
+    keyIdxs.forEach((i) => {
+      const tag = `[KEY${i + 1}]`;
+      activeSlots.push(tag);
+      structureGuide += `${tag}\n(핵심특징 "${kf[i].title.trim()}"에 대한 4~5줄 설명)\n`;
+    });
+  } else {
+    activeSlots.push("[FEATURE]");
+    structureGuide += `[FEATURE]\n(메인 특징 요약)\n`;
+  }
+  activeSlots.push("[POINT1_1]");
+  structureGuide += `[POINT1_1]\n(포인트1-1 설명)\n`;
   const addSlot = (tag: string, guide: string, has: unknown) => { if (has) { activeSlots.push(tag); structureGuide += guide; } };
   addSlot("[POINT1_2]", `[POINT1_2]\n(포인트1-2 설명)\n`, data.point1Image2 || data.aiPoint1Desc2);
   addSlot("[POINT1_3]", `[POINT1_3]\n(포인트1-3 설명)\n`, data.point1Image3 || data.aiPoint1Desc3);
@@ -128,7 +146,16 @@ export const generateCopywriting = async (
   addSlot("[POINT2_3]", `[POINT2_3]\n(포인트2-3 설명)\n`, (data as { point2Image3?: unknown }).point2Image3 || data.aiPoint2Desc3);
 
   // 하이브리드: 디자인 두뇌가 로컬(LM Studio)이면 로드된 VLM으로 각 섹션 이미지를 먼저 묘사.
-  const visionGuide = brain.providerId === 'local_lmstudio' ? await buildVisionGuide(data, activeSlots) : '';
+  // 고도몰 모드에선 KEY FEATURE 좌측 이미지(featureImage)도 묘사에 포함.
+  const visionSlots = useKeyFeatures ? ["[KEYIMG]", ...activeSlots] : activeSlots;
+  const visionGuide = brain.providerId === 'local_lmstudio' ? await buildVisionGuide(data, visionSlots) : '';
+
+  // 고도몰: 사용자가 지정한 핵심 특징 3가지 — AI가 반드시 반영할 핵심 참고자료.
+  const keyFeatureRef = useKeyFeatures
+    ? `\n\n[반드시 반영할 핵심 특징 — 사용자 지정]\n` +
+      keyIdxs.map((i) => `${i + 1}. ${kf[i].title.trim()}`).join("\n") +
+      `\n(각 [KEY#] 섹션은 해당 번호의 핵심 특징을 설명하는 문구여야 합니다.)`
+    : "";
 
   const systemPrompt =
     `당신은 쇼핑몰의 수석 카피라이터입니다. 제공된 상품 스펙(요약정보)을 바탕으로 판매 실적을 높일 매혹적이고 설득력 있는 상세페이지 문구를 작성하세요.\n` +
@@ -143,7 +170,7 @@ export const generateCopywriting = async (
   const userTextPrompt =
     `상품명: ${data.productNameKr || '(미입력)'}\n브랜드: ${data.brandName || ''}\n\n[핵심 스펙 및 요약 정보]\n` +
     `${Array.isArray(data.summaryInfo) ? (data.summaryInfo as unknown[]).join('\n') : JSON.stringify(data.summaryInfo, null, 1)}` +
-    `${visionGuide}\n\n` +
+    `${keyFeatureRef}${visionGuide}\n\n` +
     `위 스펙${visionGuide ? '과 이미지 분석' : ''}을 바탕으로 각 섹션(태그)에 4~5줄 분량의 상세페이지 문구를 써주세요.`;
 
   const result = await chatWithProvider({
@@ -167,7 +194,15 @@ export const generateCopywriting = async (
   };
 
   const out: Partial<ProductData> = {};
-  out.aiFeatureDesc = extract("[FEATURE]");
+  if (useKeyFeatures) {
+    // 고도몰: 항목별 설명을 keyFeatures[].desc로. title은 사용자 입력 유지.
+    out.keyFeatures = [0, 1, 2].map((i) => ({
+      title: kf[i]?.title || "",
+      desc: keyIdxs.includes(i) ? extract(`[KEY${i + 1}]`) : (kf[i]?.desc || ""),
+    }));
+  } else {
+    out.aiFeatureDesc = extract("[FEATURE]");
+  }
   out.aiPoint1Desc = extract("[POINT1_1]");
   if (activeSlots.includes("[POINT1_2]")) out.aiPoint1Desc2 = extract("[POINT1_2]");
   if (activeSlots.includes("[POINT1_3]")) out.aiPoint1Desc3 = extract("[POINT1_3]");
