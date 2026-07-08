@@ -68,6 +68,10 @@ export interface ProductData {
   aiSummary: string;
   aiFeatureDesc: string;
   featureTitle?: string; // [추가] 특징 섹션 타이틀
+
+  // [고도몰] KEY FEATURE 핵심 특징 3블록 — title=직접입력(필수), desc=AI 생성 가능.
+  // godo 레이아웃에서 aiSummary(히어로 3줄)를 대체하여 KEY FEATURE 우측 3항목으로 렌더.
+  keyFeatures?: { title: string; desc: string }[];
   
   // POINT 1 Descriptions
   aiPoint1Desc: string;
