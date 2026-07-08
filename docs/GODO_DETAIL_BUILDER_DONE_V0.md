@@ -47,5 +47,16 @@
 - 검증: tsc0/build green/Playwright(실사진 시드 전 섹션 대조·간격 실측·실클릭 스크롤·콘솔0). main push: 11건 `6aa49b9` + 간격기능(본 커밋).
 - 잔여(사장님 확인 후): GODO_BRAND 실값, Point 하위블록 개별 소제목(선택).
 
+## 2차 검수 반영 (2026-07-08, 사장님 8건)
+1. 패키지 = 흰 박스 + **검정 테두리**(예제 스타일).
+2. 스펙 **2행 배치**: 1행 타입/재질/치수, 2행 무게/전원(좌측) → 패키지에 안 가림.
+3. 좌측 Editor: feature 이미지 삽입을 **핵심특징 입력 위로** 이관(상세포인트 Feature 섹션 godo 숨김).
+4. 핵심특징 **설명 1줄**(Editor 단일행 + AI 1줄 생성/줄바꿈 제거 + 미리보기 truncate).
+5. **feature 이미지 마우스 크기·위치**(KEY FEATURE 좌측 Rnd 드래그/리사이즈 · `featureImageLayout`). *중첩 컨테이너 controlled-position 오프셋 버그 → default+remount key로 회피.*
+6. Point 활성 빈상태 정리: `__ENABLED__` 제거 + 엑박 대신 **'이미지 영역' 플레이스홀더**, 좌측 타이틀 placeholder='제품의 N번째 특징을 입력해주세요'.
+7. **간격 마우스 드래그**: 각 섹션 상단 `⇕ 간격` 핸들 세로 드래그로 `godoSpacing.section` 조절(hover 노출·export 숨김). 수치 패널도 병존(정밀 조절).
+8. **양방향 스크롤 동기화**: 좌측 입력 focus→미리보기 이동(빈 섹션 앵커 유지) + **미리보기 섹션 클릭→좌측 입력부 이동**(editor-* 앵커).
+- 검증: tsc0/build green/Playwright(패키지테두리·스펙2행·feature이미지 Rnd 위치 실측·역방향 스크롤 실측·빈포인트·콘솔0). main push: 6건 `3d6f0aa` + 드래그3건(본 커밋).
+
 ## 다음
 하위 프로젝트 **[2] 엑셀 업로드 → ProductData 프리필** 착수(메인몰 엑셀 → 생성기 좌측 입력부 로드).

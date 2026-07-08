@@ -434,7 +434,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          </div>
          {isGodo ? (
            /* [고도몰] KEY FEATURE — feature 이미지(③ 상단) + 핵심특징 3블록(제목 직접입력 + 설명 1줄 ④) */
-           <div className="mt-2 space-y-4" onClick={() => scrollTo('preview-feature')}>
+           <div id="editor-feature" className="mt-2 space-y-4" onClick={() => scrollTo('preview-feature')}>
              <div className="text-xs font-bold text-emerald-400/90 uppercase tracking-wider">AI 생성 참고용 핵심 특징 (KEY FEATURE)</div>
              {/* ③ feature 이미지 삽입 영역을 핵심특징 입력 위로 */}
              <ImageUploader label="Feature 이미지 (KEY FEATURE 좌측)" value={data.featureImage} targetId="preview-feature" onChange={handleImageChange('featureImage')} onDelete={() => onChange(prev => ({ ...prev, featureImage: null }))} onApplyWatermark={() => applyWatermark('featureImage')} isWatermarkOn={data.watermarkSettings?.['featureImage']?.show} />
@@ -508,7 +508,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
       </section>
 
       {/* 5. 옵션 */}
-      <section className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-option')}>
+      <section id="editor-option" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-option')}>
          <div className="flex justify-between items-center mb-4">
              <h2 className="text-md font-bold text-white font-mono">✨ 추가 옵션 (Option)</h2>
              <button onClick={addOption} className="text-xs bg-white/10 text-slate-400 px-3 py-1.5 rounded hover:bg-white/20 hover:text-white transition-all duration-200 ease-out shadow-sm hover:shadow-md">+ 추가</button>
@@ -564,7 +564,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          )}
 
          {/* Point 1 */}
-         <div className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-point1')}>
+         <div id="editor-point1" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-point1')}>
             <h3 className="font-bold text-slate-300 mb-3">Point 01</h3>
             {data.point1Image1 || data.aiPoint1Desc || (data as any).point1Image2 || (data as any).point1Image3 ? (
              <>
@@ -596,7 +596,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          </div>
 
          {/* Point 2 */}
-         <div className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-point2')}>
+         <div id="editor-point2" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-point2')}>
             <h3 className="font-bold text-slate-300 mb-3">Point 02</h3>
             {data.point2Image1 || data.aiPoint2Desc ? (
                <>
@@ -628,7 +628,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          </div>
 
          {/* Size & Thumb */}
-         <div className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-size')}>
+         <div id="editor-size" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-size')}>
             <h2 className="text-md font-bold text-white mb-3">📏 사이즈 및 썸네일</h2>
             <div className="grid grid-cols-2 gap-4">
                 <ImageUploader label="Size Detail" value={data.sizeImage} targetId="preview-size" onChange={handleImageChange('sizeImage')} onDelete={() => removeSlot('sizeImage')} onApplyWatermark={() => applyWatermark('sizeImage')} isWatermarkOn={data.watermarkSettings?.['sizeImage']?.show} />
