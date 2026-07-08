@@ -76,6 +76,9 @@ export interface ProductData {
   // [고도몰] 레이아웃 간격 수동 조절(data에 저장 → 임시저장/불러오기로 고정).
   // section=섹션 상하 여백, element=요소 간격(이미지↔텍스트), heading=제목↔내용 간격 (px)
   godoSpacing?: { section: number; element: number; heading: number };
+
+  // [고도몰] KEY FEATURE 좌측 이미지 마우스 크기·위치(드래그/리사이즈)
+  featureImageLayout?: { x: number; y: number; width: number; height: number };
   
   // POINT 1 Descriptions
   aiPoint1Desc: string;
