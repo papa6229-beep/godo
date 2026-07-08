@@ -68,6 +68,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
   } = data;
 
   const accent = themeColor;
+  // ⑪ 수동 간격(px): section=섹션 상하여백, element=요소 간격, heading=제목↔내용
+  const sp = data.godoSpacing || { section: 64, element: 24, heading: 40 };
   const maker = (brandName || summaryInfo?.maker || '').trim();
   const keyFeatures = data.keyFeatures && data.keyFeatures.length === 3
     ? data.keyFeatures
@@ -117,7 +119,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         {topDivider && (
           <div className="px-[50px]"><Hairline color="#111827" thickness={1} /></div>
         )}
-        <section id={sectionId} className="px-[50px] py-16">
+        <section id={sectionId} className="px-[50px]" style={{ paddingTop: sp.section, paddingBottom: sp.section }}>
           <Dot color={accent} size={22} />
           <h2 className={`${SECTION_HEADING} mt-4`}>Point {num}</h2>
           {title && (
@@ -125,7 +127,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
               {title} <Dot color={accent} size={12} />
             </p>
           )}
-          <div className="mt-6 space-y-6">
+          <div className="flex flex-col" style={{ marginTop: sp.heading, gap: sp.element }}>
             {blocks.map(([desc, img, key], i) => (
               <React.Fragment key={i}>
                 {desc && (
@@ -159,7 +161,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         style={{ width: 800, minHeight: 1200, fontFamily: 'Pretendard, "Pretendard Variable", -apple-system, sans-serif' }}
       >
         {/* ===== HERO ===== */}
-        <header id="preview-top" className="px-[50px] pt-14 pb-10">
+        <header id="preview-top" className="px-[50px] pt-14" style={{ paddingBottom: sp.section }}>
           {/* 제조사 (우상단 고정) */}
           <div className="text-right mb-3">
             <span className="text-2xl font-black tracking-tight text-gray-900">{maker || 'BRAND'}</span>
@@ -234,13 +236,13 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         </header>
 
         {/* ===== KEY FEATURE (상시 활성 ④: feature 이미지 슬롯 + 3항목 항상 노출) ===== */}
-        <section id="preview-feature" className="px-[50px] py-16">
+        <section id="preview-feature" className="px-[50px]" style={{ paddingTop: sp.section, paddingBottom: sp.section }}>
           <Dot color={accent} size={22} />
           <h2 className={`${SECTION_HEADING} mt-4`}>KEY<br />FEATURE</h2>
           {featureSubtitle && (
             <p className="mt-3 text-lg font-bold text-gray-500 break-keep">{featureSubtitle}</p>
           )}
-          <div className="flex gap-6 mt-10 items-start">
+          <div className="flex gap-6 items-start" style={{ marginTop: sp.heading }}>
             {/* 좌: 특징 이미지(상시) */}
             <div className="w-[300px] flex-shrink-0 relative rounded-2xl overflow-hidden bg-gray-50">
               {featureImage ? (
@@ -251,7 +253,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
               <RenderWatermark targetKey="featureImage" />
             </div>
             {/* 우: 핵심특징 3항목(상시) */}
-            <div className="flex-1 space-y-4">
+            <div className="flex-1 flex flex-col" style={{ gap: sp.element }}>
               {keyFeatures.map((f, i) => (
                 <div key={i} className="bg-gray-100 rounded-xl px-5 py-4">
                   <div className="flex items-center gap-2 mb-1.5">
@@ -286,12 +288,12 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         {options.length > 0 && (
           <section
             id="preview-option"
-            className="px-[50px] py-16"
-            style={{ minHeight: 260 + Math.max(0, ...options.map((o) => (o.y || 0) + (o.height || 400))) }}
+            className="px-[50px]"
+            style={{ paddingTop: sp.section, paddingBottom: sp.section, minHeight: 260 + Math.max(0, ...options.map((o) => (o.y || 0) + (o.height || 400))) }}
           >
             <Dot color={accent} size={22} />
             <h2 className={`${SECTION_HEADING} mt-4`}>OPTION<br />CHECK</h2>
-            <div className="relative w-full mt-10" style={{ minHeight: 420 }}>
+            <div className="relative w-full" style={{ minHeight: 420, marginTop: sp.heading }}>
               {options.map((opt) => (
                 <Rnd
                   key={opt.id}
@@ -335,7 +337,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
 
         {/* ===== SIZE ===== */}
         {(sizeImage || (summaryInfo?.weight || '').trim()) && (
-          <section id="preview-size" className="px-[50px] py-16 bg-gray-50">
+          <section id="preview-size" className="px-[50px] bg-gray-50" style={{ paddingTop: sp.section, paddingBottom: sp.section }}>
             <h2 className={SECTION_HEADING}>SIZE</h2>
             <p className="flex items-center gap-2 text-base font-bold text-gray-500 mt-2 break-keep">
               측정 방법에 따라 약간의 오차가 있을 수 있습니다 <Dot color={accent} size={12} />

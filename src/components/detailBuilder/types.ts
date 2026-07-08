@@ -72,6 +72,10 @@ export interface ProductData {
   // [고도몰] KEY FEATURE 핵심 특징 3블록 — title=직접입력(필수), desc=AI 생성 가능.
   // godo 레이아웃에서 aiSummary(히어로 3줄)를 대체하여 KEY FEATURE 우측 3항목으로 렌더.
   keyFeatures?: { title: string; desc: string }[];
+
+  // [고도몰] 레이아웃 간격 수동 조절(data에 저장 → 임시저장/불러오기로 고정).
+  // section=섹션 상하 여백, element=요소 간격(이미지↔텍스트), heading=제목↔내용 간격 (px)
+  godoSpacing?: { section: number; element: number; heading: number };
   
   // POINT 1 Descriptions
   aiPoint1Desc: string;
