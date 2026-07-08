@@ -7,6 +7,7 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import Editor from "./components/Editor";
 import Preview from "./components/Preview";
+import PreviewGodo from "./components/PreviewGodo";
 import ThumbnailPreview from "./components/ThumbnailPreview";
 import { generateCopywriting } from "./services/geminiService";
 // 이식 회귀 수정: 원본은 Tailwind preflight ON에서 제작 → GODO는 전역 preflight를 꺼서
@@ -475,14 +476,24 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
           <div className="flex flex-col items-center gap-10 min-w-[800px] pb-20">
             {/* 상세페이지 프리뷰 */}
             <div className="shadow-[var(--shadow-2xl)] bg-white transition-all duration-200 ease-out">
-              <Preview
-                data={data}
-                ref={detailRef}
-                layoutMode={layoutMode}
-                onOptionLayoutChange={handleOptionLayoutChange}
-                onPackageLayoutChange={handlePackageLayoutChange}
-                onWatermarkLayoutChange={handleWatermarkLayoutChange}
-              />
+              {isGodo ? (
+                <PreviewGodo
+                  data={data}
+                  ref={detailRef}
+                  onOptionLayoutChange={handleOptionLayoutChange}
+                  onPackageLayoutChange={handlePackageLayoutChange}
+                  onWatermarkLayoutChange={handleWatermarkLayoutChange}
+                />
+              ) : (
+                <Preview
+                  data={data}
+                  ref={detailRef}
+                  layoutMode={layoutMode}
+                  onOptionLayoutChange={handleOptionLayoutChange}
+                  onPackageLayoutChange={handlePackageLayoutChange}
+                  onWatermarkLayoutChange={handleWatermarkLayoutChange}
+                />
+              )}
             </div>
 
             {/* 썸네일 프리뷰 */}
