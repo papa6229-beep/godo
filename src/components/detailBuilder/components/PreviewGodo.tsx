@@ -79,8 +79,24 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
   // ⑪ 수동 간격(px): section=섹션 상하여백, element=블록 사이(이미지↔다음설명), heading=제목↔내용
   const sp = data.godoSpacing || { section: 56, element: 32, heading: 24 };
   const BLOCK_INNER_GAP = 12; // ⑨ 설명↔자기 이미지: 항상 가깝게(블록 내부 고정)
-  // ⑤ KEY FEATURE 이미지 마우스 위치·크기
-  const fl = data.featureImageLayout || { x: 0, y: 0, width: 300, height: 380 };
+  // ⑤ KEY FEATURE 이미지 마우스 위치·크기 (react-rnd 오프셋 버그 회피 → 커스텀 absolute 드래그/리사이즈)
+  const fl = data.featureImageLayout || { x: 0, y: 0, width: 320, height: 380 };
+  const startFeatureDrag = (e: React.MouseEvent) => {
+    if (!onFeatureImageLayoutChange) return;
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, y0 = e.clientY, fx = fl.x || 0, fy = fl.y || 0;
+    const move = (ev: MouseEvent) => onFeatureImageLayoutChange({ x: fx + (ev.clientX - x0), y: fy + (ev.clientY - y0), width: fl.width || 320, height: fl.height || 380 });
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  };
+  const startFeatureResize = (e: React.MouseEvent) => {
+    if (!onFeatureImageLayoutChange) return;
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, y0 = e.clientY, fw = fl.width || 320, fh = fl.height || 380;
+    const move = (ev: MouseEvent) => onFeatureImageLayoutChange({ x: fl.x || 0, y: fl.y || 0, width: Math.max(120, fw + (ev.clientX - x0)), height: Math.max(120, fh + (ev.clientY - y0)) });
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  };
 
   // 공통 간격 드래그 핸들 생성기(kind: 'section'|'heading'|'element'). export 시 hover-off로 숨김.
   const makeDrag = (kind: 'section' | 'heading' | 'element', step: number) => (e: React.MouseEvent) => {
@@ -201,13 +217,13 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                     </p>
                   )}
                   {b.imgReal && (
-                    <div className="relative w-full overflow-hidden rounded-2xl">
+                    <div className="relative w-full overflow-hidden">
                       <img src={b.imgReal} className="w-full h-auto block" alt={`point-${num}-${i}`} />
                       <RenderWatermark targetKey={b.key} />
                     </div>
                   )}
                   {!b.imgReal && b.imgEnabled && (
-                    <div className="w-full rounded-2xl bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 font-black text-2xl" style={{ height: 240 }}>이미지 영역</div>
+                    <div className="w-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 font-black text-2xl" style={{ height: 240 }}>이미지 영역</div>
                   )}
                   </div>
                 </React.Fragment>
@@ -232,8 +248,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
       >
         {/* ===== HERO ===== */}
         <header id="preview-top" className="px-[50px] pt-14" style={{ paddingBottom: sp.section }}>
-          {/* 제조사 (우상단 고정) */}
-          <div className="text-right mb-3">
+          {/* 제조사 (우상단 고정) — ① 브랜드 입력 시 여기로 스크롤 */}
+          <div id="preview-maker" className="text-right mb-3">
             <span className="text-2xl font-black tracking-tight text-gray-900">{maker || 'BRAND'}</span>
           </div>
 
@@ -281,14 +297,15 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                 className="group z-20"
               >
                 <div className="w-full h-full flex flex-col select-none cursor-move">
-                  <div className="w-full flex-1 bg-white rounded-2xl overflow-hidden flex items-center justify-center" style={{ border: '2px solid #111827' }}>
+                  {/* ②박스와 하단 바 동일 너비·직각(라운드 제거)·일체형 */}
+                  <div className="w-full flex-1 bg-white overflow-hidden flex items-center justify-center" style={{ border: '2px solid #111827', borderBottom: 'none' }}>
                     {packageImage ? (
                       <img src={packageImage} className="w-full h-full object-contain p-2 pointer-events-none" alt="Package" />
                     ) : (
                       <span className="text-gray-300 font-bold text-sm pointer-events-none">PACKAGE</span>
                     )}
                   </div>
-                  <div className="bg-gray-900 text-white text-center font-black text-sm tracking-wide py-2 rounded-xl -mt-3 mx-3 relative z-10 shadow-md pointer-events-none">
+                  <div className="w-full bg-gray-900 text-white text-center font-black text-sm tracking-wide py-2 pointer-events-none">
                     package desing
                   </div>
                   <div className="absolute bottom-0 right-0 w-4 h-4 bg-blue-400 rounded-full opacity-0 group-hover:opacity-100 cursor-nwse-resize"></div>
@@ -307,17 +324,9 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
             <p className="mt-3 text-lg font-bold text-gray-500 break-keep">{featureSubtitle}</p>
           )}
           <GapBar kind="heading" />
-          {/* ⑤ 좌: 특징 이미지(투명 박스·이미지 비율대로) + 우: 핵심특징 3항목 */}
-          <div className="flex gap-6 items-start">
-            <div className="w-[320px] flex-shrink-0 relative rounded-2xl overflow-hidden">
-              {featureImage ? (
-                <img src={featureImage} className="w-full h-auto block" alt="Feature" />
-              ) : (
-                <div className="w-full aspect-square flex items-center justify-center text-gray-300 font-bold bg-gray-50 rounded-2xl">FEATURE</div>
-              )}
-              <RenderWatermark targetKey="featureImage" />
-            </div>
-            <div className="flex-1 flex flex-col" style={{ gap: sp.element }}>
+          {/* ⑤투명 박스 + ④마우스 드래그/리사이즈(커스텀). 우: 핵심특징 3항목(우측 고정) */}
+          <div className="relative w-full" style={{ height: Math.max((fl.y || 0) + (fl.height || 380) + 10, 440) }}>
+            <div className="absolute right-0 top-0 w-[360px] flex flex-col" style={{ gap: sp.element }}>
               {keyFeatures.map((f, i) => (
                 <div key={i} className="bg-gray-100 rounded-xl px-5 py-4">
                   <div className="flex items-center gap-2 mb-1.5">
@@ -331,6 +340,16 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                   )}
                 </div>
               ))}
+            </div>
+            {/* 좌: 특징 이미지(투명·드래그/리사이즈). absolute left/top → transform 오프셋 버그 없음 */}
+            <div className="absolute group/fi overflow-hidden" style={{ left: fl.x || 0, top: fl.y || 0, width: fl.width || 320, height: fl.height || 380, cursor: 'move', zIndex: 10 }} onMouseDown={startFeatureDrag}>
+              {featureImage ? (
+                <img src={featureImage} className="w-full h-full object-contain block pointer-events-none select-none" alt="Feature" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-300 font-bold bg-gray-50">FEATURE</div>
+              )}
+              <RenderWatermark targetKey="featureImage" />
+              <div onMouseDown={startFeatureResize} title="드래그하여 크기 조절" className="absolute -bottom-1 -right-1 w-5 h-5 bg-blue-500 border-2 border-white rounded-full opacity-0 group-hover/fi:opacity-100 cursor-nwse-resize z-20"></div>
             </div>
           </div>
         </section>
@@ -373,14 +392,14 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                   className="group z-10"
                 >
                   <div className="w-full h-full flex flex-col select-none cursor-move">
-                    <div className="w-full flex-1 rounded-2xl border border-gray-200 bg-white overflow-hidden flex items-center justify-center">
+                    <div className="w-full flex-1 bg-white overflow-hidden flex items-center justify-center" style={{ border: '1px solid #e5e7eb', borderBottom: 'none' }}>
                       {opt.image ? (
                         <img src={opt.image} className="w-full h-full object-contain p-3 pointer-events-none" alt={opt.name} />
                       ) : (
                         <span className="text-gray-300 font-bold text-sm pointer-events-none">NO IMAGE</span>
                       )}
                     </div>
-                    <div className="bg-gray-900 text-white text-center font-bold py-2.5 rounded-xl -mt-3 mx-3 relative z-10 shadow-md break-keep pointer-events-none">
+                    <div className="w-full bg-gray-900 text-white text-center font-bold py-2.5 break-keep pointer-events-none">
                       {opt.name || '옵션명'}
                     </div>
                     <div className="absolute bottom-0 right-0 w-4 h-4 bg-blue-400 rounded-full opacity-0 group-hover:opacity-100 cursor-nwse-resize"></div>
@@ -412,7 +431,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
             <p className="flex items-center gap-2 text-base font-bold text-gray-500 mt-2 break-keep">
               측정 방법에 따라 약간의 오차가 있을 수 있습니다 <Dot color={accent} size={12} />
             </p>
-            <div className="mt-8 rounded-2xl bg-white p-6 relative overflow-hidden">
+            <div className="mt-8 bg-white p-6 relative overflow-hidden">
               {sizeImage ? (
                 <img src={sizeImage} className="w-full h-auto block" alt="Size" />
               ) : (

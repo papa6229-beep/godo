@@ -333,8 +333,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
   return (
     <div className="p-6 pb-32 space-y-8 relative">
       
-      {/* 1. 기본 설정 */}
-      <section className="space-y-4" onClick={() => scrollTo('preview-top')}>
+      {/* 1. 기본 설정 — ① godo는 섹션 onClick 제거(입력창 onFocus가 각자 위치로 스크롤하도록, 덮어쓰기 방지) */}
+      <section className="space-y-4" onClick={isGodo ? undefined : () => scrollTo('preview-top')}>
         <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">📂 기본 설정</h2>
         <div className="mb-4">
             <label className="block text-sm font-bold text-slate-500 mb-2">컬러 테마</label>
@@ -363,34 +363,11 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
         </div>
         <div>
            <label className="block text-sm font-bold text-slate-500 mb-1">제조사/브랜드명</label>
-           <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-medium placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.brandName} onChange={handleTextChange('brandName')} onFocus={() => scrollTo(isGodo ? 'preview-name' : 'preview-top')} placeholder="예: BANANA MALL" />
+           <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-medium placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.brandName} onChange={handleTextChange('brandName')} onFocus={() => scrollTo(isGodo ? 'preview-maker' : 'preview-top')} placeholder="예: BANANA MALL" />
         </div>
       </section>
 
-      {/* [고도몰] 레이아웃 간격 조절 — 조절 후 상단 '임시 저장'으로 고정됩니다 */}
-      {isGodo && (
-        <section className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)]">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-md font-bold text-white font-mono">📐 레이아웃 간격</h2>
-            <button onClick={resetSpacing} className="text-xs text-slate-400 px-2 py-1 rounded bg-white/5 hover:bg-white/10 hover:text-white transition-all">기본값</button>
-          </div>
-          {([
-            { key: 'section', label: '섹션 상하 여백', step: 8 },
-            { key: 'heading', label: '제목 ↔ 내용', step: 4 },
-            { key: 'element', label: '블록 사이(이미지↔다음설명)', step: 4 },
-          ] as const).map(({ key, label, step }) => (
-            <div key={key} className="flex items-center justify-between mb-2 last:mb-0">
-              <span className="text-xs font-bold text-slate-400">{label}</span>
-              <div className="flex items-center gap-1">
-                <button onClick={() => bumpSpacing(key, -step)} className="w-7 h-7 rounded bg-white/10 text-slate-300 font-bold hover:bg-white/20 transition-all">−</button>
-                <span className="w-12 text-center text-sm font-mono text-slate-200 tabular-nums">{godoSpacing[key]}px</span>
-                <button onClick={() => bumpSpacing(key, step)} className="w-7 h-7 rounded bg-white/10 text-slate-300 font-bold hover:bg-white/20 transition-all">＋</button>
-              </div>
-            </div>
-          ))}
-          <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">※ 조절값은 상단 <b className="text-slate-400">임시 저장</b> 시 함께 저장(고정)되고 <b className="text-slate-400">불러오기</b>로 복원됩니다.</p>
-        </section>
-      )}
+      {/* ③ [고도몰] 좌측 숫자 간격 패널 제거 — 간격은 미리보기에서 마우스 드래그(GapBar)로만 조절 */}
 
       {/* 2. 메인 이미지 */}
       <section className="space-y-4" onClick={() => scrollTo('preview-main')}>

@@ -68,5 +68,14 @@
 10. 섬네일 **자동 문구 삽입 비활성**(godo, 패키지 오버레이는 유지).
 - 검증: tsc0/build green/Playwright(패키지테두리·스펙2/3폭·2줄상품명·feature 투명·Point 블록그룹핑·섬네일 문구제거·콘솔0).
 
+## 4차 검수 반영 (2026-07-08, 사장님 6건)
+1. 상품명/영문→미리보기 `preview-name`, 브랜드→`preview-maker` 스크롤. **근본원인=기본설정 섹션 onClick(→preview-top)이 입력창 onFocus를 덮어써 되올라감** → godo는 섹션 onClick 제거.
+2. 패키지 박스와 하단 'package desing' 바 **동일 너비·일체형·직각**(라운드 제거, -mt/mx 제거).
+3. 좌측 **숫자 간격 패널(📐) 제거** — 간격은 미리보기 마우스 드래그(GapBar)로만.
+4. feature 이미지 **크기·위치 마우스 조절 복구** — react-rnd 대신 **커스텀 absolute 드래그/리사이즈**(left/top 직접 → transform 오프셋 버그 원천 차단, 위치 실측 정상).
+5. (질의응답) HTML 등록 시 모바일: 현 레이아웃은 **고정 800px**. 한국 쇼핑몰 관행대로 모바일은 뷰포트 폭에 맞춰 **비율 축소(same-look)** — 반응형 리플로우 아님. 상세 export/HTML은 [4]에서 확정.
+6. **모든 이미지 영역 직각 통일**(라운드 제거): 메인/feature/point/size/옵션/패키지. (핵심특징 텍스트 패널은 이미지 아님 → 유지)
+- 검증: tsc0/build green/Playwright(패키지 일체형·직각·feature 위치292/50 실측·상품명 focus→preview-name 스크롤 실측·패널제거·콘솔0).
+
 ## 다음
 하위 프로젝트 **[2] 엑셀 업로드 → ProductData 프리필** 착수(메인몰 엑셀 → 생성기 좌측 입력부 로드).
