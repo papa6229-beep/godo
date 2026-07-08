@@ -190,6 +190,17 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
     });
   };
 
+  // [고도몰] 레이아웃 간격 조절(±) — data에 저장되어 임시저장/불러오기로 고정
+  const GODO_SPACING_DEFAULT = { section: 64, element: 24, heading: 40 };
+  const godoSpacing = data.godoSpacing || GODO_SPACING_DEFAULT;
+  const bumpSpacing = (key: 'section' | 'element' | 'heading', delta: number) => {
+    onChange(prev => {
+      const cur = prev.godoSpacing || GODO_SPACING_DEFAULT;
+      return { ...prev, godoSpacing: { ...GODO_SPACING_DEFAULT, ...cur, [key]: Math.max(0, (cur[key] ?? GODO_SPACING_DEFAULT[key]) + delta) } };
+    });
+  };
+  const resetSpacing = () => onChange(prev => ({ ...prev, godoSpacing: { ...GODO_SPACING_DEFAULT } }));
+
   // 이미지 업로드
   const handleImageChange = (key: keyof ProductData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -350,6 +361,31 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
            <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-medium placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.brandName} onChange={handleTextChange('brandName')} onFocus={() => scrollTo('preview-top')} placeholder="예: BANANA MALL" />
         </div>
       </section>
+
+      {/* [고도몰] 레이아웃 간격 조절 — 조절 후 상단 '임시 저장'으로 고정됩니다 */}
+      {isGodo && (
+        <section className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)]">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-md font-bold text-white font-mono">📐 레이아웃 간격</h2>
+            <button onClick={resetSpacing} className="text-xs text-slate-400 px-2 py-1 rounded bg-white/5 hover:bg-white/10 hover:text-white transition-all">기본값</button>
+          </div>
+          {([
+            { key: 'section', label: '섹션 상하 여백', step: 8 },
+            { key: 'heading', label: '제목 ↔ 내용', step: 8 },
+            { key: 'element', label: '요소 간격(이미지↔텍스트)', step: 4 },
+          ] as const).map(({ key, label, step }) => (
+            <div key={key} className="flex items-center justify-between mb-2 last:mb-0">
+              <span className="text-xs font-bold text-slate-400">{label}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => bumpSpacing(key, -step)} className="w-7 h-7 rounded bg-white/10 text-slate-300 font-bold hover:bg-white/20 transition-all">−</button>
+                <span className="w-12 text-center text-sm font-mono text-slate-200 tabular-nums">{godoSpacing[key]}px</span>
+                <button onClick={() => bumpSpacing(key, step)} className="w-7 h-7 rounded bg-white/10 text-slate-300 font-bold hover:bg-white/20 transition-all">＋</button>
+              </div>
+            </div>
+          ))}
+          <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">※ 조절값은 상단 <b className="text-slate-400">임시 저장</b> 시 함께 저장(고정)되고 <b className="text-slate-400">불러오기</b>로 복원됩니다.</p>
+        </section>
+      )}
 
       {/* 2. 메인 이미지 */}
       <section className="space-y-4" onClick={() => scrollTo('preview-main')}>
