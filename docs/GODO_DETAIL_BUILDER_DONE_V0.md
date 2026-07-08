@@ -58,5 +58,15 @@
 8. **양방향 스크롤 동기화**: 좌측 입력 focus→미리보기 이동(빈 섹션 앵커 유지) + **미리보기 섹션 클릭→좌측 입력부 이동**(editor-* 앵커).
 - 검증: tsc0/build green/Playwright(패키지테두리·스펙2행·feature이미지 Rnd 위치 실측·역방향 스크롤 실측·빈포인트·콘솔0). main push: 6건 `3d6f0aa` + 드래그3건(본 커밋).
 
+## 3차 검수 반영 (2026-07-08, 사장님 8건 · test/1~9.png)
+1. 상품명/영문/브랜드 입력 시 미리보기가 **상품명 위치(preview-name)로 스크롤**(godo는 name이 메인이미지 아래라 preview-top이 안 보였음).
+2. 패키지 **검정 테두리** 실제 표시 — 원인: **Tailwind preflight off라 `border-2`가 border-style 없어 무효** → 인라인 `border:2px solid`.
+3. 스펙 각 열 **고정폭(≈145px)** → 첫줄 3열이 상세폭 2/3 이내(패키지에 안 가림), 5개 균등폭.
+4. 한글 상품명 **textarea(Enter 2줄)** + 미리보기 `whitespace-pre-line`.
+5. feature 이미지 박스 **투명**(회색 제거, 이미지 비율대로). *2차의 드래그 이미지는 react-rnd 중첩 컨테이너 오프셋 버그(이미지 10000px 튐)가 default/bounds 회피로도 재발 → 투명 정적 배치로 확정(3차 사장님 우선안).*
+6~9. **간격을 실제 위치에서 마우스 드래그**(GapBar): 제목↔내용(heading)·블록 사이(element). Point 블록 재구성 — 설명↔자기 이미지는 밀착(12px 고정), 이미지↔다음 블록 설명은 element로 벌려 **블록 구분**. 기본값 heading 40→24·element→32. 수치 패널도 병존.
+10. 섬네일 **자동 문구 삽입 비활성**(godo, 패키지 오버레이는 유지).
+- 검증: tsc0/build green/Playwright(패키지테두리·스펙2/3폭·2줄상품명·feature 투명·Point 블록그룹핑·섬네일 문구제거·콘솔0).
+
 ## 다음
 하위 프로젝트 **[2] 엑셀 업로드 → ProductData 프리필** 착수(메인몰 엑셀 → 생성기 좌측 입력부 로드).

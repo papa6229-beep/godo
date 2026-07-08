@@ -54,11 +54,12 @@ const ThumbnailPreview = forwardRef<HTMLDivElement, ThumbnailPreviewProps>(({ da
         )}
       </div>
 
-      {/* 2. 텍스트 정보 영역 (Overlay Layer) */}
-      <div 
+      {/* 2. 텍스트 정보 영역 (Overlay Layer) — ⑩ 고도몰은 자동 문구 삽입 비활성(패키지는 유지) */}
+      {layoutMode !== 'godo' && (
+      <div
         className="absolute left-0 bottom-0 w-full flex flex-col justify-end items-start font-sans z-10 pointer-events-none"
-        style={{ 
-          padding: `${24 * scale}px`, 
+        style={{
+          padding: `${24 * scale}px`,
           gap: `${2 * scale}px`
         }}
       >
@@ -119,6 +120,7 @@ const ThumbnailPreview = forwardRef<HTMLDivElement, ThumbnailPreviewProps>(({ da
           {brand.url}
         </div>
       </div>
+      )}
 
       {/* 3. 패키지 이미지 오버레이 (Draggable) */}
       {(!hidePackage && data.packageImage && (data.isPackageImageEnabled ?? true)) && (
