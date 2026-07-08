@@ -13,7 +13,9 @@ import { generateCopywriting } from "./services/geminiService";
 // 이미지 크기/중앙정렬/박스 계산이 어긋남. 생성기 루트로만 스코프된 리셋을 되살린다.
 import "./detailBuilder.css";
 
-const App: React.FC = () => {
+// layoutMode: 'bananamall'(기존 메인몰 레이아웃) | 'godo'(고도몰 전용 레이아웃)
+const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'bananamall' }) => {
+  const isGodo = layoutMode === 'godo';
   const [data, setData] = useState<ProductData>(INITIAL_PRODUCT_DATA);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("처리 중입니다..."); // ✅ 로딩 메시지 상태 추가
@@ -401,6 +403,9 @@ const App: React.FC = () => {
           <h1 className="font-bold text-white text-lg font-mono">
             Detail Page Builder{" "}
             <span className="text-xs text-green-400">v3.0</span>
+            <span className={`ml-2 text-xs px-2 py-0.5 rounded ${isGodo ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-400"}`}>
+              {isGodo ? "고도몰" : "메인몰"}
+            </span>
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -461,6 +466,7 @@ const App: React.FC = () => {
             onChange={setData}
             onGenerateAI={handleGenerateAI}
             isLoading={isLoading}
+            layoutMode={layoutMode}
           />
         </aside>
 
@@ -472,6 +478,7 @@ const App: React.FC = () => {
               <Preview
                 data={data}
                 ref={detailRef}
+                layoutMode={layoutMode}
                 onOptionLayoutChange={handleOptionLayoutChange}
                 onPackageLayoutChange={handlePackageLayoutChange}
                 onWatermarkLayoutChange={handleWatermarkLayoutChange}

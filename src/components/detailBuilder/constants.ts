@@ -55,9 +55,16 @@ export const INITIAL_PRODUCT_DATA: ProductData = {
   
   aiSummary: '',
   aiFeatureDesc: '',
-  featureTitle: '', 
+  featureTitle: '',
   point1Title: '',
   point2Title: '',
+
+  // [고도몰] KEY FEATURE 3블록 초기값
+  keyFeatures: [
+    { title: '', desc: '' },
+    { title: '', desc: '' },
+    { title: '', desc: '' },
+  ],
 };
 
 // ✅ 컬러 프리셋 30종 (label 속성 추가로 에러 해결)

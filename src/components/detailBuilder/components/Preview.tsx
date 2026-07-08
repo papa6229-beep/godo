@@ -57,6 +57,7 @@ const formatSummaryLines = (text: string): string[] => {
 
 interface PreviewProps {
   data: ProductData;
+  layoutMode?: 'bananamall' | 'godo';
   onOptionLayoutChange: (id: string, layout: { x: number, y: number, width: number, height: number }) => void;
   onPackageLayoutChange: (layout: { x: number, y: number, width: number, height: number }) => void;
   onWatermarkLayoutChange: (id: string, layout: { x: number, y: number, width: number, height: number }) => void;

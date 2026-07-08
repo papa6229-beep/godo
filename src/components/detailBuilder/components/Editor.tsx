@@ -135,9 +135,11 @@ interface EditorProps {
   onChange: (value: React.SetStateAction<ProductData>) => void;
   onGenerateAI: () => void;
   isLoading: boolean;
+  layoutMode?: 'bananamall' | 'godo';
 }
 
-const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading }) => {
+const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading, layoutMode = 'bananamall' }) => {
+  const isGodo = layoutMode === 'godo';
 
   // --- 핸들러 함수들 ---
   

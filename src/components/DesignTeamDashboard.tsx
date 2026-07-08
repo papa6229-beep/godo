@@ -18,6 +18,8 @@ const shortTime = (iso: string): string => { const d = new Date(iso); return Num
 
 export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderMode, setBuilderMode] = useState<'bananamall' | 'godo'>('godo');
+  const openBuilder = (mode: 'bananamall' | 'godo') => { setBuilderMode(mode); setBuilderOpen(true); };
   const requests = useMemo(() => inboxFor(messages, 'design'), [messages]);
   const open = requests.filter((m) => m.status !== 'done');
   const doneCount = requests.length - open.length;
@@ -62,25 +64,35 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
         </select>
       </div>
 
-      {/* 상세페이지 생성기(이식됨) */}
+      {/* 고도몰 전용 상세페이지 생성기 (신규 레이아웃) */}
+      <div className="dtd-generator-slot">
+        <div className="dtd-gen-icon">🛍️</div>
+        <div className="dtd-gen-body">
+          <h3 className="dtd-gen-title">고도몰 상세페이지 생성기</h3>
+          <p className="dtd-gen-desc">고도몰 전용 레이아웃으로 상세페이지를 제작합니다. 신규 제작 + 메인몰 상세페이지 <b>자동변환 결과 검수·수정</b>을 겸합니다.</p>
+        </div>
+        <button type="button" className="dtd-gen-open" onClick={() => openBuilder('godo')}>생성기 열기 →</button>
+      </div>
+
+      {/* 메인몰(기존) 상세페이지 생성기 */}
       <div className="dtd-generator-slot">
         <div className="dtd-gen-icon">🖼️</div>
         <div className="dtd-gen-body">
-          <h3 className="dtd-gen-title">상세페이지 생성기</h3>
-          <p className="dtd-gen-desc">상세페이지·섬네일을 제작하고 이미지로 내보냅니다. 문구는 <b>디자인팀 AI</b>로 생성(AI 직원 설정에서 연결).</p>
+          <h3 className="dtd-gen-title">메인몰(기존) 상세페이지 생성기</h3>
+          <p className="dtd-gen-desc">기존 메인몰 레이아웃 생성기. 문구는 <b>디자인팀 AI</b>로 생성(AI 직원 설정에서 연결).</p>
         </div>
-        <button type="button" className="dtd-gen-open" onClick={() => setBuilderOpen(true)}>생성기 열기 →</button>
+        <button type="button" className="dtd-gen-open" onClick={() => openBuilder('bananamall')}>생성기 열기 →</button>
       </div>
 
       {/* 생성기 전체화면 오버레이 */}
       {builderOpen && (
         <div className="dtd-builder-overlay">
           <div className="dtd-builder-bar">
-            <span className="dtd-builder-bar-title">🖼️ 상세페이지 생성기</span>
+            <span className="dtd-builder-bar-title">{builderMode === 'godo' ? '🛍️ 고도몰 상세페이지 생성기' : '🖼️ 메인몰 상세페이지 생성기'}</span>
             <button type="button" className="dtd-builder-close" onClick={() => setBuilderOpen(false)}>✕ 닫기</button>
           </div>
           <div className="dtd-builder-body">
-            <DetailPageBuilder />
+            <DetailPageBuilder layoutMode={builderMode} />
           </div>
         </div>
       )}
