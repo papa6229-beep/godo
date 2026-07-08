@@ -66,8 +66,8 @@ export const INITIAL_PRODUCT_DATA: ProductData = {
     { title: '', desc: '' },
   ],
 
-  // [고도몰] 레이아웃 간격 기본값(px)
-  godoSpacing: { section: 64, element: 24, heading: 40 },
+  // [고도몰] 레이아웃 간격 기본값(px) — section=섹션 상하, heading=제목↔내용, element=블록 사이
+  godoSpacing: { section: 56, element: 32, heading: 24 },
 };
 
 // ✅ 컬러 프리셋 30종 (label 속성 추가로 에러 해결)

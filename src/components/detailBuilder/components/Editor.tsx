@@ -190,8 +190,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
     });
   };
 
-  // [고도몰] 레이아웃 간격 조절(±) — data에 저장되어 임시저장/불러오기로 고정
-  const GODO_SPACING_DEFAULT = { section: 64, element: 24, heading: 40 };
+  // [고도몰] 레이아웃 간격 조절(±) — data에 저장되어 임시저장/불러오기로 고정 (미리보기에서 마우스 드래그도 가능)
+  const GODO_SPACING_DEFAULT = { section: 56, element: 32, heading: 24 };
   const godoSpacing = data.godoSpacing || GODO_SPACING_DEFAULT;
   const bumpSpacing = (key: 'section' | 'element' | 'heading', delta: number) => {
     onChange(prev => {
@@ -349,16 +349,21 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
              </div>
         </div>
         <div>
-          <label className="block text-sm font-bold text-slate-500 mb-1">상품명 (한글)</label>
-          <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-bold placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.productNameKr} onChange={handleTextChange('productNameKr')} onFocus={() => scrollTo('preview-top')} placeholder="예: 바나나 오나홀" />
+          <label className="block text-sm font-bold text-slate-500 mb-1">상품명 (한글){isGodo && <span className="font-normal text-slate-500"> · Enter로 줄바꿈</span>}</label>
+          {isGodo ? (
+            // ④ 긴 상품명 Enter 2줄 입력 · ① 입력 시 미리보기 상품명 위치로 스크롤
+            <textarea rows={2} className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-bold placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none resize-y transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.productNameKr} onChange={handleTextChange('productNameKr')} onFocus={() => scrollTo('preview-name')} placeholder="예: [애널용품] 프로그레시브 비즈 애널 플러그" />
+          ) : (
+            <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-bold placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.productNameKr} onChange={handleTextChange('productNameKr')} onFocus={() => scrollTo('preview-top')} placeholder="예: 바나나 오나홀" />
+          )}
         </div>
         <div>
            <label className="block text-sm font-bold text-slate-500 mb-1">영문 상품명</label>
-           <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-medium font-montserrat placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.productNameEn} onChange={handleTextChange('productNameEn')} onFocus={() => scrollTo('preview-top')} placeholder="BANANA ONAHOLE" />
+           <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-medium font-montserrat placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.productNameEn} onChange={handleTextChange('productNameEn')} onFocus={() => scrollTo(isGodo ? 'preview-name' : 'preview-top')} placeholder="BANANA ONAHOLE" />
         </div>
         <div>
            <label className="block text-sm font-bold text-slate-500 mb-1">제조사/브랜드명</label>
-           <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-medium placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.brandName} onChange={handleTextChange('brandName')} onFocus={() => scrollTo('preview-top')} placeholder="예: BANANA MALL" />
+           <input type="text" className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-medium placeholder-slate-500 focus:ring-2 focus:ring-[#22C55E] outline-none transition-all duration-200 ease-out shadow-[var(--shadow-sm)] focus:shadow-[var(--shadow-md)]" value={data.brandName} onChange={handleTextChange('brandName')} onFocus={() => scrollTo(isGodo ? 'preview-name' : 'preview-top')} placeholder="예: BANANA MALL" />
         </div>
       </section>
 
@@ -371,8 +376,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
           </div>
           {([
             { key: 'section', label: '섹션 상하 여백', step: 8 },
-            { key: 'heading', label: '제목 ↔ 내용', step: 8 },
-            { key: 'element', label: '요소 간격(이미지↔텍스트)', step: 4 },
+            { key: 'heading', label: '제목 ↔ 내용', step: 4 },
+            { key: 'element', label: '블록 사이(이미지↔다음설명)', step: 4 },
           ] as const).map(({ key, label, step }) => (
             <div key={key} className="flex items-center justify-between mb-2 last:mb-0">
               <span className="text-xs font-bold text-slate-400">{label}</span>
