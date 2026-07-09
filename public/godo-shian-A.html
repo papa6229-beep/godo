@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GODO 시안 A — 아포테카리 에디토리얼</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,400&family=Noto+Serif+KR:wght@400;600;900&family=IBM+Plex+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E9E4DC;
+    --paper-2:#F1ECE4;
+    --ink:#241E22;
+    --ink-soft:#5A5158;
+    --wine:#6E2440;
+    --blush:#B98A96;
+    --line:#CFC7BC;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#cfc7bc;font-family:'IBM Plex Sans KR',sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .page{width:820px;margin:0 auto;background:var(--paper);position:relative;overflow:hidden}
+
+  /* 세로 타이포 레일 (signature) */
+  .rail{position:absolute;top:0;left:0;width:52px;height:100%;border-right:1px solid var(--line);
+        display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:34px 0;z-index:5;background:var(--paper)}
+  .rail .vt{writing-mode:vertical-rl;text-orientation:mixed;font-size:11px;letter-spacing:.42em;
+            text-transform:uppercase;color:var(--ink-soft);font-weight:500}
+  .rail .vt.brand{color:var(--wine);font-weight:700}
+  .rail .dot{width:5px;height:5px;border-radius:50%;background:var(--wine)}
+
+  .inner{margin-left:52px}
+
+  /* 상단 유틸 바 */
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:20px 40px;
+          border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--ink-soft)}
+  .topbar .logo{font-family:'Fraunces',serif;font-weight:500;letter-spacing:.24em;color:var(--ink);font-size:15px}
+
+  /* 히어로 */
+  .hero{padding:80px 60px 56px;text-align:center}
+  .eyebrow{display:inline-flex;gap:12px;align-items:center;font-size:11px;letter-spacing:.36em;
+           text-transform:uppercase;color:var(--wine);margin-bottom:30px}
+  .eyebrow::before,.eyebrow::after{content:"";width:26px;height:1px;background:var(--blush)}
+  h1.title{font-family:'Noto Serif KR',serif;font-weight:900;font-size:52px;line-height:1.16;letter-spacing:-.01em;margin-bottom:18px;word-break:keep-all}
+  .en{font-family:'Fraunces',serif;font-style:italic;font-weight:400;font-size:20px;letter-spacing:.14em;color:var(--ink-soft);text-transform:uppercase}
+
+  /* 아치 프레임 */
+  .arch{margin:52px auto 0;width:480px;max-width:80%;background:var(--paper-2);
+        border:1px solid var(--line);border-radius:240px 240px 22px 22px;overflow:hidden;padding:34px 34px 30px}
+  .arch img{width:100%;display:block;border-radius:180px 180px 10px 10px}
+
+  .optline{display:flex;gap:10px;justify-content:center;margin-top:34px}
+  .chip{font-size:12px;letter-spacing:.06em;padding:8px 18px;border:1px solid var(--line);border-radius:100px;
+        color:var(--ink-soft);background:var(--paper-2)}
+  .chip b{color:var(--wine);font-weight:700}
+
+  /* 스펙 — 정렬된 인덱스 리스트 */
+  .spec{padding:70px 60px;background:var(--paper-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .sec-head{text-align:center;margin-bottom:44px}
+  .sec-head .k{font-family:'Fraunces',serif;font-style:italic;font-size:13px;letter-spacing:.1em;color:var(--wine)}
+  .sec-head .h{font-family:'Noto Serif KR',serif;font-weight:600;font-size:26px;margin-top:6px}
+  .spec-list{max-width:520px;margin:0 auto}
+  .spec-row{display:grid;grid-template-columns:20px 120px 1fr;gap:18px;align-items:baseline;
+            padding:18px 0;border-top:1px solid var(--line)}
+  .spec-row:last-child{border-bottom:1px solid var(--line)}
+  .spec-row .no{font-family:'Fraunces',serif;font-size:12px;color:var(--blush)}
+  .spec-row .lb{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
+  .spec-row .vl{font-family:'Noto Serif KR',serif;font-weight:600;font-size:19px}
+
+  /* 핵심 3줄 */
+  .lede{padding:74px 60px;text-align:center}
+  .lede p{font-family:'Noto Serif KR',serif;font-weight:900;font-size:38px;line-height:1.34;letter-spacing:-.01em;word-break:keep-all}
+  .lede p .w{color:var(--wine)}
+  .lede p .g{color:#B9AFA2}
+
+  /* 피처 */
+  .feature{padding:20px 60px 84px}
+  .feature .band{display:inline-flex;padding:9px 26px;border-radius:100px;background:var(--wine);color:#fff;
+                 font-size:12px;letter-spacing:.28em;text-transform:uppercase;margin:0 auto 22px;font-weight:500}
+  .feature .fhead{text-align:center;margin-bottom:40px}
+  .feature h3{font-family:'Noto Serif KR',serif;font-weight:900;font-size:30px}
+  .fig{width:100%;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:var(--paper-2)}
+  .fig img{width:100%;display:block}
+  .copy{max-width:540px;margin:34px auto 0;text-align:center;font-size:16px;line-height:2;color:#41393E;font-weight:300;word-break:keep-all}
+  .copy .w{color:var(--wine);font-weight:700}
+
+  /* 포인트 */
+  .point{padding:0 60px 90px}
+  .point .phead{text-align:center;margin-bottom:44px;position:relative}
+  .point .phead .num{font-family:'Fraunces',serif;font-style:italic;font-size:66px;color:#DED6CA;line-height:.8}
+  .point .phead h3{font-family:'Noto Serif KR',serif;font-weight:900;font-size:28px;margin-top:-18px}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .duo .fig{border-radius:18px}
+
+  /* 사이즈 & 무게 */
+  .size{padding:80px 60px;background:var(--ink);color:#EDE6DE;text-align:center}
+  .size .k{font-family:'Fraunces',serif;font-style:italic;color:var(--blush);font-size:13px;letter-spacing:.1em}
+  .size h3{font-family:'Noto Serif KR',serif;font-weight:600;font-size:26px;margin:8px 0 40px;color:#fff}
+  .wbadge{display:inline-flex;align-items:baseline;gap:16px;border:1px solid rgba(185,138,150,.5);
+          border-radius:100px;padding:20px 44px;margin-bottom:36px}
+  .wbadge .l{font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--blush)}
+  .wbadge .v{font-family:'Noto Serif KR',serif;font-weight:900;font-size:34px;color:#fff}
+  .size .sizefig{max-width:440px;margin:0 auto;background:#2E272B;border-radius:20px;padding:26px;border:1px solid rgba(207,199,188,.14)}
+  .size .sizefig img{width:100%;display:block;border-radius:10px;filter:contrast(1.04)}
+  .size .note{margin-top:26px;font-size:12px;letter-spacing:.06em;color:#9A9096}
+
+  /* 푸터 */
+  footer{padding:52px 60px;text-align:center;background:var(--paper-2)}
+  footer .fm{font-family:'Fraunces',serif;letter-spacing:.24em;font-size:20px;color:var(--wine)}
+  footer .fc{margin-top:10px;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--ink-soft)}
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="rail">
+      <span class="vt brand">써뉴뉴 · SUNEWNEW</span>
+      <span class="dot"></span>
+      <span class="vt">애널용품 · Anal Care</span>
+    </div>
+
+    <div class="inner">
+      <div class="topbar">
+        <span class="logo">GODO.</span>
+        <span>Premium Collection — No.01</span>
+      </div>
+
+      <!-- 히어로 -->
+      <section class="hero">
+        <span class="eyebrow">Progressive Bead Design</span>
+        <h1 class="title">프로그레시브<br>비즈 애널 플러그</h1>
+        <div class="en">Progressive Biz Anal Plug</div>
+        <div class="arch"><img src="/mockup/real-1.jpg" alt="메인"></div>
+        <div class="optline">
+          <span class="chip"><b>01</b> 클리어</span>
+          <span class="chip"><b>02</b> 블랙</span>
+        </div>
+      </section>
+
+      <!-- 스펙 -->
+      <section class="spec">
+        <div class="sec-head">
+          <div class="k">Specification</div>
+          <div class="h">제품 상세 정보</div>
+        </div>
+        <div class="spec-list">
+          <div class="spec-row"><span class="no">01</span><span class="lb">Material</span><span class="vl">TPE</span></div>
+          <div class="spec-row"><span class="no">02</span><span class="lb">Color</span><span class="vl">클리어 · 블랙</span></div>
+          <div class="spec-row"><span class="no">03</span><span class="lb">Size</span><span class="vl">7 × 16 cm</span></div>
+          <div class="spec-row"><span class="no">04</span><span class="lb">Weight</span><span class="vl">약 109 g</span></div>
+        </div>
+      </section>
+
+      <!-- 핵심 3줄 -->
+      <section class="lede">
+        <p><span class="w">점진적 비즈 라인</span>이<br><span class="g">몸의 리듬을 따라</span><br>깨워내는 감각</p>
+      </section>
+
+      <!-- 피처 -->
+      <section class="feature">
+        <div class="fhead">
+          <span class="band">Key Feature</span>
+          <h3>핵심 특징</h3>
+        </div>
+        <div class="fig"><img src="/mockup/real-2.jpg" alt="특징"></div>
+        <p class="copy">단순한 삽입을 넘어 몸 안의 모든 감각을 깨우는 설계로 태어났습니다. 매끄럽게 이어지는 <span class="w">비즈 디자인</span>이 주는 리듬감 있는 자극과 부드러운 유연함이 만나, 당신이 경험하지 못한 새로운 세계를 엽니다.</p>
+      </section>
+
+      <!-- 포인트 01 -->
+      <section class="point">
+        <div class="phead">
+          <div class="num">01</div>
+          <h3>점진적 압박감의 미학</h3>
+        </div>
+        <div class="duo">
+          <div class="fig"><img src="/mockup/real-3.jpg" alt="p1"></div>
+          <div class="fig"><img src="/mockup/real-4.jpg" alt="p2"></div>
+        </div>
+        <p class="copy">끝으로 갈수록 섬세하게 설계된 비즈 헤드가 몸 안의 벽을 타고 흐르며, 마치 살아있는 듯한 <span class="w">미묘한 자극</span>을 선사합니다.</p>
+      </section>
+
+      <!-- 사이즈 & 무게 -->
+      <section class="size">
+        <div class="k">Size &amp; Info</div>
+        <h3>사이즈 &amp; 인포</h3>
+        <div class="wbadge"><span class="l">Weight</span><span class="v">약 109 g</span></div>
+        <div class="sizefig"><img src="/mockup/real-5.jpg" alt="사이즈"></div>
+        <div class="note">※ 측정 방법에 따라 약간의 오차가 있을 수 있습니다.</div>
+      </section>
+
+      <footer>
+        <div class="fm">GODO.MALL</div>
+        <div class="fc">Copyright © GODO MALL. All rights reserved.</div>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

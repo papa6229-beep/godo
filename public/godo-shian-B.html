@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GODO 시안 B — 블루프린트 스펙</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=Archivo:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#EDEFF1;
+    --paper-2:#E4E8EB;
+    --card:#F7F8F9;
+    --graphite:#23282D;
+    --ink-soft:#616970;
+    --blue:#2B50E2;
+    --blue-soft:#5C77EA;
+    --line:#C6CCD2;
+    --grid:rgba(43,80,226,.06);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#c6ccd2;font-family:'IBM Plex Sans KR',sans-serif;color:var(--graphite);-webkit-font-smoothing:antialiased}
+  .mono{font-family:'IBM Plex Mono',monospace}
+  .page{width:820px;margin:0 auto;background:var(--paper);
+        background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+        background-size:40px 40px;position:relative}
+
+  /* 상단 스펙 헤더 바 */
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 34px;
+          background:var(--graphite);color:#DFE4E8}
+  .topbar .logo{font-family:'Archivo',sans-serif;font-weight:900;letter-spacing:.02em;font-size:16px}
+  .topbar .meta{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;color:#9AA3AB}
+  .topbar .meta b{color:var(--blue-soft)}
+
+  /* 히어로 */
+  .hero{padding:44px 40px 30px}
+  .tagrow{display:flex;gap:8px;margin-bottom:22px}
+  .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;padding:5px 11px;
+       border:1px solid var(--line);background:var(--card);color:var(--ink-soft)}
+  .tag.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  h1.title{font-family:'Archivo',sans-serif;font-weight:800;font-size:46px;line-height:1.05;letter-spacing:-.02em;word-break:keep-all}
+  .kr{font-weight:700;font-size:34px;line-height:1.18;margin-top:8px;word-break:keep-all}
+  .en-sub{font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.14em;color:var(--blue);margin-top:14px;text-transform:uppercase}
+
+  /* 도면 프레임 (signature: 치수 주석선) */
+  .plate{position:relative;margin:40px 40px 20px;background:var(--card);border:1px solid var(--line);padding:56px 70px 64px}
+  .plate::before{content:"DWG · GODO-ANL-001";position:absolute;top:10px;left:14px;
+                 font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;color:var(--ink-soft)}
+  .plate::after{content:"SCALE 1:1";position:absolute;top:10px;right:14px;
+                font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;color:var(--ink-soft)}
+  .plate img{width:100%;display:block;mix-blend-mode:multiply}
+  /* 세로 치수선 (오른쪽) */
+  .dim-v{position:absolute;right:22px;top:56px;bottom:64px;width:34px;display:flex;flex-direction:column;align-items:center}
+  .dim-v .bar{flex:1;width:1px;background:var(--blue);position:relative}
+  .dim-v .bar::before,.dim-v .bar::after{content:"";position:absolute;left:-4px;width:9px;height:1px;background:var(--blue)}
+  .dim-v .bar::before{top:0}.dim-v .bar::after{bottom:0}
+  .dim-v .lbl{writing-mode:vertical-rl;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--blue);
+              background:var(--card);padding:6px 0;letter-spacing:.06em}
+  /* 가로 치수선 (하단) */
+  .dim-h{position:absolute;left:70px;right:104px;bottom:26px;height:20px;display:flex;align-items:center}
+  .dim-h .bar{flex:1;height:1px;background:var(--blue);position:relative}
+  .dim-h .bar::before,.dim-h .bar::after{content:"";position:absolute;top:-4px;height:9px;width:1px;background:var(--blue)}
+  .dim-h .bar::before{left:0}.dim-h .bar::after{right:0}
+  .dim-h .lbl{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--blue);background:var(--card);padding:0 8px;letter-spacing:.06em}
+
+  /* 스펙 데이터 그리드 */
+  .spec{margin:20px 40px;border:1px solid var(--line);background:var(--card)}
+  .spec .row{display:grid;grid-template-columns:44px 1fr 1fr;border-bottom:1px solid var(--line)}
+  .spec .row:last-child{border-bottom:0}
+  .spec .row > div{padding:16px 18px}
+  .spec .idx{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--blue);border-right:1px solid var(--line)}
+  .spec .lb{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);border-right:1px solid var(--line)}
+  .spec .vl{font-weight:600;font-size:16px}
+
+  /* 섹션 헤더 (번호 = 시퀀스라 정당) */
+  .shead{display:flex;align-items:baseline;gap:16px;padding:56px 40px 26px}
+  .shead .n{font-family:'Archivo',sans-serif;font-weight:900;font-size:15px;color:var(--blue)}
+  .shead .t{font-weight:700;font-size:24px;letter-spacing:-.01em}
+  .shead .en{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:var(--ink-soft);margin-left:auto;text-transform:uppercase}
+  .shead::after{content:"";flex:0 0 40px;height:1px;background:var(--line)}
+
+  /* 핵심 3줄 */
+  .lede{padding:20px 40px 50px}
+  .lede p{font-family:'Archivo',sans-serif;font-weight:800;font-size:34px;line-height:1.28;letter-spacing:-.01em;word-break:keep-all}
+  .lede .w{color:var(--blue)}
+  .lede .g{color:#A9B0B7}
+
+  .fig{margin:0 40px;border:1px solid var(--line);background:var(--card)}
+  .fig img{width:100%;display:block}
+  .copy{padding:26px 40px 10px;font-size:15px;line-height:1.95;color:#3B4249;font-weight:300;word-break:keep-all}
+  .copy .w{color:var(--blue);font-weight:600}
+
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0 40px}
+  .duo .fig{margin:0}
+
+  /* 사이즈 & 무게 데이터 리드아웃 */
+  .size{margin:56px 0 0;padding:50px 40px 60px;background:var(--graphite);color:#DFE4E8}
+  .size .shead{padding:0 0 30px}
+  .size .shead .t{color:#fff}.size .shead .en{color:#7E8790}.size .shead::after{background:#3A4046}
+  .readout{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#3A4046;border:1px solid #3A4046;margin-bottom:24px}
+  .readout .cell{background:var(--graphite);padding:24px 22px}
+  .readout .l{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;color:#7E8790;text-transform:uppercase}
+  .readout .v{font-family:'Archivo',sans-serif;font-weight:900;font-size:36px;color:#fff;margin-top:8px}
+  .readout .v .u{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--blue-soft);font-weight:500;margin-left:6px}
+  .size .sizefig{border:1px solid #3A4046;background:#F7F8F9;padding:22px}
+  .size .sizefig img{width:100%;display:block}
+  .size .note{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7E8790;margin-top:18px;letter-spacing:.04em}
+
+  footer{padding:34px 40px;background:var(--paper-2);display:flex;justify-content:space-between;align-items:center}
+  footer .fm{font-family:'Archivo',sans-serif;font-weight:900;font-size:16px;color:var(--graphite)}
+  footer .fc{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--ink-soft)}
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <span class="logo">GODO.MALL</span>
+      <span class="meta">CAT <b>애널용품</b> · BRAND 써뉴뉴 · REF SNN-6973</span>
+    </div>
+
+    <!-- 히어로 -->
+    <section class="hero">
+      <div class="tagrow">
+        <span class="tag on">애널용품</span>
+        <span class="tag">써뉴뉴</span>
+        <span class="tag">PROGRESSIVE</span>
+      </div>
+      <h1 class="title">PROGRESSIVE BIZ<br>ANAL PLUG</h1>
+      <div class="kr">프로그레시브 비즈 애널 플러그</div>
+      <div class="en-sub">// material TPE · size 7×16cm · weight 109g</div>
+    </section>
+
+    <!-- 도면 플레이트 -->
+    <div class="plate">
+      <img src="/mockup/real-1.jpg" alt="메인">
+      <div class="dim-v"><div class="bar"></div><div class="lbl">16.0 cm</div><div class="bar"></div></div>
+      <div class="dim-h"><div class="bar"></div><div class="lbl">7.0 cm</div><div class="bar"></div></div>
+    </div>
+
+    <!-- 스펙 데이터 -->
+    <div class="spec">
+      <div class="row"><div class="idx">01</div><div class="lb">Material</div><div class="vl">TPE</div></div>
+      <div class="row"><div class="idx">02</div><div class="lb">Color</div><div class="vl">클리어 · 블랙</div></div>
+      <div class="row"><div class="idx">03</div><div class="lb">Size</div><div class="vl">7 × 16 cm</div></div>
+      <div class="row"><div class="idx">04</div><div class="lb">Weight</div><div class="vl">약 109 g</div></div>
+    </div>
+
+    <!-- 핵심 3줄 -->
+    <div class="shead"><span class="n">00</span><span class="t">핵심</span><span class="en">Overview</span></div>
+    <section class="lede">
+      <p><span class="w">점진적 비즈 라인</span>이<br>몸의 리듬을 따라 흐르며<br><span class="g">감각을 단계별로 깨운다.</span></p>
+    </section>
+
+    <!-- 피처 -->
+    <div class="shead"><span class="n">01</span><span class="t">핵심 특징</span><span class="en">Key Feature</span></div>
+    <div class="fig"><img src="/mockup/real-2.jpg" alt="특징"></div>
+    <p class="copy">단순한 삽입을 넘어 몸 안의 모든 감각을 깨우는 설계로 태어났습니다. 매끄럽게 이어지는 <span class="w">비즈 디자인</span>이 주는 리듬감 있는 자극과 부드러운 유연함이 만나, 경험하지 못한 새로운 감각을 엽니다.</p>
+
+    <!-- 포인트 01 -->
+    <div class="shead"><span class="n">02</span><span class="t">점진적 압박감의 미학</span><span class="en">Point.01</span></div>
+    <div class="duo">
+      <div class="fig"><img src="/mockup/real-3.jpg" alt="p1"></div>
+      <div class="fig"><img src="/mockup/real-4.jpg" alt="p2"></div>
+    </div>
+    <p class="copy">끝으로 갈수록 섬세하게 설계된 비즈 헤드가 몸 안의 벽을 타고 흐르며, 마치 살아있는 듯한 <span class="w">미묘한 자극</span>을 선사합니다. 부드러운 삽입부터 꽉 찬 충만함까지, 단계별로 변화하는 쾌감을 즐기세요.</p>
+
+    <!-- 사이즈 & 무게 -->
+    <section class="size">
+      <div class="shead"><span class="n">03</span><span class="t">사이즈 &amp; 인포</span><span class="en">Size &amp; Info</span></div>
+      <div class="readout">
+        <div class="cell"><div class="l">Total Length</div><div class="v">16.0<span class="u">cm</span></div></div>
+        <div class="cell"><div class="l">Weight</div><div class="v">109<span class="u">g</span></div></div>
+      </div>
+      <div class="sizefig"><img src="/mockup/real-5.jpg" alt="사이즈"></div>
+      <div class="note">※ 측정 방법에 따라 약간의 오차가 있을 수 있습니다.</div>
+    </section>
+
+    <footer>
+      <span class="fm">GODO.MALL</span>
+      <span class="fc">© GODO MALL · ALL RIGHTS RESERVED</span>
+    </footer>
+  </div>
+</body>
+</html>

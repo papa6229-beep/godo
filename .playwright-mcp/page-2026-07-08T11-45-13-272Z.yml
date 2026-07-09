@@ -1,0 +1,139 @@
+- generic [ref=f3e17]:
+  - banner [ref=f3e18]:
+    - generic [ref=f3e19]:
+      - generic [ref=f3e20]: 🛰️
+      - generic [ref=f3e21]:
+        - heading "GODO AI OS" [level=1] [ref=f3e22]
+        - generic [ref=f3e23]: 쇼핑몰 AI 운영센터
+    - generic [ref=f3e24]:
+      - generic [ref=f3e25]: LOCAL APP MODE
+      - generic "지금 누구로 보는가 (데모 전환 · 실제 로그인은 다음 단계)" [ref=f3e27]:
+        - generic [ref=f3e28]: 👤
+        - combobox "👤" [ref=f3e29] [cursor=pointer]:
+          - option "🏛️ 총괄 관리자" [selected]
+          - option "🏷️ 상품관리팀장"
+          - option "💬 CS팀장"
+          - option "📊 마케팅팀장"
+          - option "🎨 디자인팀장"
+    - generic [ref=f3e30]:
+      - button "🌙 Dark" [ref=f3e31] [cursor=pointer]:
+        - generic [ref=f3e32]: 🌙
+        - text: Dark
+      - generic [ref=f3e33]:
+        - button "🏢 오늘의 운영" [ref=f3e34] [cursor=pointer]
+        - button "🗂️ 부서 업무 관장" [active] [ref=f3e35] [cursor=pointer]
+        - button "🤖 AI 직원" [ref=f3e36] [cursor=pointer]
+        - button "📅 운영일지" [ref=f3e37] [cursor=pointer]
+        - button "⚙️ 관리자 설정 ▾" [ref=f3e40] [cursor=pointer]:
+          - text: ⚙️ 관리자 설정
+          - generic [ref=f3e41]: ▾
+  - main [ref=f3e43]:
+    - generic [ref=f3e215]:
+      - complementary [ref=f3e216]:
+        - generic [ref=f3e217]:
+          - heading "부서 선택" [level=3] [ref=f3e218]
+          - paragraph [ref=f3e219]: 팀을 선택해 업무 공간을 전환하세요.
+        - generic [ref=f3e220]:
+          - 'button "🏛️ 총괄팀 부서별 업무 상태와 승인 대기 항목을 조율 팀장: 총괄 매니저 AI 팀원 1명" [ref=f3e221] [cursor=pointer]':
+            - generic [ref=f3e222]:
+              - generic [ref=f3e223]: 🏛️
+              - generic [ref=f3e224]: 총괄팀
+            - paragraph [ref=f3e225]: 부서별 업무 상태와 승인 대기 항목을 조율
+            - generic [ref=f3e226]:
+              - generic [ref=f3e227]: "팀장: 총괄 매니저 AI"
+              - generic [ref=f3e228]: 팀원 1명
+          - 'button "🏷️ 상품관리팀 상품·재고·노출상태·판매상태 점검 팀장: 상품 관리 AI 팀원 2명" [ref=f3e229] [cursor=pointer]':
+            - generic [ref=f3e230]:
+              - generic [ref=f3e231]: 🏷️
+              - generic [ref=f3e232]: 상품관리팀
+            - paragraph [ref=f3e233]: 상품·재고·노출상태·판매상태 점검
+            - generic [ref=f3e234]:
+              - generic [ref=f3e235]: "팀장: 상품 관리 AI"
+              - generic [ref=f3e236]: 팀원 2명
+          - 'button "💬 CS팀 문의·리뷰·배송 이슈 확인 팀장: CS 상담 AI 팀원 2명" [ref=f3e237] [cursor=pointer]':
+            - generic [ref=f3e238]:
+              - generic [ref=f3e239]: 💬
+              - generic [ref=f3e240]: CS팀
+            - paragraph [ref=f3e241]: 문의·리뷰·배송 이슈 확인
+            - generic [ref=f3e242]:
+              - generic [ref=f3e243]: "팀장: CS 상담 AI"
+              - generic [ref=f3e244]: 팀원 2명
+          - 'button "📊 마케팅팀 판매 흐름·캠페인 후보 점검 팀장: 마케팅 기획 AI 팀원 1명" [ref=f3e245] [cursor=pointer]':
+            - generic [ref=f3e246]:
+              - generic [ref=f3e247]: 📊
+              - generic [ref=f3e248]: 마케팅팀
+            - paragraph [ref=f3e249]: 판매 흐름·캠페인 후보 점검
+            - generic [ref=f3e250]:
+              - generic [ref=f3e251]: "팀장: 마케팅 기획 AI"
+              - generic [ref=f3e252]: 팀원 1명
+          - 'button "🎨 디자인팀 상세페이지·섬네일 제작 및 상품등록 준비 팀장: 디자인 AI 팀원 1명" [ref=f3e253] [cursor=pointer]':
+            - generic [ref=f3e254]:
+              - generic [ref=f3e255]: 🎨
+              - generic [ref=f3e256]: 디자인팀
+            - paragraph [ref=f3e257]: 상세페이지·섬네일 제작 및 상품등록 준비
+            - generic [ref=f3e258]:
+              - generic [ref=f3e259]: "팀장: 디자인 AI"
+              - generic [ref=f3e260]: 팀원 1명
+        - generic [ref=f3e261]:
+          - generic [ref=f3e262]:
+            - generic [ref=f3e263]: 🏛️
+            - strong [ref=f3e264]: 총괄팀
+          - generic [ref=f3e265]:
+            - generic [ref=f3e266]:
+              - term [ref=f3e267]: 팀장
+              - definition [ref=f3e268]: 총괄 매니저 AI
+            - generic [ref=f3e269]:
+              - term [ref=f3e270]: 팀원
+              - definition [ref=f3e271]: 전체 부서
+            - generic [ref=f3e272]:
+              - term [ref=f3e273]: 오늘의 미션
+              - definition [ref=f3e274]: 부서별 업무 상태와 승인 대기 항목을 조율합니다.
+      - generic [ref=f3e275]:
+        - generic [ref=f3e276]:
+          - heading "🏛️ 총괄팀 대시보드" [level=2] [ref=f3e277]:
+            - generic [ref=f3e278]: 🏛️
+            - text: 총괄팀 대시보드
+          - paragraph [ref=f3e279]: 전체 부서의 업무 상태, 위험 알림, 승인 대기 항목을 이곳에서 확인할 예정입니다.
+        - generic [ref=f3e280]: 🚧 이 화면은 아직 데이터가 연결되지 않은 미리보기입니다. 아래 수치는 예시(placeholder)입니다.
+        - generic [ref=f3e281]:
+          - generic [ref=f3e282]:
+            - generic [ref=f3e283]:
+              - generic [ref=f3e284]: 📋
+              - generic [ref=f3e285]: 오늘 확인할 항목
+            - generic [ref=f3e286]: —
+            - generic [ref=f3e287]: 예시 · 미연결
+          - generic [ref=f3e288]:
+            - generic [ref=f3e289]:
+              - generic [ref=f3e290]: ⚠️
+              - generic [ref=f3e291]: 주의가 필요한 항목
+            - generic [ref=f3e292]: —
+            - generic [ref=f3e293]: 예시 · 미연결
+          - generic [ref=f3e294]:
+            - generic [ref=f3e295]:
+              - generic [ref=f3e296]: 🔄
+              - generic [ref=f3e297]: 최근 업데이트
+            - generic [ref=f3e298]: —
+            - generic [ref=f3e299]: 예시 · 미연결
+          - generic [ref=f3e300]:
+            - generic [ref=f3e301]:
+              - generic [ref=f3e302]: ⏳
+              - generic [ref=f3e303]: 대기 중인 요청
+            - generic [ref=f3e304]: —
+            - generic [ref=f3e305]: 예시 · 미연결
+        - generic [ref=f3e306]:
+          - generic [ref=f3e307]: 🔌
+          - text: "다음 단계 연결 예정: 모든 팀 요약 + Approval Queue"
+      - complementary [ref=f3e308]:
+        - generic [ref=f3e309]:
+          - heading "총괄팀에게 지시하기" [level=3] [ref=f3e310]
+          - paragraph [ref=f3e311]: 선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.
+        - generic [ref=f3e312]:
+          - button "💬 AI 팀장 지시" [ref=f3e313] [cursor=pointer]
+          - button "📨 팀 간 메시지" [ref=f3e314] [cursor=pointer]
+        - generic [ref=f3e316]:
+          - paragraph [ref=f3e317]: 아직 지시한 내용이 없습니다.
+          - paragraph [ref=f3e318]: "예: 오늘 위험한 업무만 요약해줘"
+        - generic [ref=f3e319]:
+          - 'textbox "예: 오늘 위험한 업무만 요약해줘" [ref=f3e320]'
+          - button "지시 전송" [disabled] [ref=f3e321]
+        - paragraph [ref=f3e322]: ※ 분석·정리·초안까지만 제공하며, 실제 발송·수정·캠페인 실행은 승인 전 하지 않습니다.

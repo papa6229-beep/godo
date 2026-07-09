@@ -1,0 +1,413 @@
+- generic [ref=e17]:
+  - banner [ref=e18]:
+    - generic [ref=e19]:
+      - generic [ref=e20]: 🛰️
+      - generic [ref=e21]:
+        - heading "GODO AI OS" [level=1] [ref=e22]
+        - generic [ref=e23]: 쇼핑몰 AI 운영센터
+    - generic [ref=e24]:
+      - generic [ref=e25]: LOCAL APP MODE
+      - generic "지금 누구로 보는가 (데모 전환 · 실제 로그인은 다음 단계)" [ref=e27]:
+        - generic [ref=e28]: 👤
+        - combobox "👤" [ref=e29] [cursor=pointer]:
+          - option "🏛️ 총괄 관리자" [selected]
+          - option "🏷️ 상품관리팀장"
+          - option "💬 CS팀장"
+          - option "📊 마케팅팀장"
+          - option "🎨 디자인팀장"
+    - generic [ref=e30]:
+      - button "🌙 Dark" [ref=e31] [cursor=pointer]:
+        - generic [ref=e32]: 🌙
+        - text: Dark
+      - generic [ref=e33]:
+        - button "🏢 오늘의 운영" [ref=e34] [cursor=pointer]
+        - button "🗂️ 부서 업무 관장" [ref=e35] [cursor=pointer]
+        - button "🤖 AI 직원" [ref=e36] [cursor=pointer]
+        - button "📅 운영일지" [ref=e37] [cursor=pointer]
+        - button "⚙️ 관리자 설정 ▾" [ref=e40] [cursor=pointer]:
+          - text: ⚙️ 관리자 설정
+          - generic [ref=e41]: ▾
+  - main [ref=e43]:
+    - generic [ref=e215]:
+      - complementary [ref=e216]:
+        - generic [ref=e217]:
+          - heading "부서 선택" [level=3] [ref=e218]
+          - paragraph [ref=e219]: 팀을 선택해 업무 공간을 전환하세요.
+        - generic [ref=e220]:
+          - 'button "🏛️ 총괄팀 부서별 업무 상태와 승인 대기 항목을 조율 팀장: 총괄 매니저 AI 팀원 1명" [ref=e221] [cursor=pointer]':
+            - generic [ref=e222]:
+              - generic [ref=e223]: 🏛️
+              - generic [ref=e224]: 총괄팀
+            - paragraph [ref=e225]: 부서별 업무 상태와 승인 대기 항목을 조율
+            - generic [ref=e226]:
+              - generic [ref=e227]: "팀장: 총괄 매니저 AI"
+              - generic [ref=e228]: 팀원 1명
+          - 'button "🏷️ 상품관리팀 상품·재고·노출상태·판매상태 점검 팀장: 상품 관리 AI 팀원 2명" [ref=e229] [cursor=pointer]':
+            - generic [ref=e230]:
+              - generic [ref=e231]: 🏷️
+              - generic [ref=e232]: 상품관리팀
+            - paragraph [ref=e233]: 상품·재고·노출상태·판매상태 점검
+            - generic [ref=e234]:
+              - generic [ref=e235]: "팀장: 상품 관리 AI"
+              - generic [ref=e236]: 팀원 2명
+          - 'button "💬 CS팀 문의·리뷰·배송 이슈 확인 팀장: CS 상담 AI 팀원 2명" [ref=e237] [cursor=pointer]':
+            - generic [ref=e238]:
+              - generic [ref=e239]: 💬
+              - generic [ref=e240]: CS팀
+            - paragraph [ref=e241]: 문의·리뷰·배송 이슈 확인
+            - generic [ref=e242]:
+              - generic [ref=e243]: "팀장: CS 상담 AI"
+              - generic [ref=e244]: 팀원 2명
+          - 'button "📊 마케팅팀 판매 흐름·캠페인 후보 점검 팀장: 마케팅 기획 AI 팀원 1명" [ref=e245] [cursor=pointer]':
+            - generic [ref=e246]:
+              - generic [ref=e247]: 📊
+              - generic [ref=e248]: 마케팅팀
+            - paragraph [ref=e249]: 판매 흐름·캠페인 후보 점검
+            - generic [ref=e250]:
+              - generic [ref=e251]: "팀장: 마케팅 기획 AI"
+              - generic [ref=e252]: 팀원 1명
+          - 'button "🎨 디자인팀 상세페이지·섬네일 제작 및 상품등록 준비 팀장: 디자인 AI 팀원 1명" [ref=e253] [cursor=pointer]':
+            - generic [ref=e254]:
+              - generic [ref=e255]: 🎨
+              - generic [ref=e256]: 디자인팀
+            - paragraph [ref=e257]: 상세페이지·섬네일 제작 및 상품등록 준비
+            - generic [ref=e258]:
+              - generic [ref=e259]: "팀장: 디자인 AI"
+              - generic [ref=e260]: 팀원 1명
+        - generic [ref=e261]:
+          - generic [ref=e262]:
+            - generic [ref=e263]: 🎨
+            - strong [ref=e264]: 디자인팀
+          - generic [ref=e265]:
+            - generic [ref=e266]:
+              - term [ref=e267]: 팀장
+              - definition [ref=e268]: 디자인 AI
+            - generic [ref=e269]:
+              - term [ref=e270]: 팀원
+              - definition [ref=e271]: 상세페이지 생성 AI
+            - generic [ref=e272]:
+              - term [ref=e273]: 오늘의 미션
+              - definition [ref=e274]: 상품 상세페이지·섬네일을 제작하고 상품등록을 준비합니다.
+      - generic [ref=e323]:
+        - generic [ref=e324]:
+          - generic [ref=e325]:
+            - heading "🎨 디자인팀 워크스페이스" [level=2] [ref=e326]
+            - paragraph [ref=e327]: 제작 요청을 받아 상세페이지·섬네일을 작업하고 상품등록을 준비합니다.
+          - generic [ref=e328]:
+            - generic [ref=e329]: 0 진행/대기
+            - generic [ref=e330]: 0 완료
+        - generic [ref=e331]:
+          - generic [ref=e332]: 🧠
+          - generic [ref=e333]:
+            - heading "디자인 AI 두뇌 ● 연결됨" [level=3] [ref=e334]:
+              - text: 디자인 AI 두뇌
+              - generic [ref=e335]: ● 연결됨
+            - paragraph [ref=e336]: 상세페이지 문구를 생성하는 AI. 성인 상품은 클라우드가 거부하므로 로컬 무검열(Super Gemma) 권장. (현재 이미지 인식(vision) 미지원 모델 → 스펙 텍스트 기반)
+          - combobox [ref=e337] [cursor=pointer]:
+            - option "🦙 Super Gemma (로컬 무검열)" [selected]
+            - option "전체 기본 AI (Claude)"
+        - generic [ref=e338]:
+          - generic [ref=e339]: 🛍️
+          - generic [ref=e340]:
+            - heading "고도몰 상세페이지 생성기" [level=3] [ref=e341]
+            - paragraph [ref=e342]: 고도몰 전용 레이아웃으로 상세페이지를 제작합니다. 신규 제작 + 메인몰 상세페이지 자동변환 결과 검수·수정을 겸합니다.
+          - button "생성기 열기 →" [active] [ref=e343] [cursor=pointer]
+        - generic [ref=e344]:
+          - generic [ref=e345]: 🖼️
+          - generic [ref=e346]:
+            - heading "메인몰(기존) 상세페이지 생성기" [level=3] [ref=e347]
+            - paragraph [ref=e348]: 기존 메인몰 레이아웃 생성기. 문구는 디자인팀 AI로 생성(AI 직원 설정에서 연결).
+          - button "생성기 열기 →" [ref=e349] [cursor=pointer]
+        - generic [ref=e356]:
+          - generic [ref=e357]:
+            - generic [ref=e358]: 🛍️ 고도몰 상세페이지 생성기
+            - button "✕ 닫기" [ref=e359] [cursor=pointer]
+          - generic [ref=e361]:
+            - navigation [ref=e362]:
+              - generic [ref=e363]:
+                - generic [ref=e364]: B
+                - heading "Detail Page Builder v3.0고도몰" [level=1] [ref=e365]
+              - generic [ref=e366]:
+                - button "모든 워터마크 켜기" [ref=e367] [cursor=pointer]:
+                  - img [ref=e368]
+                  - text: 모든 워터마크 켜기
+                - button "임시 저장" [ref=e371] [cursor=pointer]
+                - button "불러오기" [ref=e372] [cursor=pointer]
+                - button "썸네일 저장" [ref=e374] [cursor=pointer]
+                - button "전체 이미지 저장" [ref=e375] [cursor=pointer]:
+                  - img [ref=e376]
+                  - text: 전체 이미지 저장
+            - main [ref=e378]:
+              - complementary [ref=e379]:
+                - generic [ref=e380]:
+                  - generic [ref=e381]:
+                    - heading "📂 기본 설정" [level=2] [ref=e382]
+                    - generic [ref=e383]:
+                      - generic [ref=e384]: 컬러 테마
+                      - generic [ref=e385]:
+                        - button "시크 블랙" [ref=e386] [cursor=pointer]
+                        - button "슬레이트" [ref=e387] [cursor=pointer]
+                        - button "쿨 그레이" [ref=e388] [cursor=pointer]
+                        - button "퓨어 화이트" [ref=e389] [cursor=pointer]
+                        - button "로즈 레드" [ref=e390] [cursor=pointer]
+                        - button "비비드 레드" [ref=e391] [cursor=pointer]
+                        - button "딥 레드" [ref=e392] [cursor=pointer]
+                        - button "바나나 옐로우" [ref=e393] [cursor=pointer]
+                        - button "앰버 골드" [ref=e394] [cursor=pointer]
+                        - button "핫 핑크" [ref=e395] [cursor=pointer]
+                        - button "마젠타" [ref=e396] [cursor=pointer]
+                        - button "라벤더" [ref=e397] [cursor=pointer]
+                        - button "로얄 퍼플" [ref=e398] [cursor=pointer]
+                        - button "테크 블루" [ref=e399] [cursor=pointer]
+                        - button "스카이 블루" [ref=e400] [cursor=pointer]
+                        - button "민트 그린" [ref=e401] [cursor=pointer]
+                        - button "포레스트" [ref=e402] [cursor=pointer]
+                        - button "골드 그라데이션" [ref=e403] [cursor=pointer]
+                        - button "레드 페이드" [ref=e404] [cursor=pointer]
+                        - button "퍼플 헤이즈" [ref=e405] [cursor=pointer]
+                        - button "오션 블루" [ref=e406] [cursor=pointer]
+                        - button "네이처 그린" [ref=e407] [cursor=pointer]
+                        - button "메탈릭 블랙" [ref=e408] [cursor=pointer]
+                        - button "피치 캔디" [ref=e409] [cursor=pointer]
+                        - button "유니콘 드림" [ref=e410] [cursor=pointer]
+                        - button "아쿠아 스플래시" [ref=e411] [cursor=pointer]
+                        - button "선셋 오렌지" [ref=e412] [cursor=pointer]
+                      - generic [ref=e413]:
+                        - textbox [ref=e414] [cursor=pointer]: "#e11d48"
+                        - textbox [ref=e415]: "#E11D48"
+                    - generic [ref=e416]:
+                      - generic [ref=e417]: 상품명 (한글)
+                      - 'textbox "예: 바나나 오나홀" [ref=e418]'
+                    - generic [ref=e419]:
+                      - generic [ref=e420]: 영문 상품명
+                      - textbox "BANANA ONAHOLE" [ref=e421]
+                    - generic [ref=e422]:
+                      - generic [ref=e423]: 제조사/브랜드명
+                      - 'textbox "예: BANANA MALL" [ref=e424]'
+                  - generic [ref=e425]:
+                    - heading "🖼️ 메인 이미지" [level=2] [ref=e426]
+                    - generic [ref=e427]:
+                      - heading "워터마크 등록" [level=3] [ref=e428]:
+                        - img [ref=e429]
+                        - text: 워터마크 등록
+                      - generic [ref=e431]:
+                        - generic [ref=e432] [cursor=pointer]:
+                          - generic [ref=e433]:
+                            - text: IMG
+                            - text: UPLOAD
+                          - button "Choose File" [ref=e434]
+                        - generic [ref=e435]:
+                          - paragraph [ref=e436]: 투명 배경(PNG) 권장
+                          - paragraph [ref=e437]: 등록 후 각 이미지 섹션에서 '워터마크 삽입' 버튼을 눌러 적용하세요.
+                    - generic [ref=e438]:
+                      - generic [ref=e440]: Main Image
+                      - generic [ref=e441] [cursor=pointer]:
+                        - generic [ref=e442]:
+                          - generic [ref=e443]: +
+                          - generic [ref=e444]: UPLOAD
+                        - button "UPLOAD" [ref=e445]
+                      - link "Adobe로 이미지 편집" [ref=e447] [cursor=pointer]:
+                        - /url: https://new.express.adobe.com/
+                        - img [ref=e448]
+                        - text: Adobe로 이미지 편집
+                  - generic [ref=e450]:
+                    - heading "📝 스펙 정보" [level=2] [ref=e451]
+                    - generic [ref=e452]:
+                      - generic [ref=e453]:
+                        - generic [ref=e454]: 특징
+                        - textbox [ref=e455]
+                      - generic [ref=e456]:
+                        - generic [ref=e457]: 타입/종류
+                        - textbox [ref=e458]
+                      - generic [ref=e459]:
+                        - generic [ref=e460]: 재질/소재
+                        - textbox [ref=e461]
+                      - generic [ref=e462]:
+                        - generic [ref=e463]: 사이즈 (mm)
+                        - textbox [ref=e464]
+                      - generic [ref=e465]:
+                        - generic [ref=e466]: 무게 (g)
+                        - textbox [ref=e467]
+                      - generic [ref=e468]:
+                        - generic [ref=e469]: 전원/충전
+                        - textbox [ref=e470]
+                      - generic [ref=e471]:
+                        - generic [ref=e472]: 제조사
+                        - textbox [ref=e473]
+                    - generic [ref=e474]:
+                      - generic [ref=e476]: AI 생성 참고용 핵심 요약
+                      - 'textbox "예: 강력한 진동, 부드러운 실리콘 재질..." [ref=e477]'
+                    - generic [ref=e479]:
+                      - generic [ref=e481]: 동영상 삽입 (이미지) 800x450 권장
+                      - generic [ref=e482] [cursor=pointer]:
+                        - generic [ref=e483]:
+                          - generic [ref=e484]: +
+                          - generic [ref=e485]: UPLOAD
+                        - button "UPLOAD" [ref=e486]
+                      - link "Adobe로 이미지 편집" [ref=e488] [cursor=pointer]:
+                        - /url: https://new.express.adobe.com/
+                        - img [ref=e489]
+                        - text: Adobe로 이미지 편집
+                  - generic [ref=e492]:
+                    - heading "📦 패키지 이미지 설정" [level=2] [ref=e493]
+                    - generic [ref=e494] [cursor=pointer]:
+                      - checkbox "OFF" [ref=e495]
+                      - generic [ref=e497]: "OFF"
+                  - generic [ref=e499]:
+                    - heading "✨ 추가 옵션 (Option)" [level=2] [ref=e500]
+                    - button "+ 추가" [ref=e501] [cursor=pointer]
+                  - generic [ref=e502]:
+                    - heading "✨ 상세 포인트" [level=2] [ref=e503]
+                    - generic [ref=e504]:
+                      - heading "Feature (핵심 특징)" [level=3] [ref=e505]
+                      - button "+ Feature 섹션 추가하기" [ref=e506] [cursor=pointer]
+                    - generic [ref=e507]:
+                      - heading "Point 01" [level=3] [ref=e508]
+                      - button "+ Point 01 섹션 추가하기" [ref=e509] [cursor=pointer]
+                    - generic [ref=e510]:
+                      - heading "Point 02" [level=3] [ref=e511]
+                      - button "+ Point 02 섹션 추가하기" [ref=e512] [cursor=pointer]
+                    - generic [ref=e513]:
+                      - heading "📏 사이즈 및 썸네일" [level=2] [ref=e514]
+                      - generic [ref=e515]:
+                        - generic [ref=e516]:
+                          - generic [ref=e518]: Size Detail
+                          - generic [ref=e519] [cursor=pointer]:
+                            - generic [ref=e520]:
+                              - generic [ref=e521]: +
+                              - generic [ref=e522]: UPLOAD
+                            - button "UPLOAD" [ref=e523]
+                          - link "Adobe로 이미지 편집" [ref=e525] [cursor=pointer]:
+                            - /url: https://new.express.adobe.com/
+                            - img [ref=e526]
+                            - text: Adobe로 이미지 편집
+                        - generic [ref=e528]:
+                          - generic [ref=e530]: Thumbnail
+                          - generic [ref=e531] [cursor=pointer]:
+                            - generic [ref=e532]:
+                              - generic [ref=e533]: +
+                              - generic [ref=e534]: UPLOAD
+                            - button "UPLOAD" [ref=e535]
+                          - link "Adobe로 이미지 편집" [ref=e537] [cursor=pointer]:
+                            - /url: https://new.express.adobe.com/
+                            - img [ref=e538]
+                            - text: Adobe로 이미지 편집
+                  - button "✨ AI 문구 자동 생성하기" [ref=e541] [cursor=pointer]
+              - generic [ref=e543]:
+                - generic [ref=e546]:
+                  - generic [ref=e547]:
+                    - heading "상품명을 입력하세요" [level=1] [ref=e548]
+                    - paragraph [ref=e549]: PRODUCT ENGLISH NAME
+                    - generic [ref=e552]: MAIN IMAGE
+                  - generic [ref=e554]:
+                    - generic [ref=e555]: PRODUCT SPECIFICATION
+                    - generic [ref=e556]:
+                      - generic [ref=e557]:
+                        - generic [ref=e558]: 특징
+                        - generic [ref=e559]: "-"
+                      - generic [ref=e560]:
+                        - generic [ref=e561]: 타입
+                        - generic [ref=e562]: "-"
+                      - generic [ref=e563]:
+                        - generic [ref=e564]: 재질
+                        - generic [ref=e565]: "-"
+                      - generic [ref=e566]:
+                        - generic [ref=e567]: 치수
+                        - generic [ref=e568]: "-"
+                      - generic [ref=e569]:
+                        - generic [ref=e570]: 무게
+                        - generic [ref=e571]: "-"
+                      - generic [ref=e572]:
+                        - generic [ref=e573]: 전원
+                        - generic [ref=e574]: "-"
+                      - generic [ref=e575]:
+                        - generic [ref=e576]: 제조사
+                        - generic [ref=e577]: "-"
+                  - generic [ref=e579]:
+                    - paragraph [ref=e580]: 상품의 핵심 특징이
+                    - paragraph [ref=e581]: 여기에 강렬하게
+                    - paragraph [ref=e582]: 표시됩니다.
+                  - generic [ref=e583]:
+                    - generic [ref=e584]: BANANAMALL
+                    - paragraph [ref=e585]: COPYRIGHT © BANANAMALL ALL RIGHTS RESERVED.
+                - generic [ref=e586]:
+                  - heading "Thumbnail Check" [level=3] [ref=e587]
+                  - generic [ref=e589]:
+                    - generic [ref=e590]:
+                      - generic [ref=e593]:
+                        - generic [ref=e595]: NO IMAGE
+                        - generic:
+                          - generic:
+                            - generic: SINCE 1999
+                            - generic: 대한민국 No.1 성인용품점
+                          - generic:
+                            - generic: 바나나몰
+                            - generic: "|"
+                            - generic: BRAND
+                          - generic: bananamall.co.kr
+                      - generic [ref=e596]:
+                        - generic [ref=e597]: "202"
+                        - button "다운로드" [ref=e598] [cursor=pointer]
+                    - generic [ref=e599]:
+                      - generic [ref=e602]:
+                        - generic [ref=e604]: NO IMAGE
+                        - generic:
+                          - generic:
+                            - generic: SINCE 1999
+                            - generic: 대한민국 No.1 성인용품점
+                          - generic:
+                            - generic: 바나나몰
+                            - generic: "|"
+                            - generic: BRAND
+                          - generic: bananamall.co.kr
+                      - generic [ref=e605]:
+                        - generic [ref=e606]: "400"
+                        - button "다운로드" [ref=e607] [cursor=pointer]
+                    - generic [ref=e608]:
+                      - generic [ref=e611]:
+                        - generic [ref=e613]: NO IMAGE
+                        - generic:
+                          - generic:
+                            - generic: SINCE 1999
+                            - generic: 대한민국 No.1 성인용품점
+                          - generic:
+                            - generic: 바나나몰
+                            - generic: "|"
+                            - generic: BRAND
+                          - generic: bananamall.co.kr
+                      - generic [ref=e614]:
+                        - generic [ref=e615]: "500"
+                        - button "다운로드" [ref=e616] [cursor=pointer]
+                    - generic [ref=e617]:
+                      - generic [ref=e620]:
+                        - generic [ref=e622]: NO IMAGE
+                        - generic:
+                          - generic:
+                            - generic: SINCE 1999
+                            - generic: 대한민국 No.1 성인용품점
+                          - generic:
+                            - generic: 바나나몰
+                            - generic: "|"
+                            - generic: BRAND
+                          - generic: bananamall.co.kr
+                      - generic [ref=e623]:
+                        - generic [ref=e624]: 274x411
+                        - button "다운로드" [ref=e625] [cursor=pointer]
+        - generic [ref=e350]:
+          - heading "제작 요청 큐" [level=3] [ref=e351]
+          - generic [ref=e352]: 상품팀·총괄 등에서 받은 요청 · 처리는 우측 팀 간 메시지에서
+        - generic [ref=e353]: 아직 받은 제작 요청이 없습니다. 상품팀이 자료(엑셀·이미지)를 팀 간 메시지로 보내면 이곳에 쌓입니다.
+      - complementary [ref=e308]:
+        - generic [ref=e309]:
+          - heading "디자인팀에게 지시하기" [level=3] [ref=e354]
+          - paragraph [ref=e311]: 선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.
+        - generic [ref=e312]:
+          - button "💬 AI 팀장 지시" [ref=e313] [cursor=pointer]
+          - button "📨 팀 간 메시지" [ref=e314] [cursor=pointer]
+        - generic [ref=e316]:
+          - paragraph [ref=e317]: 아직 지시한 내용이 없습니다.
+          - paragraph [ref=e318]: "예: 신상품 상세페이지 만들어줘"
+        - generic [ref=e319]:
+          - 'textbox "예: 신상품 상세페이지 만들어줘" [ref=e355]'
+          - button "지시 전송" [disabled] [ref=e321]
+        - paragraph [ref=e322]: ※ 분석·정리·초안까지만 제공하며, 실제 발송·수정·캠페인 실행은 승인 전 하지 않습니다.

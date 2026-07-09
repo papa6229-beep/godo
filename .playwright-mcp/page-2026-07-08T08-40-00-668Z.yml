@@ -1,0 +1,618 @@
+- generic [ref=f3e17]:
+  - banner [ref=f3e18]:
+    - generic [ref=f3e19]:
+      - generic [ref=f3e20]: 🛰️
+      - generic [ref=f3e21]:
+        - heading "GODO AI OS" [level=1] [ref=f3e22]
+        - generic [ref=f3e23]: 쇼핑몰 AI 운영센터
+    - generic [ref=f3e24]:
+      - generic [ref=f3e25]: LOCAL APP MODE
+      - generic "지금 누구로 보는가 (데모 전환 · 실제 로그인은 다음 단계)" [ref=f3e27]:
+        - generic [ref=f3e28]: 👤
+        - combobox "👤" [ref=f3e29] [cursor=pointer]:
+          - option "🏛️ 총괄 관리자" [selected]
+          - option "🏷️ 상품관리팀장"
+          - option "💬 CS팀장"
+          - option "📊 마케팅팀장"
+          - option "🎨 디자인팀장"
+    - generic [ref=f3e30]:
+      - button "🌙 Dark" [ref=f3e31] [cursor=pointer]:
+        - generic [ref=f3e32]: 🌙
+        - text: Dark
+      - generic [ref=f3e33]:
+        - button "🏢 오늘의 운영" [ref=f3e34] [cursor=pointer]
+        - button "🗂️ 부서 업무 관장" [ref=f3e35] [cursor=pointer]
+        - button "🤖 AI 직원" [ref=f3e36] [cursor=pointer]
+        - button "📅 운영일지" [ref=f3e37] [cursor=pointer]
+        - button "⚙️ 관리자 설정 ▾" [ref=f3e40] [cursor=pointer]:
+          - text: ⚙️ 관리자 설정
+          - generic [ref=f3e41]: ▾
+  - main [ref=f3e43]:
+    - generic [ref=f3e44]:
+      - complementary [ref=f3e45]:
+        - generic [ref=f3e46]:
+          - heading "부서 선택" [level=3] [ref=f3e47]
+          - paragraph [ref=f3e48]: 팀을 선택해 업무 공간을 전환하세요.
+        - generic [ref=f3e49]:
+          - 'button "🏛️ 총괄팀 부서별 업무 상태와 승인 대기 항목을 조율 팀장: 총괄 매니저 AI 팀원 1명" [ref=f3e50] [cursor=pointer]':
+            - generic [ref=f3e51]:
+              - generic [ref=f3e52]: 🏛️
+              - generic [ref=f3e53]: 총괄팀
+            - paragraph [ref=f3e54]: 부서별 업무 상태와 승인 대기 항목을 조율
+            - generic [ref=f3e55]:
+              - generic [ref=f3e56]: "팀장: 총괄 매니저 AI"
+              - generic [ref=f3e57]: 팀원 1명
+          - 'button "🏷️ 상품관리팀 상품·재고·노출상태·판매상태 점검 팀장: 상품 관리 AI 팀원 2명" [ref=f3e58] [cursor=pointer]':
+            - generic [ref=f3e59]:
+              - generic [ref=f3e60]: 🏷️
+              - generic [ref=f3e61]: 상품관리팀
+            - paragraph [ref=f3e62]: 상품·재고·노출상태·판매상태 점검
+            - generic [ref=f3e63]:
+              - generic [ref=f3e64]: "팀장: 상품 관리 AI"
+              - generic [ref=f3e65]: 팀원 2명
+          - 'button "💬 CS팀 문의·리뷰·배송 이슈 확인 팀장: CS 상담 AI 팀원 2명" [ref=f3e66] [cursor=pointer]':
+            - generic [ref=f3e67]:
+              - generic [ref=f3e68]: 💬
+              - generic [ref=f3e69]: CS팀
+            - paragraph [ref=f3e70]: 문의·리뷰·배송 이슈 확인
+            - generic [ref=f3e71]:
+              - generic [ref=f3e72]: "팀장: CS 상담 AI"
+              - generic [ref=f3e73]: 팀원 2명
+          - 'button "📊 마케팅팀 판매 흐름·캠페인 후보 점검 팀장: 마케팅 기획 AI 팀원 1명" [ref=f3e74] [cursor=pointer]':
+            - generic [ref=f3e75]:
+              - generic [ref=f3e76]: 📊
+              - generic [ref=f3e77]: 마케팅팀
+            - paragraph [ref=f3e78]: 판매 흐름·캠페인 후보 점검
+            - generic [ref=f3e79]:
+              - generic [ref=f3e80]: "팀장: 마케팅 기획 AI"
+              - generic [ref=f3e81]: 팀원 1명
+          - 'button "🎨 디자인팀 상세페이지·섬네일 제작 및 상품등록 준비 팀장: 디자인 AI 팀원 1명" [ref=f3e82] [cursor=pointer]':
+            - generic [ref=f3e83]:
+              - generic [ref=f3e84]: 🎨
+              - generic [ref=f3e85]: 디자인팀
+            - paragraph [ref=f3e86]: 상세페이지·섬네일 제작 및 상품등록 준비
+            - generic [ref=f3e87]:
+              - generic [ref=f3e88]: "팀장: 디자인 AI"
+              - generic [ref=f3e89]: 팀원 1명
+        - generic [ref=f3e90]:
+          - generic [ref=f3e91]:
+            - generic [ref=f3e92]: 🎨
+            - strong [ref=f3e93]: 디자인팀
+          - generic [ref=f3e94]:
+            - generic [ref=f3e95]:
+              - term [ref=f3e96]: 팀장
+              - definition [ref=f3e97]: 디자인 AI
+            - generic [ref=f3e98]:
+              - term [ref=f3e99]: 팀원
+              - definition [ref=f3e100]: 상세페이지 생성 AI
+            - generic [ref=f3e101]:
+              - term [ref=f3e102]: 오늘의 미션
+              - definition [ref=f3e103]: 상품 상세페이지·섬네일을 제작하고 상품등록을 준비합니다.
+      - generic [ref=f3e152]:
+        - generic [ref=f3e153]:
+          - generic [ref=f3e154]:
+            - heading "🎨 디자인팀 워크스페이스" [level=2] [ref=f3e155]
+            - paragraph [ref=f3e156]: 제작 요청을 받아 상세페이지·섬네일을 작업하고 상품등록을 준비합니다.
+          - generic [ref=f3e157]:
+            - generic [ref=f3e158]: 0 진행/대기
+            - generic [ref=f3e159]: 0 완료
+        - generic [ref=f3e160]:
+          - generic [ref=f3e161]: 🧠
+          - generic [ref=f3e162]:
+            - heading "디자인 AI 두뇌 ● 연결됨" [level=3] [ref=f3e163]:
+              - text: 디자인 AI 두뇌
+              - generic [ref=f3e164]: ● 연결됨
+            - paragraph [ref=f3e165]: 상세페이지 문구를 생성하는 AI. 성인 상품은 클라우드가 거부하므로 로컬 무검열(Super Gemma) 권장. (현재 이미지 인식(vision) 미지원 모델 → 스펙 텍스트 기반)
+          - combobox [ref=f3e166] [cursor=pointer]:
+            - option "🦙 Super Gemma (로컬 무검열)" [selected]
+            - option "전체 기본 AI (Claude)"
+        - generic [ref=f3e167]:
+          - generic [ref=f3e168]: 🛍️
+          - generic [ref=f3e169]:
+            - heading "고도몰 상세페이지 생성기" [level=3] [ref=f3e170]
+            - paragraph [ref=f3e171]: 고도몰 전용 레이아웃으로 상세페이지를 제작합니다. 신규 제작 + 메인몰 상세페이지 자동변환 결과 검수·수정을 겸합니다.
+          - button "생성기 열기 →" [ref=f3e172] [cursor=pointer]
+        - generic [ref=f3e173]:
+          - generic [ref=f3e174]: 🖼️
+          - generic [ref=f3e175]:
+            - heading "메인몰(기존) 상세페이지 생성기" [level=3] [ref=f3e176]
+            - paragraph [ref=f3e177]: 기존 메인몰 레이아웃 생성기. 문구는 디자인팀 AI로 생성(AI 직원 설정에서 연결).
+          - button "생성기 열기 →" [ref=f3e178] [cursor=pointer]
+        - generic [ref=f3e185]:
+          - generic [ref=f3e186]:
+            - generic [ref=f3e187]: 🛍️ 고도몰 상세페이지 생성기
+            - button "✕ 닫기" [ref=f3e188] [cursor=pointer]
+          - generic [ref=f3e190]:
+            - navigation [ref=f3e191]:
+              - generic [ref=f3e192]:
+                - generic [ref=f3e193]: B
+                - heading "Detail Page Builder v3.0고도몰" [level=1] [ref=f3e194]
+              - generic [ref=f3e195]:
+                - button "모든 워터마크 켜기" [ref=f3e196] [cursor=pointer]:
+                  - img [ref=f3e197]
+                  - text: 모든 워터마크 켜기
+                - button "임시 저장" [ref=f3e200] [cursor=pointer]
+                - button "불러오기" [active] [ref=f3e201] [cursor=pointer]
+                - button "썸네일 저장" [ref=f3e203] [cursor=pointer]
+                - button "전체 이미지 저장" [ref=f3e204] [cursor=pointer]:
+                  - img [ref=f3e205]
+                  - text: 전체 이미지 저장
+            - main [ref=f3e207]:
+              - complementary [ref=f3e208]:
+                - generic [ref=f3e209]:
+                  - generic [ref=f3e210]:
+                    - heading "📂 기본 설정" [level=2] [ref=f3e211]
+                    - generic [ref=f3e212]:
+                      - generic [ref=f3e213]: 컬러 테마
+                      - generic [ref=f3e214]:
+                        - button "시크 블랙" [ref=f3e215] [cursor=pointer]
+                        - button "슬레이트" [ref=f3e216] [cursor=pointer]
+                        - button "쿨 그레이" [ref=f3e217] [cursor=pointer]
+                        - button "퓨어 화이트" [ref=f3e218] [cursor=pointer]
+                        - button "로즈 레드" [ref=f3e219] [cursor=pointer]
+                        - button "비비드 레드" [ref=f3e220] [cursor=pointer]
+                        - button "딥 레드" [ref=f3e221] [cursor=pointer]
+                        - button "바나나 옐로우" [ref=f3e222] [cursor=pointer]
+                        - button "앰버 골드" [ref=f3e223] [cursor=pointer]
+                        - button "핫 핑크" [ref=f3e224] [cursor=pointer]
+                        - button "마젠타" [ref=f3e225] [cursor=pointer]
+                        - button "라벤더" [ref=f3e226] [cursor=pointer]
+                        - button "로얄 퍼플" [ref=f3e227] [cursor=pointer]
+                        - button "테크 블루" [ref=f3e228] [cursor=pointer]
+                        - button "스카이 블루" [ref=f3e229] [cursor=pointer]
+                        - button "민트 그린" [ref=f3e230] [cursor=pointer]
+                        - button "포레스트" [ref=f3e231] [cursor=pointer]
+                        - button "골드 그라데이션" [ref=f3e232] [cursor=pointer]
+                        - button "레드 페이드" [ref=f3e233] [cursor=pointer]
+                        - button "퍼플 헤이즈" [ref=f3e234] [cursor=pointer]
+                        - button "오션 블루" [ref=f3e235] [cursor=pointer]
+                        - button "네이처 그린" [ref=f3e236] [cursor=pointer]
+                        - button "메탈릭 블랙" [ref=f3e237] [cursor=pointer]
+                        - button "피치 캔디" [ref=f3e238] [cursor=pointer]
+                        - button "유니콘 드림" [ref=f3e239] [cursor=pointer]
+                        - button "아쿠아 스플래시" [ref=f3e240] [cursor=pointer]
+                        - button "선셋 오렌지" [ref=f3e241] [cursor=pointer]
+                      - generic [ref=f3e242]:
+                        - textbox [ref=f3e243] [cursor=pointer]: "#16a34a"
+                        - textbox [ref=f3e244]: "#16A34A"
+                    - generic [ref=f3e245]:
+                      - generic [ref=f3e246]: 상품명 (한글)
+                      - 'textbox "예: 바나나 오나홀" [ref=f3e247]': 퍼플 로즈 바이브레이터
+                    - generic [ref=f3e248]:
+                      - generic [ref=f3e249]: 영문 상품명
+                      - textbox "BANANA ONAHOLE" [ref=f3e250]: PURPLE ROSE VIBRATOR
+                    - generic [ref=f3e251]:
+                      - generic [ref=f3e252]: 제조사/브랜드명
+                      - 'textbox "예: BANANA MALL" [ref=f3e253]': BALIE 바일러
+                  - generic [ref=f3e254]:
+                    - heading "🖼️ 메인 이미지" [level=2] [ref=f3e255]
+                    - generic [ref=f3e256]:
+                      - heading "워터마크 등록" [level=3] [ref=f3e257]:
+                        - img [ref=f3e258]
+                        - text: 워터마크 등록
+                      - generic [ref=f3e260]:
+                        - generic [ref=f3e261] [cursor=pointer]:
+                          - generic [ref=f3e262]:
+                            - text: IMG
+                            - text: UPLOAD
+                          - button "Choose File" [ref=f3e263]
+                        - generic [ref=f3e264]:
+                          - paragraph [ref=f3e265]: 투명 배경(PNG) 권장
+                          - paragraph [ref=f3e266]: 등록 후 각 이미지 섹션에서 '워터마크 삽입' 버튼을 눌러 적용하세요.
+                    - generic [ref=f3e267]:
+                      - generic [ref=f3e269]: Main Image
+                      - generic [ref=f3e270] [cursor=pointer]:
+                        - img "Main Image" [ref=f3e433]
+                        - button "Main Image" [ref=f3e434]
+                      - generic [ref=f3e275]:
+                        - button "워터마크 OFF" [ref=f3e435] [cursor=pointer]:
+                          - img [ref=f3e436]
+                          - text: 워터마크 OFF
+                        - link "Adobe로 이미지 편집" [ref=f3e276] [cursor=pointer]:
+                          - /url: https://new.express.adobe.com/
+                          - img [ref=f3e277]
+                          - text: Adobe로 이미지 편집
+                  - generic [ref=f3e279]:
+                    - heading "📝 스펙 정보" [level=2] [ref=f3e280]
+                    - generic [ref=f3e281]:
+                      - generic [ref=f3e282]:
+                        - generic [ref=f3e283]: 특징
+                        - textbox [ref=f3e284]
+                      - generic [ref=f3e285]:
+                        - generic [ref=f3e286]: 타입/종류
+                        - textbox [ref=f3e287]: 바이브레이터
+                      - generic [ref=f3e288]:
+                        - generic [ref=f3e289]: 재질/소재
+                        - textbox [ref=f3e290]: 실리콘
+                      - generic [ref=f3e291]:
+                        - generic [ref=f3e292]: 사이즈 (mm)
+                        - textbox [ref=f3e293]: 상세페이지 참조
+                      - generic [ref=f3e294]:
+                        - generic [ref=f3e295]: 무게 (g)
+                        - textbox [ref=f3e296]: 약 260g
+                      - generic [ref=f3e297]:
+                        - generic [ref=f3e298]: 전원/충전
+                        - textbox [ref=f3e299]: USB충전형
+                      - generic [ref=f3e300]:
+                        - generic [ref=f3e301]: 제조사
+                        - textbox [ref=f3e302]: BALIE 바일러
+                    - generic [ref=f3e303]:
+                      - generic [ref=f3e304]: AI 생성 참고용 핵심 특징 (KEY FEATURE)
+                      - generic [ref=f3e305]:
+                        - generic [ref=f3e306]: 메인특징 1 *직접입력
+                        - 'textbox "예: 10단 강력 진동" [ref=f3e307]': 10단 진동
+                        - generic [ref=f3e308]:
+                          - generic [ref=f3e310]: 특징 설명 1 (AI 생성 가능)
+                          - textbox "AI가 메인특징을 참고해 작성 · 직접 입력도 가능" [ref=f3e311]: 10가지 패턴의 다채로운 진동이 감각을 깨웁니다. 섬세한 조절로 나만의 리듬을 완성하세요.
+                      - generic [ref=f3e312]:
+                        - generic [ref=f3e313]: 메인특징 2 *직접입력
+                        - 'textbox "예: 부드러운 실리콘" [ref=f3e314]': 장미형 돌기가 주는 마찰
+                        - generic [ref=f3e315]:
+                          - generic [ref=f3e317]: 특징 설명 2 (AI 생성 가능)
+                          - textbox "AI가 메인특징을 참고해 작성 · 직접 입력도 가능" [ref=f3e318]: 로즈 모티브 돌기가 부드럽게 밀착되어 풍부한 자극을 전합니다.
+                      - generic [ref=f3e319]:
+                        - generic [ref=f3e320]: 메인특징 3 *직접입력
+                        - 'textbox "예: 방수 IPX7" [ref=f3e321]': 하단의 바이브레이터로 진동 자극
+                        - generic [ref=f3e322]:
+                          - generic [ref=f3e324]: 특징 설명 3 (AI 생성 가능)
+                          - textbox "AI가 메인특징을 참고해 작성 · 직접 입력도 가능" [ref=f3e325]: 그립부 하단 진동이 손끝까지 전달됩니다.
+                      - paragraph [ref=f3e326]: ※ 입력한 메인특징 3개는 AI가 전체 문구를 생성할 때 핵심 참고자료로 사용됩니다.
+                  - generic [ref=f3e327]:
+                    - generic [ref=f3e328]:
+                      - heading "📦 패키지 이미지 설정" [level=2] [ref=f3e329]
+                      - generic [ref=f3e330] [cursor=pointer]:
+                        - checkbox "ON" [checked] [ref=f3e438]
+                        - generic [ref=f3e333]: "ON"
+                    - generic [ref=f3e439]:
+                      - generic [ref=f3e441]:
+                        - generic [ref=f3e443]: Package Image
+                        - generic [ref=f3e444] [cursor=pointer]:
+                          - img "Package Image" [ref=f3e445]
+                          - button "Package Image" [ref=f3e446]
+                        - generic [ref=f3e447]:
+                          - button "워터마크 OFF" [ref=f3e448] [cursor=pointer]:
+                            - img [ref=f3e449]
+                            - text: 워터마크 OFF
+                          - link "Adobe로 이미지 편집" [ref=f3e451] [cursor=pointer]:
+                            - /url: https://new.express.adobe.com/
+                            - img [ref=f3e452]
+                            - text: Adobe로 이미지 편집
+                      - generic [ref=f3e454]:
+                        - text: 패키지 이미지는
+                        - text: 작게 출력됩니다.
+                  - generic [ref=f3e334]:
+                    - generic [ref=f3e335]:
+                      - heading "✨ 추가 옵션 (Option)" [level=2] [ref=f3e336]
+                      - button "+ 추가" [ref=f3e337] [cursor=pointer]
+                    - generic [ref=f3e455]:
+                      - generic [ref=f3e456]:
+                        - generic [ref=f3e457]: Option 1
+                        - button "삭제" [ref=f3e458] [cursor=pointer]
+                      - textbox "옵션명" [ref=f3e459]: 옵션01 - 블루
+                      - generic [ref=f3e460]:
+                        - img "opt" [ref=f3e462]
+                        - button "Choose File" [ref=f3e463]
+                    - generic [ref=f3e464]:
+                      - generic [ref=f3e465]:
+                        - generic [ref=f3e466]: Option 2
+                        - button "삭제" [ref=f3e467] [cursor=pointer]
+                      - textbox "옵션명" [ref=f3e468]: 옵션02 - 블루
+                      - generic [ref=f3e469]:
+                        - img "opt" [ref=f3e471]
+                        - button "Choose File" [ref=f3e472]
+                    - generic [ref=f3e473]:
+                      - generic [ref=f3e474]:
+                        - generic [ref=f3e475]: Option 3
+                        - button "삭제" [ref=f3e476] [cursor=pointer]
+                      - textbox "옵션명" [ref=f3e477]: 옵션03 - 블루
+                      - generic [ref=f3e478]:
+                        - img "opt" [ref=f3e480]
+                        - button "Choose File" [ref=f3e481]
+                  - generic [ref=f3e338]:
+                    - heading "✨ 상세 포인트" [level=2] [ref=f3e339]
+                    - generic [ref=f3e340]:
+                      - heading "Feature (핵심 특징)" [level=3] [ref=f3e341]
+                      - generic [ref=f3e482]:
+                        - generic [ref=f3e483]: Main
+                        - button "🗑 섹션 삭제" [ref=f3e484] [cursor=pointer]
+                      - 'textbox "섹션 타이틀 (기본값: 특징)" [ref=f3e486]': 손가락에 끼워 사용하는 진동 바이브레이터
+                      - generic [ref=f3e487]:
+                        - generic [ref=f3e488]:
+                          - generic [ref=f3e489]: Feature Image
+                          - button "Feature Image 삭제" [ref=f3e490] [cursor=pointer]: 삭제
+                        - generic [ref=f3e491] [cursor=pointer]:
+                          - img "Feature Image" [ref=f3e492]
+                          - button "Feature Image" [ref=f3e493]
+                        - generic [ref=f3e494]:
+                          - button "워터마크 OFF" [ref=f3e495] [cursor=pointer]:
+                            - img [ref=f3e496]
+                            - text: 워터마크 OFF
+                          - link "Adobe로 이미지 편집" [ref=f3e498] [cursor=pointer]:
+                            - /url: https://new.express.adobe.com/
+                            - img [ref=f3e499]
+                            - text: Adobe로 이미지 편집
+                      - generic [ref=f3e501]:
+                        - generic [ref=f3e503]: AI 설명
+                        - textbox "AI 작성 영역" [ref=f3e504]
+                    - generic [ref=f3e343]:
+                      - heading "Point 01" [level=3] [ref=f3e344]
+                      - generic [ref=f3e505]:
+                        - generic [ref=f3e506]: Main
+                        - button "🗑 섹션 삭제 (전체)" [ref=f3e507] [cursor=pointer]
+                      - 'textbox "섹션 타이틀 (기본값: POINT 01)" [ref=f3e509]'
+                      - generic [ref=f3e510]:
+                        - generic [ref=f3e511]:
+                          - generic [ref=f3e512]: Image 1-1
+                          - button "Image 1-1 삭제" [ref=f3e513] [cursor=pointer]: 삭제
+                        - generic [ref=f3e514] [cursor=pointer]:
+                          - img "Image 1-1" [ref=f3e515]
+                          - button "Image 1-1" [ref=f3e516]
+                        - generic [ref=f3e517]:
+                          - button "워터마크 OFF" [ref=f3e518] [cursor=pointer]:
+                            - img [ref=f3e519]
+                            - text: 워터마크 OFF
+                          - link "Adobe로 이미지 편집" [ref=f3e521] [cursor=pointer]:
+                            - /url: https://new.express.adobe.com/
+                            - img [ref=f3e522]
+                            - text: Adobe로 이미지 편집
+                      - generic [ref=f3e524]:
+                        - generic [ref=f3e525]:
+                          - generic [ref=f3e526]: 설명 1-1
+                          - button "삭제" [ref=f3e527] [cursor=pointer]
+                        - textbox "AI 작성 영역" [ref=f3e528]: 깊고 선명한 블루 마블 패턴이 유리바디 전체에 흐르듯 시선을 사로잡는 디자인을 완성하였습니다.
+                      - generic [ref=f3e529]:
+                        - generic [ref=f3e530]: point1 - 2
+                        - generic [ref=f3e531]:
+                          - generic [ref=f3e532]:
+                            - generic [ref=f3e533]: Image 1-2
+                            - button "Image 1-2 삭제" [ref=f3e534] [cursor=pointer]: 삭제
+                          - generic [ref=f3e535] [cursor=pointer]:
+                            - img "Image 1-2" [ref=f3e536]
+                            - button "Image 1-2" [ref=f3e537]
+                          - generic [ref=f3e538]:
+                            - button "워터마크 OFF" [ref=f3e539] [cursor=pointer]:
+                              - img [ref=f3e540]
+                              - text: 워터마크 OFF
+                            - link "Adobe로 이미지 편집" [ref=f3e542] [cursor=pointer]:
+                              - /url: https://new.express.adobe.com/
+                              - img [ref=f3e543]
+                              - text: Adobe로 이미지 편집
+                        - generic [ref=f3e545]:
+                          - generic [ref=f3e546]:
+                            - generic [ref=f3e547]: 설명 1-2
+                            - button "삭제" [ref=f3e548] [cursor=pointer]
+                          - textbox "AI 작성 영역" [ref=f3e549]: 온도에 따라 달라지는 에디큰 감각으로 또 다른 몰입을 선사합니다.
+                      - generic [ref=f3e550]:
+                        - button "+ 이미지 (point1-3)" [ref=f3e551] [cursor=pointer]
+                        - button "+ 설명 (point1-3)" [ref=f3e552] [cursor=pointer]
+                    - generic [ref=f3e346]:
+                      - heading "Point 02" [level=3] [ref=f3e347]
+                      - generic [ref=f3e553]:
+                        - generic [ref=f3e554]: Main
+                        - button "🗑 섹션 삭제" [ref=f3e555] [cursor=pointer]
+                      - 'textbox "섹션 타이틀 (기본값: POINT 02)" [ref=f3e557]'
+                      - generic [ref=f3e558]:
+                        - generic [ref=f3e559]:
+                          - generic [ref=f3e560]: Image 2-1
+                          - button "Image 2-1 삭제" [ref=f3e561] [cursor=pointer]: 삭제
+                        - generic [ref=f3e562] [cursor=pointer]:
+                          - img "Image 2-1" [ref=f3e563]
+                          - button "Image 2-1" [ref=f3e564]
+                        - generic [ref=f3e565]:
+                          - button "워터마크 OFF" [ref=f3e566] [cursor=pointer]:
+                            - img [ref=f3e567]
+                            - text: 워터마크 OFF
+                          - link "Adobe로 이미지 편집" [ref=f3e569] [cursor=pointer]:
+                            - /url: https://new.express.adobe.com/
+                            - img [ref=f3e570]
+                            - text: Adobe로 이미지 편집
+                      - generic [ref=f3e572]:
+                        - generic [ref=f3e573]:
+                          - generic [ref=f3e574]: 설명 2-1
+                          - button "삭제" [ref=f3e575] [cursor=pointer]
+                        - textbox "AI 작성 영역" [ref=f3e576]: 매끄러운 표면과 굴곡이 편안한 삽입감을 제공합니다.
+                      - generic [ref=f3e577]:
+                        - button "+ 이미지 (point2-2)" [ref=f3e578] [cursor=pointer]
+                        - button "+ 설명 (point2-2)" [ref=f3e579] [cursor=pointer]
+                      - generic [ref=f3e580]:
+                        - button "+ 이미지 (point2-3)" [ref=f3e581] [cursor=pointer]
+                        - button "+ 설명 (point2-3)" [ref=f3e582] [cursor=pointer]
+                    - generic [ref=f3e349]:
+                      - heading "📏 사이즈 및 썸네일" [level=2] [ref=f3e350]
+                      - generic [ref=f3e351]:
+                        - generic [ref=f3e352]:
+                          - generic [ref=f3e353]:
+                            - generic [ref=f3e354]: Size Detail
+                            - button "Size Detail 삭제" [ref=f3e583] [cursor=pointer]: 삭제
+                          - generic [ref=f3e355] [cursor=pointer]:
+                            - img "Size Detail" [ref=f3e584]
+                            - button "Size Detail" [ref=f3e585]
+                          - generic [ref=f3e360]:
+                            - button "워터마크 OFF" [ref=f3e586] [cursor=pointer]:
+                              - img [ref=f3e587]
+                              - text: 워터마크 OFF
+                            - link "Adobe로 이미지 편집" [ref=f3e361] [cursor=pointer]:
+                              - /url: https://new.express.adobe.com/
+                              - img [ref=f3e362]
+                              - text: Adobe로 이미지 편집
+                        - generic [ref=f3e364]:
+                          - generic [ref=f3e366]: Thumbnail
+                          - generic [ref=f3e367] [cursor=pointer]:
+                            - generic [ref=f3e368]:
+                              - generic [ref=f3e369]: +
+                              - generic [ref=f3e370]: UPLOAD
+                            - button "UPLOAD" [ref=f3e371]
+                          - link "Adobe로 이미지 편집" [ref=f3e373] [cursor=pointer]:
+                            - /url: https://new.express.adobe.com/
+                            - img [ref=f3e374]
+                            - text: Adobe로 이미지 편집
+                  - button "✨ AI 문구 자동 생성하기" [ref=f3e377] [cursor=pointer]
+              - generic [ref=f3e379]:
+                - generic [ref=f3e382]:
+                  - generic [ref=f3e383]:
+                    - generic [ref=f3e384]: BALIE 바일러
+                    - generic [ref=f3e385]:
+                      - img "Main" [ref=f3e589]
+                      - generic [ref=f3e591]:
+                        - generic [ref=f3e592]:
+                          - img "Package"
+                        - generic [ref=f3e593]: package desing
+                    - heading "퍼플 로즈 바이브레이터" [level=1] [ref=f3e603]
+                    - paragraph [ref=f3e389]: PURPLE ROSE VIBRATOR
+                    - generic [ref=f3e604]:
+                      - generic [ref=f3e605]:
+                        - generic [ref=f3e607]: 타입
+                        - generic [ref=f3e609]: 바이브레이터
+                      - generic [ref=f3e610]:
+                        - generic [ref=f3e612]: 재질
+                        - generic [ref=f3e614]: 실리콘
+                      - generic [ref=f3e615]:
+                        - generic [ref=f3e617]: 치수
+                        - generic [ref=f3e619]: 상세페이지 참조
+                      - generic [ref=f3e620]:
+                        - generic [ref=f3e622]: 무게
+                        - generic [ref=f3e624]: 약 260g
+                      - generic [ref=f3e625]:
+                        - generic [ref=f3e627]: 전원
+                        - generic [ref=f3e629]: USB충전형
+                  - generic [ref=f3e630]:
+                    - heading "KEY FEATURE" [level=2] [ref=f3e632]:
+                      - text: KEY
+                      - text: FEATURE
+                    - paragraph [ref=f3e633]: 손가락에 끼워 사용하는 진동 바이브레이터
+                    - generic [ref=f3e634]:
+                      - img "Feature" [ref=f3e636]
+                      - generic [ref=f3e637]:
+                        - generic [ref=f3e638]:
+                          - generic [ref=f3e641]: 10단 진동
+                          - paragraph [ref=f3e642]: 10가지 패턴의 다채로운 진동이 감각을 깨웁니다. 섬세한 조절로 나만의 리듬을 완성하세요.
+                        - generic [ref=f3e643]:
+                          - generic [ref=f3e646]: 장미형 돌기가 주는 마찰
+                          - paragraph [ref=f3e647]: 로즈 모티브 돌기가 부드럽게 밀착되어 풍부한 자극을 전합니다.
+                        - generic [ref=f3e648]:
+                          - generic [ref=f3e651]: 하단의 바이브레이터로 진동 자극
+                          - paragraph [ref=f3e652]: 그립부 하단 진동이 손끝까지 전달됩니다.
+                  - generic [ref=f3e654]: PURPLE ROSE VIBRATOR · PURPLE ROSE VIBRATOR · PURPLE ROSE VIBRATOR · PURPLE ROSE VIBRATOR · PURPLE ROSE VIBRATOR · PURPLE ROSE VIBRATOR
+                  - generic [ref=f3e655]:
+                    - heading "OPTION CHECK" [level=2] [ref=f3e657]:
+                      - text: OPTION
+                      - text: CHECK
+                    - generic [ref=f3e658]:
+                      - generic [ref=f3e659]:
+                        - img "옵션01 - 블루" [ref=f3e661]
+                        - generic [ref=f3e662]: 옵션01 - 블루
+                      - generic [ref=f3e663]:
+                        - img "옵션02 - 블루" [ref=f3e665]
+                        - generic [ref=f3e666]: 옵션02 - 블루
+                      - generic [ref=f3e667]:
+                        - img "옵션03 - 블루" [ref=f3e669]
+                        - generic [ref=f3e670]: 옵션03 - 블루
+                  - generic [ref=f3e671]:
+                    - heading "Point 01" [level=2] [ref=f3e673]
+                    - generic [ref=f3e674]:
+                      - paragraph [ref=f3e675]: 깊고 선명한 블루 마블 패턴이 유리바디 전체에 흐르듯 시선을 사로잡는 디자인을 완성하였습니다.
+                      - img "point-01-0" [ref=f3e677]
+                      - paragraph [ref=f3e678]: 온도에 따라 달라지는 에디큰 감각으로 또 다른 몰입을 선사합니다.
+                      - img "point-01-1" [ref=f3e680]
+                  - generic [ref=f3e681]:
+                    - heading "Point 02" [level=2] [ref=f3e683]
+                    - generic [ref=f3e684]:
+                      - paragraph [ref=f3e685]: 매끄러운 표면과 굴곡이 편안한 삽입감을 제공합니다.
+                      - img "point-02-0" [ref=f3e687]
+                  - generic [ref=f3e688]:
+                    - heading "SIZE" [level=2] [ref=f3e689]
+                    - paragraph [ref=f3e690]: 측정 방법에 따라 약간의 오차가 있을 수 있습니다
+                    - img "Size" [ref=f3e693]
+                    - generic [ref=f3e695]:
+                      - generic [ref=f3e696]: Weight
+                      - generic [ref=f3e697]: 약 260g
+                  - generic [ref=f3e390]:
+                    - generic [ref=f3e391]: GODO MALL
+                    - paragraph [ref=f3e392]: COPYRIGHT © GODO MALL. ALL RIGHTS RESERVED.
+                - generic [ref=f3e393]:
+                  - heading "Thumbnail Check" [level=3] [ref=f3e394]
+                  - generic [ref=f3e396]:
+                    - generic [ref=f3e397]:
+                      - generic [ref=f3e400]:
+                        - img "Thumbnail" [ref=f3e698]
+                        - generic:
+                          - generic:
+                            - generic: SINCE 2026
+                            - generic: 프리미엄 셀렉트 스토어
+                          - generic:
+                            - generic: 고도몰
+                            - generic: "|"
+                            - generic: BALIE 바일러
+                          - generic: godomall.co.kr
+                        - generic [ref=f3e700]:
+                          - img "Package Overlay"
+                      - generic [ref=f3e403]:
+                        - generic [ref=f3e404]: "202"
+                        - button "다운로드" [ref=f3e405] [cursor=pointer]
+                    - generic [ref=f3e406]:
+                      - generic [ref=f3e409]:
+                        - img "Thumbnail" [ref=f3e710]
+                        - generic:
+                          - generic:
+                            - generic: SINCE 2026
+                            - generic: 프리미엄 셀렉트 스토어
+                          - generic:
+                            - generic: 고도몰
+                            - generic: "|"
+                            - generic: BALIE 바일러
+                          - generic: godomall.co.kr
+                        - generic [ref=f3e712]:
+                          - img "Package Overlay"
+                      - generic [ref=f3e412]:
+                        - generic [ref=f3e413]: "400"
+                        - button "다운로드" [ref=f3e414] [cursor=pointer]
+                    - generic [ref=f3e415]:
+                      - generic [ref=f3e418]:
+                        - img "Thumbnail" [ref=f3e722]
+                        - generic:
+                          - generic:
+                            - generic: SINCE 2026
+                            - generic: 프리미엄 셀렉트 스토어
+                          - generic:
+                            - generic: 고도몰
+                            - generic: "|"
+                            - generic: BALIE 바일러
+                          - generic: godomall.co.kr
+                        - generic [ref=f3e724]:
+                          - img "Package Overlay"
+                      - generic [ref=f3e421]:
+                        - generic [ref=f3e422]: "500"
+                        - button "다운로드" [ref=f3e423] [cursor=pointer]
+                    - generic [ref=f3e424]:
+                      - generic [ref=f3e427]:
+                        - img "Thumbnail" [ref=f3e734]
+                        - generic:
+                          - generic:
+                            - generic: SINCE 2026
+                            - generic: 프리미엄 셀렉트 스토어
+                          - generic:
+                            - generic: 고도몰
+                            - generic: "|"
+                            - generic: BALIE 바일러
+                          - generic: godomall.co.kr
+                      - generic [ref=f3e430]:
+                        - generic [ref=f3e431]: 274x411
+                        - button "다운로드" [ref=f3e432] [cursor=pointer]
+        - generic [ref=f3e179]:
+          - heading "제작 요청 큐" [level=3] [ref=f3e180]
+          - generic [ref=f3e181]: 상품팀·총괄 등에서 받은 요청 · 처리는 우측 팀 간 메시지에서
+        - generic [ref=f3e182]: 아직 받은 제작 요청이 없습니다. 상품팀이 자료(엑셀·이미지)를 팀 간 메시지로 보내면 이곳에 쌓입니다.
+      - complementary [ref=f3e137]:
+        - generic [ref=f3e138]:
+          - heading "디자인팀에게 지시하기" [level=3] [ref=f3e183]
+          - paragraph [ref=f3e140]: 선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.
+        - generic [ref=f3e141]:
+          - button "💬 AI 팀장 지시" [ref=f3e142] [cursor=pointer]
+          - button "📨 팀 간 메시지" [ref=f3e143] [cursor=pointer]
+        - generic [ref=f3e145]:
+          - paragraph [ref=f3e146]: 아직 지시한 내용이 없습니다.
+          - paragraph [ref=f3e147]: "예: 신상품 상세페이지 만들어줘"
+        - generic [ref=f3e148]:
+          - 'textbox "예: 신상품 상세페이지 만들어줘" [ref=f3e184]'
+          - button "지시 전송" [disabled] [ref=f3e150]
+        - paragraph [ref=f3e151]: ※ 분석·정리·초안까지만 제공하며, 실제 발송·수정·캠페인 실행은 승인 전 하지 않습니다.

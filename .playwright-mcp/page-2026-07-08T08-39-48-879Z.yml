@@ -1,0 +1,138 @@
+- generic [ref=f3e17]:
+  - banner [ref=f3e18]:
+    - generic [ref=f3e19]:
+      - generic [ref=f3e20]: 🛰️
+      - generic [ref=f3e21]:
+        - heading "GODO AI OS" [level=1] [ref=f3e22]
+        - generic [ref=f3e23]: 쇼핑몰 AI 운영센터
+    - generic [ref=f3e24]:
+      - generic [ref=f3e25]: LOCAL APP MODE
+      - generic "지금 누구로 보는가 (데모 전환 · 실제 로그인은 다음 단계)" [ref=f3e27]:
+        - generic [ref=f3e28]: 👤
+        - combobox "👤" [ref=f3e29] [cursor=pointer]:
+          - option "🏛️ 총괄 관리자" [selected]
+          - option "🏷️ 상품관리팀장"
+          - option "💬 CS팀장"
+          - option "📊 마케팅팀장"
+          - option "🎨 디자인팀장"
+    - generic [ref=f3e30]:
+      - button "🌙 Dark" [ref=f3e31] [cursor=pointer]:
+        - generic [ref=f3e32]: 🌙
+        - text: Dark
+      - generic [ref=f3e33]:
+        - button "🏢 오늘의 운영" [ref=f3e34] [cursor=pointer]
+        - button "🗂️ 부서 업무 관장" [ref=f3e35] [cursor=pointer]
+        - button "🤖 AI 직원" [ref=f3e36] [cursor=pointer]
+        - button "📅 운영일지" [ref=f3e37] [cursor=pointer]
+        - button "⚙️ 관리자 설정 ▾" [ref=f3e40] [cursor=pointer]:
+          - text: ⚙️ 관리자 설정
+          - generic [ref=f3e41]: ▾
+  - main [ref=f3e43]:
+    - generic [ref=f3e44]:
+      - complementary [ref=f3e45]:
+        - generic [ref=f3e46]:
+          - heading "부서 선택" [level=3] [ref=f3e47]
+          - paragraph [ref=f3e48]: 팀을 선택해 업무 공간을 전환하세요.
+        - generic [ref=f3e49]:
+          - 'button "🏛️ 총괄팀 부서별 업무 상태와 승인 대기 항목을 조율 팀장: 총괄 매니저 AI 팀원 1명" [ref=f3e50] [cursor=pointer]':
+            - generic [ref=f3e51]:
+              - generic [ref=f3e52]: 🏛️
+              - generic [ref=f3e53]: 총괄팀
+            - paragraph [ref=f3e54]: 부서별 업무 상태와 승인 대기 항목을 조율
+            - generic [ref=f3e55]:
+              - generic [ref=f3e56]: "팀장: 총괄 매니저 AI"
+              - generic [ref=f3e57]: 팀원 1명
+          - 'button "🏷️ 상품관리팀 상품·재고·노출상태·판매상태 점검 팀장: 상품 관리 AI 팀원 2명" [ref=f3e58] [cursor=pointer]':
+            - generic [ref=f3e59]:
+              - generic [ref=f3e60]: 🏷️
+              - generic [ref=f3e61]: 상품관리팀
+            - paragraph [ref=f3e62]: 상품·재고·노출상태·판매상태 점검
+            - generic [ref=f3e63]:
+              - generic [ref=f3e64]: "팀장: 상품 관리 AI"
+              - generic [ref=f3e65]: 팀원 2명
+          - 'button "💬 CS팀 문의·리뷰·배송 이슈 확인 팀장: CS 상담 AI 팀원 2명" [ref=f3e66] [cursor=pointer]':
+            - generic [ref=f3e67]:
+              - generic [ref=f3e68]: 💬
+              - generic [ref=f3e69]: CS팀
+            - paragraph [ref=f3e70]: 문의·리뷰·배송 이슈 확인
+            - generic [ref=f3e71]:
+              - generic [ref=f3e72]: "팀장: CS 상담 AI"
+              - generic [ref=f3e73]: 팀원 2명
+          - 'button "📊 마케팅팀 판매 흐름·캠페인 후보 점검 팀장: 마케팅 기획 AI 팀원 1명" [ref=f3e74] [cursor=pointer]':
+            - generic [ref=f3e75]:
+              - generic [ref=f3e76]: 📊
+              - generic [ref=f3e77]: 마케팅팀
+            - paragraph [ref=f3e78]: 판매 흐름·캠페인 후보 점검
+            - generic [ref=f3e79]:
+              - generic [ref=f3e80]: "팀장: 마케팅 기획 AI"
+              - generic [ref=f3e81]: 팀원 1명
+          - 'button "🎨 디자인팀 상세페이지·섬네일 제작 및 상품등록 준비 팀장: 디자인 AI 팀원 1명" [active] [ref=f3e82] [cursor=pointer]':
+            - generic [ref=f3e83]:
+              - generic [ref=f3e84]: 🎨
+              - generic [ref=f3e85]: 디자인팀
+            - paragraph [ref=f3e86]: 상세페이지·섬네일 제작 및 상품등록 준비
+            - generic [ref=f3e87]:
+              - generic [ref=f3e88]: "팀장: 디자인 AI"
+              - generic [ref=f3e89]: 팀원 1명
+        - generic [ref=f3e90]:
+          - generic [ref=f3e91]:
+            - generic [ref=f3e92]: 🎨
+            - strong [ref=f3e93]: 디자인팀
+          - generic [ref=f3e94]:
+            - generic [ref=f3e95]:
+              - term [ref=f3e96]: 팀장
+              - definition [ref=f3e97]: 디자인 AI
+            - generic [ref=f3e98]:
+              - term [ref=f3e99]: 팀원
+              - definition [ref=f3e100]: 상세페이지 생성 AI
+            - generic [ref=f3e101]:
+              - term [ref=f3e102]: 오늘의 미션
+              - definition [ref=f3e103]: 상품 상세페이지·섬네일을 제작하고 상품등록을 준비합니다.
+      - generic [ref=f3e152]:
+        - generic [ref=f3e153]:
+          - generic [ref=f3e154]:
+            - heading "🎨 디자인팀 워크스페이스" [level=2] [ref=f3e155]
+            - paragraph [ref=f3e156]: 제작 요청을 받아 상세페이지·섬네일을 작업하고 상품등록을 준비합니다.
+          - generic [ref=f3e157]:
+            - generic [ref=f3e158]: 0 진행/대기
+            - generic [ref=f3e159]: 0 완료
+        - generic [ref=f3e160]:
+          - generic [ref=f3e161]: 🧠
+          - generic [ref=f3e162]:
+            - heading "디자인 AI 두뇌 ● 연결됨" [level=3] [ref=f3e163]:
+              - text: 디자인 AI 두뇌
+              - generic [ref=f3e164]: ● 연결됨
+            - paragraph [ref=f3e165]: 상세페이지 문구를 생성하는 AI. 성인 상품은 클라우드가 거부하므로 로컬 무검열(Super Gemma) 권장. (현재 이미지 인식(vision) 미지원 모델 → 스펙 텍스트 기반)
+          - combobox [ref=f3e166] [cursor=pointer]:
+            - option "🦙 Super Gemma (로컬 무검열)" [selected]
+            - option "전체 기본 AI (Claude)"
+        - generic [ref=f3e167]:
+          - generic [ref=f3e168]: 🛍️
+          - generic [ref=f3e169]:
+            - heading "고도몰 상세페이지 생성기" [level=3] [ref=f3e170]
+            - paragraph [ref=f3e171]: 고도몰 전용 레이아웃으로 상세페이지를 제작합니다. 신규 제작 + 메인몰 상세페이지 자동변환 결과 검수·수정을 겸합니다.
+          - button "생성기 열기 →" [ref=f3e172] [cursor=pointer]
+        - generic [ref=f3e173]:
+          - generic [ref=f3e174]: 🖼️
+          - generic [ref=f3e175]:
+            - heading "메인몰(기존) 상세페이지 생성기" [level=3] [ref=f3e176]
+            - paragraph [ref=f3e177]: 기존 메인몰 레이아웃 생성기. 문구는 디자인팀 AI로 생성(AI 직원 설정에서 연결).
+          - button "생성기 열기 →" [ref=f3e178] [cursor=pointer]
+        - generic [ref=f3e179]:
+          - heading "제작 요청 큐" [level=3] [ref=f3e180]
+          - generic [ref=f3e181]: 상품팀·총괄 등에서 받은 요청 · 처리는 우측 팀 간 메시지에서
+        - generic [ref=f3e182]: 아직 받은 제작 요청이 없습니다. 상품팀이 자료(엑셀·이미지)를 팀 간 메시지로 보내면 이곳에 쌓입니다.
+      - complementary [ref=f3e137]:
+        - generic [ref=f3e138]:
+          - heading "디자인팀에게 지시하기" [level=3] [ref=f3e183]
+          - paragraph [ref=f3e140]: 선택한 팀의 AI 팀장에게 업무를 지시하거나 질문할 수 있습니다.
+        - generic [ref=f3e141]:
+          - button "💬 AI 팀장 지시" [ref=f3e142] [cursor=pointer]
+          - button "📨 팀 간 메시지" [ref=f3e143] [cursor=pointer]
+        - generic [ref=f3e145]:
+          - paragraph [ref=f3e146]: 아직 지시한 내용이 없습니다.
+          - paragraph [ref=f3e147]: "예: 신상품 상세페이지 만들어줘"
+        - generic [ref=f3e148]:
+          - 'textbox "예: 신상품 상세페이지 만들어줘" [ref=f3e184]'
+          - button "지시 전송" [disabled] [ref=f3e150]
+        - paragraph [ref=f3e151]: ※ 분석·정리·초안까지만 제공하며, 실제 발송·수정·캠페인 실행은 승인 전 하지 않습니다.
