@@ -71,12 +71,15 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let renderer: any;
     let resizeHandler: () => void;
+    let retryTimer: number | undefined; // THREE 로딩 대기 재시도 타이머(정리 대상)
+    let cancelled = false;              // 언마운트 후 구동 방지
 
     const initThree = () => {
+      if (cancelled) return; // 언마운트되었으면 씬/루프/리스너 생성 안 함(누수 방지)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const THREE = (window as any).THREE;
       if (!THREE) {
-        setTimeout(initThree, 100);
+        retryTimer = window.setTimeout(initThree, 100); // id 추적 → cleanup에서 제거
         return;
       }
 
@@ -303,6 +306,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     initThree();
 
     return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer); // 재시도 타이머 정리(핵심 누수 차단)
       cancelAnimationFrame(animationId);
       if (resizeHandler) {
         window.removeEventListener('resize', resizeHandler);
