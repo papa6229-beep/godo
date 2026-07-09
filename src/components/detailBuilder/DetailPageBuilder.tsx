@@ -6,8 +6,10 @@ import { INITIAL_PRODUCT_DATA, THUMBNAIL_PRESETS } from "./constants";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import Editor from "./components/Editor";
+import EditorFlow from "./components/EditorFlow";
 import Preview from "./components/Preview";
 import PreviewGodo from "./components/PreviewGodo";
+import PreviewGodoFlow from "./components/PreviewGodoFlow";
 import ThumbnailPreview from "./components/ThumbnailPreview";
 import { generateCopywriting } from "./services/geminiService";
 // 이식 회귀 수정: 원본은 Tailwind preflight ON에서 제작 → GODO는 전역 preflight를 꺼서
@@ -15,8 +17,9 @@ import { generateCopywriting } from "./services/geminiService";
 import "./detailBuilder.css";
 
 // layoutMode: 'bananamall'(기존 메인몰 레이아웃) | 'godo'(고도몰 전용 레이아웃)
-const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'bananamall' }) => {
+const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' | 'godoFlow' }> = ({ layoutMode = 'bananamall' }) => {
   const isGodo = layoutMode === 'godo';
+  const isGodoFlow = layoutMode === 'godoFlow'; // 단순형 변환기(격리된 신규 렌더러)
   const [data, setData] = useState<ProductData>(INITIAL_PRODUCT_DATA);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("처리 중입니다..."); // ✅ 로딩 메시지 상태 추가
@@ -422,8 +425,8 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
           <h1 className="font-bold text-white text-lg font-mono">
             Detail Page Builder{" "}
             <span className="text-xs text-green-400">v3.0</span>
-            <span className={`ml-2 text-xs px-2 py-0.5 rounded ${isGodo ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-400"}`}>
-              {isGodo ? "고도몰" : "메인몰"}
+            <span className={`ml-2 text-xs px-2 py-0.5 rounded ${isGodoFlow ? "bg-sky-500/20 text-sky-300" : isGodo ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-400"}`}>
+              {isGodoFlow ? "변환기(단순형)" : isGodo ? "고도몰" : "메인몰"}
             </span>
           </h1>
         </div>
@@ -480,13 +483,17 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
       <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* 에디터 (좌측) - 독립 스크롤 */}
         <aside className="w-full lg:w-[450px] border-r border-white/5 bg-[#020617] overflow-y-auto z-20 shadow-[var(--shadow-xl)] relative flex-shrink-0 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-          <Editor
-            data={data}
-            onChange={setData}
-            onGenerateAI={handleGenerateAI}
-            isLoading={isLoading}
-            layoutMode={layoutMode}
-          />
+          {isGodoFlow ? (
+            <EditorFlow data={data} onChange={setData} />
+          ) : (
+            <Editor
+              data={data}
+              onChange={setData}
+              onGenerateAI={handleGenerateAI}
+              isLoading={isLoading}
+              layoutMode={layoutMode}
+            />
+          )}
         </aside>
 
         {/* 프리뷰 (우측) - 독립 스크롤 (가로/세로 모두 가능) */}
@@ -494,7 +501,14 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
           <div className="flex flex-col items-center gap-10 min-w-[800px] pb-20">
             {/* 상세페이지 프리뷰 */}
             <div className="shadow-[var(--shadow-2xl)] bg-white transition-all duration-200 ease-out">
-              {isGodo ? (
+              {isGodoFlow ? (
+                <PreviewGodoFlow
+                  data={data}
+                  ref={detailRef}
+                  onWatermarkLayoutChange={handleWatermarkLayoutChange}
+                  onGapChange={handleGodoGapChange}
+                />
+              ) : isGodo ? (
                 <PreviewGodo
                   data={data}
                   ref={detailRef}
@@ -547,7 +561,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
                             height={preset.height}
                             hidePackage={preset.hidePackage}
                             externalScale={200 / preset.width}
-                            layoutMode={layoutMode}
+                            layoutMode={isGodoFlow ? "godo" : layoutMode}
                             onLayoutChange={handleThumbnailPackageLayoutChange}
                             ref={(el) => (thumbnailRefs.current[i] = el)}
                           />

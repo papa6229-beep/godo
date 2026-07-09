@@ -82,6 +82,10 @@ export interface ProductData {
   // 같은 종류라도 위치마다 따로 저장 → 한 곳 드래그가 다른 곳에 영향 없음. 없으면 godoSpacing으로 폴백.
   godoGaps?: Record<string, number>;
 
+  // [변환기/단순형(flow)] 메인몰 단순형 상세페이지 변환용. 섹션형(godo)과 무관, flow 모드에서만 사용.
+  flowHeaderText?: string;      // 상단 단순 텍스트(예쁘게 렌더)
+  flowImages?: string[];        // 통이미지 세로 스택(순서 유지, base64)
+
   // [고도몰] KEY FEATURE 좌측 이미지 마우스 크기·위치(드래그/리사이즈)
   featureImageLayout?: { x: number; y: number; width: number; height: number };
   

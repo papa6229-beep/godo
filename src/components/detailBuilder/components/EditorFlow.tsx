@@ -1,0 +1,144 @@
+// @ts-nocheck — 변환기 단순형(flow) 에디터. 기존 Editor.tsx와 완전 분리(회귀0).
+import React from 'react';
+import type { ProductData } from '../types';
+import { COLOR_PRESETS } from '../constants';
+
+const fileToDataUrl = (file: File, cb: (url: string) => void) => {
+  const r = new FileReader();
+  r.onloadend = () => cb(r.result as string);
+  r.readAsDataURL(file);
+};
+
+const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }> = ({ data, onChange }) => {
+  const images = Array.isArray(data.flowImages) ? data.flowImages : [];
+  const setField = (k: keyof ProductData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    onChange(prev => ({ ...prev, [k]: e.target.value }));
+
+  const addImages = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    Promise.all(files.map(f => new Promise<string>(res => fileToDataUrl(f, res)))).then(urls => {
+      onChange(prev => ({ ...prev, flowImages: [...(prev.flowImages || []), ...urls] }));
+    });
+    e.target.value = '';
+  };
+  const removeImage = (i: number) => onChange(prev => ({ ...prev, flowImages: (prev.flowImages || []).filter((_, idx) => idx !== i) }));
+  const moveImage = (i: number, dir: number) => onChange(prev => {
+    const arr = [...(prev.flowImages || [])]; const j = i + dir;
+    if (j < 0 || j >= arr.length) return prev;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    return { ...prev, flowImages: arr };
+  });
+  const setThumb = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, mainImage: url }))); e.target.value = ''; };
+  const setWatermark = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, watermarkImage: url }))); e.target.value = ''; };
+
+  const addOption = () => onChange(prev => ({ ...prev, options: [...prev.options, { id: Date.now().toString(), name: '', image: null, x: 0, y: 0, width: 320, height: 400 }] }));
+  const removeOption = (id: string) => onChange(prev => ({ ...prev, options: prev.options.filter(o => o.id !== id) }));
+  const setOptName = (id: string, name: string) => onChange(prev => ({ ...prev, options: prev.options.map(o => o.id === id ? { ...o, name } : o) }));
+  const setOptImg = (id: string, e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, options: prev.options.map(o => o.id === id ? { ...o, image: url } : o) }))); e.target.value = ''; };
+
+  return (
+    <div className="p-6 pb-32 space-y-8">
+      <div className="rounded-lg bg-emerald-900/20 border border-emerald-500/30 p-3 text-xs text-emerald-300 leading-relaxed">
+        🔄 <b>단순형 변환기</b> — 상단 텍스트 + 통이미지 세로 스택. 본문엔 메인이미지 영역이 없고, 섬네일용 이미지만 별도로 넣습니다. (기존 고도몰 생성기와 무관)
+      </div>
+
+      {/* 기본 */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">📂 기본</h2>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-2">컬러 테마</label>
+          <div className="flex gap-2 flex-wrap">
+            {COLOR_PRESETS.slice(0, 14).map(p => (
+              <button key={p.value} onClick={() => onChange(prev => ({ ...prev, themeColor: p.value }))} title={(p as any).label || p.value}
+                className={`w-7 h-7 rounded-full border-2 transition-all ${data.themeColor === p.value ? 'border-gray-400 scale-110' : 'border-transparent hover:scale-105'}`} style={{ background: p.value }} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">상품명 (한글) · Enter 줄바꿈</label>
+          <textarea rows={2} className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-bold outline-none focus:ring-2 focus:ring-[#22C55E] resize-y" value={data.productNameKr} onChange={setField('productNameKr')} placeholder="예: 하루히 모카의 타액 로션 80ml" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">영문 상품명 (선택)</label>
+          <input className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E]" value={data.productNameEn} onChange={setField('productNameEn')} placeholder="PRODUCT NAME" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">브랜드 (선택)</label>
+          <input className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E]" value={data.brandName} onChange={setField('brandName')} placeholder="예: 닛포리기프트" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">상단 텍스트</label>
+          <textarea rows={4} className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg text-sm leading-relaxed outline-none focus:ring-2 focus:ring-[#22C55E] resize-y" value={data.flowHeaderText || ''} onChange={setField('flowHeaderText')} placeholder="상세페이지 최상단 소개 문구 (원본 단순 텍스트)" />
+        </div>
+      </section>
+
+      {/* 통이미지 스택 */}
+      <section className="space-y-3">
+        <div className="flex justify-between items-center border-b border-white/10 pb-2">
+          <h2 className="text-lg font-black text-white font-mono">🖼️ 통이미지 스택</h2>
+          <label className="text-xs bg-white/10 text-slate-300 px-3 py-1.5 rounded cursor-pointer hover:bg-white/20 transition-colors">+ 이미지 추가
+            <input type="file" accept="image/*" multiple className="sr-only" onChange={addImages} />
+          </label>
+        </div>
+        {images.length === 0 && <p className="text-xs text-slate-500">위→아래 순서로 쌓입니다. 여러 장 한 번에 선택 가능.</p>}
+        <div className="space-y-2">
+          {images.map((src, i) => (
+            <div key={i} className="flex items-center gap-2 bg-[#0F172A]/50 border border-white/10 rounded p-2">
+              <span className="text-xs text-slate-500 w-5 text-center">{i + 1}</span>
+              <img src={src} className="w-14 h-14 object-cover rounded border border-white/10 bg-white" alt={`stack-${i}`} />
+              <div className="flex-1" />
+              <button onClick={() => moveImage(i, -1)} disabled={i === 0} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↑</button>
+              <button onClick={() => moveImage(i, 1)} disabled={i === images.length - 1} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↓</button>
+              <button onClick={() => removeImage(i)} className="text-red-400 text-xs font-bold px-2 hover:text-red-600">삭제</button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 섬네일 소스 · 워터마크 */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">🏷️ 섬네일 소스 · 워터마크</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">섬네일 소스 이미지</label>
+            <label className="relative block w-full h-28 bg-[#0F172A]/50 border-2 border-dashed border-white/10 rounded-lg overflow-hidden cursor-pointer hover:border-white/20">
+              {data.mainImage ? <img src={data.mainImage} className="w-full h-full object-contain bg-white" alt="thumb-src" /> : <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-xs">+ 업로드</div>}
+              <input type="file" accept="image/*" className="sr-only" onChange={setThumb} />
+            </label>
+            <p className="text-[10px] text-slate-500 mt-1">본문엔 안 나오고 섬네일 4종 자동생성에만 쓰임</p>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">워터마크 (선택)</label>
+            <label className="relative block w-full h-28 bg-[#0F172A]/50 border-2 border-dashed border-purple-500/30 rounded-lg overflow-hidden cursor-pointer">
+              {data.watermarkImage ? <img src={data.watermarkImage} className="w-full h-full object-contain" alt="wm" /> : <div className="absolute inset-0 flex items-center justify-center text-purple-400 text-xs">+ PNG</div>}
+              <input type="file" accept="image/*" className="sr-only" onChange={setWatermark} />
+            </label>
+            <p className="text-[10px] text-slate-500 mt-1">상단 '모든 워터마크 켜기' 후 미리보기 이미지 위에서 위치·크기 조절</p>
+          </div>
+        </div>
+      </section>
+
+      {/* 옵션 (타입5) */}
+      <section className="space-y-3">
+        <div className="flex justify-between items-center border-b border-white/10 pb-2">
+          <h2 className="text-md font-bold text-white font-mono">✨ 옵션 (선택 · 타입5)</h2>
+          <button onClick={addOption} className="text-xs bg-white/10 text-slate-300 px-3 py-1.5 rounded hover:bg-white/20">+ 추가</button>
+        </div>
+        {data.options.map((opt, i) => (
+          <div key={opt.id} className="bg-[#0F172A]/50 p-3 rounded border border-white/10 space-y-2">
+            <div className="flex justify-between items-center"><span className="text-xs font-bold text-slate-400">옵션 {i + 1}</span><button onClick={() => removeOption(opt.id)} className="text-red-400 text-xs hover:text-red-600">삭제</button></div>
+            <input value={opt.name} onChange={(e) => setOptName(opt.id, e.target.value)} placeholder="옵션명" className="w-full p-2 bg-[#0F172A]/60 border border-white/10 rounded text-sm text-slate-200 outline-none focus:ring-1 focus:ring-[#22C55E]" />
+            <div className="flex items-center gap-2">
+              <div className="w-14 h-14 rounded overflow-hidden border border-white/10 bg-white flex-shrink-0">{opt.image ? <img src={opt.image} className="w-full h-full object-cover" alt="opt" /> : <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-500">패키지</div>}</div>
+              <input type="file" accept="image/*" className="text-xs text-slate-400" onChange={(e) => setOptImg(opt.id, e)} />
+            </div>
+          </div>
+        ))}
+        <p className="text-[10px] text-slate-500">옵션별 패키지 이미지 → 고도몰 옵션 등록 이미지로 사용.</p>
+      </section>
+    </div>
+  );
+};
+
+export default EditorFlow;

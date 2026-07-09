@@ -18,8 +18,8 @@ const shortTime = (iso: string): string => { const d = new Date(iso); return Num
 
 export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [builderMode, setBuilderMode] = useState<'bananamall' | 'godo'>('godo');
-  const openBuilder = (mode: 'bananamall' | 'godo') => { setBuilderMode(mode); setBuilderOpen(true); };
+  const [builderMode, setBuilderMode] = useState<'bananamall' | 'godo' | 'godoFlow'>('godo');
+  const openBuilder = (mode: 'bananamall' | 'godo' | 'godoFlow') => { setBuilderMode(mode); setBuilderOpen(true); };
   const requests = useMemo(() => inboxFor(messages, 'design'), [messages]);
   const open = requests.filter((m) => m.status !== 'done');
   const doneCount = requests.length - open.length;
@@ -74,6 +74,16 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
         <button type="button" className="dtd-gen-open" onClick={() => openBuilder('godo')}>생성기 열기 →</button>
       </div>
 
+      {/* 단순형 변환기 (메인몰 단순형 상세페이지 → 고도몰 단순 플로우) */}
+      <div className="dtd-generator-slot">
+        <div className="dtd-gen-icon">🔄</div>
+        <div className="dtd-gen-body">
+          <h3 className="dtd-gen-title">단순형 변환기</h3>
+          <p className="dtd-gen-desc">최상단 텍스트 + 통이미지 스택 구조의 <b>단순형 상세페이지</b> 변환용. 섬네일은 별도 소스로 자동 생성. 섹션형 생성기와 독립.</p>
+        </div>
+        <button type="button" className="dtd-gen-open" onClick={() => openBuilder('godoFlow')}>변환기 열기 →</button>
+      </div>
+
       {/* 메인몰(기존) 상세페이지 생성기 */}
       <div className="dtd-generator-slot">
         <div className="dtd-gen-icon">🖼️</div>
@@ -88,7 +98,7 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
       {builderOpen && (
         <div className="dtd-builder-overlay">
           <div className="dtd-builder-bar">
-            <span className="dtd-builder-bar-title">{builderMode === 'godo' ? '🛍️ 고도몰 상세페이지 생성기' : '🖼️ 메인몰 상세페이지 생성기'}</span>
+            <span className="dtd-builder-bar-title">{builderMode === 'godo' ? '🛍️ 고도몰 상세페이지 생성기' : builderMode === 'godoFlow' ? '🔄 단순형 변환기' : '🖼️ 메인몰 상세페이지 생성기'}</span>
             <button type="button" className="dtd-builder-close" onClick={() => setBuilderOpen(false)}>✕ 닫기</button>
           </div>
           <div className="dtd-builder-body">
