@@ -28,6 +28,16 @@ import { getScenarioData, type ValidationScenarioType } from './engine/nativeAge
 import { useTheme } from './hooks/useTheme';
 import './App.css';
 
+// localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
+// (effect 안의 unguarded setItem이 throw하면 React가 통째로 언마운트/흰 화면이 됨 → 방지)
+const safeSetItem = (key: string, value: string) => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (e) {
+    console.warn(`[localStorage] "${key}" 저장 실패(용량 초과 등) — 건너뜀:`, e);
+  }
+};
+
 
 function App() {
   const { theme, toggleTheme } = useTheme();
@@ -211,20 +221,20 @@ function App() {
 
   useEffect(() => {
     if (lastNativeAgentRun) {
-      localStorage.setItem('godo.nativeAgentRuntime.lastRun', JSON.stringify(lastNativeAgentRun));
+      safeSetItem('godo.nativeAgentRuntime.lastRun', JSON.stringify(lastNativeAgentRun));
     }
   }, [lastNativeAgentRun]);
 
   useEffect(() => {
-    localStorage.setItem('godo.nativeAgentRuntime.activeScenario', validationScenario);
+    safeSetItem('godo.nativeAgentRuntime.activeScenario', validationScenario);
   }, [validationScenario]);
 
   useEffect(() => {
-    localStorage.setItem('godo.nativeAgentRuntime.uploadedFiles', JSON.stringify(uploadedFiles));
+    safeSetItem('godo.nativeAgentRuntime.uploadedFiles', JSON.stringify(uploadedFiles));
   }, [uploadedFiles]);
 
   useEffect(() => {
-    localStorage.setItem('godo.nativeAgentRuntime.manualCommands', JSON.stringify(manualCommands));
+    safeSetItem('godo.nativeAgentRuntime.manualCommands', JSON.stringify(manualCommands));
   }, [manualCommands]);
 
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -232,73 +242,73 @@ function App() {
 
   // LocalStorage 자동 동기화 훅
   useEffect(() => {
-    localStorage.setItem('godo.brainKnowledge', JSON.stringify(brainKnowledge));
-    localStorage.setItem('godo.studio.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.brainKnowledge', JSON.stringify(brainKnowledge));
+    safeSetItem('godo.studio.lastSavedAt', new Date().toISOString());
   }, [brainKnowledge]);
 
   useEffect(() => {
-    localStorage.setItem('godo.agents', JSON.stringify(agents));
-    localStorage.setItem('godo.studio.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.agents', JSON.stringify(agents));
+    safeSetItem('godo.studio.lastSavedAt', new Date().toISOString());
   }, [agents]);
 
   useEffect(() => {
-    localStorage.setItem('godo.skills', JSON.stringify(skills));
-    localStorage.setItem('godo.studio.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.skills', JSON.stringify(skills));
+    safeSetItem('godo.studio.lastSavedAt', new Date().toISOString());
   }, [skills]);
 
   useEffect(() => {
-    localStorage.setItem('godo.tools', JSON.stringify(tools));
-    localStorage.setItem('godo.studio.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.tools', JSON.stringify(tools));
+    safeSetItem('godo.studio.lastSavedAt', new Date().toISOString());
   }, [tools]);
 
   useEffect(() => {
-    localStorage.setItem('godo.permissionMatrix', JSON.stringify(permissionMatrix));
-    localStorage.setItem('godo.studio.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.permissionMatrix', JSON.stringify(permissionMatrix));
+    safeSetItem('godo.studio.lastSavedAt', new Date().toISOString());
   }, [permissionMatrix]);
 
   // GODO ENGINE LocalStorage 자동 동기화 훅
   useEffect(() => {
-    localStorage.setItem('godo.engine.mode', engineMode);
-    localStorage.setItem('godo.engine.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.engine.mode', engineMode);
+    safeSetItem('godo.engine.lastSavedAt', new Date().toISOString());
   }, [engineMode]);
 
   useEffect(() => {
-    localStorage.setItem('godo.engine.providers', JSON.stringify(engineProviders));
-    localStorage.setItem('godo.engine.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.engine.providers', JSON.stringify(engineProviders));
+    safeSetItem('godo.engine.lastSavedAt', new Date().toISOString());
   }, [engineProviders]);
 
   useEffect(() => {
-    localStorage.setItem('godo.engine.routingRules', JSON.stringify(engineRoutingRules));
-    localStorage.setItem('godo.engine.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.engine.routingRules', JSON.stringify(engineRoutingRules));
+    safeSetItem('godo.engine.lastSavedAt', new Date().toISOString());
   }, [engineRoutingRules]);
 
   useEffect(() => {
-    localStorage.setItem('godo.engine.safetyRules', JSON.stringify(engineSafetyRules));
-    localStorage.setItem('godo.engine.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.engine.safetyRules', JSON.stringify(engineSafetyRules));
+    safeSetItem('godo.engine.lastSavedAt', new Date().toISOString());
   }, [engineSafetyRules]);
 
   // GODO DATA CONNECTOR LocalStorage 자동 동기화 훅
   useEffect(() => {
-    localStorage.setItem('godo.data.activeSnapshot', JSON.stringify(activeOperationsData));
-    localStorage.setItem('godo.data.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.data.activeSnapshot', JSON.stringify(activeOperationsData));
+    safeSetItem('godo.data.lastSavedAt', new Date().toISOString());
   }, [activeOperationsData]);
 
   useEffect(() => {
-    localStorage.setItem('godo.data.importHistory', JSON.stringify(importHistory));
-    localStorage.setItem('godo.data.lastSavedAt', new Date().toISOString());
+    safeSetItem('godo.data.importHistory', JSON.stringify(importHistory));
+    safeSetItem('godo.data.lastSavedAt', new Date().toISOString());
   }, [importHistory]);
 
   // GODO OPERATION CALENDAR LocalStorage 자동 동기화 훅
   useEffect(() => {
-    localStorage.setItem('godo.calendar.lastSelectedDate', lastSelectedDate);
+    safeSetItem('godo.calendar.lastSelectedDate', lastSelectedDate);
   }, [lastSelectedDate]);
 
   useEffect(() => {
-    localStorage.setItem('godo.calendar.lastViewedMonth', lastViewedMonth);
+    safeSetItem('godo.calendar.lastViewedMonth', lastViewedMonth);
   }, [lastViewedMonth]);
 
   useEffect(() => {
-    localStorage.setItem('godo.calendar.operationHistory', JSON.stringify(operationHistory));
+    safeSetItem('godo.calendar.operationHistory', JSON.stringify(operationHistory));
   }, [operationHistory]);
 
   // MVP 데이터 정밀 동기화 및 마이그레이션 훅
