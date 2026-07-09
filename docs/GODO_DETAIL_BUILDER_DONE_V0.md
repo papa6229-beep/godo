@@ -87,5 +87,11 @@
 - 검증: tsc0/build green/Playwright(시드 로드 후 앵커 9개 존재·마퀴 2밴드·옵션 object-cover 꽉참·서브블록 액센트바·간격 독립 실측·콘솔0).
 - 잔여(사장님 확인 후): feature 투명 이미지 테두리 제외 처리 확인, GODO_BRAND 실값 → 하위[1] 클로즈.
 
+## 5차-보정 (2026-07-09, 좌→우 스크롤 싱크 근본수정 · test/1·2·4.png)
+- 증상: 5차 ②(개별 앵커)에도 좌측 입력 focus 시 우측이 해당 위치로 안 감. 특히 Point 1-2 활성화 후 1-1 클릭하면 기준이 1-2로 밀림. (역방향=미리보기 클릭→좌측은 정상)
+- **근본원인**: 입력 `onFocus`가 개별 앵커로 스크롤한 **직후**, 상위 래퍼 `onClick`(스펙 섹션·`editor-feature`·`editor-point1/2`)이 click 버블로 **뒤늦게 발동해 섹션 전체 앵커로 덮어씀**. `scrollIntoView(center)`라 블록이 늘면 섹션 중앙이 아래(1-2)로 드리프트 → "기준이 나중 활성화한 곳을 따라감". (4차 ①의 기본설정 onClick 덮어쓰기와 동일 클래스, 다른 위치)
+- **수정**: godo에서 해당 상위 래퍼 onClick 제거(`isGodo ? undefined`) — 스펙 섹션·`editor-point1`·`editor-point2`, `editor-feature`는 상시 제거. 전진 스크롤은 각 입력 onFocus/이미지 onClick의 개별 앵커가 단독 담당.
+- 검증(실클릭): 1-2 활성 상태에서 설명 1-1 클릭 → `preview-point1-1` 정확히 중앙(dist 0), 1-2는 +622. 메인특징 2 클릭 → `preview-feature-1` 중앙(dist 0), spec −574. tsc0/vite green/콘솔0.
+
 ## 다음
 하위 프로젝트 **[2] 엑셀 업로드 → ProductData 프리필** 착수(메인몰 엑셀 → 생성기 좌측 입력부 로드).

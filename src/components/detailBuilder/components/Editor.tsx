@@ -403,8 +403,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
         <ImageUploader label="Main Image" value={data.mainImage} targetId="preview-main" onChange={handleImageChange('mainImage')} onApplyWatermark={() => applyWatermark('mainImage')} isWatermarkOn={data.watermarkSettings?.['mainImage']?.show} />
       </section>
 
-      {/* 3. 스펙 정보 */}
-      <section className="space-y-4" onClick={() => scrollTo('preview-spec')}>
+      {/* 3. 스펙 정보 — ② godo는 섹션 onClick 제거(입력창 onFocus가 각자 위치로 스크롤하도록, 덮어쓰기 방지) */}
+      <section className="space-y-4" onClick={isGodo ? undefined : () => scrollTo('preview-spec')}>
          <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">📝 스펙 정보</h2>
          <div className="grid grid-cols-2 gap-3">
             {Object.keys(SPEC_LABELS).map((key) => (
@@ -416,7 +416,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          </div>
          {isGodo ? (
            /* [고도몰] KEY FEATURE — feature 이미지(③ 상단) + 핵심특징 3블록(제목 직접입력 + 설명 1줄 ④) */
-           <div id="editor-feature" className="mt-2 space-y-4" onClick={() => scrollTo('preview-feature')}>
+           <div id="editor-feature" className="mt-2 space-y-4">
              <div className="text-xs font-bold text-emerald-400/90 uppercase tracking-wider">AI 생성 참고용 핵심 특징 (KEY FEATURE)</div>
              {/* ③ feature 이미지 삽입 영역을 핵심특징 입력 위로 */}
              <ImageUploader label="Feature 이미지 (KEY FEATURE 좌측)" value={data.featureImage} targetId="preview-feature" onChange={handleImageChange('featureImage')} onDelete={() => onChange(prev => ({ ...prev, featureImage: null }))} onApplyWatermark={() => applyWatermark('featureImage')} isWatermarkOn={data.watermarkSettings?.['featureImage']?.show} />
@@ -546,7 +546,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          )}
 
          {/* Point 1 */}
-         <div id="editor-point1" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-point1')}>
+         <div id="editor-point1" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={isGodo ? undefined : () => scrollTo('preview-point1')}>
             <h3 className="font-bold text-slate-300 mb-3">Point 01</h3>
             {data.point1Image1 || data.aiPoint1Desc || (data as any).point1Image2 || (data as any).point1Image3 ? (
              <>
@@ -578,7 +578,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
          </div>
 
          {/* Point 2 */}
-         <div id="editor-point2" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={() => scrollTo('preview-point2')}>
+         <div id="editor-point2" className="bg-white/5 p-4 rounded-xl border border-white/10 shadow-[var(--shadow-lg)] transition-all duration-200 ease-out" onClick={isGodo ? undefined : () => scrollTo('preview-point2')}>
             <h3 className="font-bold text-slate-300 mb-3">Point 02</h3>
             {data.point2Image1 || data.aiPoint2Desc ? (
                <>
