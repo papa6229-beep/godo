@@ -2,6 +2,7 @@
 import React from 'react';
 import type { ProductData } from '../types';
 import { COLOR_PRESETS } from '../constants';
+import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -13,6 +14,32 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
   const images = Array.isArray(data.flowImages) ? data.flowImages : [];
   const setField = (k: keyof ProductData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     onChange(prev => ({ ...prev, [k]: e.target.value }));
+
+  const [importing, setImporting] = React.useState(false);
+  const [importNote, setImportNote] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const importExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    setImporting(true); setImportNote(null);
+    try {
+      const buf = await f.arrayBuffer();
+      const p = await parseMainMallArrayBuffer(buf);
+      if (!p) { setImportNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
+      onChange(prev => ({
+        ...prev,
+        productNameKr: p.productNameKr || prev.productNameKr,
+        brandName: p.brandName || prev.brandName,
+        flowHeaderText: p.flowHeaderText || prev.flowHeaderText,
+        flowImages: p.flowImages.length ? p.flowImages : (prev.flowImages || []),
+        mainImage: p.thumbnailSource || prev.mainImage,
+      }));
+      const warn = p.flowImages.length === 0 ? ' — ⚠ 제품이미지 0장(수동 추가 필요)' : '';
+      const ex = p.excludedImages.length ? ` · 공통배너 ${p.excludedImages.length}장 제외` : '';
+      setImportNote({ ok: p.flowImages.length > 0, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex}${warn}` });
+    } catch (err: any) {
+      setImportNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
+    } finally { setImporting(false); }
+  };
 
   const addImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -43,6 +70,19 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
     <div className="p-6 pb-32 space-y-8">
       <div className="rounded-lg bg-emerald-900/20 border border-emerald-500/30 p-3 text-xs text-emerald-300 leading-relaxed">
         🔄 <b>단순형 변환기</b> — 상단 텍스트 + 통이미지 세로 스택. 본문엔 메인이미지 영역이 없고, 섬네일용 이미지만 별도로 넣습니다. (기존 고도몰 생성기와 무관)
+      </div>
+
+      {/* 메인몰 엑셀 자동 프리필 */}
+      <div className="rounded-lg bg-sky-900/20 border border-sky-500/40 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-bold text-sky-300">📥 메인몰 엑셀에서 자동 불러오기</span>
+          <label className={`text-xs px-3 py-1.5 rounded cursor-pointer font-bold transition-colors ${importing ? 'bg-sky-800/50 text-sky-400' : 'bg-sky-500/20 text-sky-200 hover:bg-sky-500/30'}`}>
+            {importing ? '불러오는 중…' : '엑셀 선택(.xlsx)'}
+            <input type="file" accept=".xlsx" className="sr-only" onChange={importExcel} disabled={importing} />
+          </label>
+        </div>
+        <p className="text-[11px] text-slate-400 leading-relaxed">상품명·브랜드·상단문구·통이미지·섬네일을 자동 채웁니다. (제품이미지 <code className="text-sky-300">goodsm</code>만 추림 · 공통배너 제외 · 이미지는 CDN URL로 표시)</p>
+        {importNote && <p className={`text-[11px] font-bold ${importNote.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{importNote.text}</p>}
       </div>
 
       {/* 기본 */}
