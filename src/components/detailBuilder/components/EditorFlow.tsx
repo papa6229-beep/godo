@@ -30,6 +30,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
     return { ...prev, flowImages: arr };
   });
   const setThumb = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, mainImage: url }))); e.target.value = ''; };
+  const setPackage = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, packageImage: url, isPackageImageEnabled: true }))); e.target.value = ''; };
+  const removePackage = () => onChange(prev => ({ ...prev, packageImage: null }));
   const setWatermark = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, watermarkImage: url }))); e.target.value = ''; };
 
   const addOption = () => onChange(prev => ({ ...prev, options: [...prev.options, { id: Date.now().toString(), name: '', image: null, x: 0, y: 0, width: 320, height: 400 }] }));
@@ -96,9 +98,9 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         </div>
       </section>
 
-      {/* 섬네일 소스 · 워터마크 */}
+      {/* 섬네일 소스 · 패키지 · 워터마크 */}
       <section className="space-y-3">
-        <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">🏷️ 섬네일 소스 · 워터마크</h2>
+        <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">🏷️ 섬네일 소스 · 패키지 · 워터마크</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">섬네일 소스 이미지</label>
@@ -109,12 +111,25 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
             <p className="text-[10px] text-slate-500 mt-1">본문엔 안 나오고 섬네일 4종 자동생성에만 쓰임</p>
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">워터마크 (선택)</label>
-            <label className="relative block w-full h-28 bg-[#0F172A]/50 border-2 border-dashed border-purple-500/30 rounded-lg overflow-hidden cursor-pointer">
-              {data.watermarkImage ? <img src={data.watermarkImage} className="w-full h-full object-contain" alt="wm" /> : <div className="absolute inset-0 flex items-center justify-center text-purple-400 text-xs">+ PNG</div>}
-              <input type="file" accept="image/*" className="sr-only" onChange={setWatermark} />
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-bold text-slate-500">패키지 (섬네일에 표시)</label>
+              {data.packageImage && <button onClick={removePackage} className="text-[10px] text-red-400 font-bold hover:text-red-600 underline">삭제</button>}
+            </div>
+            <label className="relative block w-full h-28 bg-[#0F172A]/50 border-2 border-dashed border-amber-500/30 rounded-lg overflow-hidden cursor-pointer hover:border-amber-400/50">
+              {data.packageImage ? <img src={data.packageImage} className="w-full h-full object-contain bg-white" alt="package" /> : <div className="absolute inset-0 flex items-center justify-center text-amber-400/80 text-xs text-center px-2">+ 패키지 이미지</div>}
+              <input type="file" accept="image/*" className="sr-only" onChange={setPackage} />
             </label>
-            <p className="text-[10px] text-slate-500 mt-1">상단 '모든 워터마크 켜기' 후 미리보기 이미지 위에서 위치·크기 조절</p>
+            <p className="text-[10px] text-slate-500 mt-1">섬네일에 오버레이로 표시(우하단). 미리보기 섬네일에서 위치·크기 드래그.</p>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-xs font-bold text-slate-500 mb-1">워터마크 (선택)</label>
+            <div className="flex gap-3 items-start">
+              <label className="relative block w-28 h-28 flex-shrink-0 bg-[#0F172A]/50 border-2 border-dashed border-purple-500/30 rounded-lg overflow-hidden cursor-pointer">
+                {data.watermarkImage ? <img src={data.watermarkImage} className="w-full h-full object-contain" alt="wm" /> : <div className="absolute inset-0 flex items-center justify-center text-purple-400 text-xs">+ PNG</div>}
+                <input type="file" accept="image/*" className="sr-only" onChange={setWatermark} />
+              </label>
+              <p className="text-[11px] text-slate-500 leading-relaxed flex-1">상단 <b className="text-slate-400">'모든 워터마크 켜기'</b> 후 미리보기 통이미지 위에서 위치·크기 조절. (메인몰 워터마크 덮어쓰기용 · 나중 자동변환에서 자동 배치)</p>
+            </div>
           </div>
         </div>
       </section>
