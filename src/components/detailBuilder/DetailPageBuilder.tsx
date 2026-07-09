@@ -336,7 +336,8 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
       "point2Image3",
       "sizeImage",
       "thumbnailImage",
-      "packageImage",
+      // [0단계] godo는 패키지 워터마크 미지원 → 일괄 토글 대상에서 제외(bananamall만 포함)
+      ...(isGodo ? [] : ["packageImage"]),
     ];
 
     // 현재 하나라도 켜져 있으면 -> 전체 끄기, 다 꺼져 있으면 -> 전체 켜기

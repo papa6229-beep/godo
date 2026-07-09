@@ -483,7 +483,8 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
 
         {data.isPackageImageEnabled && (
             <div className="grid grid-cols-2 gap-4 animate-fade-in-down">
-                <div className="col-span-1"><ImageUploader label="Package Image" value={data.packageImage} isSmall={true} targetId="preview-package" onChange={handleImageChange('packageImage')} onApplyWatermark={() => applyWatermark('packageImage')} isWatermarkOn={data.watermarkSettings?.['packageImage']?.show} /></div>
+                {/* [0단계] godo는 패키지 워터마크 미지원(PreviewGodo 패키지에 렌더 없음) → 작동 안 하는 버튼 제거. bananamall은 유지 */}
+                <div className="col-span-1"><ImageUploader label="Package Image" value={data.packageImage} isSmall={true} targetId="preview-package" onChange={handleImageChange('packageImage')} onApplyWatermark={isGodo ? undefined : () => applyWatermark('packageImage')} isWatermarkOn={data.watermarkSettings?.['packageImage']?.show} /></div>
                  <div className="col-span-1 flex items-center justify-center text-xs text-gray-400">패키지 이미지는<br/>작게 출력됩니다.</div>
             </div>
         )}

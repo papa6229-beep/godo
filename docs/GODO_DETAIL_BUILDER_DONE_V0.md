@@ -93,5 +93,14 @@
 - **수정**: godo에서 해당 상위 래퍼 onClick 제거(`isGodo ? undefined`) — 스펙 섹션·`editor-point1`·`editor-point2`, `editor-feature`는 상시 제거. 전진 스크롤은 각 입력 onFocus/이미지 onClick의 개별 앵커가 단독 담당.
 - 검증(실클릭): 1-2 활성 상태에서 설명 1-1 클릭 → `preview-point1-1` 정확히 중앙(dist 0), 1-2는 +622. 메인특징 2 클릭 → `preview-feature-1` 중앙(dist 0), spec −574. tsc0/vite green/콘솔0.
 
+## 0단계 — 생성기 워터마크 마무리 (2026-07-09, 하위[1] 클로즈용 · test/5·6.png 맥락)
+1. **feature 이미지 워터마크 위치이동 버그 수정**. 원인=feature가 커스텀 absolute 드래그(`onMouseDown=startFeatureDrag`)로 바뀐 뒤, 내부 워터마크(Rnd) 위 mousedown까지 부모가 가로채 **feature 이미지 전체가 이동**(워터마크는 못 움직임). 수정=워터마크 inner div에 `data-wm`, `startFeatureDrag`는 `e.target.closest('[data-wm]')`면 **바로 return**(워터마크 Rnd가 스스로 이동). 리사이즈는 원래 워터마크 자체 핸들이라 정상이었음.
+2. **패키지 이미지의 작동 안 하는 워터마크 on/off 버튼 제거**(godo). PreviewGodo 패키지엔 RenderWatermark 없음 → 버튼이 무의미했음. `Editor` 패키지 ImageUploader `onApplyWatermark={isGodo?undefined:...}`, `DetailPageBuilder` 일괄토글 targetKeys에서 godo시 packageImage 제외. **bananamall은 패키지 워터마크 실사용(Preview.tsx:352)이라 유지**(회귀0).
+3. feature **투명 이미지 테두리=미적용 유지**(투명 누끼라 사각 테두리 어색 — 사장님 확인 필요시 1줄).
+4. ⚠️ `GODO_BRAND` 실값=**쇼핑몰명 미정으로 보류**(확정 시 PreviewGodo 한 곳 교체).
+- 검증(실드래그/실DOM): feature 워터마크 실제 dragTo → 상대좌표 (113,93) 기대치 일치·feature 이미지 미이동, 패키지 워터마크 버튼 0개(메인은 유지), tsc0/vite green/콘솔0.
+- ※ 검증 교훈 재확인: **프로그래매틱 MouseEvent dispatch는 react-rnd에서 오탐**(-872 튐) → 반드시 Playwright 실드래그로 확인.
+
 ## 다음
-하위 프로젝트 **[2] 엑셀 업로드 → ProductData 프리필** 착수(메인몰 엑셀 → 생성기 좌측 입력부 로드).
+- 하위[1] 사실상 클로즈(잔여=GODO_BRAND 실값·feature 테두리 사장님 확인만).
+- 사장님 브리핑 수령 후 **[2] 엑셀 업로드 → ProductData 프리필** 세부계획 재수립(메인몰→고도몰 변환 파이프라인 착수).

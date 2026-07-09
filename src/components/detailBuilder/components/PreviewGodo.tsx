@@ -87,6 +87,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
   const fl = data.featureImageLayout || { x: 0, y: 0, width: 320, height: 380 };
   const startFeatureDrag = (e: React.MouseEvent) => {
     if (!onFeatureImageLayoutChange) return;
+    // 워터마크 위에서 시작한 드래그는 feature 이미지 이동으로 가로채지 않음(워터마크 Rnd가 스스로 이동 처리)
+    if ((e.target as HTMLElement)?.closest?.('[data-wm]')) return;
     e.preventDefault(); e.stopPropagation();
     const x0 = e.clientX, y0 = e.clientY, fx = fl.x || 0, fy = fl.y || 0;
     const move = (ev: MouseEvent) => onFeatureImageLayoutChange({ x: fx + (ev.clientX - x0), y: fy + (ev.clientY - y0), width: fl.width || 320, height: fl.height || 380 });
@@ -192,7 +194,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         bounds="parent"
         className="z-50 group"
       >
-        <div className="w-full h-full relative cursor-move">
+        <div data-wm className="w-full h-full relative cursor-move">
           <img src={data.watermarkImage} className="w-full h-full object-contain pointer-events-none select-none" alt="watermark" />
           <div className="absolute inset-0 border-2 border-transparent group-hover:border-purple-400 rounded transition-colors"></div>
           <div className="absolute bottom-[-4px] right-[-4px] w-3 h-3 bg-purple-500 rounded-full opacity-0 group-hover:opacity-100 cursor-nwse-resize"></div>
