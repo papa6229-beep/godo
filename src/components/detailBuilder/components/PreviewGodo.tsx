@@ -60,7 +60,11 @@ interface PreviewGodoProps {
   onWatermarkLayoutChange: (id: string, layout: { x: number, y: number, width: number, height: number }) => void;
   onFeatureImageLayoutChange?: (layout: { x: number, y: number, width: number, height: number }) => void;
   onSpacingChange?: (spacing: { section: number, element: number, heading: number }) => void;
+  onGapChange?: (id: string, value: number) => void;
 }
+
+// ① 모든 이미지 영역 공용 테두리(옵션 이미지와 동일 · 얇고 옅은 회색). 패키지/투명 feature 제외.
+const IMG_BORDER = '1px solid #e5e7eb';
 
 // 미리보기 섹션 클릭 → 좌측 Editor 해당 입력부로 스크롤(⑧ 역방향)
 const scrollEditorTo = (editorId: string) => {
@@ -68,7 +72,7 @@ const scrollEditorTo = (editorId: string) => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 
-const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOptionLayoutChange, onPackageLayoutChange, onWatermarkLayoutChange, onFeatureImageLayoutChange, onSpacingChange }, ref) => {
+const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOptionLayoutChange, onPackageLayoutChange, onWatermarkLayoutChange, onFeatureImageLayoutChange, onSpacingChange, onGapChange }, ref) => {
   const {
     productNameKr, productNameEn, brandName, themeColor, summaryInfo, options,
     mainImage, packageImage, featureImage, sizeImage,
@@ -98,30 +102,53 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
     document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
   };
 
-  // 공통 간격 드래그 핸들 생성기(kind: 'section'|'heading'|'element'). export 시 hover-off로 숨김.
-  const makeDrag = (kind: 'section' | 'heading' | 'element', step: number) => (e: React.MouseEvent) => {
-    if (!onSpacingChange) return;
+  // ⑬ 간격 독립 조절: 위치마다 고유 id로 저장(godoGaps). 지정 없으면 종류별 기본값(sp)으로 폴백.
+  //    → 같은 종류(heading/element/section)라도 위치별로 따로 조절됨(한 곳 드래그가 다른 곳에 영향 없음).
+  const gaps = data.godoGaps || {};
+  const gapVal = (id: string, kind: 'section' | 'heading' | 'element') => (gaps[id] != null ? gaps[id] : sp[kind]);
+  // 위치(id)별 드래그 핸들 생성기. export 시 hover-off로 숨김.
+  const makeGapDrag = (id: string, kind: 'section' | 'heading' | 'element', step: number) => (e: React.MouseEvent) => {
+    if (!onGapChange && !onSpacingChange) return;
     e.preventDefault(); e.stopPropagation();
-    const y0 = e.clientY; const v0 = sp[kind];
-    const move = (ev: MouseEvent) => onSpacingChange({ ...sp, [kind]: Math.max(2, Math.round((v0 + (ev.clientY - y0)) / step) * step) });
+    const y0 = e.clientY; const v0 = gapVal(id, kind);
+    const commit = (nv: number) => {
+      if (onGapChange) onGapChange(id, nv);
+      else if (onSpacingChange) onSpacingChange({ ...sp, [kind]: nv }); // 구버전 폴백
+    };
+    const move = (ev: MouseEvent) => commit(Math.max(2, Math.round((v0 + (ev.clientY - y0)) / step) * step));
     const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
     document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
   };
-  // 섹션 상단 간격 핸들(pill)
-  const SectionGap = () => (
-    <div onMouseDown={makeDrag('section', 4)} title="드래그하여 섹션 간격 조절 (임시저장으로 고정)"
+  // 섹션 상단 간격 핸들(pill) — 섹션마다 고유 id로 독립
+  const SectionGap = ({ id }: { id: string }) => (
+    <div onMouseDown={makeGapDrag(id, 'section', 4)} title="드래그하여 이 섹션 간격 조절 (임시저장으로 고정)"
       className="absolute left-1/2 -translate-x-1/2 top-2 flex items-center gap-1 px-3 py-1 rounded-full bg-gray-900/85 text-white text-[11px] font-bold cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity z-30 select-none">
-      ⇕ 섹션 {sp.section}
+      ⇕ 섹션 {gapVal(id, 'section')}
     </div>
   );
-  // ⑥⑦⑧⑨ 실제 간격 위치의 드래그 바(높이=값). hover 시 파란 그립+수치 표시, export엔 빈 공간만.
-  const GapBar = ({ kind }: { kind: 'heading' | 'element' }) => (
-    <div onMouseDown={makeDrag(kind, 2)} style={{ height: sp[kind] }}
-      title={kind === 'heading' ? '드래그: 제목↔내용 간격' : '드래그: 블록(이미지↔다음설명) 간격'}
-      className="relative w-full cursor-ns-resize group/gap select-none">
-      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-blue-400/0 group-hover/gap:bg-blue-400/60 transition-colors flex items-center justify-center">
-        <span className="text-[10px] font-bold text-blue-600 bg-white/90 px-1.5 rounded opacity-0 group-hover/gap:opacity-100 whitespace-nowrap">↕ {kind === 'heading' ? '제목' : '블록'} {sp[kind]}</span>
+  // ⑥⑦⑧⑨⑬ 실제 간격 위치의 드래그 바(높이=값) — 위치별 고유 id로 독립. hover 시 파란 그립+수치, export엔 빈 공간만.
+  const GapBar = ({ kind, id }: { kind: 'heading' | 'element'; id: string }) => {
+    const v = gapVal(id, kind);
+    return (
+      <div onMouseDown={makeGapDrag(id, kind, 2)} style={{ height: v }}
+        title={kind === 'heading' ? '드래그: 제목↔내용 간격' : '드래그: 블록(이미지↔다음설명) 간격'}
+        className="relative w-full cursor-ns-resize group/gap select-none">
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-blue-400/0 group-hover/gap:bg-blue-400/60 transition-colors flex items-center justify-center">
+          <span className="text-[10px] font-bold text-blue-600 bg-white/90 px-1.5 rounded opacity-0 group-hover/gap:opacity-100 whitespace-nowrap">↕ {kind === 'heading' ? '제목' : '블록'} {v}</span>
+        </div>
       </div>
+    );
+  };
+  // ③ 영문명 마퀴 밴드(섹션 구분용) — KEY FEATURE 아래 + SIZE 위 2곳에 동일 렌더
+  const MarqueeBand = () => !(productNameEn || '').trim() ? null : (
+    <div>
+      <Hairline color="#d1d5db" thickness={1} />
+      <div className="py-4 overflow-hidden">
+        <div className="whitespace-nowrap text-center text-gray-400 font-medium tracking-[0.25em] uppercase text-sm">
+          {Array(6).fill(productNameEn).join('  ·  ')}
+        </div>
+      </div>
+      <Hairline color="#d1d5db" thickness={1} />
     </div>
   );
 
@@ -193,8 +220,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         {topDivider && (
           <div className="px-[50px]"><Hairline color="#111827" thickness={1} /></div>
         )}
-        <section id={sectionId} className="px-[50px] relative group" style={{ paddingTop: sp.section, paddingBottom: sp.section }} onClick={() => scrollEditorTo(sectionId.replace('preview-', 'editor-'))}>
-          <SectionGap />
+        <section id={sectionId} className="px-[50px] relative group" style={{ paddingTop: gapVal(`${sectionId}-sec`, 'section'), paddingBottom: gapVal(`${sectionId}-sec`, 'section') }} onClick={() => scrollEditorTo(sectionId.replace('preview-', 'editor-'))}>
+          <SectionGap id={`${sectionId}-sec`} />
           <Dot color={accent} size={22} />
           <h2 className={`${SECTION_HEADING} mt-4`}>Point {num}</h2>
           {cleanTitle && (
@@ -202,22 +229,36 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
               {cleanTitle} <Dot color={accent} size={12} />
             </p>
           )}
-          {/* ⑧ 제목↔첫 설명 간격(드래그) */}
-          <GapBar kind="heading" />
+          {/* ⑧ 제목(main)↔첫 설명 간격(독립 드래그) — 4.png: 여기를 좁히면 point01만 반영 */}
+          <GapBar kind="heading" id={`${sectionId}-head`} />
           {/* 각 블록: 설명↔자기 이미지는 가깝게(BLOCK_INNER_GAP), 블록끼리는 GapBar(element)로 벌림 ⑨ */}
           <div className="flex flex-col">
             {cleanBlocks.filter((b) => b.desc || b.imgReal || b.imgEnabled).map((b, i) => {
+              // ② 슬롯(1/2/3) 기준 앵커 → 좌측 입력(1-1/1-2/1-3)이 각자 위치로 정확히 스크롤(1-2 고정 버그 해결)
+              const slot = (String(b.key).match(/\d+$/) || ['1'])[0];
               return (
                 <React.Fragment key={i}>
-                  {i > 0 && <GapBar kind="element" />}
-                  <div className="flex flex-col" style={{ gap: BLOCK_INNER_GAP }}>
+                  {/* ⑤.png: image 1-1 ↔ 설명 1-2 간격(블록 사이) — 슬롯 기준 id(다른 슬롯 토글해도 값 유지) */}
+                  {i > 0 && <GapBar kind="element" id={`${sectionId}-el-${slot}`} />}
+                  <div id={`${sectionId}-${slot}`} className="flex flex-col" style={{ gap: BLOCK_INNER_GAP }}>
                   {b.desc && (
-                    <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
-                      {renderHighlightText(b.desc, themeColor)}
-                    </p>
+                    i === 0 ? (
+                      // 첫 블록: 위에 Point 제목+부제(main)가 있어 그대로 평문
+                      <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
+                        {renderHighlightText(b.desc, themeColor)}
+                      </p>
+                    ) : (
+                      // ⑤ 서브 블록(1-2/1-3): 위에 main이 없어 허전 → 액센트 바 콜아웃으로 앵커(디자인 의도 부여)
+                      <div className="flex gap-4">
+                        <div style={{ width: 4, borderRadius: 999, background: accent, flexShrink: 0 }} />
+                        <p className="flex-1 py-0.5 text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
+                          {renderHighlightText(b.desc, themeColor)}
+                        </p>
+                      </div>
+                    )
                   )}
                   {b.imgReal && (
-                    <div className="relative w-full overflow-hidden">
+                    <div className="relative w-full overflow-hidden" style={{ border: IMG_BORDER }}>
                       <img src={b.imgReal} className="w-full h-auto block" alt={`point-${num}-${i}`} />
                       <RenderWatermark targetKey={b.key} />
                     </div>
@@ -256,7 +297,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
           {/* 히어로 래퍼(relative) — 패키지가 이 영역 전체를 자유 이동(메인이미지 밖으로도 가능) */}
           <div className="relative">
             {/* 메인 이미지: 정사각 고정 해제 → 가로 700 고정, 세로는 비율대로. 아래 텍스트가 비율 따라 붙음(②) */}
-            <div id="preview-main" className="relative mx-auto bg-white overflow-hidden" style={{ width: 700 }}>
+            <div id="preview-main" className="relative mx-auto bg-white overflow-hidden" style={{ width: 700, border: IMG_BORDER }}>
               {mainImage ? (
                 <img src={mainImage} className="w-full h-auto block" alt="Main" />
               ) : (
@@ -316,19 +357,20 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         </header>
 
         {/* ===== KEY FEATURE (상시 활성 ④) — ⑤ 이미지 드래그/리사이즈, ⑦ 간격핸들, ⑧ 클릭→Editor ===== */}
-        <section id="preview-feature" className="px-[50px] relative group" style={{ paddingTop: sp.section, paddingBottom: sp.section }} onClick={() => scrollEditorTo('editor-feature')}>
-          <SectionGap />
+        <section id="preview-feature" className="px-[50px] relative group" style={{ paddingTop: gapVal('preview-feature-sec', 'section'), paddingBottom: gapVal('preview-feature-sec', 'section') }} onClick={() => scrollEditorTo('editor-feature')}>
+          <SectionGap id="preview-feature-sec" />
           <Dot color={accent} size={22} />
           <h2 className={`${SECTION_HEADING} mt-4`}>KEY<br />FEATURE</h2>
           {featureSubtitle && (
             <p className="mt-3 text-lg font-bold text-gray-500 break-keep">{featureSubtitle}</p>
           )}
-          <GapBar kind="heading" />
+          <GapBar kind="heading" id="preview-feature-head" />
           {/* ⑤투명 박스 + ④마우스 드래그/리사이즈(커스텀). 우: 핵심특징 3항목(우측 고정) */}
           <div className="relative w-full" style={{ height: Math.max((fl.y || 0) + (fl.height || 380) + 10, 440) }}>
             <div className="absolute right-0 top-0 w-[360px] flex flex-col" style={{ gap: sp.element }}>
               {keyFeatures.map((f, i) => (
-                <div key={i} className="bg-gray-100 rounded-xl px-5 py-4">
+                // ② 메인특징 블록별 앵커 → 좌측 '메인특징 1/2/3' 입력이 각자 블록으로 스크롤(미리보기 불일치 해결)
+                <div key={i} id={`preview-feature-${i}`} className="bg-gray-100 rounded-xl px-5 py-4">
                   <div className="flex items-center gap-2 mb-1.5">
                     <Dot color={accent} size={12} />
                     <span className="font-black text-lg text-gray-900 break-keep">{(f.title || '').trim() || `핵심특징 ${i + 1}`}</span>
@@ -354,18 +396,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
           </div>
         </section>
 
-        {/* ===== 영문명 반복 마퀴 밴드(2차) — 상하 가로라인 ⑦ ===== */}
-        {(productNameEn || '').trim() && (
-          <div>
-            <Hairline color="#d1d5db" thickness={1} />
-            <div className="py-4 overflow-hidden">
-              <div className="whitespace-nowrap text-center text-gray-400 font-medium tracking-[0.25em] uppercase text-sm">
-                {Array(6).fill(productNameEn).join('  ·  ')}
-              </div>
-            </div>
-            <Hairline color="#d1d5db" thickness={1} />
-          </div>
-        )}
+        {/* ===== 영문명 반복 마퀴 밴드(2차) — KEY FEATURE 아래 ③ ===== */}
+        <MarqueeBand />
 
         {/* ===== OPTION CHECK — 자유 배치(Rnd) 복원 ⑫ ===== */}
         {options.length === 0 && <div id="preview-option" />}
@@ -373,13 +405,13 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
           <section
             id="preview-option"
             className="px-[50px] relative group"
-            style={{ paddingTop: sp.section, paddingBottom: sp.section, minHeight: 260 + Math.max(0, ...options.map((o) => (o.y || 0) + (o.height || 400))) }}
+            style={{ paddingTop: gapVal('preview-option-sec', 'section'), paddingBottom: gapVal('preview-option-sec', 'section'), minHeight: 260 + Math.max(0, ...options.map((o) => (o.y || 0) + (o.height || 400))) }}
             onClick={() => scrollEditorTo('editor-option')}
           >
-            <SectionGap />
+            <SectionGap id="preview-option-sec" />
             <Dot color={accent} size={22} />
             <h2 className={`${SECTION_HEADING} mt-4`}>OPTION<br />CHECK</h2>
-            <GapBar kind="heading" />
+            <GapBar kind="heading" id="preview-option-head" />
             <div className="relative w-full" style={{ minHeight: 420 }}>
               {options.map((opt) => (
                 <Rnd
@@ -392,9 +424,10 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                   className="group z-10"
                 >
                   <div className="w-full h-full flex flex-col select-none cursor-move">
-                    <div className="w-full flex-1 bg-white overflow-hidden flex items-center justify-center" style={{ border: '1px solid #e5e7eb', borderBottom: 'none' }}>
+                    <div className="w-full flex-1 bg-white overflow-hidden flex items-center justify-center" style={{ border: IMG_BORDER, borderBottom: 'none' }}>
                       {opt.image ? (
-                        <img src={opt.image} className="w-full h-full object-contain p-3 pointer-events-none" alt={opt.name} />
+                        // ① 흰 여백 없이 꽉 채움(object-cover). 박스 비율은 마우스로 조절 → 잘림 최소화
+                        <img src={opt.image} className="w-full h-full object-cover pointer-events-none" alt={opt.name} />
                       ) : (
                         <span className="text-gray-300 font-bold text-sm pointer-events-none">NO IMAGE</span>
                       )}
@@ -425,13 +458,17 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         {/* ===== SIZE ===== */}
         {!(sizeImage || (summaryInfo?.weight || '').trim()) && <div id="preview-size" />}
         {(sizeImage || (summaryInfo?.weight || '').trim()) && (
-          <section id="preview-size" className="px-[50px] bg-gray-50 relative group" style={{ paddingTop: sp.section, paddingBottom: sp.section }} onClick={() => scrollEditorTo('editor-size')}>
-            <SectionGap />
+          <React.Fragment>
+          {/* ③ 영문명 마퀴 밴드 — SIZE 위에도 동일 렌더(섹션 구분용) */}
+          <MarqueeBand />
+          <section id="preview-size" className="px-[50px] bg-gray-50 relative group" style={{ paddingTop: gapVal('preview-size-sec', 'section'), paddingBottom: gapVal('preview-size-sec', 'section') }} onClick={() => scrollEditorTo('editor-size')}>
+            <SectionGap id="preview-size-sec" />
             <h2 className={SECTION_HEADING}>SIZE</h2>
             <p className="flex items-center gap-2 text-base font-bold text-gray-500 mt-2 break-keep">
               측정 방법에 따라 약간의 오차가 있을 수 있습니다 <Dot color={accent} size={12} />
             </p>
-            <div className="mt-8 bg-white p-6 relative overflow-hidden">
+            {/* ① 흰 여백 제거(p-6 제거) + 얇은 회색 테두리 → 이미지 꽉 채움 */}
+            <div className="mt-8 bg-white relative overflow-hidden" style={{ border: IMG_BORDER }}>
               {sizeImage ? (
                 <img src={sizeImage} className="w-full h-auto block" alt="Size" />
               ) : (
@@ -448,6 +485,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
               </div>
             )}
           </section>
+          </React.Fragment>
         )}
 
         {/* ===== Footer ===== */}

@@ -75,7 +75,12 @@ export interface ProductData {
 
   // [고도몰] 레이아웃 간격 수동 조절(data에 저장 → 임시저장/불러오기로 고정).
   // section=섹션 상하 여백, element=요소 간격(이미지↔텍스트), heading=제목↔내용 간격 (px)
+  // ⚠️ 종류별 기본값(폴백)일 뿐 — 실제 조절은 아래 godoGaps(위치별 독립)로 저장됨.
   godoSpacing?: { section: number; element: number; heading: number };
+
+  // [고도몰] 간격 위치별 독립 오버라이드. key=위치 id(예: preview-point1-head), value=px.
+  // 같은 종류라도 위치마다 따로 저장 → 한 곳 드래그가 다른 곳에 영향 없음. 없으면 godoSpacing으로 폴백.
+  godoGaps?: Record<string, number>;
 
   // [고도몰] KEY FEATURE 좌측 이미지 마우스 크기·위치(드래그/리사이즈)
   featureImageLayout?: { x: number; y: number; width: number; height: number };

@@ -282,9 +282,13 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
   const handleFeatureImageLayoutChange = (layout: { x: number; y: number; width: number; height: number }) => {
     setData((prev) => ({ ...prev, featureImageLayout: layout }));
   };
-  // [고도몰] 레이아웃 간격 변경(드래그 핸들) 핸들러
+  // [고도몰] 레이아웃 간격 변경(드래그 핸들) 핸들러 — 구버전 종류별 폴백
   const handleGodoSpacingChange = (spacing: { section: number; element: number; heading: number }) => {
     setData((prev) => ({ ...prev, godoSpacing: spacing }));
+  };
+  // [고도몰] 간격 위치별 독립 변경 핸들러 — 위치 id마다 따로 저장(다른 위치 불변)
+  const handleGodoGapChange = (id: string, value: number) => {
+    setData((prev) => ({ ...prev, godoGaps: { ...(prev.godoGaps || {}), [id]: value } }));
   };
 
   // ✅ 썸네일 패키지 이미지 레이아웃 변경 핸들러 (500px 기준)
@@ -494,6 +498,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
                   onWatermarkLayoutChange={handleWatermarkLayoutChange}
                   onFeatureImageLayoutChange={handleFeatureImageLayoutChange}
                   onSpacingChange={handleGodoSpacingChange}
+                  onGapChange={handleGodoGapChange}
                 />
               ) : (
                 <Preview

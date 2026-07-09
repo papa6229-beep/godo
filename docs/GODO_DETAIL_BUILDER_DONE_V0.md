@@ -77,5 +77,15 @@
 6. **모든 이미지 영역 직각 통일**(라운드 제거): 메인/feature/point/size/옵션/패키지. (핵심특징 텍스트 패널은 이미지 아님 → 유지)
 - 검증: tsc0/build green/Playwright(패키지 일체형·직각·feature 위치292/50 실측·상품명 focus→preview-name 스크롤 실측·패널제거·콘솔0).
 
+## 5차 검수 반영 (2026-07-09, 사장님 최종 수정안 5건 · test/1~5.png)
+1. **모든 이미지 영역 얇은 회색 테두리(1px #e5e7eb) + 꽉 채움**(패키지·투명 feature 제외). 메인/Point/Size 이미지에 테두리 추가, **옵션 이미지 `object-contain p-3`→`object-cover`**로 흰 여백 제거(1.png), Size는 `p-6` 제거로 이미지가 카드에 꽉 참. 공용 상수 `IMG_BORDER`.
+2. **스크롤 싱크 위치 정확화(2.png)**: 메인특징 3블록·Point 서브블록마다 **개별 앵커** 부여 → 좌측 입력(메인특징 1/2/3, Point 1-1/1-2/1-3)이 각자 위치로 스크롤. **원인=한 섹션(preview-point1)에 모든 블록이 묶여 `scrollIntoView(center)`가 섹션 중앙(≈1-2)으로 고정**. Preview에 `preview-feature-{0..2}`·`preview-point{1,2}-{슬롯}`(슬롯=이미지키 끝자리) 앵커, Editor targetId/onFocus를 슬롯 앵커로 교체.
+3. **영문명 마퀴 밴드 SIZE 위에도 추가(3.png, 섹션 구분용)**. `MarqueeBand` 컴포넌트로 추출 → KEY FEATURE 아래 + SIZE 위 2곳 렌더.
+4. **간격 위치별 독립 조절(4·5.png)**. 기존 `godoSpacing`(종류별 스칼라 3개) → **`godoGaps: Record<위치id, px>` 오버라이드** 도입. GapBar/SectionGap마다 고유 id(`preview-point1-head`·`-el-{슬롯}`·`-sec` 등), 드래그는 `onGapChange(id,값)`으로 해당 위치만 저장(없으면 종류별 기본값 폴백). **한 곳 드래그가 같은 종류 다른 위치에 영향 없음** — 실측: point1 head=6·el=130 조절 시 point2 head=24·el=32 불변, feature섹션=100 시 point1섹션=56 불변.
+5. **서브 블록(1-2/2-2 이상) 허전함 해소(5.png)**. main 제목이 없는 서브 설명(첫 블록 이후)에 **테마색 액센트 바 콜아웃**(좌측 세로 바 + 설명) 부여 → 날것 타이핑 느낌 제거·디자인 의도 부여. 첫 블록은 위 Point 제목/부제가 있어 평문 유지.
+- 파일: `PreviewGodo.tsx`(IMG_BORDER·MarqueeBand·gapVal/makeGapDrag/GapBar id·서브블록 액센트·앵커), `Editor.tsx`(feature/point 입력 슬롯 앵커), `types.ts`(godoGaps), `DetailPageBuilder.tsx`(handleGodoGapChange·onGapChange).
+- 검증: tsc0/build green/Playwright(시드 로드 후 앵커 9개 존재·마퀴 2밴드·옵션 object-cover 꽉참·서브블록 액센트바·간격 독립 실측·콘솔0).
+- 잔여(사장님 확인 후): feature 투명 이미지 테두리 제외 처리 확인, GODO_BRAND 실값 → 하위[1] 클로즈.
+
 ## 다음
 하위 프로젝트 **[2] 엑셀 업로드 → ProductData 프리필** 착수(메인몰 엑셀 → 생성기 좌측 입력부 로드).
