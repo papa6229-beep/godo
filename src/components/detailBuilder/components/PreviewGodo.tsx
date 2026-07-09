@@ -83,6 +83,26 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
   // ⑪ 수동 간격(px): section=섹션 상하여백, element=블록 사이(이미지↔다음설명), heading=제목↔내용
   const sp = data.godoSpacing || { section: 56, element: 32, heading: 24 };
   const BLOCK_INNER_GAP = 12; // ⑨ 설명↔자기 이미지: 항상 가깝게(블록 내부 고정)
+  // 공통 드래그 매니저: mousedown→document mousemove 추적, mouseup/창 blur/새 드래그 시작 시 정리.
+  // (mouseup을 놓쳐도(창 밖 릴리즈·alt-tab) 이전 리스너가 남지 않도록 — 리스너 누수·중복 방지)
+  const activeDragCleanup = React.useRef<null | (() => void)>(null);
+  const beginDrag = (onMove: (ev: MouseEvent) => void) => {
+    if (activeDragCleanup.current) activeDragCleanup.current(); // 잔존 드래그 정리
+    const move = (ev: MouseEvent) => onMove(ev);
+    const end = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', end);
+      window.removeEventListener('blur', end);
+      activeDragCleanup.current = null;
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', end);
+    window.addEventListener('blur', end); // 창 포커스 상실(alt-tab 등)에도 드래그 종료
+    activeDragCleanup.current = end;
+  };
+  // 언마운트 중 드래그 리스너 잔존 방지
+  React.useEffect(() => () => { if (activeDragCleanup.current) activeDragCleanup.current(); }, []);
+
   // ⑤ KEY FEATURE 이미지 마우스 위치·크기 (react-rnd 오프셋 버그 회피 → 커스텀 absolute 드래그/리사이즈)
   const fl = data.featureImageLayout || { x: 0, y: 0, width: 320, height: 380 };
   const startFeatureDrag = (e: React.MouseEvent) => {
@@ -91,17 +111,13 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
     if ((e.target as HTMLElement)?.closest?.('[data-wm]')) return;
     e.preventDefault(); e.stopPropagation();
     const x0 = e.clientX, y0 = e.clientY, fx = fl.x || 0, fy = fl.y || 0;
-    const move = (ev: MouseEvent) => onFeatureImageLayoutChange({ x: fx + (ev.clientX - x0), y: fy + (ev.clientY - y0), width: fl.width || 320, height: fl.height || 380 });
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    beginDrag((ev) => onFeatureImageLayoutChange({ x: fx + (ev.clientX - x0), y: fy + (ev.clientY - y0), width: fl.width || 320, height: fl.height || 380 }));
   };
   const startFeatureResize = (e: React.MouseEvent) => {
     if (!onFeatureImageLayoutChange) return;
     e.preventDefault(); e.stopPropagation();
     const x0 = e.clientX, y0 = e.clientY, fw = fl.width || 320, fh = fl.height || 380;
-    const move = (ev: MouseEvent) => onFeatureImageLayoutChange({ x: fl.x || 0, y: fl.y || 0, width: Math.max(120, fw + (ev.clientX - x0)), height: Math.max(120, fh + (ev.clientY - y0)) });
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    beginDrag((ev) => onFeatureImageLayoutChange({ x: fl.x || 0, y: fl.y || 0, width: Math.max(120, fw + (ev.clientX - x0)), height: Math.max(120, fh + (ev.clientY - y0)) }));
   };
 
   // ⑬ 간격 독립 조절: 위치마다 고유 id로 저장(godoGaps). 지정 없으면 종류별 기본값(sp)으로 폴백.
@@ -117,9 +133,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
       if (onGapChange) onGapChange(id, nv);
       else if (onSpacingChange) onSpacingChange({ ...sp, [kind]: nv }); // 구버전 폴백
     };
-    const move = (ev: MouseEvent) => commit(Math.max(2, Math.round((v0 + (ev.clientY - y0)) / step) * step));
-    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    beginDrag((ev) => commit(Math.max(2, Math.round((v0 + (ev.clientY - y0)) / step) * step)));
   };
   // 섹션 상단 간격 핸들(pill) — 섹션마다 고유 id로 독립
   const SectionGap = ({ id }: { id: string }) => (

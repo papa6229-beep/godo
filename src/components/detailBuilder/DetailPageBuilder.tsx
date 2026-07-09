@@ -25,6 +25,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
   const thumbnailRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const handleGenerateAI = async () => {
+    if (isLoading) return; // 중복 실행 방지(더블클릭·연타)
     if (!data.productNameKr) {
       alert("상품명을 입력해주세요. AI가 상품명을 모르면 글을 못 씁니다!");
       return;
@@ -62,6 +63,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
   };
 
   const exportDetailPage = async () => {
+    if (isLoading) return; // 중복 캡처 방지(더블클릭)
     if (!detailRef.current) return;
     setIsLoading(true);
     setLoadingMessage("이미지 구조를 분석하고 저장 중입니다...");
@@ -186,6 +188,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
   };
 
   const exportThumbnails = async () => {
+    if (isLoading) return; // 중복 실행 방지
     setIsLoading(true);
     setLoadingMessage("썸네일을 압축 저장 중입니다...");
     try {
@@ -225,6 +228,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
 
   // ✅ 개별 썸네일 다운로드 함수
   const downloadSingleThumbnail = async (index: number, label: string) => {
+    if (isLoading) return; // 중복 실행 방지
     const ref = thumbnailRefs.current[index];
     if (!ref) return;
 
@@ -455,10 +459,10 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' }> = ({ layoutMode = 'b
             불러오기
           </button>
           <div className="db-divider"></div>
-          <button onClick={exportThumbnails} className="db-btn db-btn--ghost">
+          <button onClick={exportThumbnails} disabled={isLoading} className="db-btn db-btn--ghost">
             썸네일 저장
           </button>
-          <button onClick={exportDetailPage} className="db-btn db-btn--primary">
+          <button onClick={exportDetailPage} disabled={isLoading} className="db-btn db-btn--primary">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
