@@ -128,29 +128,35 @@ export const rewriteFlowCaptions = async (
     throw new Error('리라이트할 원본 설명 텍스트가 없습니다. (원본 설명이 있는 상품에서 동작 — 통이미지형은 캡션 생성이 필요합니다)');
   }
 
-  for (let c = 0; c < targets.length; c += CHUNK) {
-    const chunk = targets.slice(c, c + CHUNK);
-    onProgress?.({ done: c, total: targets.length, phase: '리라이트' });
-    const userPrompt =
-      `상품명: ${data.productNameKr || ''} / 브랜드: ${data.brandName || ''}\n` +
-      `아래 원본들을 규칙대로 리라이트해 주세요.\n\n` +
-      chunk.map((x, j) => `[${j + 1}] 원본: ${x.b.caption}`).join('\n') +
-      `\n\n각 항목을 [1] [2] … 태그로 리라이트만 출력하세요.`;
-    try {
-      const res = await chatWithProvider({
-        providerId: brain.providerId,
-        modelIdOverride: brain.modelId || undefined,
-        purpose: 'agent_run',
-        temperature: 0.6,
-        maxTokens: 2200,
-        messages: [{ role: 'system', content: REWRITE_SYSTEM }, { role: 'user', content: userPrompt }],
-      });
-      if (res.ok && res.content) {
-        const parsed = parseNumbered(res.content, chunk.length);
-        chunk.forEach((x, j) => { if (parsed[j]) out[x.i].caption = parsed[j]; });
-      }
-    } catch { /* 청크 실패는 원본 유지 */ }
-  }
+  // 청크로 나눠 '동시'에 요청 — LM Studio가 병렬(continuous batching) 지원 시 단축, 순차 모드면 그대로.
+  const chunks: Array<typeof targets> = [];
+  for (let c = 0; c < targets.length; c += CHUNK) chunks.push(targets.slice(c, c + CHUNK));
+  let done = 0;
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      const userPrompt =
+        `상품명: ${data.productNameKr || ''} / 브랜드: ${data.brandName || ''}\n` +
+        `아래 원본들을 규칙대로 리라이트해 주세요.\n\n` +
+        chunk.map((x, j) => `[${j + 1}] 원본: ${x.b.caption}`).join('\n') +
+        `\n\n각 항목을 [1] [2] … 태그로 리라이트만 출력하세요.`;
+      try {
+        const res = await chatWithProvider({
+          providerId: brain.providerId,
+          modelIdOverride: brain.modelId || undefined,
+          purpose: 'agent_run',
+          temperature: 0.6,
+          maxTokens: 2200,
+          messages: [{ role: 'system', content: REWRITE_SYSTEM }, { role: 'user', content: userPrompt }],
+        });
+        if (res.ok && res.content) {
+          const parsed = parseNumbered(res.content, chunk.length);
+          chunk.forEach((x, j) => { if (parsed[j]) out[x.i].caption = parsed[j]; });
+        }
+      } catch { /* 청크 실패는 원본 유지 */ }
+      done += chunk.length;
+      onProgress?.({ done, total: targets.length, phase: '리라이트' });
+    }),
+  );
   onProgress?.({ done: targets.length, total: targets.length, phase: '완료' });
   return out;
 };
