@@ -6,6 +6,7 @@ import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
 import { getFlowBlocks, imagesToBlocks, newBlockId } from '../services/flowBlocks';
 import { extractProductImages } from '../services/flowImageSplitter';
 import { toProxyUrl } from '../services/exportImagePrep';
+import { generateFlowCaptions } from '../services/flowCaptionService';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -113,6 +114,23 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
   });
   const setCaption = (id: string, caption: string) => setBlocks(cur => cur.map(b => b.id === id ? { ...b, caption } : b));
 
+  // AI 캡션 생성(빈 캡션만): 각 블록 이미지 → VLM 묘사 → Gemma 한글 캡션. LM Studio(dev) 필요.
+  const [captioning, setCaptioning] = React.useState<{ done: number; total: number } | null>(null);
+  const runCaptions = async () => {
+    if (captioning) return;
+    const cur = blocks;
+    if (!cur.length) { alert('먼저 이미지를 추가하거나 통이미지를 추출하세요.'); return; }
+    setCaptioning({ done: 0, total: cur.length });
+    try {
+      const filled = await generateFlowCaptions(data, cur, (p) => setCaptioning({ done: p.done, total: p.total }), true);
+      onChange(prev => ({ ...prev, flowBlocks: filled }));
+    } catch (err: any) {
+      alert('AI 캡션 생성 실패: ' + (err?.message || String(err)));
+    } finally {
+      setCaptioning(null);
+    }
+  };
+
   // 정밀추출: 통이미지 1장 → 깨끗한 제품 사진들만 추출(캡션·금선 버림)해 블록으로 치환.
   const splitBlock = async (id: string) => {
     if (splitting) return;
@@ -196,12 +214,19 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
 
       {/* 이미지+캡션 블록 */}
       <section className="space-y-3">
-        <div className="flex justify-between items-center border-b border-white/10 pb-2">
+        <div className="flex justify-between items-center border-b border-white/10 pb-2 gap-2">
           <h2 className="text-lg font-black text-white font-mono">🖼️ 이미지 + 캡션 블록</h2>
-          <label className="text-xs bg-white/10 text-slate-300 px-3 py-1.5 rounded cursor-pointer hover:bg-white/20 transition-colors">+ 이미지 추가
-            <input type="file" accept="image/*" multiple className="sr-only" onChange={addImages} />
-          </label>
+          <div className="flex items-center gap-2">
+            <button onClick={runCaptions} disabled={!!captioning || blocks.length === 0}
+              className="text-xs font-bold bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-40 px-3 py-1.5 rounded transition-colors">
+              {captioning ? `AI 캡션 생성 중… ${captioning.done}/${captioning.total}` : '🤖 AI 캡션 생성'}
+            </button>
+            <label className="text-xs bg-white/10 text-slate-300 px-3 py-1.5 rounded cursor-pointer hover:bg-white/20 transition-colors">+ 이미지 추가
+              <input type="file" accept="image/*" multiple className="sr-only" onChange={addImages} />
+            </label>
+          </div>
         </div>
+        {captioning && <p className="text-[11px] text-emerald-400 font-bold">🤖 빈 캡션을 채우는 중… ({captioning.done}/{captioning.total}) · LM Studio(VLM+Gemma) 순차 처리라 다소 걸립니다.</p>}
         {blocks.length === 0
           ? <p className="text-xs text-slate-500">위→아래 순서로 쌓입니다. 통이미지 1장은 <b className="text-sky-300">✂ 정밀추출</b>로 깨끗한 제품 사진만 뽑을 수 있어요.</p>
           : <p className="text-[11px] text-slate-500">각 블록 = 이미지 + 그 아래 캡션(SEO 문구). 세로로 긴 <b className="text-sky-300">통이미지</b>는 <b className="text-sky-300">✂ 정밀추출</b> → 제품 사진만 뽑고 <b className="text-slate-400">원본 캡션·구분선은 버림</b>. 캡션은 자동생성/수동입력.</p>}
