@@ -3,6 +3,9 @@ import React from 'react';
 import type { ProductData } from '../types';
 import { COLOR_PRESETS } from '../constants';
 import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
+import { getFlowBlocks, imagesToBlocks, newBlockId } from '../services/flowBlocks';
+import { splitImageByWhitespace } from '../services/flowImageSplitter';
+import { convertUrl } from '../services/exportImagePrep';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -11,9 +14,14 @@ const fileToDataUrl = (file: File, cb: (url: string) => void) => {
 };
 
 const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }> = ({ data, onChange }) => {
-  const images = Array.isArray(data.flowImages) ? data.flowImages : [];
+  const blocks = getFlowBlocks(data);
   const setField = (k: keyof ProductData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     onChange(prev => ({ ...prev, [k]: e.target.value }));
+
+  // 블록(이미지+캡션) 편집 — 항상 flowBlocks에 기록(첫 편집 시 구 flowImages에서 마이그레이션).
+  const setBlocks = (updater: (cur: any[]) => any[]) =>
+    onChange(prev => ({ ...prev, flowBlocks: updater(getFlowBlocks(prev)) }));
+  const [splitting, setSplitting] = React.useState<string | null>(null);
 
   const [importing, setImporting] = React.useState(false);
   const [importNote, setImportNote] = React.useState<{ ok: boolean; text: string } | null>(null);
@@ -32,7 +40,9 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         productNameEn: p.productNameEn || prev.productNameEn,
         brandName: p.brandName || prev.brandName,
         flowHeaderText: p.flowHeaderText || prev.flowHeaderText,
+        // 신모델: 이미지 → 캡션 빈 블록. 구 flowImages도 함께 유지(호환).
         flowImages: p.flowImages.length ? p.flowImages : (prev.flowImages || []),
+        flowBlocks: p.flowImages.length ? imagesToBlocks(p.flowImages) : (prev.flowBlocks || getFlowBlocks(prev)),
         mainImage: p.thumbnailSource || prev.mainImage,
       }));
       const warn = p.flowImages.length === 0 ? ' — ⚠ 제품이미지 0장(수동 추가 필요)' : '';
@@ -47,17 +57,41 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     Promise.all(files.map(f => new Promise<string>(res => fileToDataUrl(f, res)))).then(urls => {
-      onChange(prev => ({ ...prev, flowImages: [...(prev.flowImages || []), ...urls] }));
+      setBlocks(cur => [...cur, ...imagesToBlocks(urls)]);
     });
     e.target.value = '';
   };
-  const removeImage = (i: number) => onChange(prev => ({ ...prev, flowImages: (prev.flowImages || []).filter((_, idx) => idx !== i) }));
-  const moveImage = (i: number, dir: number) => onChange(prev => {
-    const arr = [...(prev.flowImages || [])]; const j = i + dir;
-    if (j < 0 || j >= arr.length) return prev;
+  const removeBlock = (id: string) => setBlocks(cur => cur.filter(b => b.id !== id));
+  const moveBlock = (i: number, dir: number) => setBlocks(cur => {
+    const arr = [...cur]; const j = i + dir;
+    if (j < 0 || j >= arr.length) return cur;
     [arr[i], arr[j]] = [arr[j], arr[i]];
-    return { ...prev, flowImages: arr };
+    return arr;
   });
+  const setCaption = (id: string, caption: string) => setBlocks(cur => cur.map(b => b.id === id ? { ...b, caption } : b));
+
+  // 자동분할: 통이미지 1장 → 여백 감지로 여러 조각 블록으로 치환. CDN URL이면 먼저 base64 변환(서버).
+  const splitBlock = async (id: string) => {
+    if (splitting) return;
+    const target = blocks.find(b => b.id === id);
+    if (!target) return;
+    setSplitting(id);
+    try {
+      let img = target.image;
+      if (/^https?:\/\//i.test(img) && !img.startsWith('data:')) {
+        img = await convertUrl(img); // 서버가 CDN 이미지를 base64로(픽셀 읽기 위해 same-origin 필요)
+        if (/^https?:\/\//i.test(img)) throw new Error('이미지를 서버에서 불러오지 못했습니다.');
+      }
+      const segs = await splitImageByWhitespace(img);
+      if (segs.length <= 1) { alert('분할할 여백을 찾지 못했습니다 (이미 한 조각이거나 여백이 없음).'); return; }
+      const parts = segs.map(s => ({ id: newBlockId(), image: s.dataUrl, caption: '' }));
+      setBlocks(cur => cur.flatMap(b => b.id === id ? parts : [b]));
+    } catch (err: any) {
+      alert('자동분할 실패: ' + (err?.message || String(err)));
+    } finally {
+      setSplitting(null);
+    }
+  };
   const setThumb = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, mainImage: url }))); e.target.value = ''; };
   const setPackage = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, packageImage: url, isPackageImageEnabled: true }))); e.target.value = ''; };
   const removePackage = () => onChange(prev => ({ ...prev, packageImage: null }));
@@ -121,24 +155,43 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         </div>
       </section>
 
-      {/* 통이미지 스택 */}
+      {/* 이미지+캡션 블록 */}
       <section className="space-y-3">
         <div className="flex justify-between items-center border-b border-white/10 pb-2">
-          <h2 className="text-lg font-black text-white font-mono">🖼️ 통이미지 스택</h2>
+          <h2 className="text-lg font-black text-white font-mono">🖼️ 이미지 + 캡션 블록</h2>
           <label className="text-xs bg-white/10 text-slate-300 px-3 py-1.5 rounded cursor-pointer hover:bg-white/20 transition-colors">+ 이미지 추가
             <input type="file" accept="image/*" multiple className="sr-only" onChange={addImages} />
           </label>
         </div>
-        {images.length === 0 && <p className="text-xs text-slate-500">위→아래 순서로 쌓입니다. 여러 장 한 번에 선택 가능.</p>}
+        {blocks.length === 0
+          ? <p className="text-xs text-slate-500">위→아래 순서로 쌓입니다. 통이미지 1장은 <b className="text-sky-300">✂ 자동분할</b>로 섹션별로 나눌 수 있어요.</p>
+          : <p className="text-[11px] text-slate-500">각 블록 = 이미지 + 그 아래 캡션(SEO 문구). 세로로 긴 <b className="text-sky-300">통이미지</b>는 <b className="text-sky-300">✂ 자동분할</b> → 여백 기준으로 조각냄. 캡션은 나중에 AI가 채웁니다.</p>}
         <div className="space-y-2">
-          {images.map((src, i) => (
-            <div key={i} className="flex items-center gap-2 bg-[#0F172A]/50 border border-white/10 rounded p-2">
-              <span className="text-xs text-slate-500 w-5 text-center">{i + 1}</span>
-              <img src={src} className="w-14 h-14 object-cover rounded border border-white/10 bg-white" alt={`stack-${i}`} />
-              <div className="flex-1" />
-              <button onClick={() => moveImage(i, -1)} disabled={i === 0} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↑</button>
-              <button onClick={() => moveImage(i, 1)} disabled={i === images.length - 1} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↓</button>
-              <button onClick={() => removeImage(i)} className="text-red-400 text-xs font-bold px-2 hover:text-red-600">삭제</button>
+          {blocks.map((b, i) => (
+            <div key={b.id} className="bg-[#0F172A]/50 border border-white/10 rounded p-2 space-y-2">
+              <div className="flex items-start gap-2">
+                <span className="text-xs text-slate-500 w-5 text-center pt-1">{i + 1}</span>
+                <img src={b.image} className="w-16 h-16 object-cover rounded border border-white/10 bg-white flex-shrink-0" alt={`block-${i}`} />
+                <div className="flex-1 min-w-0">
+                  <textarea
+                    rows={2}
+                    value={b.caption || ''}
+                    onChange={(e) => setCaption(b.id, e.target.value)}
+                    placeholder="캡션(이미지 아래 SEO 문구) · 나중에 AI가 채움"
+                    className="w-full p-2 bg-[#0F172A]/60 border border-white/10 rounded text-xs text-slate-200 outline-none focus:ring-1 focus:ring-[#22C55E] resize-y leading-relaxed"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-1">
+                <button onClick={() => splitBlock(b.id)} disabled={!!splitting}
+                  className="text-[11px] font-bold text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 disabled:opacity-40 px-2 py-1 rounded transition-colors">
+                  {splitting === b.id ? '분할 중…' : '✂ 자동분할'}
+                </button>
+                <div className="flex-1" />
+                <button onClick={() => moveBlock(i, -1)} disabled={i === 0} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↑</button>
+                <button onClick={() => moveBlock(i, 1)} disabled={i === blocks.length - 1} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↓</button>
+                <button onClick={() => removeBlock(b.id)} className="text-red-400 text-xs font-bold px-2 hover:text-red-600">삭제</button>
+              </div>
             </div>
           ))}
         </div>

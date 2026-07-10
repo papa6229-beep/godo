@@ -4,6 +4,7 @@ import React, { forwardRef } from 'react';
 import { Rnd } from 'react-rnd';
 import type { ProductData } from '../types';
 import { GODO_BRAND } from './PreviewGodo';
+import { getFlowBlocks } from '../services/flowBlocks';
 
 const IMG_BORDER = '1px solid #e5e7eb';
 const isGradient = (c: string) => !!c && c.toLowerCase().includes('gradient');
@@ -20,7 +21,7 @@ interface Props {
 const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLayoutChange, onGapChange }, ref) => {
   const { productNameKr, productNameEn, brandName, themeColor, flowHeaderText, flowEyebrow } = data;
   const accent = themeColor;
-  const images = Array.isArray(data.flowImages) ? data.flowImages.filter(Boolean) : [];
+  const blocks = getFlowBlocks(data);
 
   const gaps = data.godoGaps || {};
   const gapVal = (id: string, def: number) => (gaps[id] != null ? gaps[id] : def);
@@ -111,20 +112,23 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
         )}
         {hasHeader && <div style={{ height: HEADER_GAP }} />}
 
-        {/* ===== 통이미지 세로 스택 ===== */}
-        {images.length === 0 ? (
+        {/* ===== 이미지+캡션 블록 세로 스택 ===== */}
+        {blocks.length === 0 ? (
           <div className="mx-[56px] mb-16 border-2 border-dashed border-gray-200 rounded-xl py-24 flex items-center justify-center text-gray-300 font-black text-2xl select-none">
             통이미지를 추가하세요
           </div>
         ) : (
           <div className="px-[56px] pb-16 flex flex-col">
-            {images.map((src, i) => (
-              <React.Fragment key={i}>
+            {blocks.map((b, i) => (
+              <React.Fragment key={b.id || i}>
                 {i > 0 && <GapBar id={`flow-img-gap-${i}`} def={16} />}
                 <div className="relative w-full overflow-hidden" style={{ border: IMG_BORDER }}>
-                  <img src={src} className="w-full h-auto block" alt={`flow-${i}`} />
+                  <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
                   <RenderWatermark targetKey={`flowImage${i}`} />
                 </div>
+                {(b.caption || '').trim() && (
+                  <p className="mt-4 mb-2 text-[16px] leading-[1.8] font-medium text-gray-700 break-keep whitespace-pre-line">{b.caption}</p>
+                )}
               </React.Fragment>
             ))}
           </div>

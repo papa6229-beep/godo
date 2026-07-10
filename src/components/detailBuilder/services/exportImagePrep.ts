@@ -12,11 +12,13 @@ const isRemote = (u: unknown): boolean =>
 // data 안에서 서버 변환이 필요한(원격 http) 이미지 URL이 하나라도 있는지.
 export const hasRemoteImages = (data: ProductData): boolean => {
   const flow = Array.isArray(data.flowImages) ? data.flowImages : [];
-  return flow.some(isRemote) || isRemote((data as any).mainImage);
+  const blocks = Array.isArray(data.flowBlocks) ? data.flowBlocks : [];
+  return flow.some(isRemote) || blocks.some((b) => isRemote(b?.image)) || isRemote((data as any).mainImage);
 };
 
 // 단일 URL → data URL(base64). 실패 시 원본 URL 반환.
-const convertUrl = async (url: string): Promise<string> => {
+// export(exportImagePrep)와 자동분할(flowImageSplitter)이 공유 — CDN URL을 same-origin base64로.
+export const convertUrl = async (url: string): Promise<string> => {
   if (!isRemote(url)) return url;
   try {
     const res = await fetch('/api/detail?action=image-base64', {
@@ -57,12 +59,16 @@ export const buildExportableData = async (data: ProductData): Promise<ExportPrep
 
   const flow = Array.isArray(data.flowImages) ? data.flowImages : [];
   const flowImages = await Promise.all(flow.map((u) => resolve(u)));
+  const blocks = Array.isArray(data.flowBlocks) ? data.flowBlocks : null;
+  const flowBlocks = blocks
+    ? await Promise.all(blocks.map(async (b) => ({ ...b, image: await resolve(b.image) })))
+    : data.flowBlocks;
   const mainImage = isRemote((data as any).mainImage)
     ? await resolve((data as any).mainImage)
     : (data as any).mainImage;
 
   return {
-    data: { ...data, flowImages, mainImage },
+    data: { ...data, flowImages, flowBlocks, mainImage },
     total,
     failed,
   };
