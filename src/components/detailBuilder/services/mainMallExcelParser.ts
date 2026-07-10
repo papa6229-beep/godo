@@ -153,8 +153,10 @@ const parseDetailStructure = (
     const parts: string[] = [];
     for (let i = s + 1; i < e; i++) { const t = tokens[i]; if (t.type === 'text') parts.push(t.text); }
     const { option, body } = splitOptionTag(parts.join(' ').trim());
-    // 옵션 태그가 없는 이미지(예: 옵션 그룹의 첫 패키지컷)는 직전 옵션에 귀속.
-    const opt = option || (body ? '' : lastOption);
+    // 옵션 태그는 보통 각 옵션 그룹의 '첫 이미지'에만 붙고 나머지는 태그 없이 순차 배치됨.
+    // → 태그가 없으면 '직전 옵션'을 계속 상속(다음 옵션 태그가 나올 때까지 같은 옵션).
+    //   (첫 옵션 태그 이전 이미지들은 lastOption='' 이라 옵션 없음으로 남음)
+    const opt = option || lastOption;
     if (option) lastOption = option;
     blocks.push({ image: (tokens[s] as { url: string }).url, text: body, option: opt });
   }

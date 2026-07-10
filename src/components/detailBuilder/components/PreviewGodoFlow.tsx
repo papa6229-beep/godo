@@ -119,18 +119,32 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
           </div>
         ) : (
           <div className="px-[56px] pb-16 flex flex-col">
-            {blocks.map((b, i) => (
-              <React.Fragment key={b.id || i}>
-                {i > 0 && <GapBar id={`flow-img-gap-${i}`} def={16} />}
-                <div className="relative w-full overflow-hidden" style={{ border: IMG_BORDER }}>
-                  <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
-                  <RenderWatermark targetKey={`flowImage${i}`} />
-                </div>
-                {(b.caption || '').trim() && (
-                  <p className="mt-4 mb-2 text-[16px] leading-[1.8] font-medium text-gray-700 break-keep whitespace-pre-line">{b.caption}</p>
-                )}
-              </React.Fragment>
-            ))}
+            {blocks.map((b, i) => {
+              const optChanged = (b.option || '') !== (blocks[i - 1]?.option || '');
+              const showOptHeader = optChanged && (b.option || '').trim();
+              return (
+                <React.Fragment key={b.id || i}>
+                  {showOptHeader ? (
+                    // 옵션 그룹 시작 — 큰 간격 + 옵션명 헤더(정보 영역)
+                    <div className="mt-14 mb-5 flex items-center gap-3">
+                      <span className="text-xs font-black tracking-[0.15em] uppercase px-2.5 py-1 rounded text-white"
+                        style={isGradient(accent) ? { backgroundImage: accent } : { background: accent }}>OPTION</span>
+                      <span className="text-[22px] font-black text-gray-900 break-keep leading-tight">{b.option}</span>
+                      <div className="flex-1 h-0.5 rounded-full" style={{ background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 }} />
+                    </div>
+                  ) : (
+                    i > 0 && <GapBar id={`flow-img-gap-${i}`} def={16} />
+                  )}
+                  <div className="relative w-full overflow-hidden">
+                    <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
+                    <RenderWatermark targetKey={`flowImage${i}`} />
+                  </div>
+                  {(b.caption || '').trim() && (
+                    <p className="mt-4 mb-2 text-[16px] leading-[1.8] font-medium text-gray-700 break-keep whitespace-pre-line">{b.caption}</p>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
         )}
 
