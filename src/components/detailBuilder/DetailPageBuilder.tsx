@@ -12,6 +12,11 @@ import PreviewGodo from "./components/PreviewGodo";
 import PreviewGodoFlow from "./components/PreviewGodoFlow";
 import ThumbnailPreview from "./components/ThumbnailPreview";
 import { generateCopywriting } from "./services/geminiService";
+import {
+  hasRemoteImages,
+  buildExportableData,
+  waitForImages,
+} from "./services/exportImagePrep";
 // 이식 회귀 수정: 원본은 Tailwind preflight ON에서 제작 → GODO는 전역 preflight를 꺼서
 // 이미지 크기/중앙정렬/박스 계산이 어긋남. 생성기 루트로만 스코프된 리셋을 되살린다.
 import "./detailBuilder.css";
@@ -65,13 +70,36 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' | 'godoFlow' }> = ({ la
     return canvas.toDataURL("image/jpeg", 1.0); // 최고 품질 1.0
   };
 
+  // export(캔버스 캡처) 직전: 원격 CDN URL 이미지를 서버 base64로 치환해 CORS taint를 회피한다.
+  // 표시는 URL 그대로 두고, 여기서만 잠깐 base64로 바꿔 렌더 → 캡처 후 원복(restore).
+  // 원격 이미지가 없으면(수동 업로드=이미 base64) null을 반환해 아무 것도 하지 않는다.
+  const ensureExportReady = async (): Promise<null | (() => void)> => {
+    if (!hasRemoteImages(data)) return null;
+    setLoadingMessage("원본 이미지를 서버에서 불러오는 중...");
+    const original = data;
+    const { data: converted, total, failed } = await buildExportableData(data);
+    setData(converted);
+    // 재렌더 커밋 + 실제 이미지 로드 완료 대기(캡처 전 필수)
+    await new Promise((r) => setTimeout(r, 60));
+    await waitForImages(detailRef.current);
+    await Promise.all(thumbnailRefs.current.map((r) => waitForImages(r)));
+    if (failed > 0) {
+      console.warn(
+        `[export] 이미지 ${failed}/${total}장 서버 변환 실패 — 원본 URL 유지(해당 이미지는 캡처에서 누락될 수 있음)`,
+      );
+    }
+    return () => setData(original);
+  };
+
   const exportDetailPage = async () => {
     if (isLoading) return; // 중복 캡처 방지(더블클릭)
     if (!detailRef.current) return;
     setIsLoading(true);
     setLoadingMessage("이미지 구조를 분석하고 저장 중입니다...");
 
+    let restoreExport: null | (() => void) = null;
     try {
+      restoreExport = await ensureExportReady(); // 원격 이미지 → base64 치환(있을 때만)
       const element = detailRef.current;
       await new Promise((resolve) => setTimeout(resolve, 800)); // 이미지 로딩 대기
 
@@ -186,6 +214,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' | 'godoFlow' }> = ({ la
         `이미지 저장 실패: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
+      restoreExport?.(); // base64 치환분 원복(표시는 URL 유지)
       setIsLoading(false);
     }
   };
@@ -194,7 +223,9 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' | 'godoFlow' }> = ({ la
     if (isLoading) return; // 중복 실행 방지
     setIsLoading(true);
     setLoadingMessage("썸네일을 압축 저장 중입니다...");
+    let restoreExport: null | (() => void) = null;
     try {
+      restoreExport = await ensureExportReady(); // 원격 이미지 → base64 치환(있을 때만)
       const zip = new JSZip();
 
       for (let i = 0; i < THUMBNAIL_PRESETS.length; i++) {
@@ -225,6 +256,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' | 'godoFlow' }> = ({ la
         `썸네일 저장 실패: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
+      restoreExport?.(); // base64 치환분 원복(표시는 URL 유지)
       setIsLoading(false);
     }
   };
@@ -238,8 +270,12 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' | 'godoFlow' }> = ({ la
     setIsLoading(true);
     setLoadingMessage(`썸네일(${label}) 저장 중...`);
 
+    let restoreExport: null | (() => void) = null;
     try {
-      const dataUrl = await toJpeg(ref, {
+      restoreExport = await ensureExportReady(); // 원격 이미지 → base64 치환(있을 때만)
+      // ensureExportReady가 setData로 재렌더했다면 ref가 최신 DOM을 가리키도록 재취득
+      const targetRef = thumbnailRefs.current[index] || ref;
+      const dataUrl = await toJpeg(targetRef, {
         quality: 1.0, // 최고 품질
         backgroundColor: "#ffffff",
         pixelRatio: 1,
@@ -255,6 +291,7 @@ const App: React.FC<{ layoutMode?: 'bananamall' | 'godo' | 'godoFlow' }> = ({ la
         `이미지 저장 실패: ${error instanceof Error ? error.message : String(error)}`,
       );
     } finally {
+      restoreExport?.(); // base64 치환분 원복(표시는 URL 유지)
       setIsLoading(false);
     }
   };
