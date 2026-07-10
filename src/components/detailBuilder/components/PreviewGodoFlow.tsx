@@ -129,39 +129,57 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
           </div>
         ) : (
           <div className="px-[56px] pb-16 flex flex-col">
-            {blocks.map((b, i) => {
-              const optChanged = (b.option || '') !== (blocks[i - 1]?.option || '');
-              const showOptHeader = optChanged && (b.option || '').trim();
-              return (
-                <React.Fragment key={b.id || i}>
-                  {showOptHeader ? (
-                    // 옵션 그룹 시작 — 큰 간격 + 옵션명 헤더(정보 영역)
-                    <div className="mt-14 mb-5 flex items-center gap-3">
-                      <span className="text-xs font-black tracking-[0.15em] uppercase px-2.5 py-1 rounded text-white"
-                        style={isGradient(accent) ? { backgroundImage: accent } : { background: accent }}>OPTION</span>
-                      <span className="text-[22px] font-black text-gray-900 break-keep leading-tight">{b.option}</span>
-                      <div className="flex-1 h-0.5 rounded-full" style={{ background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 }} />
-                    </div>
-                  ) : (
-                    i > 0 && <GapBar id={`flow-img-gap-${i}`} def={16} />
-                  )}
+            {(() => {
+              const accentBar = isGradient(accent) ? { backgroundImage: accent } : { background: accent };
+              let splitIdx = 0; // 좌우 교차용 카운터(텍스트 블록만 증가)
+              return blocks.map((b, i) => {
+                const optChanged = (b.option || '') !== (blocks[i - 1]?.option || '');
+                const showOptHeader = optChanged && (b.option || '').trim();
+                const hasText = (b.caption || '').trim();
+                // 옵션 헤더(풀폭) — 옵션 바뀌는 지점
+                const header = showOptHeader ? (
+                  <div className="mt-14 mb-6 flex items-center gap-3">
+                    <span className="text-xs font-black tracking-[0.15em] uppercase px-2.5 py-1 rounded text-white" style={accentBar}>OPTION</span>
+                    <span className="text-[22px] font-black text-gray-900 break-keep leading-tight">{b.option}</span>
+                    <div className="flex-1 h-0.5 rounded-full" style={{ background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 }} />
+                  </div>
+                ) : null;
+
+                const imageEl = (
                   <div className="relative w-full overflow-hidden">
                     <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
                     <RenderWatermark targetKey={`flowImage${i}`} />
                   </div>
-                  {(b.caption || '').trim() && (
-                    // 캡션 = 왼쪽 액센트 바 콜아웃(생 텍스트 아닌 디자인된 느낌) + ##키워드## 강조
-                    <div className="mt-5 mb-2 flex gap-3.5">
-                      <div className="w-[3px] rounded-full flex-shrink-0"
-                        style={isGradient(accent) ? { backgroundImage: accent } : { background: accent }} />
-                      <p className="flex-1 py-0.5 text-[15.5px] leading-[1.9] font-medium text-gray-700 break-keep whitespace-pre-line">
-                        {renderHighlight(b.caption, themeColor)}
-                      </p>
-                    </div>
-                  )}
-                </React.Fragment>
-              );
-            })}
+                );
+
+                if (hasText) {
+                  // ── 모듈 A: 좌우 분할(이미지 | 텍스트), 좌우 번갈아 ──
+                  const imageLeft = splitIdx % 2 === 0;
+                  splitIdx++;
+                  return (
+                    <React.Fragment key={b.id || i}>
+                      {header}
+                      <div className="flex gap-7 items-center my-7" style={{ flexDirection: imageLeft ? 'row' : 'row-reverse' }}>
+                        <div className="w-1/2 flex-shrink-0">{imageEl}</div>
+                        <div className="w-1/2 flex gap-3.5">
+                          <div className="w-[3px] rounded-full flex-shrink-0 self-stretch" style={accentBar} />
+                          <p className="flex-1 py-0.5 text-[15.5px] leading-[1.9] font-medium text-gray-700 break-keep whitespace-pre-line">
+                            {renderHighlight(b.caption, themeColor)}
+                          </p>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                }
+                // ── 모듈 B: 풀폭(이미지-only: 마케팅·통이미지·옵션 대표컷) ──
+                return (
+                  <React.Fragment key={b.id || i}>
+                    {header}
+                    <div className="my-3">{imageEl}</div>
+                  </React.Fragment>
+                );
+              });
+            })()}
           </div>
         )}
 
