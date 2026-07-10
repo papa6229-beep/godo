@@ -115,6 +115,132 @@ export const splitImageByWhitespace = async (
   return segments;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 정밀 추출(extractProductImages): 통이미지에서 '깨끗한 제품 사진'만 뽑고
+//   원본 캡션 텍스트 띠·구분선(금색 라인)은 버린다. (텍스트는 AI 자동생성 or 수동입력 영역)
+// 원리: 행을 흰(BLANK)/컬러많음(PHOTO)/어두운잉크만(TEXT)/얇은띠(LINE)로 분류 → PHOTO 밴드만 추출.
+//   실측(2026-07-10, jpeg-js): 트리니티 사진15·텍스트8·선21 / 버진루프 6·7·4 / 핑거위글 18·22·32.
+
+export interface ExtractOptions {
+  whiteThreshold?: number; // 픽셀 '흰' 밝기 임계. default 232
+  blankFrac?: number;      // 행이 '빈 행'이려면 흰 비율 이상. default 0.985
+  colorSat?: number;       // 이 채도 이상이면 '컬러(사진)' 픽셀. default 45
+  inkLum?: number;         // 이 밝기 미만 + 저채도면 '잉크(텍스트/선)'. default 115
+  inkSat?: number;         // 잉크 판정 채도 상한. default 40
+  textMaxH?: number;       // 이 높이 이하 + 저컬러 + 저잉크 밴드 = 텍스트(버림). default 75
+  textMaxColor?: number;   // 텍스트 밴드 컬러 비율 상한. default 0.04
+  textMaxInk?: number;     // 텍스트 밴드 잉크 비율 상한. default 0.20
+  lineMaxH?: number;       // 이 높이 이하 밴드 = 구분선(버림). default 8
+  minPhotoH?: number;      // 유지할 최소 사진 높이. default 40
+  mergeGapPx?: number;     // 인접 사진이 이 빈틈 미만이면 병합(슬라이버 방지). default 24
+  sampleCols?: number;     // 행당 샘플 열 수. default 64
+}
+
+export const extractProductImages = async (
+  source: string | HTMLImageElement,
+  opts: ExtractOptions = {},
+): Promise<SplitSegment[]> => {
+  const img = typeof source === 'string' ? await loadImage(source) : source;
+  const W = img.naturalWidth || img.width;
+  const H = img.naturalHeight || img.height;
+  if (!W || !H) return [];
+
+  const whiteThr = opts.whiteThreshold ?? 232;
+  const blankFrac = opts.blankFrac ?? 0.985;
+  const colorSat = opts.colorSat ?? 45;
+  const inkLum = opts.inkLum ?? 115;
+  const inkSat = opts.inkSat ?? 40;
+  const textMaxH = opts.textMaxH ?? 75;
+  const textMaxColor = opts.textMaxColor ?? 0.04;
+  const textMaxInk = opts.textMaxInk ?? 0.20;
+  const lineMaxH = opts.lineMaxH ?? 8;
+  const minPhotoH = opts.minPhotoH ?? 40;
+  const mergeGap = opts.mergeGapPx ?? 24;
+  const sampleCols = opts.sampleCols ?? 64;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return [{ dataUrl: typeof source === 'string' ? source : canvas.toDataURL('image/jpeg', 0.9), y: 0, height: H }];
+  ctx.drawImage(img, 0, 0);
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(0, 0, W, H).data;
+  } catch {
+    throw new Error('이미지 픽셀을 읽을 수 없습니다(CORS taint). 프록시/ base64 경유로 로드하세요.');
+  }
+
+  // 1) 행별 흰/잉크/컬러 비율
+  const colStep = Math.max(1, Math.floor(W / sampleCols));
+  const rw = new Float32Array(H);
+  const ri = new Float32Array(H);
+  const rc = new Float32Array(H);
+  for (let y = 0; y < H; y++) {
+    let n = 0, w = 0, ink = 0, col = 0;
+    const off = y * W * 4;
+    for (let x = 0; x < W; x += colStep) {
+      const i = off + x * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const sat = Math.max(r, g, b) - Math.min(r, g, b);
+      n++;
+      if (lum >= whiteThr) w++;
+      else if (lum < inkLum && sat < inkSat) ink++;
+      if (sat >= colorSat && lum < 245) col++;
+    }
+    rw[y] = w / n; ri[y] = ink / n; rc[y] = col / n;
+  }
+
+  // 2) 빈 행 기준으로 밴드 분리
+  const rawBands: Array<[number, number]> = [];
+  let s = -1;
+  for (let y = 0; y <= H; y++) {
+    const blank = y < H && rw[y] >= blankFrac;
+    if (blank) { if (s >= 0) { rawBands.push([s, y]); s = -1; } }
+    else if (s < 0) s = y;
+  }
+
+  // 3) 밴드 분류(PHOTO/TEXT/LINE)
+  const classify = (a: number, b: number): { a: number; b: number; t: string } => {
+    const h = b - a;
+    let c = 0, ink = 0;
+    for (let y = a; y < b; y++) { c += rc[y]; ink += ri[y]; }
+    c /= h; ink /= h;
+    let t = 'PHOTO';
+    if (h <= lineMaxH) t = 'LINE';
+    else if (h <= textMaxH && c < textMaxColor && ink < textMaxInk) t = 'TEXT';
+    return { a, b, t };
+  };
+  const classed = rawBands.map(([a, b]) => classify(a, b));
+
+  // 4) 인접 PHOTO 밴드 병합(작은 빈틈으로 갈라진 슬라이버 재결합)
+  const merged: Array<{ a: number; b: number; t: string }> = [];
+  for (const band of classed) {
+    const last = merged[merged.length - 1];
+    if (last && last.t === 'PHOTO' && band.t === 'PHOTO' && band.a - last.b < mergeGap) last.b = band.b;
+    else merged.push({ ...band });
+  }
+
+  // 5) PHOTO 밴드만 크롭
+  const segments: SplitSegment[] = [];
+  for (const band of merged) {
+    if (band.t !== 'PHOTO') continue;
+    const h = band.b - band.a;
+    if (h < minPhotoH) continue;
+    const seg = document.createElement('canvas');
+    seg.width = W;
+    seg.height = h;
+    seg.getContext('2d')!.drawImage(canvas, 0, band.a, W, h, 0, 0, W, h);
+    segments.push({ dataUrl: seg.toDataURL('image/jpeg', 0.9), y: band.a, height: h });
+  }
+
+  if (!segments.length) {
+    return [{ dataUrl: canvas.toDataURL('image/jpeg', 0.9), y: 0, height: H }];
+  }
+  return segments;
+};
+
 // 진단용: 조각 안 만들고 컷 위치/빈행 통계만 반환(튜닝·검증에 사용).
 export const analyzeSplit = async (
   source: string | HTMLImageElement,

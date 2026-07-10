@@ -4,7 +4,7 @@ import type { ProductData } from '../types';
 import { COLOR_PRESETS } from '../constants';
 import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
 import { getFlowBlocks, imagesToBlocks, newBlockId } from '../services/flowBlocks';
-import { splitImageByWhitespace } from '../services/flowImageSplitter';
+import { extractProductImages } from '../services/flowImageSplitter';
 import { toProxyUrl } from '../services/exportImagePrep';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
@@ -22,25 +22,26 @@ const imgSize = (src: string): Promise<{ w: number; h: number } | null> =>
     i.src = src;
   });
 
-// 자동분할(변환기 기본 동작): 세로로 충분히 긴(=통이미지) 블록만 여백 기준으로 조각냄.
-// 개별 제품사진(가로세로비 낮음)은 건드리지 않아 URL 그대로(저장 경량 유지) · CDN은 서버 base64 후 분할.
-const TALL_RATIO = 2.5; // 높이/너비 이 값 이상이면 '통이미지'로 보고 자동분할 시도
-const autoSplitBlocks = async (blocks: any[]): Promise<any[]> => {
+// 자동 정밀추출(변환기 기본 동작): 세로로 충분히 긴(=통이미지) 블록만 처리.
+//   깨끗한 제품 사진만 뽑고 원본 캡션 텍스트·구분선(금선)은 버림(텍스트는 캡션 필드로 별도 입력/AI).
+//   개별 제품사진(가로세로비 낮음)은 건드리지 않아 URL 그대로(저장 경량 유지) · CDN은 프록시 경유.
+const TALL_RATIO = 2.5; // 높이/너비 이 값 이상이면 '통이미지'로 보고 자동추출 시도
+const autoExtractBlocks = async (blocks: any[]): Promise<any[]> => {
   const out: any[] = [];
   for (const b of blocks) {
-    let didSplit = false;
+    let didExtract = false;
     try {
       const sz = await imgSize(b.image);
       if (sz && sz.w > 0 && sz.h / sz.w >= TALL_RATIO) {
-        // CDN URL은 same-origin 프록시로 로드 → 캔버스 taint 없이 픽셀 분할. (dev엔 서버 없어 로드 실패 → 원본 유지)
-        const segs = await splitImageByWhitespace(toProxyUrl(b.image));
+        // CDN URL은 same-origin 프록시로 로드 → 캔버스 taint 없이 픽셀 추출. (dev엔 서버 없어 로드 실패 → 원본 유지)
+        const segs = await extractProductImages(toProxyUrl(b.image));
         if (segs.length > 1) {
           segs.forEach((s) => out.push({ id: newBlockId(), image: s.dataUrl, caption: '' }));
-          didSplit = true;
+          didExtract = true;
         }
       }
     } catch { /* 실패 시 원본 유지 */ }
-    if (!didSplit) out.push(b);
+    if (!didExtract) out.push(b);
   }
   return out;
 };
@@ -84,12 +85,12 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         setImportNote({ ok: false, text: `✓ ${p.productNameKr} · ⚠ 제품이미지 0장(수동 추가 필요)${ex}` });
         return;
       }
-      // 2) 자동분할(기본 동작) — 통이미지를 여백 기준으로 조각냄. 버튼 안 눌러도 됨.
-      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · 자동분할 중…` });
-      const split = await autoSplitBlocks(baseBlocks);
-      onChange(prev => ({ ...prev, flowBlocks: split }));
-      const grew = split.length > baseBlocks.length;
-      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · ${grew ? `자동분할 → ${split.length}조각` : '분할 여백 없음(원본 유지)'}` });
+      // 2) 자동 정밀추출(기본 동작) — 통이미지에서 깨끗한 제품 사진만 뽑음(캡션·금선 버림). 버튼 안 눌러도 됨.
+      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · 자동추출 중…` });
+      const extracted = await autoExtractBlocks(baseBlocks);
+      onChange(prev => ({ ...prev, flowBlocks: extracted }));
+      const grew = extracted.length > baseBlocks.length;
+      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · ${grew ? `자동추출 → 제품컷 ${extracted.length}장` : '추출할 사진 없음(원본 유지)'}` });
     } catch (err: any) {
       setImportNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
     } finally { setImporting(false); }
@@ -112,7 +113,7 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
   });
   const setCaption = (id: string, caption: string) => setBlocks(cur => cur.map(b => b.id === id ? { ...b, caption } : b));
 
-  // 자동분할: 통이미지 1장 → 여백 감지로 여러 조각 블록으로 치환. CDN URL이면 먼저 base64 변환(서버).
+  // 정밀추출: 통이미지 1장 → 깨끗한 제품 사진들만 추출(캡션·금선 버림)해 블록으로 치환.
   const splitBlock = async (id: string) => {
     if (splitting) return;
     const target = blocks.find(b => b.id === id);
@@ -120,12 +121,12 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
     setSplitting(id);
     try {
       // CDN URL이면 same-origin 프록시로 로드(캔버스 taint 회피). 이미 base64면 그대로.
-      const segs = await splitImageByWhitespace(toProxyUrl(target.image));
-      if (segs.length <= 1) { alert('분할할 여백을 찾지 못했습니다 (이미 한 조각이거나 여백이 없음).'); return; }
+      const segs = await extractProductImages(toProxyUrl(target.image));
+      if (segs.length <= 1) { alert('추출할 제품 사진이 여럿 나오지 않았습니다 (단일 사진이거나 경계가 불명확).'); return; }
       const parts = segs.map(s => ({ id: newBlockId(), image: s.dataUrl, caption: '' }));
       setBlocks(cur => cur.flatMap(b => b.id === id ? parts : [b]));
     } catch (err: any) {
-      alert('자동분할 실패: ' + (err?.message || String(err)));
+      alert('정밀추출 실패: ' + (err?.message || String(err)));
     } finally {
       setSplitting(null);
     }
@@ -202,8 +203,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
           </label>
         </div>
         {blocks.length === 0
-          ? <p className="text-xs text-slate-500">위→아래 순서로 쌓입니다. 통이미지 1장은 <b className="text-sky-300">✂ 자동분할</b>로 섹션별로 나눌 수 있어요.</p>
-          : <p className="text-[11px] text-slate-500">각 블록 = 이미지 + 그 아래 캡션(SEO 문구). 세로로 긴 <b className="text-sky-300">통이미지</b>는 <b className="text-sky-300">✂ 자동분할</b> → 여백 기준으로 조각냄. 캡션은 나중에 AI가 채웁니다.</p>}
+          ? <p className="text-xs text-slate-500">위→아래 순서로 쌓입니다. 통이미지 1장은 <b className="text-sky-300">✂ 정밀추출</b>로 깨끗한 제품 사진만 뽑을 수 있어요.</p>
+          : <p className="text-[11px] text-slate-500">각 블록 = 이미지 + 그 아래 캡션(SEO 문구). 세로로 긴 <b className="text-sky-300">통이미지</b>는 <b className="text-sky-300">✂ 정밀추출</b> → 제품 사진만 뽑고 <b className="text-slate-400">원본 캡션·구분선은 버림</b>. 캡션은 자동생성/수동입력.</p>}
         <div className="space-y-2">
           {blocks.map((b, i) => (
             <div key={b.id} className="bg-[#0F172A]/50 border border-white/10 rounded p-2 space-y-2">
@@ -223,7 +224,7 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
               <div className="flex items-center justify-end gap-1">
                 <button onClick={() => splitBlock(b.id)} disabled={!!splitting}
                   className="text-[11px] font-bold text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 disabled:opacity-40 px-2 py-1 rounded transition-colors">
-                  {splitting === b.id ? '분할 중…' : '✂ 자동분할'}
+                  {splitting === b.id ? '추출 중…' : '✂ 정밀추출'}
                 </button>
                 <div className="flex-1" />
                 <button onClick={() => moveBlock(i, -1)} disabled={i === 0} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↑</button>
