@@ -18,7 +18,7 @@ interface Props {
 }
 
 const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLayoutChange, onGapChange }, ref) => {
-  const { productNameKr, productNameEn, brandName, themeColor, flowHeaderText } = data;
+  const { productNameKr, productNameEn, brandName, themeColor, flowHeaderText, flowEyebrow } = data;
   const accent = themeColor;
   const images = Array.isArray(data.flowImages) ? data.flowImages.filter(Boolean) : [];
 
@@ -67,7 +67,8 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
     );
   };
 
-  const hasHeader = (flowHeaderText || '').trim() || (productNameKr || '').trim() || (brandName || '').trim();
+  const hasHeader = (flowHeaderText || '').trim() || (productNameKr || '').trim() || (brandName || '').trim()
+    || (flowEyebrow || '').trim() || (productNameEn || '').trim();
   const HEADER_GAP = gapVal('flow-header-gap', 40);
 
   return (
@@ -81,14 +82,27 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
         {/* ===== 상단 텍스트(단순형: 예쁘게) ===== */}
         {hasHeader && (
           <header className="px-[56px] pt-16 pb-2">
-            {(brandName || '').trim() && (
-              <div className="text-sm font-black tracking-[0.15em] uppercase mb-4" style={themedText(accent)}>{brandName}</div>
+            {/* eyebrow(상품명 앞 [태그]) — 브랜드와 동일 크기, 액센트색 */}
+            {(flowEyebrow || '').trim() && (
+              <div className="text-sm font-black tracking-[0.15em] uppercase mb-4" style={themedText(accent)}>{flowEyebrow}</div>
             )}
+            {/* 한글 상품명 — 큰 제목 */}
             {(productNameKr || '').trim() && (
               <h1 className="text-[34px] leading-[1.25] font-black tracking-tight text-gray-900 break-keep whitespace-pre-line mb-3">{productNameKr}</h1>
             )}
-            {(productNameEn || '').trim() && (
-              <p className="text-sm font-medium tracking-[0.15em] text-gray-400 uppercase mb-5">{productNameEn}</p>
+            {/* 영문/일본어 상품명(괄호 없이, 원문 그대로) + 브랜드 옆에 작게 */}
+            {((productNameEn || '').trim() || (brandName || '').trim()) && (
+              <div className="flex items-baseline flex-wrap gap-x-3 gap-y-1 mb-5">
+                {(productNameEn || '').trim() && (
+                  <span className="text-[15px] font-semibold tracking-wide text-gray-500">{productNameEn}</span>
+                )}
+                {(productNameEn || '').trim() && (brandName || '').trim() && (
+                  <span className="w-px h-3 bg-gray-300 self-center" aria-hidden />
+                )}
+                {(brandName || '').trim() && (
+                  <span className="text-xs font-bold tracking-[0.12em] uppercase text-gray-400">{brandName}</span>
+                )}
+              </div>
             )}
             {(flowHeaderText || '').trim() && (
               <p className="text-[17px] leading-[1.75] font-medium text-gray-600 break-keep whitespace-pre-line">{flowHeaderText}</p>

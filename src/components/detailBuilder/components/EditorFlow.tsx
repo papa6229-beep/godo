@@ -27,7 +27,9 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       if (!p) { setImportNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
       onChange(prev => ({
         ...prev,
+        flowEyebrow: p.eyebrow || prev.flowEyebrow || '',
         productNameKr: p.productNameKr || prev.productNameKr,
+        productNameEn: p.productNameEn || prev.productNameEn,
         brandName: p.brandName || prev.brandName,
         flowHeaderText: p.flowHeaderText || prev.flowHeaderText,
         flowImages: p.flowImages.length ? p.flowImages : (prev.flowImages || []),
@@ -98,16 +100,20 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
           </div>
         </div>
         <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">태그 (선택 · 상품명 앞 <code className="text-sky-300">[대괄호]</code>)</label>
+          <input className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E]" value={data.flowEyebrow || ''} onChange={setField('flowEyebrow')} placeholder="예: 일본 직수입" />
+        </div>
+        <div>
           <label className="block text-xs font-bold text-slate-500 mb-1">상품명 (한글) · Enter 줄바꿈</label>
           <textarea rows={2} className="w-full p-3 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded-lg font-bold outline-none focus:ring-2 focus:ring-[#22C55E] resize-y" value={data.productNameKr} onChange={setField('productNameKr')} placeholder="예: 하루히 모카의 타액 로션 80ml" />
         </div>
         <div>
-          <label className="block text-xs font-bold text-slate-500 mb-1">영문 상품명 (선택)</label>
-          <input className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E]" value={data.productNameEn} onChange={setField('productNameEn')} placeholder="PRODUCT NAME" />
+          <label className="block text-xs font-bold text-slate-500 mb-1">영문/일본어 상품명 (선택 · 괄호 없이)</label>
+          <input className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E]" value={data.productNameEn} onChange={setField('productNameEn')} placeholder="예: 萌あなトリニティ" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-500 mb-1">브랜드 (선택)</label>
-          <input className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E]" value={data.brandName} onChange={setField('brandName')} placeholder="예: 닛포리기프트" />
+          <input className="w-full p-2 border border-white/10 bg-[#0F172A]/50 text-slate-200 rounded text-sm outline-none focus:ring-1 focus:ring-[#22C55E]" value={data.brandName} onChange={setField('brandName')} placeholder="예: 라이드재팬" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-500 mb-1">상단 텍스트</label>

@@ -83,6 +83,7 @@ export interface ProductData {
   godoGaps?: Record<string, number>;
 
   // [변환기/단순형(flow)] 메인몰 단순형 상세페이지 변환용. 섹션형(godo)과 무관, flow 모드에서만 사용.
+  flowEyebrow?: string;         // 상품명 앞 [대괄호] 태그(예: "일본 직수입") — 브랜드 크기 소형 렌더
   flowHeaderText?: string;      // 상단 단순 텍스트(예쁘게 렌더)
   flowImages?: string[];        // 통이미지 세로 스택(순서 유지, base64)
 
