@@ -145,9 +145,17 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                   </div>
                 ) : null;
 
+                // 풀폭용(엣지-투-엣지) — 마케팅·통이미지 컬러컷
                 const imageEl = (
                   <div className="relative w-full overflow-hidden">
                     <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
+                    <RenderWatermark targetKey={`flowImage${i}`} />
+                  </div>
+                );
+                // 분할용 — 흰 누끼컷을 담는 연한 회색 라운드 패널(경계·무대감)
+                const paneledImage = (
+                  <div className="relative w-full rounded-2xl overflow-hidden p-4" style={{ background: '#f5f5f7' }}>
+                    <img src={b.image} className="w-full h-auto block rounded-lg" alt={`flow-${i}`} />
                     <RenderWatermark targetKey={`flowImage${i}`} />
                   </div>
                 );
@@ -160,7 +168,7 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                     <React.Fragment key={b.id || i}>
                       {header}
                       <div className="flex gap-7 items-center my-7" style={{ flexDirection: imageLeft ? 'row' : 'row-reverse' }}>
-                        <div className="w-1/2 flex-shrink-0">{imageEl}</div>
+                        <div className="w-1/2 flex-shrink-0">{paneledImage}</div>
                         <div className="w-1/2 flex gap-3.5">
                           <div className="w-[3px] rounded-full flex-shrink-0 self-stretch" style={accentBar} />
                           <p className="flex-1 py-0.5 text-[15.5px] leading-[1.9] font-medium text-gray-700 break-keep whitespace-pre-line">
