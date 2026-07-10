@@ -12,6 +12,16 @@ const themedText = (c: string) => isGradient(c)
   ? { backgroundImage: c, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent' }
   : { color: c };
 
+// 캡션 내 ##키워드## → 테마색 볼드 강조(godo 디자인 언어와 동일). 그 외는 그대로.
+const renderHighlight = (text: string, themeColor: string) => {
+  if (!text) return null;
+  return text.split(/(##.*?##)/g).map((part, i) =>
+    part.startsWith('##') && part.endsWith('##')
+      ? <span key={i} style={{ ...themedText(themeColor), fontWeight: 800 }}>{part.replace(/##/g, '')}</span>
+      : <span key={i}>{part}</span>,
+  );
+};
+
 interface Props {
   data: ProductData;
   onWatermarkLayoutChange?: (id: string, layout: { x: number, y: number, width: number, height: number }) => void;
@@ -140,7 +150,14 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                     <RenderWatermark targetKey={`flowImage${i}`} />
                   </div>
                   {(b.caption || '').trim() && (
-                    <p className="mt-4 mb-2 text-[16px] leading-[1.8] font-medium text-gray-700 break-keep whitespace-pre-line">{b.caption}</p>
+                    // 캡션 = 왼쪽 액센트 바 콜아웃(생 텍스트 아닌 디자인된 느낌) + ##키워드## 강조
+                    <div className="mt-5 mb-2 flex gap-3.5">
+                      <div className="w-[3px] rounded-full flex-shrink-0"
+                        style={isGradient(accent) ? { backgroundImage: accent } : { background: accent }} />
+                      <p className="flex-1 py-0.5 text-[15.5px] leading-[1.9] font-medium text-gray-700 break-keep whitespace-pre-line">
+                        {renderHighlight(b.caption, themeColor)}
+                      </p>
+                    </div>
                   )}
                 </React.Fragment>
               );
