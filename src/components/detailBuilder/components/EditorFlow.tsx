@@ -14,6 +14,34 @@ const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   r.readAsDataURL(file);
 };
 
+// 이미지 원본 크기(픽셀 접근 아님 → CDN URL도 taint 없이 가능).
+const imgSize = (src: string): Promise<{ w: number; h: number } | null> =>
+  new Promise((res) => {
+    const i = new Image();
+    i.onload = () => res({ w: i.naturalWidth, h: i.naturalHeight });
+    i.onerror = () => res(null);
+    i.src = src;
+  });
+
+// 섬네일 자동 후보: 상세 이미지 중 '깨끗한 제품/패키지컷'을 가로세로비로 추정(정사각~세로 선호).
+// 통이미지(초세로)·배너(초가로)는 제외. 쓸만한 후보 없으면 '' 반환(=이슈, 수동 지정 필요).
+const autoPickThumbnail = async (blocks: any[]): Promise<string> => {
+  let best = '';
+  let bestScore = -1;
+  for (const b of blocks) {
+    const sz = await imgSize(b.image);
+    if (!sz || !sz.w) continue;
+    const r = sz.h / sz.w;
+    let score = 0;
+    if (r >= 0.7 && r <= 1.5) score = 3;       // 정사각~세로(패키지·제품컷) 이상적
+    else if (r > 1.5 && r <= 2.2) score = 2;   // 약간 세로
+    else if (r >= 0.45 && r < 0.7) score = 1;  // 가로
+    else score = 0;                             // 통이미지(초세로)·초가로 배너
+    if (score > bestScore) { bestScore = score; best = b.image; } // 최고점 중 가장 앞(패키지·메인)
+  }
+  return bestScore >= 1 ? best : '';
+};
+
 const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }> = ({ data, onChange }) => {
   const blocks = getFlowBlocks(data);
   const setField = (k: keyof ProductData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -45,7 +73,7 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         flowHeaderText: p.flowHeaderText || prev.flowHeaderText,
         flowImages: p.flowImages.length ? p.flowImages : (prev.flowImages || []),
         flowBlocks: baseBlocks.length ? baseBlocks : (prev.flowBlocks || getFlowBlocks(prev)),
-        mainImage: p.thumbnailSource || prev.mainImage,
+        // 섬네일은 로고 박힌 목록이미지 대신 상세 이미지에서 자동 선택(아래) — 여기선 안 건드림
       }));
       const ex = p.excludedImages.length ? ` · 공통배너 ${p.excludedImages.length}장 제외` : '';
       if (p.flowImages.length === 0) {
@@ -57,7 +85,11 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         ? ` · 닛포리형(원본 설명 ${typedCount}개 프리필)`
         : ' · 통이미지형(설명텍스트 없음 — 필요시 ✂정밀추출)';
       const optMsg = p.hasOptions ? ` · 🔀옵션 ${p.optionValues.length}종(${p.optionName || '타입'})` : '';
-      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 제품이미지 ${p.flowImages.length}장${ex}${typeMsg}${optMsg}` });
+      // 섬네일 자동 후보 선택(로고 목록이미지 대신 상세 이미지에서). 없으면 빈값=수동 지정 필요(이슈).
+      const bestThumb = await autoPickThumbnail(baseBlocks);
+      if (bestThumb) onChange(prev => ({ ...prev, mainImage: bestThumb }));
+      const thumbMsg = bestThumb ? ' · 섬네일 자동선택✓' : ' · ⚠섬네일 후보없음(수동)';
+      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 제품이미지 ${p.flowImages.length}장${ex}${typeMsg}${optMsg}${thumbMsg}` });
     } catch (err: any) {
       setImportNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
     } finally { setImporting(false); }
@@ -117,6 +149,7 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
     }
   };
   const setThumb = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, mainImage: url }))); e.target.value = ''; };
+  const pickThumb = (img: string) => onChange(prev => ({ ...prev, mainImage: img })); // 상세 이미지에서 섬네일 소스 지정
   const setPackage = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, packageImage: url, isPackageImageEnabled: true }))); e.target.value = ''; };
   const removePackage = () => onChange(prev => ({ ...prev, packageImage: null }));
   const setWatermark = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) fileToDataUrl(f, url => onChange(prev => ({ ...prev, watermarkImage: url }))); e.target.value = ''; };
@@ -242,12 +275,25 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">🏷️ 섬네일 소스 · 패키지 · 워터마크</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">섬네일 소스 이미지</label>
+            <label className="block text-xs font-bold text-slate-500 mb-1">섬네일 소스 이미지 {!data.mainImage && blocks.length > 0 && <span className="text-amber-400">⚠ 미지정</span>}</label>
             <label className="relative block w-full h-28 bg-[#0F172A]/50 border-2 border-dashed border-white/10 rounded-lg overflow-hidden cursor-pointer hover:border-white/20">
               {data.mainImage ? <img src={data.mainImage} className="w-full h-full object-contain bg-white" alt="thumb-src" /> : <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-xs">+ 업로드</div>}
               <input type="file" accept="image/*" className="sr-only" onChange={setThumb} />
             </label>
-            <p className="text-[10px] text-slate-500 mt-1">본문엔 안 나오고 섬네일 4종 자동생성에만 쓰임</p>
+            <p className="text-[10px] text-slate-500 mt-1">본문엔 안 나오고 섬네일 4종 자동생성에만 쓰임 (로고 목록이미지 대신 상세컷 사용)</p>
+            {blocks.length > 0 && (
+              <div className="mt-2">
+                <p className="text-[10px] text-slate-500 mb-1">📸 상세 이미지에서 고르기 (클릭 · 자동선택됨)</p>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {blocks.map((b, i) => (
+                    <button key={b.id} onClick={() => pickThumb(b.image)} title={`후보 ${i + 1}`}
+                      className={`relative w-12 h-12 flex-shrink-0 rounded overflow-hidden border-2 transition-colors ${data.mainImage === b.image ? 'border-emerald-400' : 'border-white/10 hover:border-white/40'}`}>
+                      <img src={b.image} className="w-full h-full object-cover bg-white" alt={`cand-${i}`} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <div className="flex justify-between items-center mb-1">
