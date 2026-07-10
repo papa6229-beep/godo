@@ -8,9 +8,18 @@ import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 
 interface ExtendedRequest extends IncomingMessage {
-  query?: Record<string, string | string[]>;
   body?: Record<string, unknown>;
 }
+
+// 동적 라우트 마지막 경로 세그먼트(action) — 기존 api/marketing/[action].ts와 동일 방식.
+// (raw IncomingMessage 핸들러에선 req.query가 신뢰되지 않을 수 있어 URL 경로에서 직접 파싱)
+const actionOf = (req: ExtendedRequest): string => {
+  try {
+    return new URL(req.url ?? '/', 'http://localhost').pathname.split('/').filter(Boolean).pop() ?? '';
+  } catch {
+    return '';
+  }
+};
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15MB — 통이미지 세로 길이 고려한 상한
 const FETCH_TIMEOUT_MS = 12000;
@@ -32,16 +41,18 @@ const isBlockedHost = (host: string): boolean => {
   return false;
 };
 
-// URL 이미지를 서버에서 받아 data URL(base64)로 변환한다.
-const imageToBase64 = async (rawUrl: string): Promise<{ dataUrl: string } | { error: string }> => {
+// URL 이미지를 서버에서 받아 원본 바이트로 반환한다(SSRF 가드·타임아웃·크기 상한 포함).
+const fetchImageBytes = async (
+  rawUrl: string,
+): Promise<{ buffer: Buffer; contentType: string } | { error: string; status: number }> => {
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
-    return { error: '잘못된 URL 형식입니다.' };
+    return { error: '잘못된 URL 형식입니다.', status: 400 };
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { error: 'http/https만 허용됩니다.' };
-  if (isBlockedHost(url.hostname)) return { error: '허용되지 않은 호스트입니다.' };
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { error: 'http/https만 허용됩니다.', status: 400 };
+  if (isBlockedHost(url.hostname)) return { error: '허용되지 않은 호스트입니다.', status: 400 };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -51,25 +62,35 @@ const imageToBase64 = async (rawUrl: string): Promise<{ dataUrl: string } | { er
       redirect: 'follow',
       headers: { 'User-Agent': 'godo-detail-builder/1.0', Accept: 'image/*' },
     });
-    if (!resp.ok) return { error: `원본 이미지 응답 오류(${resp.status})` };
+    if (!resp.ok) return { error: `원본 이미지 응답 오류(${resp.status})`, status: 422 };
     const contentType = (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    if (!contentType.startsWith('image/')) return { error: `이미지가 아닙니다(${contentType || 'unknown'})` };
-    const buf = Buffer.from(await resp.arrayBuffer());
-    if (buf.byteLength === 0) return { error: '빈 이미지입니다.' };
-    if (buf.byteLength > MAX_BYTES) return { error: '이미지가 너무 큽니다(15MB 초과).' };
-    return { dataUrl: `data:${contentType};base64,${buf.toString('base64')}` };
+    if (!contentType.startsWith('image/')) return { error: `이미지가 아닙니다(${contentType || 'unknown'})`, status: 422 };
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    if (buffer.byteLength === 0) return { error: '빈 이미지입니다.', status: 422 };
+    if (buffer.byteLength > MAX_BYTES) return { error: '이미지가 너무 큽니다(15MB 초과).', status: 422 };
+    return { buffer, contentType };
   } catch (err) {
     const aborted = err instanceof Error && err.name === 'AbortError';
-    return { error: aborted ? '원본 이미지 요청 시간 초과' : '원본 이미지를 가져오지 못했습니다.' };
+    return { error: aborted ? '원본 이미지 요청 시간 초과' : '원본 이미지를 가져오지 못했습니다.', status: 502 };
   } finally {
     clearTimeout(timer);
   }
 };
 
+// req.url 쿼리스트링에서 파라미터 하나를 안전하게 뽑는다.
+const queryParam = (req: ExtendedRequest, key: string): string => {
+  try {
+    return new URL(req.url ?? '/', 'http://localhost').searchParams.get(key) ?? '';
+  } catch {
+    return '';
+  }
+};
+
 export default async function handler(req: ExtendedRequest, res: VercelResponse) {
-  const action = String((req.query?.action as string) || '');
+  const action = actionOf(req);
 
   switch (action) {
+    // export(html-to-image)용: CDN URL → base64 data URL. 작은 이미지에 적합.
     case 'image-base64': {
       if (req.method !== 'POST') {
         return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'POST 요청만 허용됩니다.', 405);
@@ -78,11 +99,31 @@ export default async function handler(req: ExtendedRequest, res: VercelResponse)
       const rawUrl = typeof body.url === 'string' ? body.url.trim() : '';
       if (!rawUrl) return sendErrorResponse(res, 'BAD_REQUEST', 'url이 필요합니다.', 400);
 
-      const result = await imageToBase64(rawUrl);
+      const result = await fetchImageBytes(rawUrl);
       if ('error' in result) {
-        return sendErrorResponse(res, 'IMAGE_FETCH_FAILED', result.error, 422);
+        return sendErrorResponse(res, 'IMAGE_FETCH_FAILED', result.error, result.status);
       }
-      return sendOkResponse(res, { dataUrl: result.dataUrl });
+      const dataUrl = `data:${result.contentType};base64,${result.buffer.toString('base64')}`;
+      return sendOkResponse(res, { dataUrl });
+    }
+    // 자동분할용: CDN 이미지를 원본 바이트 그대로 스트리밍(same-origin) → 캔버스 taint 없이 픽셀 읽기 가능.
+    //   base64 JSON(약 +37% 팽창)로 인한 응답 크기 한계를 피한다. GET ?url=...
+    case 'image-proxy': {
+      if (req.method !== 'GET') {
+        return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'GET 요청만 허용됩니다.', 405);
+      }
+      const rawUrl = queryParam(req, 'url').trim();
+      if (!rawUrl) return sendErrorResponse(res, 'BAD_REQUEST', 'url 쿼리가 필요합니다.', 400);
+
+      const result = await fetchImageBytes(rawUrl);
+      if ('error' in result) {
+        return sendErrorResponse(res, 'IMAGE_FETCH_FAILED', result.error, result.status);
+      }
+      res.statusCode = 200;
+      res.setHeader('Content-Type', result.contentType);
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.end(result.buffer);
+      return;
     }
     default:
       return sendErrorResponse(res, 'UNKNOWN_ACTION', `알 수 없는 detail 액션: ${action}`, 404);

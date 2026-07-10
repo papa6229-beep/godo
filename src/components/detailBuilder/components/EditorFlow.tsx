@@ -5,12 +5,44 @@ import { COLOR_PRESETS } from '../constants';
 import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
 import { getFlowBlocks, imagesToBlocks, newBlockId } from '../services/flowBlocks';
 import { splitImageByWhitespace } from '../services/flowImageSplitter';
-import { convertUrl } from '../services/exportImagePrep';
+import { toProxyUrl } from '../services/exportImagePrep';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
   r.onloadend = () => cb(r.result as string);
   r.readAsDataURL(file);
+};
+
+// 이미지 원본 크기(픽셀 접근 아님 → CDN URL도 taint 없이 가능).
+const imgSize = (src: string): Promise<{ w: number; h: number } | null> =>
+  new Promise((res) => {
+    const i = new Image();
+    i.onload = () => res({ w: i.naturalWidth, h: i.naturalHeight });
+    i.onerror = () => res(null);
+    i.src = src;
+  });
+
+// 자동분할(변환기 기본 동작): 세로로 충분히 긴(=통이미지) 블록만 여백 기준으로 조각냄.
+// 개별 제품사진(가로세로비 낮음)은 건드리지 않아 URL 그대로(저장 경량 유지) · CDN은 서버 base64 후 분할.
+const TALL_RATIO = 2.5; // 높이/너비 이 값 이상이면 '통이미지'로 보고 자동분할 시도
+const autoSplitBlocks = async (blocks: any[]): Promise<any[]> => {
+  const out: any[] = [];
+  for (const b of blocks) {
+    let didSplit = false;
+    try {
+      const sz = await imgSize(b.image);
+      if (sz && sz.w > 0 && sz.h / sz.w >= TALL_RATIO) {
+        // CDN URL은 same-origin 프록시로 로드 → 캔버스 taint 없이 픽셀 분할. (dev엔 서버 없어 로드 실패 → 원본 유지)
+        const segs = await splitImageByWhitespace(toProxyUrl(b.image));
+        if (segs.length > 1) {
+          segs.forEach((s) => out.push({ id: newBlockId(), image: s.dataUrl, caption: '' }));
+          didSplit = true;
+        }
+      }
+    } catch { /* 실패 시 원본 유지 */ }
+    if (!didSplit) out.push(b);
+  }
+  return out;
 };
 
 const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }> = ({ data, onChange }) => {
@@ -33,6 +65,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       const buf = await f.arrayBuffer();
       const p = await parseMainMallArrayBuffer(buf);
       if (!p) { setImportNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
+      const baseBlocks = imagesToBlocks(p.flowImages);
+      // 1) 필드 + 초기 블록 즉시 반영(화면에 바로 뜸)
       onChange(prev => ({
         ...prev,
         flowEyebrow: p.eyebrow || prev.flowEyebrow || '',
@@ -42,12 +76,20 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         flowHeaderText: p.flowHeaderText || prev.flowHeaderText,
         // 신모델: 이미지 → 캡션 빈 블록. 구 flowImages도 함께 유지(호환).
         flowImages: p.flowImages.length ? p.flowImages : (prev.flowImages || []),
-        flowBlocks: p.flowImages.length ? imagesToBlocks(p.flowImages) : (prev.flowBlocks || getFlowBlocks(prev)),
+        flowBlocks: p.flowImages.length ? baseBlocks : (prev.flowBlocks || getFlowBlocks(prev)),
         mainImage: p.thumbnailSource || prev.mainImage,
       }));
-      const warn = p.flowImages.length === 0 ? ' — ⚠ 제품이미지 0장(수동 추가 필요)' : '';
       const ex = p.excludedImages.length ? ` · 공통배너 ${p.excludedImages.length}장 제외` : '';
-      setImportNote({ ok: p.flowImages.length > 0, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex}${warn}` });
+      if (p.flowImages.length === 0) {
+        setImportNote({ ok: false, text: `✓ ${p.productNameKr} · ⚠ 제품이미지 0장(수동 추가 필요)${ex}` });
+        return;
+      }
+      // 2) 자동분할(기본 동작) — 통이미지를 여백 기준으로 조각냄. 버튼 안 눌러도 됨.
+      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · 자동분할 중…` });
+      const split = await autoSplitBlocks(baseBlocks);
+      onChange(prev => ({ ...prev, flowBlocks: split }));
+      const grew = split.length > baseBlocks.length;
+      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · ${grew ? `자동분할 → ${split.length}조각` : '분할 여백 없음(원본 유지)'}` });
     } catch (err: any) {
       setImportNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
     } finally { setImporting(false); }
@@ -77,12 +119,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
     if (!target) return;
     setSplitting(id);
     try {
-      let img = target.image;
-      if (/^https?:\/\//i.test(img) && !img.startsWith('data:')) {
-        img = await convertUrl(img); // 서버가 CDN 이미지를 base64로(픽셀 읽기 위해 same-origin 필요)
-        if (/^https?:\/\//i.test(img)) throw new Error('이미지를 서버에서 불러오지 못했습니다.');
-      }
-      const segs = await splitImageByWhitespace(img);
+      // CDN URL이면 same-origin 프록시로 로드(캔버스 taint 회피). 이미 base64면 그대로.
+      const segs = await splitImageByWhitespace(toProxyUrl(target.image));
       if (segs.length <= 1) { alert('분할할 여백을 찾지 못했습니다 (이미 한 조각이거나 여백이 없음).'); return; }
       const parts = segs.map(s => ({ id: newBlockId(), image: s.dataUrl, caption: '' }));
       setBlocks(cur => cur.flatMap(b => b.id === id ? parts : [b]));

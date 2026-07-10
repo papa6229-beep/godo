@@ -9,6 +9,11 @@ import type { ProductData } from '../types';
 const isRemote = (u: unknown): boolean =>
   typeof u === 'string' && /^https?:\/\//i.test(u) && !u.startsWith('data:');
 
+// CDN URL → same-origin 이미지 프록시 URL(원본 바이트 스트리밍). 캔버스 taint 없이 픽셀 읽기용(자동분할).
+// base64 변환(convertUrl)과 달리 응답 크기 팽창이 없어 큰 통이미지에 유리.
+export const toProxyUrl = (url: string): string =>
+  isRemote(url) ? `/api/detail/image-proxy?url=${encodeURIComponent(url)}` : url;
+
 // data 안에서 서버 변환이 필요한(원격 http) 이미지 URL이 하나라도 있는지.
 export const hasRemoteImages = (data: ProductData): boolean => {
   const flow = Array.isArray(data.flowImages) ? data.flowImages : [];
@@ -21,7 +26,9 @@ export const hasRemoteImages = (data: ProductData): boolean => {
 export const convertUrl = async (url: string): Promise<string> => {
   if (!isRemote(url)) return url;
   try {
-    const res = await fetch('/api/detail?action=image-base64', {
+    // ⚠️ 동적 라우트 api/detail/[action].ts 는 PATH 세그먼트로 호출(쿼리 아님).
+    //   기존 규약과 동일: /api/marketing/behavior-summary · /api/godomall/orders 등.
+    const res = await fetch('/api/detail/image-base64', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
