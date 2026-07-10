@@ -6,6 +6,7 @@ import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
 import { getFlowBlocks, imagesToBlocks, newBlockId } from '../services/flowBlocks';
 import { extractProductImages } from '../services/flowImageSplitter';
 import { toProxyUrl } from '../services/exportImagePrep';
+import { imageSignature, signatureDistance, normalizeThumbnail } from '../services/flowThumbnail';
 import { rewriteFlowCaptions } from '../services/flowCaptionService';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
@@ -23,38 +24,15 @@ const imgSize = (src: string): Promise<{ w: number; h: number } | null> =>
     i.src = src;
   });
 
-// 섬네일 자동 추출/선택 — 상세의 '깨끗한 제품/패키지컷'을 골라 섬네일(메인이미지)에 연결.
-//   상세 컷은 브랜딩 없음 → 깨끗한 섬네일(사장님 선호). 통이미지는 정밀추출해 서브컷을 후보로.
-//   우선순위(근사): 결합컷(가로~정사각) › 단독(세로) · 흰배경 깨끗할수록 우대 · 상단(패키지) 우대.
-//   ⚠️ 패키지/제품의 '정확한' 구분은 VLM 필요 — v1은 흰배경·비율·위치 휴리스틱.
-//   옵션 다수·적합컷 없음 → 이슈(수동/배치 이슈리스트).
+// 섬네일 자동 = 원본(메인몰) 섬네일과 '가장 닮은' 깨끗한 상세컷 매칭 → 크기 정규화(bbox+fit).
+//   원본섬네일 = 사람이 고른 대표. 그와 닮은 상세컷(브랜딩 없음)을 골라 제품크기 균일하게 앉힘.
+//   통이미지는 정밀추출해 서브컷을 후보로. 옵션 다수·후보 없음 → 이슈(수동/배치 이슈리스트).
 const THUMB_TALL = 2.5;
-
-// 후보 1장 측정: 다운스케일 캔버스에서 흰배경 비율 + 가로세로비. CDN은 프록시로 로드(taint 회피).
-const measureThumbCandidate = (src: string): Promise<{ aspect: number; whiteFrac: number } | null> =>
-  new Promise((res) => {
-    const img = new Image();
-    img.onload = () => {
-      const W = img.naturalWidth, H = img.naturalHeight;
-      if (!W || !H) return res(null);
-      const scale = Math.min(1, 120 / Math.max(W, H));
-      const cw = Math.max(1, Math.round(W * scale)), ch = Math.max(1, Math.round(H * scale));
-      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return res({ aspect: H / W, whiteFrac: 0 });
-      ctx.drawImage(img, 0, 0, cw, ch);
-      let data: Uint8ClampedArray;
-      try { data = ctx.getImageData(0, 0, cw, ch).data; } catch { return res({ aspect: H / W, whiteFrac: 0 }); }
-      let white = 0, n = 0;
-      for (let i = 0; i < data.length; i += 4) { n++; const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]; if (lum >= 235) white++; }
-      res({ aspect: H / W, whiteFrac: n ? white / n : 0 });
-    };
-    img.onerror = () => res(null);
-    img.src = src;
-  });
+const isRemoteUrl = (s: string) => /^https?:\/\//i.test(s) && !s.startsWith('data:');
 
 const autoPickThumbnail = async (
   blocks: any[],
+  mallThumbUrl: string,
   hasOptions: boolean,
   optionCount: number,
 ): Promise<{ image: string; issue: boolean; reason: string }> => {
@@ -75,27 +53,25 @@ const autoPickThumbnail = async (
       cands.push(b.image);
     }
   }
+  if (!cands.length) return { image: '', issue: true, reason: '후보 없음' };
 
+  // 원본 섬네일과 가장 닮은 후보 선택(이미지 유사도)
   let best = '';
-  let bestScore = -1;
-  for (let i = 0; i < cands.length; i++) {
-    const src = cands[i];
-    const isRemote = /^https?:\/\//i.test(src) && !src.startsWith('data:');
-    const m = await measureThumbCandidate(isRemote ? toProxyUrl(src) : src);
-    if (!m) continue;
-    if (m.whiteFrac < 0.35) continue; // 흰배경 부족 = 마케팅/캐릭터 합성 → 섬네일 부적합
-    const r = m.aspect;
-    let score: number;
-    if (r >= 0.5 && r <= 1.05) score = 4;      // 가로~정사각: 패키지+제품 결합컷(우선순위 1·2)
-    else if (r > 1.05 && r <= 1.7) score = 2;  // 세로: 단독 제품/패키지(우선순위 3·4)
-    else if (r > 1.7 && r <= 2.3) score = 1;
-    else score = 0;
-    score += m.whiteFrac;      // 흰배경 깨끗할수록 +
-    score -= i * 0.05;         // 앞쪽(상단=패키지) 살짝 우대
-    if (score > bestScore) { bestScore = score; best = src; }
+  const mallSig = mallThumbUrl ? await imageSignature(toProxyUrl(mallThumbUrl)) : null;
+  if (mallSig) {
+    let bestDist = Infinity;
+    for (const src of cands) {
+      const sig = await imageSignature(isRemoteUrl(src) ? toProxyUrl(src) : src);
+      if (!sig) continue;
+      const d = signatureDistance(mallSig, sig);
+      if (d < bestDist) { bestDist = d; best = src; }
+    }
   }
-  if (best && bestScore >= 1) return { image: best, issue: false, reason: '' };
-  return { image: '', issue: true, reason: '적합 컷 없음(수동)' };
+  if (!best) best = cands[0]; // 원본섬네일 없거나 매칭 불가 → 첫 후보 폴백
+
+  // 크기 정규화(bbox 트림 + 표준 프레임 fit) — 모든 섬네일 제품크기 균일
+  const norm = await normalizeThumbnail(isRemoteUrl(best) ? toProxyUrl(best) : best);
+  return { image: norm || best, issue: false, reason: '' };
 };
 
 const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }> = ({ data, onChange }) => {
@@ -141,8 +117,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         ? ` · 닛포리형(원본 설명 ${typedCount}개 프리필)`
         : ' · 통이미지형(설명텍스트 없음 — 필요시 ✂정밀추출)';
       const optMsg = p.hasOptions ? ` · 🔀옵션 ${p.optionValues.length}종(${p.optionName || '타입'})` : '';
-      // 섬네일 자동 추출·연결(로고 목록이미지 대신 상세컷). 애매하면 이슈(수동/배치 이슈리스트).
-      const thumb = await autoPickThumbnail(baseBlocks, p.hasOptions, p.optionValues.length);
+      // 섬네일 자동 = 원본섬네일 닮은 상세컷 매칭 → 크기 정규화. 애매하면 이슈(수동/배치 이슈리스트).
+      const thumb = await autoPickThumbnail(baseBlocks, p.thumbnailSource, p.hasOptions, p.optionValues.length);
       if (thumb.image) onChange(prev => ({ ...prev, mainImage: thumb.image }));
       const thumbMsg = thumb.image ? ' · 섬네일 자동✓' : ` · ⚠섬네일 이슈(${thumb.reason})`;
       setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 제품이미지 ${p.flowImages.length}장${ex}${typeMsg}${optMsg}${thumbMsg}` });
