@@ -14,39 +14,6 @@ const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   r.readAsDataURL(file);
 };
 
-// 이미지 원본 크기(픽셀 접근 아님 → CDN URL도 taint 없이 가능).
-const imgSize = (src: string): Promise<{ w: number; h: number } | null> =>
-  new Promise((res) => {
-    const i = new Image();
-    i.onload = () => res({ w: i.naturalWidth, h: i.naturalHeight });
-    i.onerror = () => res(null);
-    i.src = src;
-  });
-
-// 자동 정밀추출(변환기 기본 동작): 세로로 충분히 긴(=통이미지) 블록만 처리.
-//   깨끗한 제품 사진만 뽑고 원본 캡션 텍스트·구분선(금선)은 버림(텍스트는 캡션 필드로 별도 입력/AI).
-//   개별 제품사진(가로세로비 낮음)은 건드리지 않아 URL 그대로(저장 경량 유지) · CDN은 프록시 경유.
-const TALL_RATIO = 2.5; // 높이/너비 이 값 이상이면 '통이미지'로 보고 자동추출 시도
-const autoExtractBlocks = async (blocks: any[]): Promise<any[]> => {
-  const out: any[] = [];
-  for (const b of blocks) {
-    let didExtract = false;
-    try {
-      const sz = await imgSize(b.image);
-      if (sz && sz.w > 0 && sz.h / sz.w >= TALL_RATIO) {
-        // CDN URL은 same-origin 프록시로 로드 → 캔버스 taint 없이 픽셀 추출. (dev엔 서버 없어 로드 실패 → 원본 유지)
-        const segs = await extractProductImages(toProxyUrl(b.image));
-        if (segs.length > 1) {
-          segs.forEach((s) => out.push({ id: newBlockId(), image: s.dataUrl, caption: '' }));
-          didExtract = true;
-        }
-      }
-    } catch { /* 실패 시 원본 유지 */ }
-    if (!didExtract) out.push(b);
-  }
-  return out;
-};
-
 const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }> = ({ data, onChange }) => {
   const blocks = getFlowBlocks(data);
   const setField = (k: keyof ProductData) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -67,8 +34,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       const buf = await f.arrayBuffer();
       const p = await parseMainMallArrayBuffer(buf);
       if (!p) { setImportNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
-      const baseBlocks = imagesToBlocks(p.flowImages);
-      // 1) 필드 + 초기 블록 즉시 반영(화면에 바로 뜸)
+      // 구조화 페어링: 이미지 + (있으면) 원본 설명 텍스트를 캡션에 프리필 + 옵션 태그. 통이미지는 원본 그대로.
+      const baseBlocks = (p.detailBlocks || []).map(b => ({ id: newBlockId(), image: b.image, caption: b.text || '', option: b.option || '' }));
       onChange(prev => ({
         ...prev,
         flowEyebrow: p.eyebrow || prev.flowEyebrow || '',
@@ -76,9 +43,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         productNameEn: p.productNameEn || prev.productNameEn,
         brandName: p.brandName || prev.brandName,
         flowHeaderText: p.flowHeaderText || prev.flowHeaderText,
-        // 신모델: 이미지 → 캡션 빈 블록. 구 flowImages도 함께 유지(호환).
         flowImages: p.flowImages.length ? p.flowImages : (prev.flowImages || []),
-        flowBlocks: p.flowImages.length ? baseBlocks : (prev.flowBlocks || getFlowBlocks(prev)),
+        flowBlocks: baseBlocks.length ? baseBlocks : (prev.flowBlocks || getFlowBlocks(prev)),
         mainImage: p.thumbnailSource || prev.mainImage,
       }));
       const ex = p.excludedImages.length ? ` · 공통배너 ${p.excludedImages.length}장 제외` : '';
@@ -86,12 +52,12 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         setImportNote({ ok: false, text: `✓ ${p.productNameKr} · ⚠ 제품이미지 0장(수동 추가 필요)${ex}` });
         return;
       }
-      // 2) 자동 정밀추출(기본 동작) — 통이미지에서 깨끗한 제품 사진만 뽑음(캡션·금선 버림). 버튼 안 눌러도 됨.
-      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · 자동추출 중…` });
-      const extracted = await autoExtractBlocks(baseBlocks);
-      onChange(prev => ({ ...prev, flowBlocks: extracted }));
-      const grew = extracted.length > baseBlocks.length;
-      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 ${p.flowImages.length}장${ex} · ${grew ? `자동추출 → 제품컷 ${extracted.length}장` : '추출할 사진 없음(원본 유지)'}` });
+      const typedCount = (p.detailBlocks || []).filter(b => b.text).length;
+      const typeMsg = p.hasTypedText
+        ? ` · 닛포리형(원본 설명 ${typedCount}개 프리필)`
+        : ' · 통이미지형(설명텍스트 없음 — 필요시 ✂정밀추출)';
+      const optMsg = p.hasOptions ? ` · 🔀옵션 ${p.optionValues.length}종(${p.optionName || '타입'})` : '';
+      setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 제품이미지 ${p.flowImages.length}장${ex}${typeMsg}${optMsg}` });
     } catch (err: any) {
       setImportNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
     } finally { setImporting(false); }
@@ -232,10 +198,18 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
           : <p className="text-[11px] text-slate-500">각 블록 = 이미지 + 그 아래 캡션(SEO 문구). 세로로 긴 <b className="text-sky-300">통이미지</b>는 <b className="text-sky-300">✂ 정밀추출</b> → 제품 사진만 뽑고 <b className="text-slate-400">원본 캡션·구분선은 버림</b>. 캡션은 자동생성/수동입력.</p>}
         <div className="space-y-2">
           {blocks.map((b, i) => (
-            <div key={b.id} className="bg-[#0F172A]/50 border border-white/10 rounded p-2 space-y-2">
-              <div className="flex items-start gap-2">
-                <span className="text-xs text-slate-500 w-5 text-center pt-1">{i + 1}</span>
-                <img src={b.image} className="w-16 h-16 object-cover rounded border border-white/10 bg-white flex-shrink-0" alt={`block-${i}`} />
+            <React.Fragment key={b.id}>
+              {/* 옵션 그룹 헤더 — 옵션이 바뀌는 지점에만 표시 */}
+              {(b.option || '') !== (blocks[i - 1]?.option || '') && (b.option || '').trim() && (
+                <div className="flex items-center gap-2 pt-2">
+                  <span className="text-[11px] font-black text-fuchsia-300 bg-fuchsia-500/15 px-2 py-0.5 rounded">🔀 {b.option}</span>
+                  <div className="flex-1 h-px bg-fuchsia-500/20" />
+                </div>
+              )}
+              <div className="bg-[#0F172A]/50 border border-white/10 rounded p-2 space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="text-xs text-slate-500 w-5 text-center pt-1">{i + 1}</span>
+                  <img src={b.image} className="w-16 h-16 object-cover rounded border border-white/10 bg-white flex-shrink-0" alt={`block-${i}`} />
                 <div className="flex-1 min-w-0">
                   <textarea
                     rows={2}
@@ -256,7 +230,8 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
                 <button onClick={() => moveBlock(i, 1)} disabled={i === blocks.length - 1} className="text-slate-400 disabled:opacity-30 px-1.5 text-lg leading-none">↓</button>
                 <button onClick={() => removeBlock(b.id)} className="text-red-400 text-xs font-bold px-2 hover:text-red-600">삭제</button>
               </div>
-            </div>
+              </div>
+            </React.Fragment>
           ))}
         </div>
       </section>

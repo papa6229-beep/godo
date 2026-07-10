@@ -2,6 +2,15 @@
 // SheetJS(xlsx)는 지연 로딩(dynamic import) → 메인 번들 밖(코드 스플릿).
 // 검증(2026-07-09): files/goodsm/{상품번호}/ = 진짜 제품 통이미지 · banana_img/conf = 공통배너(제외).
 
+// 상세설명 HTML에서 순서대로 뽑은 [제품이미지 + 그 아래 텍스트] 페어.
+// text 있음 = 닛포리형(HTML에 설명 타이핑) → 원본 텍스트를 캡션으로 프리필·리라이트.
+// text 없음 = 트리니티형(baked, 통이미지에 글자 박힘) or 단순형(통이미지만).
+export interface DetailBlock {
+  image: string;   // 제품 이미지 URL(goodsm)
+  text: string;    // 그 이미지 뒤 원본 설명 텍스트(옵션 태그 [01. …] 제거된 순수 설명)
+  option: string;  // 옵션 태그(예: "01. 키타노 미나"). 옵션형이 아니면 ''
+}
+
 export interface ParsedMainMallProduct {
   productNo: string;
   productNameKr: string;    // 한글 핵심 상품명(조각 분해 후)
@@ -9,15 +18,39 @@ export interface ParsedMainMallProduct {
   eyebrow: string;          // 상품명 앞 [대괄호] 태그(예: "일본 직수입")
   productNameRaw: string;   // 원본(검수 참고)
   brandName: string;
-  flowHeaderText: string;   // 상세설명 태그제거 텍스트(상단 문구)
-  flowImages: string[];     // 진짜 제품 통이미지 URL(순서 유지)
+  flowHeaderText: string;   // 상단 텍스트(첫 제품이미지 앞 인트로 — 상품명 접두 제거)
+  flowImages: string[];     // 진짜 제품 이미지 URL(순서 유지) = detailBlocks의 image들
+  detailBlocks: DetailBlock[]; // [이미지+텍스트(+옵션)] 순서 페어(핵심)
+  hasTypedText: boolean;    // HTML에 이미지별 설명 텍스트가 타이핑돼 있는가(닛포리형 판별)
+  optionName: string;       // 엑셀 옵션1의 옵션명(예: "타입"). 없으면 ''
+  optionValues: string[];   // 옵션 값 목록(예: ["01. 키타노 미나", …]). 없으면 []
+  hasOptions: boolean;      // 옵션형인가(엑셀 옵션1 or 텍스트 [0N.] 태그 존재)
   thumbnailSource: string;  // 목록이미지 url(섬네일 소스)
   excludedImages: string[]; // 제외된 공통배너 등(검수용)
   rawImageCount: number;
 }
 
 // 엑셀 컬럼(0-based) — 68컬럼 표준 export
-const COL = { no: 0, name: 2, brand: 16, listImg: 17, detail: 20 };
+const COL = { no: 0, name: 2, option1: 13, brand: 16, listImg: 17, detail: 20 };
+
+// 옵션1 컬럼 파싱: "타입=01. 키타노 미나,02. 미우라 사쿠라,03. 이마이 카호" → {name:'타입', values:[…]}
+const parseOptionColumn = (raw: string): { name: string; values: string[] } => {
+  const s = String(raw || '').trim();
+  if (!s) return { name: '', values: [] };
+  const eq = s.indexOf('=');
+  const name = eq >= 0 ? s.slice(0, eq).trim() : '';
+  const rest = eq >= 0 ? s.slice(eq + 1) : s;
+  const values = rest.split(',').map((v) => v.trim()).filter(Boolean);
+  return { name, values };
+};
+
+// 설명 텍스트 맨 앞 옵션 태그 [01. 키타노 미나] 감지·분리. (숫자로 시작하는 태그만 = eyebrow형 [일본 직수입]과 구분)
+const OPTION_PREFIX_RE = /^\s*\[\s*(\d{1,2}\s*\.\s*[^\]]+?)\s*\]\s*/;
+const splitOptionTag = (text: string): { option: string; body: string } => {
+  const m = String(text || '').match(OPTION_PREFIX_RE);
+  if (!m) return { option: '', body: String(text || '').trim() };
+  return { option: m[1].replace(/\s+/g, ' ').trim(), body: text.slice(m[0].length).trim() };
+};
 
 const stripHtmlText = (html: string): string =>
   String(html || '')
@@ -73,6 +106,60 @@ export const parseProductName = (
 // files/goodsm/{상품번호}/ = 제품 통이미지. 깨진 URL(...jpgx.jpg) 방어.
 const isProductImage = (u: string): boolean => /\/files\/goodsm\//i.test(u) && !/\.jpgx\.jpg/i.test(u);
 const IMG_RE = /(?:src|href)\s*=\s*["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|gif))["']/gi;
+const IMG_TAG_RE = /<img[^>]*?(?:src|href)\s*=\s*["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|gif))["'][^>]*>/gi;
+
+// 상세설명 HTML을 '순서대로' 토큰화 → [제품이미지 + 바로 뒤 텍스트] 페어로 만든다.
+//   - intro = 첫 제품이미지 앞의 텍스트(상단 문구)
+//   - 각 제품이미지의 text = 그 이미지 다음~다음 제품이미지 전까지의 텍스트(닛포리형 설명)
+//   - 공통배너(goodsm 아님)는 이미지에서 제외하되, 그 주변 텍스트는 인접 규칙대로 흡수
+const parseDetailStructure = (
+  html: string,
+): { intro: string; blocks: DetailBlock[]; excludedImages: string[] } => {
+  const tokens: Array<{ type: 'img'; url: string } | { type: 'text'; text: string }> = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  IMG_TAG_RE.lastIndex = 0;
+  while ((m = IMG_TAG_RE.exec(html))) {
+    const before = stripHtmlText(html.slice(last, m.index));
+    if (before) tokens.push({ type: 'text', text: before });
+    tokens.push({ type: 'img', url: m[1] });
+    last = IMG_TAG_RE.lastIndex;
+  }
+  const tail = stripHtmlText(html.slice(last));
+  if (tail) tokens.push({ type: 'text', text: tail });
+
+  const excludedImages: string[] = [];
+  const seen = new Set<string>();
+  const prodIdx: number[] = [];
+  tokens.forEach((t, i) => {
+    if (t.type === 'img') {
+      if (isProductImage(t.url)) {
+        if (!seen.has(t.url)) { seen.add(t.url); prodIdx.push(i); }
+      } else if (!excludedImages.includes(t.url)) {
+        excludedImages.push(t.url);
+      }
+    }
+  });
+
+  const first = prodIdx.length ? prodIdx[0] : tokens.length;
+  const introParts: string[] = [];
+  for (let i = 0; i < first; i++) { const t = tokens[i]; if (t.type === 'text') introParts.push(t.text); }
+
+  const blocks: DetailBlock[] = [];
+  let lastOption = '';
+  for (let k = 0; k < prodIdx.length; k++) {
+    const s = prodIdx[k];
+    const e = k + 1 < prodIdx.length ? prodIdx[k + 1] : tokens.length;
+    const parts: string[] = [];
+    for (let i = s + 1; i < e; i++) { const t = tokens[i]; if (t.type === 'text') parts.push(t.text); }
+    const { option, body } = splitOptionTag(parts.join(' ').trim());
+    // 옵션 태그가 없는 이미지(예: 옵션 그룹의 첫 패키지컷)는 직전 옵션에 귀속.
+    const opt = option || (body ? '' : lastOption);
+    if (option) lastOption = option;
+    blocks.push({ image: (tokens[s] as { url: string }).url, text: body, option: opt });
+  }
+  return { intro: introParts.join(' ').trim(), blocks, excludedImages };
+};
 
 export const parseMainMallArrayBuffer = async (buf: ArrayBuffer): Promise<ParsedMainMallProduct | null> => {
   const XLSX = await import('xlsx');
@@ -87,15 +174,21 @@ export const parseMainMallArrayBuffer = async (buf: ArrayBuffer): Promise<Parsed
   const rawName = String(r[COL.name] || '');
   const parsedName = parseProductName(rawName);
 
-  const allUrls = [...detail.matchAll(IMG_RE)].map((m) => m[1]);
-  // 중복 URL 제거(순서 유지)
-  const seen = new Set<string>();
-  const uniq = allUrls.filter((u) => (seen.has(u) ? false : (seen.add(u), true)));
-  const flowImages = uniq.filter(isProductImage);
-  const excludedImages = uniq.filter((u) => !isProductImage(u));
+  // 상세설명 HTML을 순서대로 구조화(이미지↔텍스트 페어링 + 옵션 태그 분리)
+  const { intro, blocks, excludedImages } = parseDetailStructure(detail);
+  const flowImages = blocks.map((b) => b.image);
+  const hasTypedText = blocks.some((b) => (b.text || '').length > 0);
+  const rawImageCount = [...detail.matchAll(IMG_RE)].length;
 
-  // 헤더텍스트 = 상세설명 텍스트 - 맨 앞 상품명 중복(최장공통접두 제거 → 벤더코드 불일치에도 견고)
-  let headerText = stripHtmlText(detail);
+  // 옵션: 엑셀 옵션1 컬럼 우선, 없으면 상세 텍스트의 [0N.] 태그에서 수집(순서 유지).
+  const opt = parseOptionColumn(String(r[COL.option1] || ''));
+  const tagValues: string[] = [];
+  blocks.forEach((b) => { if (b.option && !tagValues.includes(b.option)) tagValues.push(b.option); });
+  const optionValues = opt.values.length ? opt.values : tagValues;
+  const hasOptions = optionValues.length > 0 || blocks.some((b) => b.option);
+
+  // 상단 텍스트 = intro - 맨 앞 상품명 중복(최장공통접두 제거 → 벤더코드 불일치에도 견고)
+  let headerText = intro;
   const nameText = stripHtmlText(rawName);
   if (nameText) {
     let lcp = 0;
@@ -114,8 +207,13 @@ export const parseMainMallArrayBuffer = async (buf: ArrayBuffer): Promise<Parsed
     brandName: String(r[COL.brand] || '').trim() || parsedName.brandInline,
     flowHeaderText: headerText,
     flowImages,
+    detailBlocks: blocks,
+    hasTypedText,
+    optionName: opt.name,
+    optionValues,
+    hasOptions,
     thumbnailSource: String(r[COL.listImg] || '').trim(),
     excludedImages,
-    rawImageCount: allUrls.length,
+    rawImageCount,
   };
 };

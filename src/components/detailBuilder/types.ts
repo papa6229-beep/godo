@@ -14,7 +14,8 @@ export interface SummaryInfo {
 export interface FlowBlock {
   id: string;
   image: string;      // dataURL(base64) 또는 CDN URL
-  caption?: string;   // 이미지 아래 SEO 텍스트(초기 빈값 → 나중에 AI가 채움)
+  caption?: string;   // 이미지 아래 SEO 텍스트(원본 프리필 or AI 생성/수동)
+  option?: string;    // 옵션형일 때 이 이미지가 속한 옵션(예: "01. 키타노 미나"). 없으면 미설정
 }
 
 export interface OptionItem {
