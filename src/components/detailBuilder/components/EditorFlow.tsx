@@ -7,7 +7,7 @@ import { getFlowBlocks, imagesToBlocks, newBlockId } from '../services/flowBlock
 import { extractProductImages } from '../services/flowImageSplitter';
 import { toProxyUrl } from '../services/exportImagePrep';
 import { imageSignature, signatureDistance, normalizeThumbnail } from '../services/flowThumbnail';
-import { rewriteFlowCaptions } from '../services/flowCaptionService';
+import { rewriteFlowCaptions, pickBestThumbnailVLM } from '../services/flowCaptionService';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -55,19 +55,31 @@ const autoPickThumbnail = async (
   }
   if (!cands.length) return { image: '', issue: true, reason: '후보 없음' };
 
-  // 원본 섬네일과 가장 닮은 후보 선택(이미지 유사도)
+  // 1순위: VLM이 후보 중 대표 섬네일을 우선순위대로 선택(패키지+제품 › …). CDN 후보는 프록시로.
   let best = '';
-  const mallSig = mallThumbUrl ? await imageSignature(toProxyUrl(mallThumbUrl)) : null;
-  if (mallSig) {
-    let bestDist = Infinity;
-    for (const src of cands) {
-      const sig = await imageSignature(isRemoteUrl(src) ? toProxyUrl(src) : src);
-      if (!sig) continue;
-      const d = signatureDistance(mallSig, sig);
-      if (d < bestDist) { bestDist = d; best = src; }
+  try {
+    const vlmCands = cands.map((s) => (isRemoteUrl(s) ? toProxyUrl(s) : s));
+    const vlm = await pickBestThumbnailVLM(vlmCands);
+    if (vlm.hadVLM) {
+      if (vlm.index < 0) return { image: '', issue: true, reason: 'VLM: 적합컷 없음(수동)' };
+      best = cands[vlm.index];
     }
+  } catch { /* VLM 실패 → 유사도 폴백 */ }
+
+  // 폴백(VLM 미탑재/실패): 원본 섬네일과 가장 닮은 후보(이미지 유사도)
+  if (!best) {
+    const mallSig = mallThumbUrl ? await imageSignature(toProxyUrl(mallThumbUrl)) : null;
+    if (mallSig) {
+      let bestDist = Infinity;
+      for (const src of cands) {
+        const sig = await imageSignature(isRemoteUrl(src) ? toProxyUrl(src) : src);
+        if (!sig) continue;
+        const d = signatureDistance(mallSig, sig);
+        if (d < bestDist) { bestDist = d; best = src; }
+      }
+    }
+    if (!best) best = cands[0];
   }
-  if (!best) best = cands[0]; // 원본섬네일 없거나 매칭 불가 → 첫 후보 폴백
 
   // 크기 정규화(bbox 트림 + 표준 프레임 fit) — 모든 섬네일 제품크기 균일
   const norm = await normalizeThumbnail(isRemoteUrl(best) ? toProxyUrl(best) : best);

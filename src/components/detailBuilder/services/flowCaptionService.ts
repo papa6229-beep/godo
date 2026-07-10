@@ -98,6 +98,33 @@ const parseNumbered = (text: string, n: number): string[] => {
   return out;
 };
 
+// ── VLM 섬네일 선택 — 후보 컷들 중 대표 섬네일로 최적을 우선순위대로 고름(제품당 1콜) ──
+//   우선순위(사장님): 패키지+제품 › 제품(패키지일부) › 패키지단독 › 제품단독. 부적합=마케팅/내부컷/도표.
+const THUMB_PROMPT =
+  '아래 이미지들은 한 상품 상세페이지에서 뽑은 섬네일 후보입니다. 쇼핑몰 목록에 걸 대표 섬네일로 가장 적합한 하나를 고르세요.\n' +
+  '[우선순위] 1)패키지 상자+제품 함께 깔끔한 컷 2)제품 잘 나오고 패키지 일부 보임 3)패키지 단독 4)제품 단독\n' +
+  '[부적합] 마케팅/캐릭터 일러스트, 내부구조 클로즈업, 사용법 도표, 텍스트 위주\n' +
+  '가장 적합한 후보의 번호만 숫자로 답하세요. 적합한 게 없으면 0.';
+
+// 반환: { hadVLM, index }  index>=0 선택 · -1 없음(이슈) · hadVLM=false면 VLM 미탑재(폴백 필요)
+export const pickBestThumbnailVLM = async (
+  candidates: string[],
+  maxCandidates = 10,
+): Promise<{ hadVLM: boolean; index: number }> => {
+  const modelsRes = await getModels();
+  const vlm = modelsRes.success ? detectVisionModelId(modelsRes.data || []) : undefined;
+  if (!vlm) return { hadVLM: false, index: -1 };
+  const cap = candidates.slice(0, maxCandidates);
+  const small = await Promise.all(cap.map((c) => downscaleDataUrl(c, 320, 0.8)));
+  const content: any[] = [{ type: 'text', text: THUMB_PROMPT }];
+  small.forEach((s, i) => { content.push({ type: 'text', text: `[${i + 1}]` }, { type: 'image_url', image_url: { url: s } }); });
+  const res = await getChatCompletion([{ role: 'user', content }], vlm, undefined, { temperature: 0.1, maxTokens: 16 });
+  if (!res.success || !res.content) return { hadVLM: true, index: -1 };
+  const m = res.content.match(/\d+/);
+  const num = m ? parseInt(m[0], 10) : 0;
+  return { hadVLM: true, index: num >= 1 && num <= cap.length ? num - 1 : -1 };
+};
+
 export interface CaptionProgress { done: number; total: number; phase: string }
 
 // ── 가벼운 리라이트(주력): 원본 설명 텍스트를 '분량·팩트 유지, 표현만 변주'로 다시 씀 ──
