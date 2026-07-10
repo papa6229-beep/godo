@@ -86,11 +86,11 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
             {(flowEyebrow || '').trim() && (
               <div className="text-sm font-black tracking-[0.15em] uppercase mb-4" style={themedText(accent)}>{flowEyebrow}</div>
             )}
-            {/* 한글 상품명 — 큰 제목 */}
+            {/* 한글 상품명 — 큰 제목. leading 타이트+break-keep+pre-line → 긴 이름 2줄 자동/수동(godo 동일) */}
             {(productNameKr || '').trim() && (
-              <h1 className="text-[34px] leading-[1.25] font-black tracking-tight text-gray-900 break-keep whitespace-pre-line mb-3">{productNameKr}</h1>
+              <h1 className="text-[34px] leading-[1.15] font-black tracking-tight text-gray-900 break-keep whitespace-pre-line mb-1">{productNameKr}</h1>
             )}
-            {/* 영문/일본어 상품명(괄호 없이, 원문 그대로) + 브랜드 옆에 작게 */}
+            {/* 영문/일본어 상품명(괄호 없이, 원문 그대로) + 브랜드 옆에 작게. 한글명과 간격 좁게(mt-0) */}
             {((productNameEn || '').trim() || (brandName || '').trim()) && (
               <div className="flex items-baseline flex-wrap gap-x-3 gap-y-1 mb-5">
                 {(productNameEn || '').trim() && (
