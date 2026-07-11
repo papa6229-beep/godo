@@ -1,0 +1,117 @@
+// 기본형(타입1 섹션형) → 고도몰 섹션형 ProductData 조립 코어.
+//   PoC(test/_gen_poc2.py)에서 실증된 흐름의 앱 이식: 이미지↔문구 의미 매칭 + 의미 줄바꿈 + 슬롯 조립.
+//   철학([[converter-philosophy-testcase-not-deliverable]]): 고도몰 슬롯=고정 그릇, 기본형=재료. 내용으로 판단.
+//   ⚠️ 아직 미배선(다음: 헤딩감지·밴드추출 프론트가 BasicSource를 만들어 이 함수 호출 → builder_temp_save 주입).
+import type { ProductData, SummaryInfo } from '../types';
+import { matchImagesToSlots, lineBreakForLayout } from './flowCaptionService';
+
+// 기본형에서 추출된 '재료'. 고도몰 슬롯 그릇에 채울 원자재.
+export interface BasicPointSource {
+  title?: string;      // Point 섹션 소제목(있으면)
+  texts: string[];     // 원본 설명 문구(의도 고정) — 슬롯 순서
+  images: string[];    // 후보 이미지(순서 불신 — 내용으로 매칭)
+}
+export interface BasicSource {
+  productNameKr: string;
+  productNameEn?: string;
+  brandName?: string;
+  themeColor?: string;
+  spec?: Partial<SummaryInfo>;                    // 스펙(있으면). size는 규칙상 '상세페이지 참조'로 강제
+  keyFeatures?: { title: string; desc: string }[];// 메인특징 3(있으면)
+  mainImage?: string | null;                      // 메인이미지(깨끗한 누끼)
+  featureImage?: string | null;                   // KEY FEATURE 이미지
+  point1?: BasicPointSource;
+  point2?: BasicPointSource;
+  sizeImage?: string | null;
+  packageImage?: string | null;
+}
+
+export interface BasicConvertResult {
+  data: Partial<ProductData>;
+  notes: string[]; // 변환 로그/이슈(옵션 다수·슬롯 초과 등 향후 확장)
+}
+
+// 슬롯 k(=텍스트 인덱스)에 배정된 이미지. assign[k] = 이미지 인덱스(-1/범위밖이면 null).
+const pick = (images: string[], assign: number[], k: number): string | null => {
+  const ci = assign[k];
+  return ci != null && ci >= 0 && ci < images.length ? images[ci] : null;
+};
+
+// Point 재료 → 이미지↔문구 매칭(내용 기반). 반환: { assign, texts }.
+const matchPoint = async (p: BasicPointSource | undefined): Promise<{ assign: number[]; texts: string[]; images: string[] }> => {
+  const texts = p?.texts ?? [];
+  const images = p?.images ?? [];
+  if (!texts.length || !images.length) {
+    return { assign: texts.map((_, i) => (i < images.length ? i : -1)), texts, images };
+  }
+  const assign = await matchImagesToSlots(images, texts); // VLM 관찰→Gemma 판정(하드코딩 순서 불신)
+  return { assign, texts, images };
+};
+
+/**
+ * 기본형 재료 → 고도몰 섹션형 ProductData(Partial) 조립.
+ * builder_temp_save(loadTemporary의 {...prev,...parsed})로 주입하면 좌측 입력부까지 채워진 편집 가능 상태가 됨.
+ */
+export const convertBasicToGodo = async (src: BasicSource): Promise<BasicConvertResult> => {
+  const notes: string[] = [];
+
+  // 스펙: 고도몰 7칸 기준. 사이즈는 규칙상 항상 '상세페이지 참조'(옵션별 치수 다양·픽셀OCR 부정확).
+  const summaryInfo: SummaryInfo = {
+    feature: src.spec?.feature ?? '',
+    type: src.spec?.type ?? '',
+    material: src.spec?.material ?? '',
+    size: '상세페이지 참조',
+    weight: src.spec?.weight ?? '',
+    power: src.spec?.power ?? '',
+    maker: src.brandName ?? src.spec?.maker ?? '',
+  };
+
+  // ① 이미지↔문구 의미 매칭(Point01/02)
+  const m1 = await matchPoint(src.point1);
+  const m2 = await matchPoint(src.point2);
+
+  // ② 의미 단위 줄바꿈: 상품명 + 모든 Point 설명을 한 번에(글자 불변·\n만)
+  const allCaps = [...m1.texts, ...m2.texts];
+  const lb = await lineBreakForLayout(src.productNameKr, allCaps);
+  const nameKr = lb.name;
+  const cap1 = lb.captions.slice(0, m1.texts.length);
+  const cap2 = lb.captions.slice(m1.texts.length);
+
+  const data: Partial<ProductData> = {
+    productNameKr: nameKr,
+    productNameEn: src.productNameEn ?? '',
+    brandName: src.brandName ?? '',
+    ...(src.themeColor ? { themeColor: src.themeColor } : {}),
+    summaryInfo,
+    ...(src.keyFeatures && src.keyFeatures.length === 3 ? { keyFeatures: src.keyFeatures } : {}),
+    mainImage: src.mainImage ?? null,
+    featureImage: src.featureImage ?? null,
+    sizeImage: src.sizeImage ?? null,
+    packageImage: src.packageImage ?? null,
+
+    point1Title: src.point1?.title ?? '',
+    aiPoint1Desc: cap1[0] ?? '',
+    aiPoint1Desc2: cap1[1] ?? '',
+    aiPoint1Desc3: cap1[2] ?? '',
+    point1Image1: pick(m1.images, m1.assign, 0),
+    point1Image2: pick(m1.images, m1.assign, 1),
+    point1Image3: pick(m1.images, m1.assign, 2),
+
+    point2Title: src.point2?.title ?? '',
+    aiPoint2Desc: cap2[0] ?? '',
+    aiPoint2Desc2: cap2[1] ?? '',
+    aiPoint2Desc3: cap2[2] ?? '',
+    point2Image1: pick(m2.images, m2.assign, 0),
+    point2Image2: pick(m2.images, m2.assign, 1),
+    point2Image3: pick(m2.images, m2.assign, 2),
+  };
+
+  if (src.point1 && (src.point1.images.length > 3 || src.point1.texts.length > 3)) {
+    notes.push('Point01 재료가 3슬롯 초과 — 영역 추가 또는 이미지 세로 합치기 판단 필요(향후 변수 대응).');
+  }
+  if (src.point2 && (src.point2.images.length > 3 || src.point2.texts.length > 3)) {
+    notes.push('Point02 재료가 3슬롯 초과 — 영역 추가 또는 이미지 세로 합치기 판단 필요(향후 변수 대응).');
+  }
+
+  return { data, notes };
+};
