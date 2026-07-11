@@ -81,7 +81,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
 
   const accent = themeColor;
   // ⑪ 수동 간격(px): section=섹션 상하여백, element=블록 사이(이미지↔다음설명), heading=제목↔내용
-  const sp = data.godoSpacing || { section: 56, element: 32, heading: 24 };
+  const sp = data.godoSpacing || { section: 56, element: 52, heading: 10 }; // 근접성 원칙(제목↔내용 좁게/블록↔블록 넓게)
   const BLOCK_INNER_GAP = 12; // ⑨ 설명↔자기 이미지: 항상 가깝게(블록 내부 고정)
   // 공통 드래그 매니저: mousedown→document mousemove 추적, mouseup/창 blur/새 드래그 시작 시 정리.
   // (mouseup을 놓쳐도(창 밖 릴리즈·alt-tab) 이전 리스너가 남지 않도록 — 리스너 누수·중복 방지)
@@ -259,15 +259,15 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                   <div id={`${sectionId}-${slot}`} className="flex flex-col" style={{ gap: BLOCK_INNER_GAP }}>
                   {b.desc && (
                     i === 0 ? (
-                      // 첫 블록: 위에 Point 제목+부제(main)가 있어 그대로 평문
-                      <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
+                      // 첫 블록: 위에 Point 제목+부제(main)가 있어 그대로 평문. 풀폭(700) 금지 → 가독 폭 제한(A-2)
+                      <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep" style={{ maxWidth: 420 }}>
                         {renderHighlightText(b.desc, themeColor)}
                       </p>
                     ) : (
                       // ⑤ 서브 블록(1-2/1-3): 위에 main이 없어 허전 → 액센트 바 콜아웃으로 앵커(디자인 의도 부여)
                       <div className="flex gap-4">
                         <div style={{ width: 4, borderRadius: 999, background: accent, flexShrink: 0 }} />
-                        <p className="flex-1 py-0.5 text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep">
+                        <p className="flex-1 py-0.5 text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep" style={{ maxWidth: 420 }}>
                           {renderHighlightText(b.desc, themeColor)}
                         </p>
                       </div>
@@ -325,7 +325,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
             </div>
 
             {/* 상품명(한글, 블랙, ④ 줄바꿈 반영) + 영문명(1차). ① 입력 시 여기로 스크롤 */}
-            <h1 id="preview-name" className="mt-8 text-[52px] leading-[1.05] font-black tracking-tight break-keep text-gray-900 whitespace-pre-line">
+            {/* A-4: 폭 제한(≈460) → 긴 한글 상품명이 어절 경계로 자동 2줄, 패키지 박스(x≈468) 침범 방지. AI가 넣은 \n도 존중(pre-line). */}
+            <h1 id="preview-name" className="mt-8 text-[52px] leading-[1.05] font-black tracking-tight break-keep text-gray-900 whitespace-pre-line" style={{ maxWidth: 460 }}>
               {productNameKr || '상품명을 입력하세요'}
             </h1>
             <p className="mt-1 text-xl font-medium tracking-[0.15em] text-gray-400 uppercase break-all">
@@ -483,6 +484,15 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
             <p className="flex items-center gap-2 text-base font-bold text-gray-500 mt-2 break-keep">
               측정 방법에 따라 약간의 오차가 있을 수 있습니다 <Dot color={accent} size={12} />
             </p>
+            {/* A-3: 무게 pill을 이미지 '위'로(사장님 확정 = 생성기 영구 변경). 아래보다 안정적. */}
+            {(summaryInfo?.weight || '').trim() && (
+              <div className="flex justify-center mt-8">
+                <div className="inline-flex items-center gap-4 px-10 py-4 rounded-full border-2 bg-white" style={{ borderColor: isGradient(accent) ? '#c7d2fe' : accent }}>
+                  <span className="text-sm font-bold text-gray-400 tracking-[0.2em] uppercase">Weight</span>
+                  <span className="text-2xl font-black text-gray-900">{summaryInfo.weight}</span>
+                </div>
+              </div>
+            )}
             {/* ① 흰 여백 제거(p-6 제거) + 얇은 회색 테두리 → 이미지 꽉 채움 */}
             <div className="mt-8 bg-white relative overflow-hidden" style={{ border: IMG_BORDER }}>
               {sizeImage ? (
@@ -492,14 +502,6 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
               )}
               <RenderWatermark targetKey="sizeImage" />
             </div>
-            {(summaryInfo?.weight || '').trim() && (
-              <div className="flex justify-center mt-8">
-                <div className="inline-flex items-center gap-4 px-10 py-4 rounded-full border-2 bg-white" style={{ borderColor: isGradient(accent) ? '#c7d2fe' : accent }}>
-                  <span className="text-sm font-bold text-gray-400 tracking-[0.2em] uppercase">Weight</span>
-                  <span className="text-2xl font-black text-gray-900">{summaryInfo.weight}</span>
-                </div>
-              </div>
-            )}
           </section>
           </React.Fragment>
         )}

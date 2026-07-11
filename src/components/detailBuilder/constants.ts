@@ -67,7 +67,8 @@ export const INITIAL_PRODUCT_DATA: ProductData = {
   ],
 
   // [고도몰] 레이아웃 간격 기본값(px) — section=섹션 상하, heading=제목↔내용, element=블록 사이
-  godoSpacing: { section: 56, element: 32, heading: 24 },
+  // 근접성 원칙(사장님 검수 확정): 제목↔내용은 가깝게(heading 작게), 블록↔블록은 넓게(element 크게).
+  godoSpacing: { section: 56, element: 52, heading: 10 },
 };
 
 // ✅ 컬러 프리셋 30종 (label 속성 추가로 에러 해결)

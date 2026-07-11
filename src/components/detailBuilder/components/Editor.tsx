@@ -191,7 +191,7 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
   };
 
   // [고도몰] 레이아웃 간격 조절(±) — data에 저장되어 임시저장/불러오기로 고정 (미리보기에서 마우스 드래그도 가능)
-  const GODO_SPACING_DEFAULT = { section: 56, element: 32, heading: 24 };
+  const GODO_SPACING_DEFAULT = { section: 56, element: 52, heading: 10 }; // 근접성 원칙: 제목↔내용 좁게, 블록↔블록 넓게
   const godoSpacing = data.godoSpacing || GODO_SPACING_DEFAULT;
   const bumpSpacing = (key: 'section' | 'element' | 'heading', delta: number) => {
     onChange(prev => {
