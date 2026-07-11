@@ -215,3 +215,109 @@ export const generateFlowCaptions = async (
   onProgress?.({ done: out.length, total: out.length, phase: '완료' });
   return out;
 };
+
+// ════════════════════════════════════════════════════════════════════════
+// B(변환기 판단 지능) — 기본형→고도몰 섹션형 변환에서 쓰는 재사용 함수.
+//   PoC(test/_gen_poc2.py)에서 실증된 로직의 앱 이식. 하드코딩 순서/스왑 금지 = 내용으로 판단.
+// ════════════════════════════════════════════════════════════════════════
+
+// ── ① 이미지↔슬롯 의미 매칭: VLM이 각 컷을 실제 관찰 → 판정기(Gemma)가 문구 의도에 1:1 배정 ──
+//    반환: slotTexts와 같은 길이 배열, 각 원소 = 배정된 images 인덱스(없으면 -1). 밴드 순서를 신뢰하지 않음.
+const MATCH_VISION_PROMPT =
+  'You are analyzing one cut from a product detail page. List ONLY the distinct physical objects actually visible, ' +
+  'as a short comma-separated list. Then answer exactly, each on its own line: ' +
+  'REMOTE=yes/no (a separate handheld remote controller), CABLE=yes/no (a charging/USB cable), ' +
+  'BUTTONS=yes/no (control buttons shown/annotated), HAND=yes/no (a human hand holding it). Be strictly factual, no guessing.';
+
+export const matchImagesToSlots = async (images: string[], slotTexts: string[]): Promise<number[]> => {
+  const fallback = slotTexts.map((_, i) => (i < images.length ? i : -1)); // 순서대로(폴백)
+  const brain = resolveAgentBrain('design');
+  if (!isBrainConnected(brain.providerId) || images.length === 0 || slotTexts.length === 0) return fallback;
+  const modelsRes = await getModels();
+  const vlm = modelsRes.success ? detectVisionModelId(modelsRes.data || []) : undefined;
+  if (!vlm) return fallback;
+  // 1) VLM 관찰(익명 컷 A/B/…)
+  const labels = images.map((_, i) => String.fromCharCode(65 + i));
+  const descs: string[] = [];
+  for (let i = 0; i < images.length; i++) {
+    try {
+      const small = await downscaleDataUrl(images[i]);
+      const res = await getChatCompletion(
+        [{ role: 'user', content: [{ type: 'text', text: MATCH_VISION_PROMPT }, { type: 'image_url', image_url: { url: small } }] }],
+        vlm, undefined, { temperature: 0.1, maxTokens: 140 },
+      );
+      descs.push(res.success && res.content ? res.content.trim() : '');
+    } catch { descs.push(''); }
+  }
+  // 2) 판정기(Gemma)가 문구 의도 ↔ 컷 내용으로 배정
+  const judgeSys =
+    '당신은 상세페이지 편집자입니다. 각 문구에 "내용상 가장 맞는" 이미지를 1:1로 배정하세요. ' +
+    '문구가 리모컨을 말하면 REMOTE=yes 컷을, 충전/케이블을 말하면 CABLE=yes 컷을, 버튼 조작을 말하면 BUTTONS=yes 컷을 고릅니다. ' +
+    '각 컷은 한 문구에만. 반드시 JSON만 출력: {"0":"컷키", ...} (키=문구 인덱스, 값=컷 키 A/B/…).';
+  const judgeUser =
+    '[이미지 컷 관찰]\n' + descs.map((d, i) => `컷 ${labels[i]}: ${d}`).join('\n') +
+    '\n\n[배정할 문구]\n' + slotTexts.map((t, i) => `문구 ${i}: ${t}`).join('\n') +
+    '\n\nJSON으로만 배정.';
+  const result = await chatWithProvider({
+    providerId: brain.providerId, modelIdOverride: brain.modelId || undefined,
+    purpose: 'agent_run', temperature: 0.1, maxTokens: 120,
+    messages: [{ role: 'system', content: judgeSys }, { role: 'user', content: judgeUser }],
+  });
+  if (!result.ok || !result.content) return fallback;
+  const m = result.content.match(/\{[\s\S]*\}/);
+  if (!m) return fallback;
+  let raw: Record<string, unknown>;
+  try { raw = JSON.parse(m[0]); } catch { return fallback; }
+  const assign = slotTexts.map(() => -1);
+  const used = new Set<number>();
+  for (const [sk, ck] of Object.entries(raw)) {
+    const si = parseInt(String(sk).match(/\d+/)?.[0] ?? '', 10);
+    const cm = String(ck).match(/[A-Za-z]/)?.[0]?.toUpperCase();
+    if (!Number.isNaN(si) && si >= 0 && si < assign.length && cm) {
+      const ci = cm.charCodeAt(0) - 65;
+      if (ci >= 0 && ci < images.length && !used.has(ci)) { assign[si] = ci; used.add(ci); }
+    }
+  }
+  // 배정 누락 슬롯은 남은 이미지 순서대로 채움
+  for (let i = 0; i < assign.length; i++) {
+    if (assign[i] < 0) {
+      for (let ci = 0; ci < images.length; ci++) { if (!used.has(ci)) { assign[i] = ci; used.add(ci); break; } }
+    }
+  }
+  return assign;
+};
+
+// ── ② 의미 단위 줄바꿈: 글자는 그대로, \n 위치만 판단(상품명=고유명/분류 경계, 설명=완결 의미덩어리) ──
+//    안전장치: 공백 제거 후 원문과 일치할 때만 채택(AI가 글자를 변조하면 원문 유지).
+const stripWs = (s: string) => (s || '').replace(/\s+/g, '');
+export const lineBreakForLayout = async (
+  name: string, captions: string[],
+): Promise<{ name: string; captions: string[] }> => {
+  const fallback = { name, captions };
+  const brain = resolveAgentBrain('design');
+  if (!isBrainConnected(brain.providerId)) return fallback;
+  const sys =
+    '당신은 상세페이지 조판 편집자입니다. 주어진 제목과 설명들에 "의미 단위" 줄바꿈만 넣습니다.\n' +
+    '[철칙] 글자·단어·문장부호는 절대 바꾸지 말 것. 오직 줄바꿈(\\n) 위치만 결정.\n' +
+    '[상품명] 제품 고유명과 분류(용도)의 경계에서 2줄로. 예: "핑거 위글 전립선 마사져" → "핑거 위글"+"전립선 마사져".\n' +
+    '[설명] 각 줄이 완결된 의미 덩어리(조사·서술어가 어색하게 잘리지 않게), 한 줄 대략 12~24자, 2~4줄 권장.\n' +
+    '반드시 JSON만 출력: {"name":"...\\n...","caps":["...\\n...", ...]}';
+  const usr = `제목: ${name}\n설명들:\n` + captions.map((c, i) => `[${i}] ${c}`).join('\n') + '\n\n줄바꿈(\\n)만 넣어 JSON으로 출력.';
+  const res = await chatWithProvider({
+    providerId: brain.providerId, modelIdOverride: brain.modelId || undefined,
+    purpose: 'agent_run', temperature: 0.2, maxTokens: 800,
+    messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }],
+  });
+  if (!res.ok || !res.content) return fallback;
+  const m = res.content.match(/\{[\s\S]*\}/);
+  if (!m) return fallback;
+  try {
+    const obj = JSON.parse(m[0]) as { name?: unknown; caps?: unknown };
+    const nm = typeof obj.name === 'string' && stripWs(obj.name) === stripWs(name) ? obj.name : name;
+    const caps = captions.map((c, i) => {
+      const v = Array.isArray(obj.caps) ? obj.caps[i] : undefined;
+      return typeof v === 'string' && stripWs(v) === stripWs(c) ? v : c;
+    });
+    return { name: nm, captions: caps };
+  } catch { return fallback; }
+};
