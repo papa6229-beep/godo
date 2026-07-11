@@ -358,7 +358,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
                   {/* ②박스와 하단 바 동일 너비·직각(라운드 제거)·일체형 */}
                   <div className="w-full flex-1 bg-white overflow-hidden flex items-center justify-center" style={{ border: '2px solid #111827', borderBottom: 'none' }}>
                     {packageImage ? (
-                      <img src={packageImage} className="w-full h-full object-contain p-2 pointer-events-none" alt="Package" />
+                      <img src={packageImage} className="w-full h-full object-contain p-0.5 pointer-events-none" alt="Package" />
                     ) : (
                       <span className="text-gray-300 font-bold text-sm pointer-events-none">PACKAGE</span>
                     )}
