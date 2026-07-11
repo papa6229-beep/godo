@@ -3,7 +3,8 @@
 //   철학([[converter-philosophy-testcase-not-deliverable]]): 고도몰 슬롯=고정 그릇, 기본형=재료. 내용으로 판단.
 //   ⚠️ 아직 미배선(다음: 헤딩감지·밴드추출 프론트가 BasicSource를 만들어 이 함수 호출 → builder_temp_save 주입).
 import type { ProductData, SummaryInfo } from '../types';
-import { matchImagesToSlots, lineBreakForLayout } from './flowCaptionService';
+import { matchImagesToSlots, lineBreakForLayout, classifyImageRoles } from './flowCaptionService';
+import type { BandRole } from './flowCaptionService';
 
 // 기본형에서 추출된 '재료'. 고도몰 슬롯 그릇에 채울 원자재.
 export interface BasicPointSource {
@@ -30,6 +31,73 @@ export interface BasicConvertResult {
   data: Partial<ProductData>;
   notes: string[]; // 변환 로그/이슈(옵션 다수·슬롯 초과 등 향후 확장)
 }
+
+// ── 역할 분류 결과 → BasicSource 조립(구조 배치). 텍스트는 별도(typed=엑셀, baked=캡션생성). ──
+//    규칙: MAIN[0]=메인, MAIN[1](없으면 ACCESSORY[0])=KEY FEATURE, PACKAGE=패키지, SIZE=사이즈,
+//    나머지 제품/부속/조작/케이블 컷=Point 후보(원본 순서 유지 → 상→하 섹션 흐름 보존). HEADING/OTHER 버림.
+export interface AssembleMeta {
+  productNameKr: string;
+  productNameEn?: string;
+  brandName?: string;
+  themeColor?: string;
+  spec?: Partial<SummaryInfo>;
+  keyFeatures?: { title: string; desc: string }[];
+  point1Texts?: string[]; // typed 소스면 엑셀 원문, baked면 생략(캡션 생성 단계에서 채움)
+  point2Texts?: string[];
+  point1Title?: string;
+  point2Title?: string;
+}
+export const assembleBasicSource = (
+  images: string[], roles: BandRole[], meta: AssembleMeta,
+): { source: BasicSource; notes: string[] } => {
+  const notes: string[] = [];
+  const used = new Set<number>();
+  const takeFirst = (r: BandRole): number => {
+    for (let i = 0; i < roles.length; i++) if (roles[i] === r && !used.has(i)) { used.add(i); return i; }
+    return -1;
+  };
+  const mainIdx = takeFirst('MAIN');
+  let featIdx = takeFirst('MAIN');            // 두 번째 깨끗한 누끼 = KEY FEATURE
+  if (featIdx < 0) featIdx = takeFirst('ACCESSORY'); // 없으면 부속컷으로 폴백
+  const sizeIdx = takeFirst('SIZE');
+  const pkgIdx = takeFirst('PACKAGE');
+  // Point 후보: 남은 제품/부속/조작/케이블 컷을 원본 순서로(상→하 섹션 흐름 = point1 먼저)
+  const pointIdx: number[] = [];
+  for (let i = 0; i < roles.length; i++) {
+    if (!used.has(i) && (['ACCESSORY', 'CONTROL', 'CABLE', 'MAIN'] as BandRole[]).includes(roles[i])) {
+      pointIdx.push(i); used.add(i);
+    }
+  }
+  const p1imgs = pointIdx.slice(0, 3).map((i) => images[i]);
+  const p2imgs = pointIdx.slice(3, 6).map((i) => images[i]);
+  if (pointIdx.length > 6) notes.push(`Point 후보 ${pointIdx.length}컷(>6) — 슬롯 초과분은 세로 합치기/영역 추가 판단 필요(향후).`);
+  if (mainIdx < 0) notes.push('MAIN(깨끗한 누끼) 후보 없음 — 메인이미지 수동 지정 필요.');
+
+  const source: BasicSource = {
+    productNameKr: meta.productNameKr,
+    productNameEn: meta.productNameEn,
+    brandName: meta.brandName,
+    themeColor: meta.themeColor,
+    spec: meta.spec,
+    keyFeatures: meta.keyFeatures,
+    mainImage: mainIdx >= 0 ? images[mainIdx] : null,
+    featureImage: featIdx >= 0 ? images[featIdx] : null,
+    sizeImage: sizeIdx >= 0 ? images[sizeIdx] : null,
+    packageImage: pkgIdx >= 0 ? images[pkgIdx] : null,
+    point1: { title: meta.point1Title, texts: meta.point1Texts ?? [], images: p1imgs },
+    point2: { title: meta.point2Title, texts: meta.point2Texts ?? [], images: p2imgs },
+  };
+  return { source, notes };
+};
+
+// 편의: 이미지 배열만으로 역할분류→조립까지 한 번에(추출 지능 end-to-end 앞단).
+export const imagesToBasicSource = async (
+  images: string[], meta: AssembleMeta,
+): Promise<{ source: BasicSource; roles: BandRole[]; notes: string[] }> => {
+  const roles = await classifyImageRoles(images);
+  const { source, notes } = assembleBasicSource(images, roles, meta);
+  return { source, roles, notes };
+};
 
 // 슬롯 k(=텍스트 인덱스)에 배정된 이미지. assign[k] = 이미지 인덱스(-1/범위밖이면 null).
 const pick = (images: string[], assign: number[], k: number): string | null => {

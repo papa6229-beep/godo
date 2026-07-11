@@ -221,6 +221,46 @@ export const generateFlowCaptions = async (
 //   PoC(test/_gen_poc2.py)에서 실증된 로직의 앱 이식. 하드코딩 순서/스왑 금지 = 내용으로 판단.
 // ════════════════════════════════════════════════════════════════════════
 
+// ── ⓪ 밴드 역할 자동분류(추출 지능): VLM이 각 이미지를 고도몰 슬롯 역할로 분류 ──
+//    PoC(test/_b_roles_poc.py)에서 검증된 정제 프롬프트. 핵심: PACKAGE(박스, 제품사진 인쇄돼 있어도) vs ACCESSORY(낱개 제품+리모컨) 구분.
+export type BandRole = 'MAIN' | 'ACCESSORY' | 'CABLE' | 'CONTROL' | 'SIZE' | 'PACKAGE' | 'HEADING' | 'OTHER';
+const BAND_ROLES: BandRole[] = ['MAIN', 'ACCESSORY', 'CABLE', 'CONTROL', 'SIZE', 'PACKAGE', 'HEADING', 'OTHER'];
+const ROLE_PROMPT =
+  'Classify this ONE cut from an adult-product detail page into exactly one ROLE:\n' +
+  'PACKAGE = a rectangular retail BOX/carton (box edges/corners and printed branding text visible). This wins even if a product photo is printed on the box front.\n' +
+  'ACCESSORY = a loose product photographed together with a separate handheld remote (NOT a box)\n' +
+  'MAIN = a clean single product cutout on plain white, no box, no annotations\n' +
+  'CABLE = a charging/USB cable is the main subject\n' +
+  'CONTROL = buttons/usage explained with callout lines or a hand pressing buttons\n' +
+  'SIZE = a dimension diagram (measurement numbers/arrows like cm)\n' +
+  'HEADING = a section-title banner: mostly text/graphic, little or no product\n' +
+  'OTHER = marketing/illustration/text-only or none of the above\n' +
+  'Answer strictly as: ROLE=<one label> | <=6 words why';
+
+// 각 이미지의 역할을 반환(images와 같은 길이). VLM 없거나 실패 시 'OTHER'.
+export const classifyImageRoles = async (images: string[]): Promise<BandRole[]> => {
+  const fallback = images.map(() => 'OTHER' as BandRole);
+  if (!images.length) return fallback;
+  const modelsRes = await getModels();
+  const vlm = modelsRes.success ? detectVisionModelId(modelsRes.data || []) : undefined;
+  if (!vlm) return fallback;
+  const roles: BandRole[] = [];
+  for (const img of images) {
+    try {
+      const small = await downscaleDataUrl(img);
+      const res = await getChatCompletion(
+        [{ role: 'user', content: [{ type: 'text', text: ROLE_PROMPT }, { type: 'image_url', image_url: { url: small } }] }],
+        vlm, undefined, { temperature: 0.1, maxTokens: 50 },
+      );
+      const raw = res.success && res.content ? res.content : '';
+      let r = (raw.match(/ROLE\s*=\s*([A-Z_]+)/i)?.[1] || 'OTHER').toUpperCase();
+      if (r.startsWith('HEADING')) r = 'HEADING'; // VLM이 가끔 'HEADINGS' 반환
+      roles.push((BAND_ROLES.includes(r as BandRole) ? r : 'OTHER') as BandRole);
+    } catch { roles.push('OTHER'); }
+  }
+  return roles;
+};
+
 // ── ① 이미지↔슬롯 의미 매칭: VLM이 각 컷을 실제 관찰 → 판정기(Gemma)가 문구 의도에 1:1 배정 ──
 //    반환: slotTexts와 같은 길이 배열, 각 원소 = 배정된 images 인덱스(없으면 -1). 밴드 순서를 신뢰하지 않음.
 const MATCH_VISION_PROMPT =
