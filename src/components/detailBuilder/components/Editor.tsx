@@ -2,6 +2,73 @@
 import React from 'react';
 import type { ProductData, OptionItem } from '../types';
 import { COLOR_PRESETS } from '../constants';
+import { runBasicConversion } from '../services/godoBasicConvert';
+
+// [고도몰] 기본형 자동변환 패널 — 기본형 상세컷 여러 장 업로드 → AI가 역할분류·슬롯매핑·문구·패키지배치 → ProductData 병합.
+//   격리된 신규 기능(회귀0). LM Studio(dev, qwen+gemma 상주) 필요. 결과는 좌측 입력부·미리보기에 그대로 반영(편집 가능).
+const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }) => {
+  const [imgs, setImgs] = React.useState<string[]>([]);
+  const [busy, setBusy] = React.useState(false);
+  const [phase, setPhase] = React.useState('');
+  const [notes, setNotes] = React.useState<string[]>([]);
+  const onFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    Promise.all(files.map(f => new Promise<string>(res => { const r = new FileReader(); r.onloadend = () => res(r.result as string); r.readAsDataURL(f); })))
+      .then(urls => setImgs(prev => [...prev, ...urls]));
+    e.target.value = '';
+  };
+  const run = async () => {
+    if (busy || !imgs.length) return;
+    if (!(data.productNameKr || '').trim()) { alert('상품명(한글)을 먼저 입력해주세요. AI가 문구·줄바꿈에 사용합니다.'); return; }
+    setBusy(true); setNotes([]);
+    try {
+      const res = await runBasicConversion(imgs, {
+        productNameKr: data.productNameKr,
+        productNameEn: data.productNameEn,
+        brandName: data.brandName,
+        themeColor: data.themeColor,
+        spec: data.summaryInfo,
+      }, (p) => setPhase(p.phase));
+      onChange(prev => ({ ...prev, ...res.data }));
+      setNotes(res.notes || []);
+    } catch (err: any) {
+      alert('자동변환 실패: ' + (err?.message || String(err)) + '\n(LM Studio에 qwen+gemma가 상주해 있는지 확인)');
+    } finally { setBusy(false); setPhase(''); }
+  };
+  return (
+    <div className="rounded-lg bg-emerald-900/20 border border-emerald-500/40 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-bold text-emerald-300">🤖 기본형 자동변환 (AI)</span>
+        <span className="text-[10px] text-slate-500">{imgs.length}장</span>
+      </div>
+      <p className="text-[11px] text-slate-400 leading-relaxed">기본형 상세컷을 위→아래 순서로 올리면 AI가 <b className="text-emerald-300">역할 분류·슬롯 매핑·문구·패키지 배치</b>를 자동 수행합니다. (상품명 먼저 입력 · LM Studio dev 필요)</p>
+      <div className="flex items-center gap-2">
+        <label className={`text-xs px-3 py-1.5 rounded cursor-pointer font-bold transition-colors ${busy ? 'bg-slate-700/50 text-slate-500' : 'bg-white/10 text-slate-200 hover:bg-white/20'}`}>
+          + 상세컷 추가
+          <input type="file" accept="image/*" multiple className="sr-only" onChange={onFiles} disabled={busy} />
+        </label>
+        {imgs.length > 0 && !busy && <button onClick={() => setImgs([])} className="text-[11px] text-red-400 font-bold hover:text-red-600 underline">비우기</button>}
+        <div className="flex-1" />
+        <button onClick={run} disabled={busy || !imgs.length}
+          className="text-xs font-bold bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30 disabled:opacity-40 px-3 py-1.5 rounded transition-colors">
+          {busy ? '변환 중…' : '자동변환 실행'}
+        </button>
+      </div>
+      {imgs.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          {imgs.slice(0, 12).map((u, i) => <img key={i} src={u} className="w-9 h-9 object-cover rounded border border-white/10 bg-white" alt={`cut-${i}`} />)}
+          {imgs.length > 12 && <span className="text-[10px] text-slate-500 self-end">+{imgs.length - 12}</span>}
+        </div>
+      )}
+      {busy && <p className="text-[11px] text-emerald-400 font-bold">⏳ {phase}…</p>}
+      {notes.length > 0 && (
+        <ul className="text-[10px] text-amber-400 leading-relaxed list-disc list-inside">
+          {notes.map((n, i) => <li key={i}>{n}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+});
 
 // =============================================================================
 // ✅ 컴포넌트들을 Editor 함수 밖으로 꺼냈습니다 (입력 끊김 해결의 핵심!)
@@ -332,7 +399,10 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
 
   return (
     <div className="p-6 pb-32 space-y-8 relative">
-      
+
+      {/* [고도몰] 기본형 자동변환 패널(godo 전용) — 상세컷 업로드 → AI 자동조립 */}
+      {isGodo && <BasicConvertPanel data={data} onChange={onChange} />}
+
       {/* 1. 기본 설정 — ① godo는 섹션 onClick 제거(입력창 onFocus가 각자 위치로 스크롤하도록, 덮어쓰기 방지) */}
       <section className="space-y-4" onClick={isGodo ? undefined : () => scrollTo('preview-top')}>
         <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">📂 기본 설정</h2>

@@ -3,7 +3,7 @@
 //   철학([[converter-philosophy-testcase-not-deliverable]]): 고도몰 슬롯=고정 그릇, 기본형=재료. 내용으로 판단.
 //   ⚠️ 아직 미배선(다음: 헤딩감지·밴드추출 프론트가 BasicSource를 만들어 이 함수 호출 → builder_temp_save 주입).
 import type { ProductData, SummaryInfo } from '../types';
-import { matchImagesToSlots, lineBreakForLayout, classifyImageRoles } from './flowCaptionService';
+import { matchImagesToSlots, lineBreakForLayout, classifyImageRoles, generateCaptionsForImages } from './flowCaptionService';
 import type { BandRole } from './flowCaptionService';
 
 // 기본형에서 추출된 '재료'. 고도몰 슬롯 그릇에 채울 원자재.
@@ -238,4 +238,33 @@ export const convertBasicToGodo = async (
   }
 
   return { data, notes };
+};
+
+// ── 오케스트레이터: 이미지 배열 → (역할분류 → 조립 → baked면 캡션생성 → 변환·매칭·줄바꿈·패키지배치) 한 번에 ──
+//    UI(Editor)가 이 함수만 부르면 됨. onProgress로 단계 진행 표시.
+export interface RunProgress { phase: string }
+export const runBasicConversion = async (
+  images: string[],
+  meta: AssembleMeta,
+  onProgress?: (p: RunProgress) => void,
+): Promise<BasicConvertResult & { roles: BandRole[] }> => {
+  onProgress?.({ phase: '이미지 역할 분류(VLM)' });
+  const roles = await classifyImageRoles(images);
+  const { source, notes: aNotes } = assembleBasicSource(images, roles, meta);
+
+  // baked(원본 설명 텍스트 없음): Point 이미지에 VLM→Gemma 캡션 생성(이미지와 정렬 → 재매칭 생략)
+  const p1imgs = source.point1?.images ?? [];
+  const p2imgs = source.point2?.images ?? [];
+  let skipMatch = false;
+  if (!(meta.point1Texts?.length) && (p1imgs.length || p2imgs.length)) {
+    onProgress?.({ phase: '설명 문구 생성(VLM→Gemma)' });
+    const caps = await generateCaptionsForImages([...p1imgs, ...p2imgs], { productNameKr: meta.productNameKr, brandName: meta.brandName });
+    source.point1 = { title: source.point1?.title, images: p1imgs, texts: caps.slice(0, p1imgs.length) };
+    source.point2 = { title: source.point2?.title, images: p2imgs, texts: caps.slice(p1imgs.length) };
+    skipMatch = true;
+  }
+
+  onProgress?.({ phase: '슬롯 조립·의미 줄바꿈·패키지 배치' });
+  const res = await convertBasicToGodo(source, { skipImageMatch: skipMatch });
+  return { data: res.data, roles, notes: [...aNotes, ...res.notes] };
 };
