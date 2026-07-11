@@ -257,6 +257,41 @@ const ROLE_PROMPT =
   'OTHER = marketing/illustration/text-only or none of the above\n' +
   'Answer strictly as: ROLE=<one label> | <=6 words why';
 
+// 배치판(빠름·대량 변환용): 여러 이미지를 한 VLM 콜로 분류(직렬 N콜 → 1콜). 컨텍스트 과부하 방지로 chunk장씩.
+const ROLE_BATCH_PROMPT =
+  '여러 상세페이지 컷이 [1][2]… 라벨과 함께 주어집니다. 각 컷의 ROLE을 분류하세요.\n' +
+  'PACKAGE=직사각 소매 박스(테두리/브랜딩, 제품사진 인쇄돼 있어도 우선) · ACCESSORY=박스 아닌 낱개 제품+리모컨 · ' +
+  'MAIN=흰배경 단독 깨끗한 누끼(주석X) · CABLE=충전/USB 케이블 · CONTROL=버튼/조작 콜아웃·손 · SIZE=치수 도해(cm 숫자) · ' +
+  'HEADING=텍스트 위주 섹션 제목 · OTHER=그 외.\n' +
+  '각 컷마다 한 줄씩 "번호=ROLE"로만 출력(예: 1=MAIN). 다른 말 금지.';
+
+export const classifyImageRolesBatch = async (images: string[], chunk = 12): Promise<BandRole[]> => {
+  const roles: BandRole[] = images.map(() => 'OTHER' as BandRole);
+  if (!images.length) return roles;
+  const modelsRes = await getModels();
+  const vlm = modelsRes.success ? detectVisionModelId(modelsRes.data || []) : undefined;
+  if (!vlm) return roles;
+  for (let start = 0; start < images.length; start += chunk) {
+    const group = images.slice(start, start + chunk);
+    const small = await Promise.all(group.map((c) => downscaleDataUrl(c, 384, 0.8)));
+    const content: any[] = [{ type: 'text', text: ROLE_BATCH_PROMPT }];
+    small.forEach((s, i) => { content.push({ type: 'text', text: `[${i + 1}]` }, { type: 'image_url', image_url: { url: s } }); });
+    try {
+      const res = await getChatCompletion([{ role: 'user', content }], vlm, undefined, { temperature: 0.1, maxTokens: 12 * group.length + 24 });
+      const txt = res.success && res.content ? res.content : '';
+      const re = /(\d+)\s*=\s*([A-Za-z]+)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(txt))) {
+        const idx = parseInt(m[1], 10) - 1;
+        let r = m[2].toUpperCase();
+        if (r.startsWith('HEADING')) r = 'HEADING';
+        if (idx >= 0 && idx < group.length && BAND_ROLES.includes(r as BandRole)) roles[start + idx] = r as BandRole;
+      }
+    } catch { /* 그룹 실패는 OTHER 유지 */ }
+  }
+  return roles;
+};
+
 // 각 이미지의 역할을 반환(images와 같은 길이). VLM 없거나 실패 시 'OTHER'.
 export const classifyImageRoles = async (images: string[]): Promise<BandRole[]> => {
   const fallback = images.map(() => 'OTHER' as BandRole);

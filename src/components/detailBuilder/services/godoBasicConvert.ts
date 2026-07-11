@@ -3,7 +3,7 @@
 //   철학([[converter-philosophy-testcase-not-deliverable]]): 고도몰 슬롯=고정 그릇, 기본형=재료. 내용으로 판단.
 //   ⚠️ 아직 미배선(다음: 헤딩감지·밴드추출 프론트가 BasicSource를 만들어 이 함수 호출 → builder_temp_save 주입).
 import type { ProductData, SummaryInfo } from '../types';
-import { matchImagesToSlots, lineBreakForLayout, classifyImageRoles, generateCaptionsForImages } from './flowCaptionService';
+import { matchImagesToSlots, lineBreakForLayout, classifyImageRolesBatch } from './flowCaptionService';
 import type { BandRole } from './flowCaptionService';
 
 // 기본형에서 추출된 '재료'. 고도몰 슬롯 그릇에 채울 원자재.
@@ -94,7 +94,7 @@ export const assembleBasicSource = (
 export const imagesToBasicSource = async (
   images: string[], meta: AssembleMeta,
 ): Promise<{ source: BasicSource; roles: BandRole[]; notes: string[] }> => {
-  const roles = await classifyImageRoles(images);
+  const roles = await classifyImageRolesBatch(images);
   const { source, notes } = assembleBasicSource(images, roles, meta);
   return { source, roles, notes };
 };
@@ -250,23 +250,23 @@ export const runBasicConversion = async (
   meta: AssembleMeta,
   onProgress?: (p: RunProgress) => void,
 ): Promise<BasicConvertResult & { roles: BandRole[] }> => {
-  onProgress?.({ phase: '이미지 역할 분류(VLM)' });
-  const roles = await classifyImageRoles(images);
+  // 속도 우선(1000+ 상품): 역할분류는 이미지마다가 아니라 '한 번에 묶어서' 1콜.
+  onProgress?.({ phase: '이미지 자리 잡기(한 번에)' });
+  const roles = await classifyImageRolesBatch(images);
   const { source, notes: aNotes } = assembleBasicSource(images, roles, meta);
+  const notes = [...aNotes];
 
-  // baked(원본 설명 텍스트 없음): Point 이미지에 VLM→Gemma 캡션 생성(이미지와 정렬 → 재매칭 생략)
-  const p1imgs = source.point1?.images ?? [];
-  const p2imgs = source.point2?.images ?? [];
-  let skipMatch = false;
-  if (!(meta.point1Texts?.length) && (p1imgs.length || p2imgs.length)) {
-    onProgress?.({ phase: '설명 문구 생성(VLM→Gemma)' });
-    const caps = await generateCaptionsForImages([...p1imgs, ...p2imgs], { productNameKr: meta.productNameKr, brandName: meta.brandName });
-    source.point1 = { title: source.point1?.title, images: p1imgs, texts: caps.slice(0, p1imgs.length) };
-    source.point2 = { title: source.point2?.title, images: p2imgs, texts: caps.slice(p1imgs.length) };
-    skipMatch = true;
+  // ⚠️ 느린 '사진 보고 글 새로 짓기'는 하지 않는다(1개당 수 분 → 불가). 원칙: 있는 글 살짝 변주 / 없으면 눈검수.
+  //   - 텍스트가 주어지면(엑셀 원본) 이미지와 이미 짝이라 순서 유지(skipImageMatch). 라이트 리라이트는 별도 단계에서.
+  //   - 텍스트가 없으면(baked, 글이 그림에 박힘) Point 설명은 비워두고 대시보드 눈검수에서 채운다.
+  const hasPointText = ((meta.point1Texts?.length || 0) + (meta.point2Texts?.length || 0)) > 0;
+  const pointImgCount = (source.point1?.images.length || 0) + (source.point2?.images.length || 0);
+  if (!hasPointText && pointImgCount > 0) {
+    notes.push('원본 설명 텍스트 없음(baked) — Point 설명은 비움(대시보드 눈검수에서 채움). 느린 자동생성 안 함.');
   }
 
-  onProgress?.({ phase: '슬롯 조립·의미 줄바꿈·패키지 배치' });
-  const res = await convertBasicToGodo(source, { skipImageMatch: skipMatch });
-  return { data: res.data, roles, notes: [...aNotes, ...res.notes] };
+  onProgress?.({ phase: '슬롯 조립·줄바꿈·패키지 배치' });
+  // 엑셀 원본 텍스트는 이미지와 짝(순서 정렬)이므로 재매칭 불필요 → skipImageMatch로 속도 확보.
+  const res = await convertBasicToGodo(source, { skipImageMatch: true });
+  return { data: res.data, roles, notes: [...notes, ...res.notes] };
 };
