@@ -205,6 +205,8 @@ export const convertBasicToGodo = async (
     featureImage: src.featureImage ?? null,
     sizeImage: src.sizeImage ?? null,
     packageImage: src.packageImage ?? null,
+    // 패키지 컷이 있으면 표시 활성화(INITIAL은 false라 안 켜면 오버레이가 안 뜸)
+    ...(src.packageImage ? { isPackageImageEnabled: true } : {}),
 
     point1Title: src.point1?.title ?? '',
     aiPoint1Desc: cap1[0] ?? '',
