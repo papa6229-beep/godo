@@ -105,6 +105,51 @@ const pick = (images: string[], assign: number[], k: number): string | null => {
   return ci != null && ci >= 0 && ci < images.length ? images[ci] : null;
 };
 
+// ── 패키지 자동 배치(수동 이동 불필요): 메인이미지 제품 bbox를 canvas로 읽어 제품/텍스트 안 가리는 우하단에 배치 ──
+//    PoC(test/_gen_poc2.py compute_package_layout)의 브라우저 이식. 히어로 좌표(폭 700) 기준.
+//    ⚠️ CORS: base64(추출 이미지)면 OK, CDN URL은 taint 시 null 반환(폴백=기본 위치). 원격은 프록시 URL 권장.
+export const computePackageLayout = (
+  mainImageSrc: string,
+  opts: { heroWidth?: number; pkgWidth?: number } = {},
+): Promise<{ x: number; y: number; width: number; height: number } | null> =>
+  new Promise((resolve) => {
+    if (typeof document === 'undefined' || !mainImageSrc) return resolve(null);
+    const heroW = opts.heroWidth ?? 700;
+    const pkgW = opts.pkgWidth ?? 196;
+    const pkgH = Math.round(pkgW * 1.16);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const iw = img.naturalWidth, ih = img.naturalHeight;
+        if (!iw || !ih) return resolve(null);
+        const aw = 200, ah = Math.max(1, Math.round((ih * aw) / iw)); // 분석용 축소
+        const c = document.createElement('canvas'); c.width = aw; c.height = ah;
+        const ctx = c.getContext('2d'); if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0, aw, ah);
+        let px: Uint8ClampedArray;
+        try { px = ctx.getImageData(0, 0, aw, ah).data; } catch { return resolve(null); } // taint → 폴백
+        const mainH = Math.round((ih * heroW) / iw);
+        const xDisp = heroW - pkgW - 6;                       // 우측 정렬(텍스트는 좌측이라 안전)
+        const c0 = Math.max(0, Math.floor((xDisp / heroW) * aw));
+        const c1 = Math.min(aw, Math.ceil(((xDisp + pkgW) / heroW) * aw));
+        let prodBottomRow = -1;                                // 패키지 컬럼 내 제품(비-흰) 최하단
+        for (let y = ah - 1; y >= 0 && prodBottomRow < 0; y--) {
+          for (let x = c0; x < c1; x++) {
+            const i = (y * aw + x) * 4;
+            if (px[i + 3] > 10 && Math.min(px[i], px[i + 1], px[i + 2]) < 245) { prodBottomRow = y; break; }
+          }
+        }
+        const prodBottomDisp = prodBottomRow >= 0 ? Math.round((prodBottomRow / ah) * mainH) : 0;
+        const straddleY = Math.round(mainH - pkgH * 0.5);      // 하단 모서리에 반쯤 걸침(컨셉)
+        const y = Math.max(8, Math.max(prodBottomDisp + 6, straddleY)); // 제품 아래로 내리되 최소 모서리 걸침
+        resolve({ x: xDisp, y, width: pkgW, height: pkgH });
+      } catch { resolve(null); }
+    };
+    img.onerror = () => resolve(null);
+    img.src = mainImageSrc;
+  });
+
 // Point 재료 → 이미지↔문구 매칭(내용 기반). 반환: { assign, texts }.
 //   skipMatch=true(baked: 캡션이 이미지에서 생성돼 이미 정렬됨) → 재매칭 생략(순서 유지).
 const matchPoint = async (p: BasicPointSource | undefined, skipMatch: boolean): Promise<{ assign: number[]; texts: string[]; images: string[] }> => {
@@ -177,6 +222,13 @@ export const convertBasicToGodo = async (
     point2Image2: pick(m2.images, m2.assign, 1),
     point2Image3: pick(m2.images, m2.assign, 2),
   };
+
+  // 패키지 자동 배치: 메인+패키지 있으면 제품 안 가리는 위치를 계산해 packageLayout 설정(수동 이동 불필요).
+  if (src.mainImage && src.packageImage) {
+    const layout = await computePackageLayout(src.mainImage);
+    if (layout) data.packageLayout = layout;
+    else notes.push('패키지 자동배치 계산 실패(CORS/taint 가능) — 기본 위치 사용, 필요시 수동 조정.');
+  }
 
   if (src.point1 && (src.point1.images.length > 3 || src.point1.texts.length > 3)) {
     notes.push('Point01 재료가 3슬롯 초과 — 영역 추가 또는 이미지 세로 합치기 판단 필요(향후 변수 대응).');
