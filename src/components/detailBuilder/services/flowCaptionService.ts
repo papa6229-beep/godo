@@ -221,6 +221,26 @@ export const generateFlowCaptions = async (
 //   PoC(test/_gen_poc2.py)에서 실증된 로직의 앱 이식. 하드코딩 순서/스왑 금지 = 내용으로 판단.
 // ════════════════════════════════════════════════════════════════════════
 
+// ── baked 기본형: 원본 설명이 픽셀에 박혀 없음 → 각 이미지에 VLM 묘사→Gemma 캡션 생성(이미지와 정렬됨) ──
+export const generateCaptionsForImages = async (
+  images: string[],
+  ctx: { productNameKr?: string; brandName?: string; headerText?: string } = {},
+): Promise<string[]> => {
+  const brain = resolveAgentBrain('design');
+  if (!isBrainConnected(brain.providerId)) return images.map(() => '');
+  const modelsRes = await getModels();
+  const vlm = modelsRes.success ? detectVisionModelId(modelsRes.data || []) : undefined;
+  const pseudoData = { productNameKr: ctx.productNameKr || '', brandName: ctx.brandName || '', flowHeaderText: ctx.headerText || '' } as ProductData;
+  const out: string[] = [];
+  for (const img of images) {
+    try {
+      const desc = vlm ? await describeImage(img, vlm) : '';
+      out.push(await writeCaption(brain, pseudoData, desc));
+    } catch { out.push(''); }
+  }
+  return out;
+};
+
 // ── ⓪ 밴드 역할 자동분류(추출 지능): VLM이 각 이미지를 고도몰 슬롯 역할로 분류 ──
 //    PoC(test/_b_roles_poc.py)에서 검증된 정제 프롬프트. 핵심: PACKAGE(박스, 제품사진 인쇄돼 있어도) vs ACCESSORY(낱개 제품+리모컨) 구분.
 export type BandRole = 'MAIN' | 'ACCESSORY' | 'CABLE' | 'CONTROL' | 'SIZE' | 'PACKAGE' | 'HEADING' | 'OTHER';

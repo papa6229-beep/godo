@@ -106,10 +106,11 @@ const pick = (images: string[], assign: number[], k: number): string | null => {
 };
 
 // Point 재료 → 이미지↔문구 매칭(내용 기반). 반환: { assign, texts }.
-const matchPoint = async (p: BasicPointSource | undefined): Promise<{ assign: number[]; texts: string[]; images: string[] }> => {
+//   skipMatch=true(baked: 캡션이 이미지에서 생성돼 이미 정렬됨) → 재매칭 생략(순서 유지).
+const matchPoint = async (p: BasicPointSource | undefined, skipMatch: boolean): Promise<{ assign: number[]; texts: string[]; images: string[] }> => {
   const texts = p?.texts ?? [];
   const images = p?.images ?? [];
-  if (!texts.length || !images.length) {
+  if (skipMatch || !texts.length || !images.length) {
     return { assign: texts.map((_, i) => (i < images.length ? i : -1)), texts, images };
   }
   const assign = await matchImagesToSlots(images, texts); // VLM 관찰→Gemma 판정(하드코딩 순서 불신)
@@ -120,7 +121,10 @@ const matchPoint = async (p: BasicPointSource | undefined): Promise<{ assign: nu
  * 기본형 재료 → 고도몰 섹션형 ProductData(Partial) 조립.
  * builder_temp_save(loadTemporary의 {...prev,...parsed})로 주입하면 좌측 입력부까지 채워진 편집 가능 상태가 됨.
  */
-export const convertBasicToGodo = async (src: BasicSource): Promise<BasicConvertResult> => {
+export const convertBasicToGodo = async (
+  src: BasicSource,
+  opts: { skipImageMatch?: boolean } = {},
+): Promise<BasicConvertResult> => {
   const notes: string[] = [];
 
   // 스펙: 고도몰 7칸 기준. 사이즈는 규칙상 항상 '상세페이지 참조'(옵션별 치수 다양·픽셀OCR 부정확).
@@ -134,9 +138,9 @@ export const convertBasicToGodo = async (src: BasicSource): Promise<BasicConvert
     maker: src.brandName ?? src.spec?.maker ?? '',
   };
 
-  // ① 이미지↔문구 의미 매칭(Point01/02)
-  const m1 = await matchPoint(src.point1);
-  const m2 = await matchPoint(src.point2);
+  // ① 이미지↔문구 의미 매칭(Point01/02). baked(캡션 이미지생성)면 이미 정렬 → skipImageMatch.
+  const m1 = await matchPoint(src.point1, !!opts.skipImageMatch);
+  const m2 = await matchPoint(src.point2, !!opts.skipImageMatch);
 
   // ② 의미 단위 줄바꿈: 상품명 + 모든 Point 설명을 한 번에(글자 불변·\n만)
   const allCaps = [...m1.texts, ...m2.texts];
