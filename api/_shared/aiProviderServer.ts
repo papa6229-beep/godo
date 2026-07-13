@@ -223,9 +223,10 @@ async function callClaude(req: AiChatServerRequest, timeoutMs: number): Promise<
   const reqBody: Record<string, unknown> = {
     model: req.modelId,
     max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-    temperature: req.temperature ?? 0.7,
     messages
   };
+  // 최신 Claude 모델(claude-opus-4-8 등)은 temperature를 deprecated → 보내면 400.
+  // 안전하게 생략(기본값 사용). 구모델은 어차피 기본값으로 동작.
   if (systemText) reqBody.system = systemText;
 
   const result = await fetchJson(
