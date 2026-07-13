@@ -169,50 +169,51 @@ export const readBasicLayout = async (
 // ── 통이미지 단순형(버진루프/트리니티류) → flow(사진+설명 지그재그) 리더 ──
 //   구조: 상단 큰 이미지(패키지/제품/마케팅) + 하단 [사진→그 아래 설명] 반복.
 //   속도 우선 → 읽기 + 라이트 리라이트 + ##강조##를 1패스로. 지그재그 배치는 PreviewGodoFlow가 자동.
+export interface TypedBand { dataUrl: string; type: 'PHOTO' | 'TEXT' | 'LINE' }
 export interface BakedFlowResult {
-  topIndices: number[];                               // 상단 큰 이미지 밴드(들) → 풀폭(캡션 없음)
-  blocks: { imageIndex: number; caption: string }[];  // 하단 사진+설명 쌍(설명=리라이트+강조 완료)
+  mainIndex: number;                                  // 상단 대표(메인) 이미지 밴드 → 캡션 없이 풀폭. 없으면 -1
+  blocks: { imageIndex: number; caption: string }[];  // [사진 + 리라이트+강조 캡션]
   notes: string[];
 }
 
 const BAKED_FLOW_SYSTEM = [
-  '당신은 국내(한국) 성인용품 쇼핑몰 상세페이지 편집자입니다. 입력은 한 상품의 통이미지를 위→아래로 자른 밴드들([0],[1],...)입니다.',
-  '목표: 각 이미지를 "마케팅 이미지" 또는 "제품 블록"으로 판별하고, 제품 블록은 [이미지 + 그 설명]으로 만든다.',
+  '당신은 국내(한국) 성인용품 쇼핑몰 상세페이지 편집자입니다. 입력은 통이미지를 위→아래로 자른 밴드들입니다.',
+  '각 밴드는 [i](사진) 또는 [i](설명글)로 라벨됩니다. (사진)=제품/패키지/마케팅 이미지. (설명글)=그 위 사진을 설명하는 텍스트 줄.',
   '',
-  '[가장 중요한 판별 규칙]',
-  '· 제품 블록 = [이미지 + 바로 "아래"의 한글 설명 문장]. 이 한글 문장이 블록의 끝(마침표) 역할.',
-  '· 구분자(설명 문장)는 "한글 위주 문장"이다. 상품명 때문에 영어/일본어가 조금 섞일 순 있으나, 통짜 일본어/영어 텍스트는 구분자가 아니다(그건 마케팅 이미지에 박힌 글).',
-  '· 상품명·옵션명 "헤딩"은 구분자가 아니다(문장이 아님). 예: "버진 루프 하드"(금색 밑줄 있어도), "TORNADO/SPHERE" 같은 이름 단어. 이미지 "위"에 오는 헤딩/상품명은 무시.',
-  '· 마케팅 이미지 = "아래에 한글 설명 문장이 없는 이미지." 일본어 잔뜩 박힘/사용법 다이어그램/색 테두리 박스 안이어도, 아래 한글 문장이 없으면 마케팅이다.',
-  '  (함정: 색 박스 안 마케팅 + 그 아래 상품명(금색 밑줄)이 분리이미지처럼 보여도, 상품명은 문장이 아니므로 블록이 아니다. 진짜 블록은 그 아래 [이미지 + 한글 설명문장].)',
-  '· 한 블록 이미지에 여러 패키지/제품/뷰가 있어도 설명 문장이 하나면 1블록. 치수 텍스트(182g·13.5cm·66mm 등)는 이미지 일부이므로 그대로 둔다.',
+  '[할 일]',
+  '1. mainIndex: 상단의 "가장 크고 대표적인 (사진)" 하나. 마케팅 이미지가 있으면 그것, 없으면 제품+패키지가 함께 나온 상단 대표 컷. 반드시 1개(캡션 없이 위 풀폭). (설명글)은 절대 아님.',
+  '2. blocks: mainIndex를 제외한 각 제품 (사진)마다 {imageIndex: 그 (사진) 밴드 번호, caption: 그 사진 "바로 아래 (설명글)"을 읽어 리라이트한 문구}. 위→아래 순서.',
+  '   · (설명글) 밴드는 이미지가 아니다 → imageIndex로 쓰지 말 것(캡션 근거로만).',
+  '   · 바로 아래에 (설명글)이 없는 (사진)(순수 마케팅/헤딩성)은 blocks에 넣지 말 것.',
   '',
-  '[출력할 것]',
-  '1. topIndices: 마케팅 이미지(아래 한글 설명 문장 없음) 밴드 번호(들). 보통 상단.',
-  '2. blocks: 제품 블록마다 {imageIndex: 그 제품 이미지 밴드 번호, caption: 바로 아래 한글 설명을 읽어 리라이트한 문구}. 위→아래 순서 유지.',
-  '   · 텍스트만 있는 밴드(설명 줄/헤딩)는 이미지가 아니다 → imageIndex로 쓰지 말 것.',
+  '[구분 규칙]',
+  '· 상품명·옵션명 "헤딩"(예 "버진 루프 하드"(금색 밑줄), "TORNADO/SPHERE" 같은 이름 단어)은 설명이 아님 → caption으로 쓰지 말 것.',
+  '· 통짜 일본어/영어 텍스트는 설명(구분자)이 아님. 설명은 "한글 위주 문장"이다(상품명 때문에 영/일 조금 섞일 순 있음).',
   '[caption 규칙]',
-  '· 이미지 아래 원문 한글 설명을 근거로 "표현·톤만" 자연스럽게 변주. 숫자/사이즈/무게/재질/기능 등 팩트는 원문 그대로.',
-  '· 사진만 보고 없는 문장 창작 금지(원문 설명이 근거). 의미 단위 줄바꿈(\\n).',
-  '· 각 caption에서 가장 중요한 소구 어구 1곳만 ##문구##로 감쌀 것(빨강 강조).',
+  '· 원문 설명을 근거로 표현·톤만 자연스럽게 변주. 숫자/사이즈/무게/재질/기능 등 팩트는 원문 그대로. 사진만 보고 창작 금지.',
+  '· 의미 단위 줄바꿈(\\n). 가장 중요한 소구 어구 1곳만 ##문구##로 감쌀 것.',
   '',
   '[출력] JSON 하나만(코드펜스/설명/머리말 금지):',
-  '{"topIndices":[0],"blocks":[{"imageIndex":2,"caption":"..\\n.."}],"notes":[]}',
+  '{"mainIndex":0,"blocks":[{"imageIndex":2,"caption":"..\\n.."}],"notes":[]}',
 ].join('\n');
 
-export const readBakedFlow = async (bands: string[], ctx: BasicReadContext): Promise<BakedFlowResult> => {
+export const readBakedFlow = async (bands: TypedBand[], ctx: BasicReadContext): Promise<BakedFlowResult> => {
   if (!hasProviderKey(CONVERTER_PROVIDER)) {
     throw new Error('변환기 AI(Claude) 키가 연결되어 있지 않습니다. 관리자 설정 → AI 연결에서 Claude API 키를 붙여넣어 주세요.');
   }
-  const small = await Promise.all(bands.map((b) => downscale(b)));
+  const small = await Promise.all(bands.map((b) => downscale(b.dataUrl)));
   const content: ChatContentPart[] = [{
     type: 'text',
     text:
       `상품명: ${ctx.productNameKr || ''}\n브랜드: ${ctx.brandName || ''}\n` +
       (ctx.introText ? `상단 요약(근거): ${ctx.introText.slice(0, 500)}\n` : '') +
-      `\n밴드 ${small.length}장을 위→아래 순서로 봅니다. 규칙대로 JSON 하나만 출력하세요.`,
+      `\n밴드 ${small.length}개를 위→아래 순서로 봅니다. (사진)/(설명글) 라벨을 보고 규칙대로 JSON 하나만.`,
   }];
-  small.forEach((s, i) => { content.push({ type: 'text', text: `[${i}]` }); content.push({ type: 'image', image: s }); });
+  small.forEach((s, i) => {
+    const label = bands[i].type === 'TEXT' ? `[${i}](설명글)` : `[${i}](사진)`;
+    content.push({ type: 'text', text: label });
+    content.push({ type: 'image', image: s });
+  });
 
   const res = await chatWithProvider({
     providerId: CONVERTER_PROVIDER,
@@ -226,12 +227,12 @@ export const readBakedFlow = async (bands: string[], ctx: BasicReadContext): Pro
     const text = stripFence(res.content);
     const m = text.match(/\{[\s\S]*\}/);
     const obj: any = m ? JSON.parse(m[0]) : {};
-    const topIndices = (Array.isArray(obj.topIndices) ? obj.topIndices : []).map((v: any) => num(v)).filter((n: number) => n >= 0);
+    const mainIndex = num(obj.mainIndex);
     const blocks = (Array.isArray(obj.blocks) ? obj.blocks : [])
       .map((b: any) => ({ imageIndex: num(b?.imageIndex), caption: str(b?.caption) }))
       .filter((b: any) => b.imageIndex >= 0);
     const notes = Array.isArray(obj.notes) ? obj.notes.map(str).filter(Boolean) : [];
-    return { topIndices, blocks, notes };
+    return { mainIndex, blocks, notes };
   } catch {
     throw new Error('AI 응답 해석 실패(JSON 파싱).');
   }

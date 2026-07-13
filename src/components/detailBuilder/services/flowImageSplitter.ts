@@ -241,6 +241,92 @@ export const extractProductImages = async (
   return segments;
 };
 
+export interface ClassifiedSegment { dataUrl: string; y: number; height: number; type: 'PHOTO' | 'TEXT' | 'LINE' }
+
+// 통이미지 → 밴드별 분류(PHOTO/TEXT/LINE) + 각 밴드 크롭. extractProductImages와 같은 픽셀 로직이나
+//   PHOTO만 남기지 않고 전부(타입 붙여) 반환 → 통이미지 flow 변환에서 [깨끗한 사진]과 [설명 텍스트]를 분리해 쓴다.
+export const splitClassified = async (
+  source: string | HTMLImageElement,
+  opts: ExtractOptions = {},
+): Promise<ClassifiedSegment[]> => {
+  const img = typeof source === 'string' ? await loadImage(source) : source;
+  const W = img.naturalWidth || img.width;
+  const H = img.naturalHeight || img.height;
+  if (!W || !H) return [];
+  const whiteThr = opts.whiteThreshold ?? 232;
+  const blankFrac = opts.blankFrac ?? 0.985;
+  const colorSat = opts.colorSat ?? 45;
+  const inkLum = opts.inkLum ?? 115;
+  const inkSat = opts.inkSat ?? 40;
+  const textMaxH = opts.textMaxH ?? 75;
+  const textMaxColor = opts.textMaxColor ?? 0.04;
+  const textMaxInk = opts.textMaxInk ?? 0.20;
+  const lineMaxH = opts.lineMaxH ?? 8;
+  const minPhotoH = opts.minPhotoH ?? 40;
+  const mergeGap = opts.mergeGapPx ?? 24;
+  const sampleCols = opts.sampleCols ?? 64;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return [];
+  ctx.drawImage(img, 0, 0);
+  let data: Uint8ClampedArray;
+  try { data = ctx.getImageData(0, 0, W, H).data; }
+  catch { throw new Error('이미지 픽셀을 읽을 수 없습니다(CORS taint). 프록시/base64 경유로 로드하세요.'); }
+
+  const colStep = Math.max(1, Math.floor(W / sampleCols));
+  const rw = new Float32Array(H), ri = new Float32Array(H), rc = new Float32Array(H);
+  for (let y = 0; y < H; y++) {
+    let n = 0, w = 0, ink = 0, col = 0;
+    const off = y * W * 4;
+    for (let x = 0; x < W; x += colStep) {
+      const i = off + x * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const sat = Math.max(r, g, b) - Math.min(r, g, b);
+      n++;
+      if (lum >= whiteThr) w++;
+      else if (lum < inkLum && sat < inkSat) ink++;
+      if (sat >= colorSat && lum < 245) col++;
+    }
+    rw[y] = w / n; ri[y] = ink / n; rc[y] = col / n;
+  }
+  const rawBands: Array<[number, number]> = [];
+  let s = -1;
+  for (let y = 0; y <= H; y++) {
+    const blank = y < H && rw[y] >= blankFrac;
+    if (blank) { if (s >= 0) { rawBands.push([s, y]); s = -1; } }
+    else if (s < 0) s = y;
+  }
+  const classify = (a: number, b: number) => {
+    const h = b - a; let c = 0, ink = 0;
+    for (let y = a; y < b; y++) { c += rc[y]; ink += ri[y]; }
+    c /= h; ink /= h;
+    let t: 'PHOTO' | 'TEXT' | 'LINE' = 'PHOTO';
+    if (h <= lineMaxH) t = 'LINE';
+    else if (h <= textMaxH && c < textMaxColor && ink < textMaxInk) t = 'TEXT';
+    return { a, b, t };
+  };
+  const classed = rawBands.map(([a, b]) => classify(a, b));
+  const merged: Array<{ a: number; b: number; t: 'PHOTO' | 'TEXT' | 'LINE' }> = [];
+  for (const band of classed) {
+    const last = merged[merged.length - 1];
+    if (last && last.t === 'PHOTO' && band.t === 'PHOTO' && band.a - last.b < mergeGap) last.b = band.b;
+    else merged.push({ ...band });
+  }
+  const out: ClassifiedSegment[] = [];
+  for (const band of merged) {
+    const h = band.b - band.a;
+    if (band.t === 'PHOTO' && h < minPhotoH) continue;
+    const seg = document.createElement('canvas');
+    seg.width = W; seg.height = h;
+    seg.getContext('2d')!.drawImage(canvas, 0, band.a, W, h, 0, 0, W, h);
+    out.push({ dataUrl: seg.toDataURL('image/jpeg', 0.9), y: band.a, height: h, type: band.t });
+  }
+  return out;
+};
+
 // 진단용: 조각 안 만들고 컷 위치/빈행 통계만 반환(튜닝·검증에 사용).
 export const analyzeSplit = async (
   source: string | HTMLImageElement,
