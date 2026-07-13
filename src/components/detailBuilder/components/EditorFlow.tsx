@@ -123,6 +123,30 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       if (thumb.image) onChange(prev => ({ ...prev, mainImage: thumb.image }));
       const thumbMsg = thumb.image ? ' · 섬네일 자동✓' : ` · ⚠섬네일 이슈(${thumb.reason})`;
       setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 제품이미지 ${p.flowImages.length}장${ex}${typeMsg}${optMsg}${thumbMsg}` });
+
+      // ── 업로드 즉시 자동실행: 분리형=캡션 리라이트 / 통이미지형=통이미지 읽기(둘 다 리라이트+##강조## 포함) ──
+      const autoCtx = { productNameKr: p.productNameKr, brandName: p.brandName, flowHeaderText: p.flowHeaderText, introText: p.flowHeaderText };
+      try {
+        if (p.hasTypedText) {
+          const withText = baseBlocks.filter((b: any) => (b.caption || '').trim());
+          if (withText.length) {
+            setCaptioning({ done: 0, total: withText.length });
+            const filled = await rewriteFlowCaptions(autoCtx as any, baseBlocks, (pr) => setCaptioning(pr));
+            onChange(prev => ({ ...prev, flowBlocks: filled }));
+            setCaptioning(null);
+            setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 분리형 자동 리라이트 완료` });
+          }
+        } else {
+          setBaking({ phase: '통이미지 자동 읽기 시작' });
+          const res = await convertBakedToFlow(p.flowImages, autoCtx, (pr) => setBaking(pr));
+          onChange(prev => ({ ...prev, flowBlocks: res.flowBlocks }));
+          setBaking(null);
+          setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 자동 변환 완료 (블록 ${res.flowBlocks.length}개)` });
+        }
+      } catch (autoErr: any) {
+        setCaptioning(null); setBaking(null);
+        setImportNote({ ok: false, text: '자동 AI 처리 실패: ' + (autoErr?.message || String(autoErr)) + ' (구조는 남음 · 버튼으로 재시도 가능)' });
+      }
     } catch (err: any) {
       setImportNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
     } finally { setImporting(false); }
