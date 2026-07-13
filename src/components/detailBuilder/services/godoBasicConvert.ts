@@ -3,7 +3,7 @@
 //   결과를 loadTemporary({...prev,...data})로 주입하면 좌측 입력부+PreviewGodo까지 편집가능 상태.
 //   ⚠️ 사진 보고 글 생성 금지(basicVisionReader 규칙). godo 슬롯=고정 그릇, 기본형 밴드=재료.
 import type { ProductData, SummaryInfo } from '../types';
-import { splitImageByWhitespace } from './flowImageSplitter';
+import { splitImageByWhitespace, extractProductImages } from './flowImageSplitter';
 import { toProxyUrl } from './exportImagePrep';
 import { readBasicLayout } from './basicVisionReader';
 
@@ -64,10 +64,56 @@ const computePackageLayout = (
   });
 
 /**
- * 기본형 재료(엑셀 메타 + 통이미지 URL) → 고도몰 섹션형 Partial<ProductData>.
- * onProgress로 단계 표시. 실패는 throw(상위 UI가 메시지 표시).
+ * ① 구조 변환 (AI 없음, 즉시, 키 불필요) — 단순형처럼 "일단 작동".
+ *   통이미지 → 제품 컷(extractProductImages, 비-AI 픽셀분류) → godo 이미지 슬롯에 순서대로 배치.
+ *   상품명·브랜드는 엑셀에서. 문구·스펙·핵심특징은 비움(그다음 AI 읽기 단계에서 채움).
  */
-export const convertBasicFromSource = async (
+export const buildBasicStructure = async (
+  input: BasicConvertInput,
+  onProgress?: (p: BasicProgress) => void,
+): Promise<BasicConvertResult> => {
+  const notes: string[] = [];
+  onProgress?.({ phase: '통이미지 분할(제품 컷)' });
+  const cuts: string[] = [];
+  for (const url of input.detailImageUrls) {
+    try {
+      const segs = await extractProductImages(toProxyUrl(url));
+      for (const s of segs) cuts.push(s.dataUrl);
+    } catch {
+      notes.push(`이미지 분할 실패(건너뜀): ${url.slice(0, 50)}…`);
+    }
+  }
+  if (!cuts.length) throw new Error('상세 통이미지에서 제품 컷을 추출하지 못했습니다. (이미지 URL/프록시 확인)');
+
+  const at = (i: number): string | null => (i >= 0 && i < cuts.length ? cuts[i] : null);
+  const summaryInfo: SummaryInfo = {
+    feature: '', type: '', material: '', size: '상세페이지 참조', weight: '', power: '',
+    maker: input.brandName || '',
+  };
+  const data: Partial<ProductData> = {
+    productNameKr: input.productNameKr,
+    productNameEn: input.productNameEn || '',
+    brandName: input.brandName || '',
+    ...(input.themeColor ? { themeColor: input.themeColor } : {}),
+    summaryInfo,
+    // 순서대로 배치(비-AI): 0=메인 1=피처 2~4=Point01 5~7=Point02. AI 읽기 단계에서 재배치·문구.
+    mainImage: at(0),
+    featureImage: at(1),
+    point1Title: '', point1Image1: at(2), point1Image2: at(3), point1Image3: at(4),
+    point2Title: '', point2Image1: at(5), point2Image2: at(6), point2Image3: at(7),
+    aiPoint1Desc: '', aiPoint1Desc2: '', aiPoint1Desc3: '',
+    aiPoint2Desc: '', aiPoint2Desc2: '', aiPoint2Desc3: '',
+  };
+  if (cuts.length > 8) notes.push(`제품 컷 ${cuts.length}개 중 8개만 슬롯 배치(나머지는 AI 읽기에서 재배치).`);
+  notes.push('구조만 배치됨 — 문구·스펙은 비어 있습니다. 🤖 AI로 읽기로 채우세요.');
+  return { data, notes, bandCount: cuts.length };
+};
+
+/**
+ * ② AI 읽기 (Claude) — 통이미지 밴드를 Claude가 읽어 문구·스펙·핵심특징 채우고 슬롯 재배치.
+ *   실패해도 ①구조 결과는 그대로 남는다(별도 호출).
+ */
+export const convertBasicWithAI = async (
   input: BasicConvertInput,
   onProgress?: (p: BasicProgress) => void,
 ): Promise<BasicConvertResult> => {

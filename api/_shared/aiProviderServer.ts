@@ -246,7 +246,10 @@ async function callClaude(req: AiChatServerRequest, timeoutMs: number): Promise<
   if ('networkError' in result) return fail(req.providerId, req.modelId, 'provider_error', '네트워크 오류가 발생했습니다.', latencyMs);
 
   if (result.status >= 400) {
-    return fail(req.providerId, req.modelId, statusToErrorKind(result.status), `Claude 오류 (status ${result.status})`, latencyMs);
+    // Anthropic 에러 본문의 message는 원인 진단에 필요하고 apiKey를 포함하지 않는다 → 안전하게 노출.
+    const errBody = result.json as { error?: { message?: string } } | null;
+    const detail = errBody?.error?.message ? ` — ${String(errBody.error.message).slice(0, 300)}` : '';
+    return fail(req.providerId, req.modelId, statusToErrorKind(result.status), `Claude 오류 (status ${result.status})${detail}`, latencyMs);
   }
   const body = result.json as { content?: { text?: string }[] } | null;
   const content = body?.content?.map(c => c.text || '').join('').trim();
