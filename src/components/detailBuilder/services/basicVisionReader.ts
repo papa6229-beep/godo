@@ -165,3 +165,67 @@ export const readBasicLayout = async (
     throw new Error('AI 응답을 해석하지 못했습니다(JSON 파싱 실패). 다시 시도해 주세요.');
   }
 };
+
+// ── 통이미지 단순형(버진루프/트리니티류) → flow(사진+설명 지그재그) 리더 ──
+//   구조: 상단 큰 이미지(패키지/제품/마케팅) + 하단 [사진→그 아래 설명] 반복.
+//   속도 우선 → 읽기 + 라이트 리라이트 + ##강조##를 1패스로. 지그재그 배치는 PreviewGodoFlow가 자동.
+export interface BakedFlowResult {
+  topIndices: number[];                               // 상단 큰 이미지 밴드(들) → 풀폭(캡션 없음)
+  blocks: { imageIndex: number; caption: string }[];  // 하단 사진+설명 쌍(설명=리라이트+강조 완료)
+  notes: string[];
+}
+
+const BAKED_FLOW_SYSTEM = [
+  '당신은 성인용품 쇼핑몰 상세페이지 편집자입니다. 입력은 한 상품의 통이미지를 위→아래로 자른 밴드들([0],[1],...)입니다.',
+  '이 상세페이지 구조: 상단 = 크게 보여주는 대표 이미지(패키지/제품/마케팅) 1~수 장. 하단 = [제품 사진 → 바로 아래 그 사진 설명 텍스트]가 반복.',
+  '',
+  '[할 일]',
+  '1. topIndices: 상단 "큰 대표 이미지" 밴드 번호(들).',
+  '2. blocks: 하단의 각 제품 사진마다 {imageIndex: 그 사진 밴드 번호, caption: 그 사진 바로 아래 설명을 읽어 라이트 리라이트한 문구}.',
+  '   - 텍스트만 있는 밴드(설명 줄)는 사진이 아니다 → imageIndex로 쓰지 말고, 그 위 사진의 caption 근거로만 사용.',
+  '   - 위→아래 순서 유지.',
+  '[caption 규칙]',
+  '- 이미지에 박힌 원문 설명을 근거로 "표현·톤만" 자연스럽게 변주. 숫자/사이즈/무게/재질/기능 등 팩트는 원문 그대로.',
+  '- 사진만 보고 없는 문장 창작 금지(원문이 근거). 의미 단위 줄바꿈(\\n).',
+  '- 각 caption에서 가장 중요한 소구 어구 1곳만 ##문구##로 감쌀 것(빨강 강조).',
+  '',
+  '[출력] JSON 하나만(코드펜스/설명/머리말 금지):',
+  '{"topIndices":[0],"blocks":[{"imageIndex":2,"caption":"..\\n.."}],"notes":[]}',
+].join('\n');
+
+export const readBakedFlow = async (bands: string[], ctx: BasicReadContext): Promise<BakedFlowResult> => {
+  if (!hasProviderKey(CONVERTER_PROVIDER)) {
+    throw new Error('변환기 AI(Claude) 키가 연결되어 있지 않습니다. 관리자 설정 → AI 연결에서 Claude API 키를 붙여넣어 주세요.');
+  }
+  const small = await Promise.all(bands.map((b) => downscale(b)));
+  const content: ChatContentPart[] = [{
+    type: 'text',
+    text:
+      `상품명: ${ctx.productNameKr || ''}\n브랜드: ${ctx.brandName || ''}\n` +
+      (ctx.introText ? `상단 요약(근거): ${ctx.introText.slice(0, 500)}\n` : '') +
+      `\n밴드 ${small.length}장을 위→아래 순서로 봅니다. 규칙대로 JSON 하나만 출력하세요.`,
+  }];
+  small.forEach((s, i) => { content.push({ type: 'text', text: `[${i}]` }); content.push({ type: 'image', image: s }); });
+
+  const res = await chatWithProvider({
+    providerId: CONVERTER_PROVIDER,
+    modelIdOverride: CONVERTER_MODEL,
+    purpose: 'agent_run',
+    maxTokens: 3200,
+    messages: [{ role: 'system', content: BAKED_FLOW_SYSTEM }, { role: 'user', content }],
+  });
+  if (!res.ok || !res.content) throw new Error(res.errorMessage || '변환기 AI(Claude) 응답을 받지 못했습니다.');
+  try {
+    const text = stripFence(res.content);
+    const m = text.match(/\{[\s\S]*\}/);
+    const obj: any = m ? JSON.parse(m[0]) : {};
+    const topIndices = (Array.isArray(obj.topIndices) ? obj.topIndices : []).map((v: any) => num(v)).filter((n: number) => n >= 0);
+    const blocks = (Array.isArray(obj.blocks) ? obj.blocks : [])
+      .map((b: any) => ({ imageIndex: num(b?.imageIndex), caption: str(b?.caption) }))
+      .filter((b: any) => b.imageIndex >= 0);
+    const notes = Array.isArray(obj.notes) ? obj.notes.map(str).filter(Boolean) : [];
+    return { topIndices, blocks, notes };
+  } catch {
+    throw new Error('AI 응답 해석 실패(JSON 파싱).');
+  }
+};

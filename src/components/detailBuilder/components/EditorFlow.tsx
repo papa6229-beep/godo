@@ -8,6 +8,7 @@ import { extractProductImages } from '../services/flowImageSplitter';
 import { toProxyUrl } from '../services/exportImagePrep';
 import { imageSignature, signatureDistance, normalizeThumbnail } from '../services/flowThumbnail';
 import { rewriteFlowCaptions } from '../services/flowCaptionService';
+import { convertBakedToFlow } from '../services/bakedFlowConverter';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -144,7 +145,29 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
   });
   const setCaption = (id: string, caption: string) => setBlocks(cur => cur.map(b => b.id === id ? { ...b, caption } : b));
 
-  // AI 리라이트: 원본 설명을 '분량·팩트 유지, 표현만 변주'로 다시 씀(text-only Gemma 배치). LM Studio(dev) 필요.
+  // 통이미지 읽기: baked 통이미지형(설명이 픽셀에 박힘)을 Claude가 분할·읽어 flowBlocks 생성(=분리형과 동일해짐).
+  const [baking, setBaking] = React.useState<{ phase: string } | null>(null);
+  const runBaked = async () => {
+    if (baking) return;
+    const urls: string[] = (data.flowImages || []).filter((u: any) => typeof u === 'string' && u);
+    if (!urls.length) { alert('통이미지가 없습니다. 먼저 엑셀을 불러와 주세요.'); return; }
+    setBaking({ phase: '시작' });
+    try {
+      const res = await convertBakedToFlow(
+        urls,
+        { productNameKr: data.productNameKr, brandName: data.brandName, introText: data.flowHeaderText },
+        (p) => setBaking(p),
+      );
+      onChange(prev => ({ ...prev, flowBlocks: res.flowBlocks }));
+      if (res.notes?.length) console.log('[통이미지 읽기]', res.notes);
+    } catch (err: any) {
+      alert('통이미지 읽기 실패: ' + (err?.message || String(err)));
+    } finally {
+      setBaking(null);
+    }
+  };
+
+  // AI 리라이트: 원본 설명을 '분량·팩트 유지, 표현만 변주'로 다시 씀(변환기 Claude 배치).
   const [captioning, setCaptioning] = React.useState<{ done: number; total: number } | null>(null);
   const runRewrite = async () => {
     if (captioning) return;
@@ -207,6 +230,14 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         </div>
         <p className="text-[11px] text-slate-400 leading-relaxed">상품명·브랜드·상단문구·통이미지·섬네일을 자동 채웁니다. (제품이미지 <code className="text-sky-300">goodsm</code>만 추림 · 공통배너 제외 · 이미지는 CDN URL로 표시)</p>
         {importNote && <p className={`text-[11px] font-bold ${importNote.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{importNote.text}</p>}
+        {/* 통이미지형(설명이 픽셀에 박힘) 전용 — Claude가 분할·읽어 사진+설명 쌍으로 분리 */}
+        <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
+          <span className="text-[11px] text-violet-300 leading-relaxed">🔍 <b>통이미지형</b>(설명이 이미지에 박힌 상품): Claude가 찢어 읽어 <b>사진+설명</b>으로 분리 → 그다음 🤖 AI 리라이트.</span>
+          <button type="button" onClick={runBaked} disabled={!!baking}
+            className={`text-xs px-3 py-1.5 rounded font-bold whitespace-nowrap transition-colors ${baking ? 'bg-violet-800/50 text-violet-400' : 'bg-violet-500/20 text-violet-200 hover:bg-violet-500/30'}`}>
+            {baking ? (baking.phase || '읽는 중…') : '통이미지 읽기'}
+          </button>
+        </div>
       </div>
 
       {/* 기본 */}
