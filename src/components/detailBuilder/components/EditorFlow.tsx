@@ -25,6 +25,15 @@ const imgSize = (src: string): Promise<{ w: number; h: number } | null> =>
     i.src = src;
   });
 
+// 원본 열 판정: 제품컷 비율(세로/가로). 정사각·가로형(h/w≤1.5) 다수 → 2열(반폭 2개씩 흐름),
+//   세로 통이미지 → 1열. 상단 마케팅컷은 대개 세로로 길어 자연히 1열쪽 표에서 빠짐.
+const detectColumns = async (urls: string[]): Promise<1 | 2> => {
+  const sizes = (await Promise.all((urls || []).slice(0, 6).map(imgSize))).filter(Boolean) as { w: number; h: number }[];
+  if (sizes.length < 2) return 1;
+  const squareish = sizes.filter((s) => s.h / s.w <= 1.5).length;
+  return squareish >= Math.ceil(sizes.length * 0.5) ? 2 : 1;
+};
+
 // 섬네일 자동 = 원본(메인몰) 섬네일과 '가장 닮은' 깨끗한 상세컷 매칭 → 크기 정규화(bbox+fit).
 //   원본섬네일 = 사람이 고른 대표. 그와 닮은 상세컷(브랜딩 없음)을 골라 제품크기 균일하게 앉힘.
 //   통이미지는 정밀추출해 서브컷을 후보로. 옵션 다수·후보 없음 → 이슈(수동/배치 이슈리스트).
@@ -108,6 +117,9 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         flowBlocks: baseBlocks.length ? baseBlocks : (prev.flowBlocks || getFlowBlocks(prev)),
         // 섬네일은 로고 박힌 목록이미지 대신 상세 이미지에서 자동 선택(아래) — 여기선 안 건드림
       }));
+      // 원본 레이아웃 열 수 판정(이미지 크기) → 2열/1열 보존
+      const cols = await detectColumns(p.flowImages);
+      onChange(prev => ({ ...prev, flowColumns: cols }));
       const ex = p.excludedImages.length ? ` · 공통배너 ${p.excludedImages.length}장 제외` : '';
       if (p.flowImages.length === 0) {
         setImportNote({ ok: false, text: `✓ ${p.productNameKr} · ⚠ 제품이미지 0장(수동 추가 필요)${ex}` });

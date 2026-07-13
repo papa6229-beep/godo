@@ -131,64 +131,77 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
           <div className="px-[56px] pb-16 flex flex-col">
             {(() => {
               const accentBar = isGradient(accent) ? { backgroundImage: accent } : { background: accent };
-              let splitIdx = 0; // 좌우 교차용 카운터(텍스트 블록만 증가)
-              return blocks.map((b, i) => {
-                const optChanged = (b.option || '') !== (blocks[i - 1]?.option || '');
-                const showOptHeader = optChanged && (b.option || '').trim();
-                const hasText = (b.caption || '').trim();
-                // 옵션 헤더(풀폭) — 옵션 바뀌는 지점
-                const header = showOptHeader ? (
-                  <div className="mt-14 mb-6 flex items-center gap-3">
-                    <span className="text-xs font-black tracking-[0.15em] uppercase px-2.5 py-1 rounded text-white" style={accentBar}>OPTION</span>
-                    <span className="text-[22px] font-black text-gray-900 break-keep leading-tight">{b.option}</span>
-                    <div className="flex-1 h-0.5 rounded-full" style={{ background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 }} />
-                  </div>
-                ) : null;
-
-                // 풀폭용(엣지-투-엣지) — 마케팅·통이미지 컬러컷
-                const imageEl = (
-                  <div className="relative w-full overflow-hidden">
+              const dimLine = { background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 };
+              // 원본 레이아웃 보존: 2열(정사각컷 다수) / 1열(세로 통이미지). data.flowColumns로 판정.
+              const cols = (data as any).flowColumns === 2 ? 2 : 1;
+              const out: any[] = [];
+              let grid: any[] = [];
+              let secIdx = 0;
+              const flushGrid = () => {
+                if (!grid.length) return;
+                out.push(<div key={'grid' + out.length} className="grid grid-cols-2 gap-x-6 gap-y-10 my-8">{grid}</div>);
+                grid = [];
+              };
+              const cell = (b: any, i: number, compact: boolean) => (
+                <div key={b.id || i} className="flex flex-col gap-4">
+                  <div className="relative w-full overflow-hidden rounded-xl">
                     <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
                     <RenderWatermark targetKey={`flowImage${i}`} />
                   </div>
-                );
-                if (hasText) {
-                  // ── 섹션 모듈: 이미지(위·풀폭 클린) + 설명(아래·강조). 지그재그 폐기 → 원본 스택 유지. ──
-                  const secIdx = splitIdx; splitIdx++;
-                  return (
-                    <React.Fragment key={b.id || i}>
-                      {header}
-                      {/* 섹션 구분(내 디자인) — 원본 금색선/테두리 대체. 옵션 헤더 있는 곳은 생략 */}
-                      {secIdx > 0 && !header && (
-                        <div className="flex items-center justify-center gap-2.5 my-10">
-                          <span className="h-px w-10 rounded-full" style={{ background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 }} />
-                          <span className="w-1.5 h-1.5 rounded-full" style={accentBar} />
-                          <span className="h-px w-10 rounded-full" style={{ background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 }} />
-                        </div>
-                      )}
-                      <div className="flex flex-col items-center gap-5">
-                        <div className="relative w-full overflow-hidden rounded-xl">
-                          <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
-                          <RenderWatermark targetKey={`flowImage${i}`} />
-                        </div>
-                        <div className="flex gap-3.5 w-full">
-                          <div className="w-[3px] rounded-full flex-shrink-0 self-stretch" style={accentBar} />
-                          <p className="flex-1 py-0.5 text-[16px] leading-[1.85] font-medium text-gray-700 break-keep whitespace-pre-line">
-                            {renderHighlight(b.caption, themeColor)}
-                          </p>
-                        </div>
-                      </div>
-                    </React.Fragment>
+                  <div className="flex gap-3">
+                    <div className="w-[3px] rounded-full flex-shrink-0 self-stretch" style={accentBar} />
+                    <p className={`flex-1 py-0.5 font-medium text-gray-700 break-keep whitespace-pre-line ${compact ? 'text-[14.5px] leading-[1.75]' : 'text-[16px] leading-[1.85]'}`}>
+                      {renderHighlight(b.caption, themeColor)}
+                    </p>
+                  </div>
+                </div>
+              );
+              blocks.forEach((b: any, i: number) => {
+                const optChanged = (b.option || '') !== (blocks[i - 1]?.option || '');
+                const showOptHeader = optChanged && (b.option || '').trim();
+                const hasText = (b.caption || '').trim();
+                if (showOptHeader) {
+                  flushGrid();
+                  out.push(
+                    <div key={'opt' + i} className="mt-14 mb-6 flex items-center gap-3">
+                      <span className="text-xs font-black tracking-[0.15em] uppercase px-2.5 py-1 rounded text-white" style={accentBar}>OPTION</span>
+                      <span className="text-[22px] font-black text-gray-900 break-keep leading-tight">{b.option}</span>
+                      <div className="flex-1 h-0.5 rounded-full" style={dimLine} />
+                    </div>
                   );
+                  secIdx = 0;
                 }
-                // ── 모듈 B: 풀폭(이미지-only: 마케팅·통이미지·옵션 대표컷) ──
-                return (
-                  <React.Fragment key={b.id || i}>
-                    {header}
-                    <div className="my-3">{imageEl}</div>
-                  </React.Fragment>
-                );
+                if (!hasText) {
+                  // 풀폭(엣지-투-엣지) — 마케팅·통이미지 대표컷(설명 없음)
+                  flushGrid();
+                  out.push(
+                    <div key={'full' + i} className="my-3 relative w-full overflow-hidden">
+                      <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
+                      <RenderWatermark targetKey={`flowImage${i}`} />
+                    </div>
+                  );
+                  secIdx = 0;
+                  return;
+                }
+                if (cols === 2) {
+                  grid.push(cell(b, i, true)); // 2열 그리드에 누적(2개씩 흐름)
+                } else {
+                  // 1열 스택: 섹션 사이 내 디자인 구분선(원본 금색선 대체)
+                  if (secIdx > 0) {
+                    out.push(
+                      <div key={'div' + i} className="flex items-center justify-center gap-2.5 my-10">
+                        <span className="h-px w-10 rounded-full" style={dimLine} />
+                        <span className="w-1.5 h-1.5 rounded-full" style={accentBar} />
+                        <span className="h-px w-10 rounded-full" style={dimLine} />
+                      </div>
+                    );
+                  }
+                  out.push(<div key={'sec' + i}>{cell(b, i, false)}</div>);
+                }
+                secIdx++;
               });
+              flushGrid();
+              return out;
             })()}
           </div>
         )}

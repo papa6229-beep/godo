@@ -93,6 +93,7 @@ export interface ProductData {
   // [변환기/단순형(flow)] 메인몰 단순형 상세페이지 변환용. 섹션형(godo)과 무관, flow 모드에서만 사용.
   flowEyebrow?: string;         // 상품명 앞 [대괄호] 태그(예: "일본 직수입") — 브랜드 크기 소형 렌더
   flowHeaderText?: string;      // 상단 단순 텍스트(예쁘게 렌더)
+  flowColumns?: 1 | 2;          // 원본 레이아웃 열 수(정사각컷 다수=2열, 세로 통이미지=1열). 이미지 크기로 판정.
   flowImages?: string[];        // [구모델] 통이미지 세로 스택. 신모델 flowBlocks로 대체(호환 위해 유지).
   // [신모델] 이미지+캡션 가변 블록 리스트 — 자동분할 조각·개별이미지의 단위.
   // caption = 각 이미지 아래 SEO 텍스트(나중에 AI가 채움). 순서 유지·재배치 가능.
