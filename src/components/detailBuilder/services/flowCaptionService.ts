@@ -6,6 +6,8 @@ import type { ProductData, FlowBlock } from '../types';
 import { resolveAgentBrain, isBrainConnected } from '../../../services/aiBrainSettings';
 import { chatWithProvider } from '../../../services/aiProviderAdapter';
 import { getModels, getChatCompletion } from '../../../services/lmsConnector';
+import { hasProviderKey } from '../../../services/aiKeyVault';
+import { CONVERTER_PROVIDER, CONVERTER_MODEL } from './basicVisionReader';
 
 const VISION_KEYWORDS = ['vl', 'vision', 'qwen', 'minicpm', 'llava', 'internvl', 'cogvlm', 'moondream'];
 const EMBED_KEYWORDS = ['embed', 'embedding', 'bge', 'nomic'];
@@ -145,9 +147,9 @@ export const rewriteFlowCaptions = async (
   blocks: FlowBlock[],
   onProgress?: (p: CaptionProgress) => void,
 ): Promise<FlowBlock[]> => {
-  const brain = resolveAgentBrain('design');
-  if (!isBrainConnected(brain.providerId)) {
-    throw new Error('디자인팀 AI가 연결되어 있지 않습니다.\nAI 직원 설정에서 디자인팀 AI(로컬 언센서드)를 먼저 연결해주세요.');
+  // 변환기 리라이트 = API-Claude 고정(젬마 대신). 사장님이 관리자 설정에 연결한 claude_api 키 사용.
+  if (!hasProviderKey(CONVERTER_PROVIDER)) {
+    throw new Error('변환기 AI(Claude) 키가 연결되어 있지 않습니다.\n관리자 설정 → AI 연결에서 Claude API 키를 붙여넣어 주세요.');
   }
   const out = blocks.map((b) => ({ ...b }));
   const targets = out.map((b, i) => ({ b, i })).filter((x) => (x.b.caption || '').trim());
@@ -168,8 +170,8 @@ export const rewriteFlowCaptions = async (
         `\n\n각 항목을 [1] [2] … 태그로 리라이트만 출력하세요.`;
       try {
         const res = await chatWithProvider({
-          providerId: brain.providerId,
-          modelIdOverride: brain.modelId || undefined,
+          providerId: CONVERTER_PROVIDER,
+          modelIdOverride: CONVERTER_MODEL,
           purpose: 'agent_run',
           temperature: 0.6,
           maxTokens: 2200,
