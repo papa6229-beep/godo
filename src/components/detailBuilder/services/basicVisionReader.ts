@@ -9,6 +9,9 @@ import type { ChatContentPart } from '../../../types/aiProvider';
 // 변환기 브레인 = Claude(클라우드) 고정. 생성기 문구용 로컬 Gemma(design 두뇌)와 분리 —
 // design 두뇌에 묶으면 로컬 LM Studio로 가서 대용량 이미지에 HTTP 400. 변환기는 항상 Claude.
 const CONVERTER_PROVIDER = 'claude_api';
+// 모델 고정: 통이미지 판독 품질이 중요한 1회성 작업 → 최신 비전 모델. registry 기본값
+// 'claude-sonnet-4-6'은 구모델이라 Anthropic 404 유발 가능 → 여기서 유효 모델로 오버라이드.
+const CONVERTER_MODEL = 'claude-opus-4-8';
 
 export interface BasicPointBlock { index: number; caption: string }
 export interface BasicVisionResult {
@@ -145,7 +148,8 @@ export const readBasicLayout = async (
   });
 
   const res = await chatWithProvider({
-    providerId: CONVERTER_PROVIDER,   // Claude 고정(모델/키는 vault에서 chatWithCloud가 해석)
+    providerId: CONVERTER_PROVIDER,   // Claude 고정(키는 vault에서 chatWithCloud가 해석)
+    modelIdOverride: CONVERTER_MODEL, // 유효 최신 비전 모델 고정(구 registry 기본값 404 회피)
     purpose: 'agent_run',
     temperature: 0.3,
     maxTokens: 2600,
