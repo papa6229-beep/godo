@@ -99,21 +99,33 @@ export const readCropParts = async (
     const img = await loadImage(toProxyUrl(url));
     const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
     const tiles = makeTiles(img);
-    const parts: CropPart[] = [];
+    let parts: CropPart[] = [];
     const notes: string[] = [];
     for (let i = 0; i < tiles.length; i++) {
       onProgress?.({ phase: `AI 읽기 (구간 ${i + 1}/${tiles.length})` });
       try { parts.push(...(await readTile(tiles[i]) as CropPart[])); }
       catch (e: any) { notes.push(`구간 ${i + 1} 실패: ${e?.message || e}`); }
     }
-    // 좌표박스로 원본에서 크롭(제품 컷만). 박스는 원본 좌표계라 원본 해상도로 잘라 선명.
-    for (const p of parts) {
-      const x = Math.max(0, Math.min(p.x, W - 1)), y = Math.max(0, Math.min(p.y, H - 1));
-      const w = Math.max(1, Math.min(p.w, W - x)), h = Math.max(1, Math.min(p.h, H - y));
+    // 원본 좌표박스 → 크롭 헬퍼. 박스는 원본 해상도라 선명.
+    const cropBox = (bx: number, by: number, bw: number, bh: number): string => {
+      const x = Math.max(0, Math.min(bx, W - 1)), y = Math.max(0, Math.min(by, H - 1));
+      const w = Math.max(1, Math.min(bw, W - x)), h = Math.max(1, Math.min(bh, H - y));
       const c = document.createElement('canvas'); c.width = w; c.height = h;
-      const cx = c.getContext('2d'); if (!cx) continue;
+      const cx = c.getContext('2d'); if (!cx) return '';
       cx.drawImage(img, x, y, w, h, 0, 0, w, h);
-      try { p.crop = c.toDataURL('image/jpeg', 0.9); } catch { p.crop = ''; }
+      try { return c.toDataURL('image/jpeg', 0.9); } catch { return ''; }
+    };
+    // 제품 컷: 박스가 타이트해 치수/주석이 잘리는 것 방지(상하 소폭 여유).
+    const pad = Math.min(24, Math.round(H * 0.005) + 6);
+    for (const p of parts) p.crop = cropBox(p.x, p.y - pad, p.w, p.h + pad * 2);
+
+    // ── 마케팅(상단) 통째 유지: 첫 '한글 설명 있는 제품' 위쪽 전부를 "자르지 않고" 한 장으로 ──
+    const firstCap = parts.find((p) => (p.caption || '').trim());
+    const boundaryY = firstCap ? Math.max(0, firstCap.y) : 0;
+    if (boundaryY > 140) {
+      const below = parts.filter((p) => p.y >= boundaryY);
+      parts = [{ kind: 'marketing', x: 0, y: 0, w: W, h: boundaryY, caption: '', crop: cropBox(0, 0, W, boundaryY) }, ...below];
+      notes.push(`상단 마케팅(0~${boundaryY}px) 통째 유지 · 제품 ${below.length}개`);
     }
     out.push({ W, H, parts, notes });
   }
