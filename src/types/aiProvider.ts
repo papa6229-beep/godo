@@ -66,9 +66,17 @@ export type AIProviderTestResult = {
 
 export type ProviderChatRole = 'system' | 'user' | 'assistant';
 
+// 멀티모달 content part. 텍스트 또는 이미지(비전). image = data URL('data:image/...;base64,')
+// 또는 http(s) URL. 텍스트 전용 호출은 기존처럼 content: string 그대로 사용(하위호환).
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; image: string };
+
+export type ProviderChatContent = string | ChatContentPart[];
+
 export type ProviderChatMessage = {
   role: ProviderChatRole;
-  content: string;
+  content: ProviderChatContent;
 };
 
 export type ProviderChatRequest = {

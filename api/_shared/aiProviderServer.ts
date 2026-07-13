@@ -9,9 +9,27 @@
 
 export type AiChatProviderId = 'openai_api' | 'gemini_api' | 'claude_api';
 
+// 멀티모달 content part(비전). image = data URL 또는 http(s) URL. (aiProvider.ts ChatContentPart와 구조 동일 —
+// 이 모듈은 no-import self-contained라 타입을 여기 로컬로 둔다.)
+export type AiChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; image: string };
+
 export interface AiChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | AiChatContentPart[];
+}
+
+// content가 문자열이면 그대로, 배열이면 텍스트 part만 이어붙여 평문으로(시스템 메시지·폴백용).
+function contentToText(content: string | AiChatContentPart[]): string {
+  if (typeof content === 'string') return content;
+  return content.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('\n');
+}
+
+// data URL('data:image/jpeg;base64,....') → {mediaType, base64}. 아니면 null(원격 URL).
+function parseDataUrl(src: string): { mediaType: string; data: string } | null {
+  const m = /^data:([^;]+);base64,(.*)$/s.exec(src);
+  return m ? { mediaType: m[1], data: m[2] } : null;
 }
 
 export interface AiChatServerRequest {
@@ -93,6 +111,14 @@ async function fetchJson(
   }
 }
 
+// content → OpenAI content(문자열 그대로 또는 [{type:'text'},{type:'image_url'}])
+function toOpenAIContent(content: string | AiChatContentPart[]): unknown {
+  if (typeof content === 'string') return content;
+  return content.map((p) =>
+    p.type === 'text' ? { type: 'text', text: p.text } : { type: 'image_url', image_url: { url: p.image } },
+  );
+}
+
 // --- OpenAI (Chat Completions) ---
 async function callOpenAI(req: AiChatServerRequest, timeoutMs: number): Promise<AiChatServerResponse> {
   const start = Date.now();
@@ -106,7 +132,7 @@ async function callOpenAI(req: AiChatServerRequest, timeoutMs: number): Promise<
       },
       body: JSON.stringify({
         model: req.modelId,
-        messages: req.messages,
+        messages: req.messages.map(m => ({ role: m.role, content: toOpenAIContent(m.content) })),
         temperature: req.temperature ?? 0.7,
         max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS
       })
@@ -126,13 +152,26 @@ async function callOpenAI(req: AiChatServerRequest, timeoutMs: number): Promise<
   return { ok: true, providerId: req.providerId, modelId: req.modelId, content, latencyMs };
 }
 
+// content → Gemini parts. 이미지 data URL은 inline_data(base64), 원격 URL은 텍스트로만 폴백.
+function toGeminiParts(content: string | AiChatContentPart[]): unknown[] {
+  if (typeof content === 'string') return [{ text: content }];
+  const parts: unknown[] = [];
+  for (const p of content) {
+    if (p.type === 'text') { parts.push({ text: p.text }); continue; }
+    const parsed = parseDataUrl(p.image);
+    if (parsed) parts.push({ inline_data: { mime_type: parsed.mediaType, data: parsed.data } });
+    else parts.push({ text: `[image: ${p.image}]` });
+  }
+  return parts;
+}
+
 // --- Gemini (generateContent) ---
 async function callGemini(req: AiChatServerRequest, timeoutMs: number): Promise<AiChatServerResponse> {
   const start = Date.now();
-  const systemText = req.messages.filter(m => m.role === 'system').map(m => m.content).join('\n').trim();
+  const systemText = req.messages.filter(m => m.role === 'system').map(m => contentToText(m.content)).join('\n').trim();
   const contents = req.messages
     .filter(m => m.role !== 'system')
-    .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+    .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: toGeminiParts(m.content) }));
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(req.modelId)}:generateContent?key=${encodeURIComponent(req.apiKey)}`;
   const reqBody: Record<string, unknown> = {
@@ -161,13 +200,25 @@ async function callGemini(req: AiChatServerRequest, timeoutMs: number): Promise<
   return { ok: true, providerId: req.providerId, modelId: req.modelId, content, latencyMs };
 }
 
+// content → Anthropic content(문자열 그대로 또는 멀티모달 block 배열)
+function toClaudeContent(content: string | AiChatContentPart[]): unknown {
+  if (typeof content === 'string') return content;
+  return content.map((p) => {
+    if (p.type === 'text') return { type: 'text', text: p.text };
+    const parsed = parseDataUrl(p.image);
+    return parsed
+      ? { type: 'image', source: { type: 'base64', media_type: parsed.mediaType, data: parsed.data } }
+      : { type: 'image', source: { type: 'url', url: p.image } };
+  });
+}
+
 // --- Claude (Anthropic Messages) ---
 async function callClaude(req: AiChatServerRequest, timeoutMs: number): Promise<AiChatServerResponse> {
   const start = Date.now();
-  const systemText = req.messages.filter(m => m.role === 'system').map(m => m.content).join('\n').trim();
+  const systemText = req.messages.filter(m => m.role === 'system').map(m => contentToText(m.content)).join('\n').trim();
   const messages = req.messages
     .filter(m => m.role !== 'system')
-    .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }));
+    .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: toClaudeContent(m.content) }));
 
   const reqBody: Record<string, unknown> = {
     model: req.modelId,

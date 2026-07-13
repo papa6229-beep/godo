@@ -2,6 +2,8 @@
 import React from 'react';
 import type { ProductData, OptionItem } from '../types';
 import { COLOR_PRESETS } from '../constants';
+import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
+import { convertBasicFromSource } from '../services/godoBasicConvert';
 
 // =============================================================================
 // ✅ 컴포넌트들을 Editor 함수 밖으로 꺼냈습니다 (입력 끊김 해결의 핵심!)
@@ -122,6 +124,57 @@ const Textarea = React.memo(({
         placeholder={placeholder}
         rows={rows}
       />
+    </div>
+  );
+});
+
+// =============================================================================
+// 기본형 자동변환 패널 (godo 전용) — 몰 엑셀 → 통이미지 분할 → Claude 읽기 → 슬롯 배치
+// =============================================================================
+const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }) => {
+  const [busy, setBusy] = React.useState(false);
+  const [phase, setPhase] = React.useState('');
+  const [note, setNote] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const [notes, setNotes] = React.useState<string[]>([]);
+
+  const onExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    setBusy(true); setNote(null); setNotes([]); setPhase('엑셀 파싱');
+    try {
+      const buf = await f.arrayBuffer();
+      const p = await parseMainMallArrayBuffer(buf);
+      if (!p) { setNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
+      const urls: string[] = p.flowImages || [];
+      if (!urls.length) { setNote({ ok: false, text: `⚠ ${p.productNameKr} · 상세 이미지 0장(goodsm 없음)` }); return; }
+      const res = await convertBasicFromSource({
+        productNameKr: p.productNameKr,
+        productNameEn: p.productNameEn,
+        brandName: p.brandName,
+        themeColor: data.themeColor,
+        introText: p.flowHeaderText,
+        detailImageUrls: urls,
+      }, (pr) => setPhase(pr.phase));
+      onChange(prev => ({ ...prev, ...res.data }));
+      setNotes(res.notes || []);
+      setNote({ ok: true, text: `✓ ${p.productNameKr} · 밴드 ${res.bandCount}장 → 고도몰 슬롯 배치 완료` });
+    } catch (err: any) {
+      setNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
+    } finally { setBusy(false); setPhase(''); }
+  };
+
+  return (
+    <div className="rounded-lg bg-violet-900/20 border border-violet-500/40 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-bold text-violet-300">🧩 기본형 자동변환 (통이미지 → 고도몰 섹션형 · Claude)</span>
+        <label className={`text-xs px-3 py-1.5 rounded cursor-pointer font-bold transition-colors ${busy ? 'bg-violet-800/50 text-violet-400' : 'bg-violet-500/20 text-violet-200 hover:bg-violet-500/30'}`}>
+          {busy ? (phase || '변환 중…') : '엑셀 선택(.xlsx)'}
+          <input type="file" accept=".xlsx" className="sr-only" onChange={onExcel} disabled={busy} />
+        </label>
+      </div>
+      <p className="text-[11px] text-slate-400 leading-relaxed">몰 엑셀 업로드 → 통이미지 여백분할 → <b className="text-violet-300">Claude</b>가 읽어 슬롯 배치 + 문구 라이트 리라이트(##강조##). <span className="text-slate-500">AI 직원 설정에서 디자인 AI를 Claude로 연결해야 동작합니다.</span></p>
+      {note && <p className={`text-[11px] font-bold ${note.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{note.text}</p>}
+      {notes.length > 0 && <ul className="text-[11px] text-amber-300/90 list-disc pl-4 space-y-0.5">{notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
     </div>
   );
 });
@@ -332,7 +385,9 @@ const Editor: React.FC<EditorProps> = ({ data, onChange, onGenerateAI, isLoading
 
   return (
     <div className="p-6 pb-32 space-y-8 relative">
-      
+
+      {isGodo && <BasicConvertPanel data={data} onChange={onChange} />}
+
       {/* 1. 기본 설정 — ① godo는 섹션 onClick 제거(입력창 onFocus가 각자 위치로 스크롤하도록, 덮어쓰기 방지) */}
       <section className="space-y-4" onClick={isGodo ? undefined : () => scrollTo('preview-top')}>
         <h2 className="text-lg font-black text-white border-b border-white/10 pb-2 font-mono">📂 기본 설정</h2>
