@@ -144,8 +144,9 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
               };
               const cell = (b: any, i: number, compact: boolean) => (
                 <div key={b.id || i} className="flex flex-col gap-4">
-                  <div className="relative w-full overflow-hidden rounded-xl">
-                    <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
+                  {/* 이미지 크기 통일: 최대 높이 캡 + 가운데 정렬(들쭉날쭉·과대 방지). 흰 배경 무대. */}
+                  <div className="relative w-full overflow-hidden rounded-xl bg-white flex justify-center">
+                    <img src={b.image} className="block object-contain max-w-full h-auto" style={{ maxHeight: compact ? 360 : 500 }} alt={`flow-${i}`} />
                     <RenderWatermark targetKey={`flowImage${i}`} />
                   </div>
                   <div className="flex gap-3">
