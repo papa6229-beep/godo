@@ -1,8 +1,8 @@
-// 통이미지형 v2 — "원본 구도 그대로 + 깨끗한 크롭 + 진짜 텍스트(강조)" 방식.
-//   기존(픽셀 여백분할+지그재그)의 한계(옆텍스트/테두리/병합/축소)를 버리고,
-//   Claude가 통이미지를 보고 각 파트의 [이미지 크롭박스 + 그 설명 텍스트]를 "원본 순서대로" 반환.
-//   금색 라인/테두리/잡텍스트는 크롭박스에서 제외(제품 컷만). 텍스트는 진짜 텍스트로 읽어 강조(##)까지.
-//   ⚠️ 정밀도 확보: 긴 통이미지는 세로 타일로 쪼개 각 타일을 Claude에 보내고 좌표를 원본으로 환산.
+// 통이미지형 리더 v3 — "결정론 픽셀 분할 + AI는 텍스트 읽기만".
+//   ⚠️ v2(LLM에 크롭 좌표를 시키던 방식)의 근본 결함: 비전모델(Claude·qwen 공통)은 픽셀 단위
+//   경계를 못 찍는다(눈대중 수십 px 오차) → 금색선 딸려옴·제품 짤림이 매번 반복. 모델·타일로 해결 불가.
+//   → 자르기는 "수학"(색/여백/금색선을 픽셀 스캔해 정확히 절단·트림), AI는 "이해"(캡션 텍스트 읽기+리라이트)만.
+//   원본은 섹션을 흰 여백과 얇은 금색 구분선으로 나눠 둠 = 둘 다 색으로 100% 감지되는 결정론 신호.
 import { chatWithProvider } from '../../../services/aiProviderAdapter';
 import { hasProviderKey } from '../../../services/aiKeyVault';
 import { CONVERTER_PROVIDER, CONVERTER_MODEL } from './basicVisionReader';
@@ -11,62 +11,125 @@ import { toProxyUrl } from './exportImagePrep';
 
 // 원본 좌표계(원본 통이미지 픽셀 기준)의 파트.
 export interface CropPart {
-  kind: 'image' | 'marketing';   // marketing=상단 큰 대표(구분/설명 없음), image=제품 컷(설명 있음)
-  x: number; y: number; w: number; h: number;  // 크롭박스(원본 픽셀). 금색선/테두리/잡텍스트 제외한 제품 영역만
+  kind: 'image' | 'marketing';   // marketing=상단 대표(설명 없음, 통째 유지), image=제품 컷(설명 있음)
+  x: number; y: number; w: number; h: number;  // 크롭박스(원본 픽셀)
   caption: string;               // 그 파트의 한글 설명(읽어서 리라이트+##강조##). marketing/설명없으면 ''
-  crop?: string;                 // 위 박스로 원본에서 잘라낸 이미지(dataUrl) — readCropParts가 채움
+  crop?: string;                 // 위 박스로 원본에서 잘라낸 이미지(dataUrl)
 }
 export interface CropReadResult { W: number; H: number; parts: CropPart[]; notes: string[] }
 
 const loadImage = (src: string): Promise<HTMLImageElement> =>
   new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('load')); im.src = src; });
 
-// 타일: 통이미지를 세로로 잘라 각 타일을 정해진 폭(scaleW)으로 그린 canvas + 원본 y오프셋/스케일 반환.
-interface Tile { dataUrl: string; y0: number; scale: number; sw: number; sh: number }
-const makeTiles = (img: HTMLImageElement, scaleW = 760, maxTileH = 1400): Tile[] => {
-  const W = img.naturalWidth || img.width;
-  const H = img.naturalHeight || img.height;
-  const scale = Math.min(1, scaleW / W);
-  const sw = Math.round(W * scale);
-  const tileSrcH = Math.round(maxTileH / scale);       // 원본 기준 타일 높이
-  const tiles: Tile[] = [];
-  for (let y = 0; y < H; y += tileSrcH) {
-    const sh0 = Math.min(tileSrcH, H - y);
-    const sh = Math.round(sh0 * scale);
-    const c = document.createElement('canvas'); c.width = sw; c.height = sh;
-    const ctx = c.getContext('2d'); if (!ctx) continue;
-    ctx.drawImage(img, 0, y, W, sh0, 0, 0, sw, sh);
-    let url: string; try { url = c.toDataURL('image/jpeg', 0.85); } catch { throw new Error('CORS taint — 프록시 경유 필요'); }
-    tiles.push({ dataUrl: url, y0: y, scale, sw, sh });
+// ── 행 분류 임계값(splitClassified 실측값 재사용) ──
+const WHITE_LUM = 232;   // 이 밝기 이상 = 흰 픽셀
+const BLANK_FRAC = 0.985; // 행의 흰 비율 ≥ = 빈(여백) 행
+const COLOR_SAT = 45;    // 이 채도 이상 + 밝지 않음 = 컬러(사진) 픽셀
+const COLOR_FRAC = 0.06; // 행의 컬러 비율 ≥ = 사진 행
+const INK_LUM = 115;     // 이 밝기 미만 + 저채도 = 잉크(텍스트/선) 픽셀
+const INK_SAT = 40;
+const INK_FRAC = 0.02;   // 행의 잉크 비율 ≥ = 텍스트 행
+const MIN_BAND = 24;     // 이보다 얇은 밴드는 버림(금색선·노이즈 자동 탈락)
+const MIN_PHOTO = 40;    // 유지할 최소 사진 높이
+const MERGE_GAP = 14;    // 인접 사진 밴드 사이 틈이 이 미만 + 텍스트 없음 = 한 이미지의 내부 분할 → 재병합
+
+type RowKind = 'BLANK' | 'GOLD' | 'PHOTO' | 'TEXT' | 'BG';
+
+interface RowStat { white: number; ink: number; color: number; gold: number }
+
+// 캔버스에서 행별 통계 뽑기(원본 해상도). CORS taint면 예외.
+const scanRows = (img: HTMLImageElement): { W: number; H: number; rows: RowStat[]; get: (x: number, y: number) => [number, number, number] } => {
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('canvas 컨텍스트 실패');
+  ctx.drawImage(img, 0, 0);
+  let data: Uint8ClampedArray;
+  try { data = ctx.getImageData(0, 0, W, H).data; }
+  catch { throw new Error('이미지 픽셀을 읽을 수 없습니다(CORS taint) — 프록시 경유 필요'); }
+  const colStep = Math.max(1, Math.floor(W / 64));
+  const rows: RowStat[] = new Array(H);
+  for (let y = 0; y < H; y++) {
+    let n = 0, w = 0, ink = 0, col = 0, gold = 0;
+    const off = y * W * 4;
+    for (let x = 0; x < W; x += colStep) {
+      const i = off + x * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const sat = Math.max(r, g, b) - Math.min(r, g, b);
+      n++;
+      if (lum >= WHITE_LUM) w++;
+      else if (lum < INK_LUM && sat < INK_SAT) ink++;
+      if (sat >= COLOR_SAT && lum < 245) col++;
+      // 금색/탄색 구분선: 중간밝기 + R≥G≥B(노랑기) + 적당한 채도
+      if (lum > 120 && lum < 228 && r >= g && g >= b - 6 && (r - b) >= 32 && sat >= 14 && sat <= 120) gold++;
+    }
+    rows[y] = { white: w / n, ink: ink / n, color: col / n, gold: gold / n };
   }
-  return tiles;
+  const get = (x: number, y: number): [number, number, number] => {
+    const i = y * W * 4 + x * 4; return [data[i], data[i + 1], data[i + 2]];
+  };
+  return { W, H, rows, get };
+};
+
+const rowKind = (r: RowStat): RowKind => {
+  if (r.gold >= 0.5 && r.color < 0.35) return 'GOLD';   // 전폭 금색선
+  if (r.white >= BLANK_FRAC) return 'BLANK';
+  if (r.color >= COLOR_FRAC) return 'PHOTO';
+  if (r.ink >= INK_FRAC) return 'TEXT';
+  return 'BG';
+};
+
+interface Band { a: number; b: number; kind: 'PHOTO' | 'TEXT' }
+
+// 색+여백+금색선으로 통이미지를 밴드로 절단. BLANK/GOLD 행 = 컷(버림). 나머지 연속구간 = 밴드.
+const segmentBands = (H: number, kinds: RowKind[]): Band[] => {
+  const raw: Array<[number, number]> = [];
+  let s = -1;
+  for (let y = 0; y <= H; y++) {
+    const cut = y === H || kinds[y] === 'BLANK' || kinds[y] === 'GOLD';
+    if (cut) { if (s >= 0) { raw.push([s, y]); s = -1; } }
+    else if (s < 0) s = y;
+  }
+  const bands: Band[] = [];
+  for (const [a, b] of raw) {
+    if (b - a < MIN_BAND) continue;                     // 얇은 금색선/노이즈 탈락
+    let ph = 0, tx = 0;
+    for (let y = a; y < b; y++) { if (kinds[y] === 'PHOTO') ph++; else if (kinds[y] === 'TEXT') tx++; }
+    bands.push({ a, b, kind: ph >= tx ? 'PHOTO' : 'TEXT' });
+  }
+  // 한 이미지가 내부 흰 띠/치수 화살표로 잘게 쪼개진 경우 재병합: 인접 PHOTO 밴드 사이 틈이 작고(<MERGE_GAP)
+  //   그 틈에 캡션(TEXT 행)이 없으면 같은 이미지로 본다. (진짜 다른 섹션은 그 사이 여백이 크거나 캡션이 있음)
+  const merged: Band[] = [];
+  for (const band of bands) {
+    const last = merged[merged.length - 1];
+    if (last && last.kind === 'PHOTO' && band.kind === 'PHOTO' && band.a - last.b < MERGE_GAP) {
+      let hasText = false;
+      for (let y = last.b; y < band.a; y++) if (kinds[y] === 'TEXT') { hasText = true; break; }
+      if (!hasText) { last.b = band.b; continue; }
+    }
+    merged.push({ ...band });
+  }
+  return merged;
 };
 
 const SYSTEM = [
-  '당신은 국내(한국) 성인용품 쇼핑몰 상세페이지를 분석합니다. 입력은 세로 통이미지의 한 구간(타일) 이미지입니다.',
-  '이 타일 안에서 "제품 사진 파트"를 위→아래 순서로 찾아, 각각의 [크롭박스 + 설명]을 반환합니다.',
-  '',
-  '[크롭박스 규칙] 좌표는 이 타일 이미지의 픽셀(좌상단 0,0 기준) x,y,w,h.',
-  '· 박스는 "제품/패키지 사진"만 감싼다. 금색/컬러 구분선·테두리 박스·사진 옆이나 위의 잡텍스트(상품명 헤딩·일본어 등)는 박스에서 제외.',
-  '· 사진에 박힌 치수 표시(예 145mm·278g)는 사진의 일부이므로 포함해도 됨.',
-  '· 여러 작은 컷/패키지가 한 덩어리로 붙어 하나의 설명을 가지면 그 덩어리 전체를 한 박스로.',
-  '[kind] · marketing = 상단의 크고 화려한 대표/마케팅 이미지(일본어·캐릭터, 한글 설명 없음). · image = 아래에 한글 설명이 붙는 제품 컷.',
-  '[caption] 각 제품 사진 "바로 아래/옆의 한글 설명"을 읽어 표현·톤만 리라이트(숫자·사이즈·재질 등 팩트 그대로, 창작 금지). 의미단위 줄바꿈(\\n). 가장 중요한 어구 1곳만 ##문구##. marketing이거나 한글 설명 없으면 caption="".',
-  '· 상품명/옵션명 헤딩("버진 루프 하드","TORNADO" 등 이름 단어)·통짜 일본어/영어는 설명이 아님 → caption으로 쓰지 말 것.',
-  '· 타일 경계에서 잘린 파트는 무리하게 넣지 말 것(다음 타일에서 처리).',
-  '',
-  '[출력] JSON 하나만: {"parts":[{"kind":"image","x":0,"y":0,"w":0,"h":0,"caption":"..\\n.."}],"notes":[]}',
+  '입력 이미지들은 한국 성인용품 쇼핑몰 상세페이지에서 잘라낸 "설명 텍스트 띠"입니다(위→아래 순서, [0],[1],...).',
+  '각 띠에 적힌 한글 설명 문장을 읽어, 표현·톤만 자연스럽게 라이트 리라이트하세요(숫자·사이즈·무게·재질 등 팩트는 원문 그대로, 창작 금지).',
+  '· 의미 단위로 줄바꿈(\\n) — 한 줄이 완결된 덩어리가 되게.',
+  '· 각 문구에서 가장 중요한 소구 어구 "1곳만" ##문구## 로 감쌀 것(빨강 강조).',
+  '· 그 띠가 한글 설명 문장이 아니면(상품명/옵션명 헤딩, 통짜 일본어·영어, 치수 숫자만, 빈 것) 반드시 빈 문자열 "".',
+  '· 입력 띠 개수와 정확히 같은 길이의 배열을 순서대로 반환.',
+  '[출력] JSON 하나만: {"captions":["..\\n..",""]}',
 ].join('\n');
 
-const num = (v: any) => { const n = typeof v === 'number' ? v : parseInt(String(v ?? ''), 10); return Number.isFinite(n) ? n : 0; };
-const str = (v: any) => (typeof v === 'string' ? v : '');
 const stripFence = (s: string) => s.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim();
 
-const readTile = async (tile: Tile): Promise<Omit<CropPart, never>[]> => {
-  const content: ChatContentPart[] = [
-    { type: 'text', text: `이 타일 크기: 폭 ${tile.sw} x 높이 ${tile.sh} 픽셀. 규칙대로 JSON 하나만.` },
-    { type: 'image', image: tile.dataUrl },
-  ];
+// 캡션 텍스트 띠(들)를 Claude가 읽어 리라이트. 좌표 없음 — 텍스트만.
+const readCaptionStrips = async (strips: string[]): Promise<string[]> => {
+  if (!strips.length) return [];
+  const content: ChatContentPart[] = [{ type: 'text', text: `설명 띠 ${strips.length}개. 규칙대로 리라이트해 captions 배열(길이 ${strips.length})만.` }];
+  strips.forEach((s, i) => { content.push({ type: 'text', text: `[${i}]` }); content.push({ type: 'image', image: s }); });
   const res = await chatWithProvider({
     providerId: CONVERTER_PROVIDER, modelIdOverride: CONVERTER_MODEL, purpose: 'agent_run', maxTokens: 2600,
     messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content }],
@@ -74,19 +137,12 @@ const readTile = async (tile: Tile): Promise<Omit<CropPart, never>[]> => {
   if (!res.ok || !res.content) throw new Error(res.errorMessage || 'Claude 응답 없음');
   const m = stripFence(res.content).match(/\{[\s\S]*\}/);
   const obj: any = m ? JSON.parse(m[0]) : {};
-  const parts = (Array.isArray(obj.parts) ? obj.parts : []).map((p: any) => ({
-    kind: p?.kind === 'marketing' ? 'marketing' : 'image',
-    // 타일 좌표 → 원본 좌표 환산(scale 역보정 + y오프셋)
-    x: Math.round(num(p?.x) / tile.scale),
-    y: Math.round(num(p?.y) / tile.scale) + tile.y0,
-    w: Math.round(num(p?.w) / tile.scale),
-    h: Math.round(num(p?.h) / tile.scale),
-    caption: str(p?.caption),
-  })).filter((p: CropPart) => p.w > 8 && p.h > 8);
-  return parts;
+  const caps = Array.isArray(obj.captions) ? obj.captions.map((c: any) => (typeof c === 'string' ? c : '')) : [];
+  while (caps.length < strips.length) caps.push('');
+  return caps.slice(0, strips.length);
 };
 
-/** 통이미지 URL(들) → 원본 좌표계의 파트 목록(크롭박스+설명). 크롭/렌더는 호출측에서. */
+/** 통이미지 URL(들) → 결정론 분할로 [깨끗한 제품 크롭 + 리라이트된 캡션] 파트 목록. */
 export const readCropParts = async (
   detailImageUrls: string[],
   onProgress?: (p: { phase: string }) => void,
@@ -95,38 +151,109 @@ export const readCropParts = async (
     throw new Error('변환기 AI(Claude) 키가 연결되어 있지 않습니다. 관리자 설정 → AI 연결에서 Claude API 키를 붙여넣어 주세요.');
   }
   const out: CropReadResult[] = [];
-  for (const url of detailImageUrls) {
-    const img = await loadImage(toProxyUrl(url));
-    const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
-    const tiles = makeTiles(img);
-    let parts: CropPart[] = [];
+  for (let u = 0; u < detailImageUrls.length; u++) {
+    onProgress?.({ phase: `분할 (${u + 1}/${detailImageUrls.length})` });
+    const img = await loadImage(toProxyUrl(detailImageUrls[u]));
+    const { W, H, rows, get } = scanRows(img);
+    const kinds = rows.map(rowKind);
+    const bands = segmentBands(H, kinds);
     const notes: string[] = [];
-    for (let i = 0; i < tiles.length; i++) {
-      onProgress?.({ phase: `AI 읽기 (구간 ${i + 1}/${tiles.length})` });
-      try { parts.push(...(await readTile(tiles[i]) as CropPart[])); }
-      catch (e: any) { notes.push(`구간 ${i + 1} 실패: ${e?.message || e}`); }
-    }
-    // 원본 좌표박스 → 크롭 헬퍼. 박스는 원본 해상도라 선명.
-    const cropBox = (bx: number, by: number, bw: number, bh: number): string => {
-      const x = Math.max(0, Math.min(bx, W - 1)), y = Math.max(0, Math.min(by, H - 1));
-      const w = Math.max(1, Math.min(bw, W - x)), h = Math.max(1, Math.min(bh, H - y));
+
+    // 원본에서 박스를 잘라 dataUrl로. (박스는 원본 해상도라 선명)
+    const cropBox = (x: number, y: number, w: number, h: number): string => {
+      x = Math.max(0, Math.min(x, W - 1)); y = Math.max(0, Math.min(y, H - 1));
+      w = Math.max(1, Math.min(w, W - x)); h = Math.max(1, Math.min(h, H - y));
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       const cx = c.getContext('2d'); if (!cx) return '';
       cx.drawImage(img, x, y, w, h, 0, 0, w, h);
-      try { return c.toDataURL('image/jpeg', 0.9); } catch { return ''; }
+      try { return c.toDataURL('image/jpeg', 0.92); } catch { return ''; }
     };
-    // 제품 컷: 박스가 타이트해 치수/주석이 잘리는 것 방지(상하 소폭 여유).
-    const pad = Math.min(24, Math.round(H * 0.005) + 6);
-    for (const p of parts) p.crop = cropBox(p.x, p.y - pad, p.w, p.h + pad * 2);
+    // 사진 밴드 → 금색선/텍스트/여백을 상하좌우로 트림한 "제품 코어"만 크롭(짤림·딸려옴 동시 해결).
+    const cropPhoto = (band: Band): { x: number; y: number; w: number; h: number; crop: string } | null => {
+      // 상하: 가장자리의 금색선(GOLD)·빈 여백(BLANK)만 벗긴다. 치수 라벨(TEXT: 145mm·95mm 등)은
+      //   이미지 일부이므로 유지(캡션 설명문은 애초에 밴드 밖 여백에 있어 안 들어옴).
+      let top = band.a, bot = band.b;
+      while (top < bot && (kinds[top] === 'GOLD' || kinds[top] === 'BLANK')) top++;
+      while (bot > top && (kinds[bot - 1] === 'GOLD' || kinds[bot - 1] === 'BLANK')) bot--;
+      let hasPhoto = false;
+      for (let y = top; y < bot; y++) if (kinds[y] === 'PHOTO') { hasPhoto = true; break; }
+      if (!hasPhoto || bot - top < MIN_PHOTO) return null;
+      // 좌우: 코어 구간의 비-흰 픽셀 바운딩(전폭으로 안 늘려서 우측 짤림/여백 방지). 성긴 샘플로 빠르게.
+      let left = W, right = 0;
+      const xs = Math.max(1, Math.floor(W / 200)), ys = Math.max(1, Math.floor((bot - top) / 120));
+      for (let y = top; y < bot; y += ys) {
+        for (let x = 0; x < W; x += xs) {
+          const [r, g, b] = get(x, y);
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (lum < WHITE_LUM - 6) { if (x < left) left = x; if (x > right) right = x; }
+        }
+      }
+      if (right <= left) { left = 0; right = W - 1; }
+      const padX = Math.round(W * 0.01), padY = 6;
+      const x = Math.max(0, left - padX), rx = Math.min(W - 1, right + padX);
+      const y = Math.max(0, top - padY), by = Math.min(H, bot + padY);
+      return { x, y, w: rx - x, h: by - y, crop: cropBox(x, y, rx - x, by - y) };
+    };
+    // 캡션 띠: 두 사진 밴드 사이(사진 bot ~ 다음 사진 a) 구간에 TEXT 행이 있으면 그 구간을 크롭.
+    //   원본 캡션은 폰트가 작아(≈12px) → 2배 업스케일해 Claude 가독 확보.
+    const captionStrip = (fromY: number, toY: number): string | null => {
+      let has = false;
+      for (let y = fromY; y < toY; y++) if (kinds[y] === 'TEXT') { has = true; break; }
+      if (!has) return null;
+      const h = toY - fromY; if (h < 4) return null;
+      const sc = 2;
+      const c = document.createElement('canvas'); c.width = W * sc; c.height = h * sc;
+      const cx = c.getContext('2d'); if (!cx) return null;
+      cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+      cx.drawImage(img, 0, fromY, W, h, 0, 0, W * sc, h * sc);
+      try { return c.toDataURL('image/jpeg', 0.92); } catch { return null; }
+    };
 
-    // ── 마케팅(상단) 통째 유지: 첫 '한글 설명 있는 제품' 위쪽 전부를 "자르지 않고" 한 장으로 ──
-    const firstCap = parts.find((p) => (p.caption || '').trim());
-    const boundaryY = firstCap ? Math.max(0, firstCap.y) : 0;
-    if (boundaryY > 140) {
-      const below = parts.filter((p) => p.y >= boundaryY);
-      parts = [{ kind: 'marketing', x: 0, y: 0, w: W, h: boundaryY, caption: '', crop: cropBox(0, 0, W, boundaryY) }, ...below];
-      notes.push(`상단 마케팅(0~${boundaryY}px) 통째 유지 · 제품 ${below.length}개`);
+    // 사진 밴드만 추출(순서 유지) + 각 사진 뒤 캡션 띠.
+    const photoBands = bands.filter((b) => b.kind === 'PHOTO');
+    if (!photoBands.length) { out.push({ W, H, parts: [], notes: ['제품 사진 밴드를 찾지 못함'] }); continue; }
+
+    interface Item { crop: string; x: number; y: number; w: number; h: number; strip: string | null }
+    const items: Item[] = [];
+    for (let i = 0; i < photoBands.length; i++) {
+      const pb = photoBands[i];
+      const c = cropPhoto(pb);
+      if (!c || !c.crop) continue;
+      const nextA = i + 1 < photoBands.length ? photoBands[i + 1].a : H;
+      const strip = captionStrip(pb.b, nextA);
+      items.push({ ...c, strip });
     }
+    if (!items.length) { out.push({ W, H, parts: [], notes: ['크롭 실패'] }); continue; }
+
+    // Claude로 캡션 띠 읽기(1콜). 띠 없는 사진은 caption ''(강조 X).
+    onProgress?.({ phase: 'AI 캡션 읽기·리라이트' });
+    const stripIdx: number[] = []; const stripImgs: string[] = [];
+    items.forEach((it, i) => { if (it.strip) { stripIdx.push(i); stripImgs.push(it.strip); } });
+    let caps: string[] = [];
+    try { caps = await readCaptionStrips(stripImgs); }
+    catch (e: any) { notes.push(`캡션 읽기 실패(사진은 유지): ${e?.message || e}`); }
+    const capByItem = new Map<number, string>();
+    stripIdx.forEach((it, k) => { if (caps[k]) capByItem.set(it, caps[k]); });
+
+    // 상단 마케팅 통째 유지: caption이 빈(설명 없는) "연속된 최상단 사진"들 → 하나의 marketing 크롭으로 병합.
+    //   (트리니티: 일본어 마케팅=한글설명 없음 → 통째. 버진루프: 첫 사진이 캡션 있음 → 병합 없음, 첫 제품.)
+    let leadEmpty = 0;
+    while (leadEmpty < items.length && !capByItem.get(leadEmpty)) leadEmpty++;
+    const parts: CropPart[] = [];
+    if (leadEmpty >= 2) {
+      const top = 0, bot = items[leadEmpty - 1].y + items[leadEmpty - 1].h;
+      parts.push({ kind: 'marketing', x: 0, y: top, w: W, h: bot - top, caption: '', crop: cropBox(0, top, W, bot - top) });
+      notes.push(`상단 마케팅(0~${bot}px) 통째 유지 · 사진 ${items.length - leadEmpty}개 분리`);
+      for (let i = leadEmpty; i < items.length; i++) {
+        parts.push({ kind: 'image', x: items[i].x, y: items[i].y, w: items[i].w, h: items[i].h, caption: capByItem.get(i) || '', crop: items[i].crop });
+      }
+    } else {
+      items.forEach((it, i) => parts.push({
+        kind: capByItem.get(i) ? 'image' : (i === 0 ? 'marketing' : 'image'),
+        x: it.x, y: it.y, w: it.w, h: it.h, caption: capByItem.get(i) || '', crop: it.crop,
+      }));
+    }
+    notes.push(`밴드 ${bands.length}개(사진 ${photoBands.length}) → 파트 ${parts.length}개`);
     out.push({ W, H, parts, notes });
   }
   return out;
