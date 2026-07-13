@@ -8,7 +8,7 @@ import { extractProductImages } from '../services/flowImageSplitter';
 import { toProxyUrl } from '../services/exportImagePrep';
 import { imageSignature, signatureDistance, normalizeThumbnail } from '../services/flowThumbnail';
 import { rewriteFlowCaptions } from '../services/flowCaptionService';
-import { convertBakedToFlow } from '../services/bakedFlowConverter';
+import { convertBakedToFlow, convertBakedByCrop } from '../services/bakedFlowConverter';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -138,10 +138,10 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
           }
         } else {
           setBaking({ phase: '통이미지 자동 읽기 시작' });
-          const res = await convertBakedToFlow(p.flowImages, autoCtx, (pr) => setBaking(pr));
+          const res = await convertBakedByCrop(p.flowImages, autoCtx, (pr) => setBaking(pr));
           onChange(prev => ({ ...prev, flowBlocks: res.flowBlocks }));
           setBaking(null);
-          setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 자동 변환 완료 (블록 ${res.flowBlocks.length}개)` });
+          setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 자동 변환 완료 (파트 ${res.flowBlocks.length}개)` });
         }
       } catch (autoErr: any) {
         setCaptioning(null); setBaking(null);
@@ -177,7 +177,7 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
     if (!urls.length) { alert('통이미지가 없습니다. 먼저 엑셀을 불러와 주세요.'); return; }
     setBaking({ phase: '시작' });
     try {
-      const res = await convertBakedToFlow(
+      const res = await convertBakedByCrop(
         urls,
         { productNameKr: data.productNameKr, brandName: data.brandName, introText: data.flowHeaderText },
         (p) => setBaking(p),

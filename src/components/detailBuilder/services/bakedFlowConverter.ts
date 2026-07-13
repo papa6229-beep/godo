@@ -6,6 +6,7 @@ import { splitClassified } from './flowImageSplitter';
 import { toProxyUrl } from './exportImagePrep';
 import { readBakedFlow } from './basicVisionReader';
 import type { BasicReadContext, TypedBand } from './basicVisionReader';
+import { readCropParts } from './bakedCropReader';
 import { newBlockId } from './flowBlocks';
 
 export interface BakedFlowBlock { id: string; image: string; caption: string }
@@ -82,4 +83,28 @@ export const convertBakedToFlow = async (
 
   if (!flowBlocks.length) throw new Error('AI가 배치할 블록을 만들지 못했습니다. (통이미지 구조 확인)');
   return { flowBlocks, bandCount: bands.length, notes };
+};
+
+// ── v2: Claude 크롭 좌표 방식 — 원본 구도 그대로, 깨끗한 크롭 + 진짜 텍스트(강조) ──
+//   readCropParts가 각 파트의 [크롭박스+설명]을 원본 순서대로 주면 → flowBlocks로.
+//   (지금은 크롭 정확도 검증용으로 flow 스택에 얹음. 디자인 레이아웃은 정확도 확인 후.)
+export const convertBakedByCrop = async (
+  detailImageUrls: string[],
+  _ctx: BasicReadContext,
+  onProgress?: (p: BakedFlowProgress) => void,
+): Promise<BakedFlowConvertResult> => {
+  const results = await readCropParts(detailImageUrls, onProgress);
+  const flowBlocks: BakedFlowBlock[] = [];
+  const notes: string[] = [];
+  let count = 0;
+  for (const r of results) {
+    notes.push(...r.notes);
+    for (const p of r.parts) {
+      count++;
+      if (!p.crop) continue;
+      flowBlocks.push({ id: newBlockId(), image: p.crop, caption: p.kind === 'marketing' ? '' : (p.caption || '') });
+    }
+  }
+  if (!flowBlocks.length) throw new Error('AI가 크롭 파트를 찾지 못했습니다. (통이미지 구조/키 확인)');
+  return { flowBlocks, bandCount: count, notes };
 };
