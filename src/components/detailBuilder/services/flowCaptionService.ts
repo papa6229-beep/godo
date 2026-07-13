@@ -161,6 +161,8 @@ export const rewriteFlowCaptions = async (
   const chunks: Array<typeof targets> = [];
   for (let c = 0; c < targets.length; c += CHUNK) chunks.push(targets.slice(c, c + CHUNK));
   let done = 0;
+  let okCount = 0;
+  let firstErr = '';
   await Promise.all(
     chunks.map(async (chunk) => {
       const userPrompt =
@@ -180,13 +182,20 @@ export const rewriteFlowCaptions = async (
         if (res.ok && res.content) {
           const parsed = parseNumbered(res.content, chunk.length);
           chunk.forEach((x, j) => { if (parsed[j]) out[x.i].caption = parsed[j]; });
+          okCount++;
+        } else if (!firstErr) {
+          firstErr = res.errorMessage || 'AI 응답을 받지 못했습니다.';
         }
-      } catch { /* 청크 실패는 원본 유지 */ }
+      } catch (e: any) {
+        if (!firstErr) firstErr = e?.message || String(e);
+      }
       done += chunk.length;
       onProgress?.({ done, total: targets.length, phase: '리라이트' });
     }),
   );
-  onProgress?.({ done: targets.length, total: targets.length, phase: '완료' });
+  // 전부 실패면 조용히 넘기지 말고 실제 원인을 위로 던진다(무반응 방지).
+  if (okCount === 0) throw new Error('AI 리라이트 실패: ' + (firstErr || '알 수 없는 오류'));
+  onProgress?.({ done: targets.length, total: targets.length, phase: okCount < chunks.length ? '일부 실패' : '완료' });
   return out;
 };
 
