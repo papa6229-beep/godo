@@ -2,9 +2,13 @@
 //   철학(2026-07-13 대전환): 변환기 브레인 = Claude(클라우드). 로컬 Gemma/VLM 체인 폐기.
 //   내가 손으로 하던 v4 재현(band 읽기→슬롯배정→라이트 리라이트→의미 줄바꿈)을 자동화한다.
 //   ⚠️ 원칙: '사진 보고 없는 글 생성' 금지. 이미지에 박힌 원문을 읽어(팩트 그대로) 표현만 라이트 리라이트.
-import { resolveAgentBrain } from '../../../services/aiBrainSettings';
 import { chatWithProvider } from '../../../services/aiProviderAdapter';
+import { hasProviderKey } from '../../../services/aiKeyVault';
 import type { ChatContentPart } from '../../../types/aiProvider';
+
+// 변환기 브레인 = Claude(클라우드) 고정. 생성기 문구용 로컬 Gemma(design 두뇌)와 분리 —
+// design 두뇌에 묶으면 로컬 LM Studio로 가서 대용량 이미지에 HTTP 400. 변환기는 항상 Claude.
+const CONVERTER_PROVIDER = 'claude_api';
 
 export interface BasicPointBlock { index: number; caption: string }
 export interface BasicVisionResult {
@@ -122,7 +126,9 @@ export const readBasicLayout = async (
   bands: string[],
   ctx: BasicReadContext,
 ): Promise<BasicVisionResult> => {
-  const brain = resolveAgentBrain('design');
+  if (!hasProviderKey(CONVERTER_PROVIDER)) {
+    throw new Error('변환기 AI(Claude) 키가 연결되어 있지 않습니다. 관리자 설정 → AI 연결에서 Claude API 키를 붙여넣어 주세요.');
+  }
   const small = await Promise.all(bands.map((b) => downscale(b)));
 
   const content: ChatContentPart[] = [{
@@ -139,15 +145,14 @@ export const readBasicLayout = async (
   });
 
   const res = await chatWithProvider({
-    providerId: brain.providerId,
-    modelIdOverride: brain.modelId || undefined,
+    providerId: CONVERTER_PROVIDER,   // Claude 고정(모델/키는 vault에서 chatWithCloud가 해석)
     purpose: 'agent_run',
     temperature: 0.3,
     maxTokens: 2600,
     messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content }],
   });
   if (!res.ok || !res.content) {
-    throw new Error(res.errorMessage || '변환기 AI(Claude) 응답을 받지 못했습니다. AI 직원 설정에서 디자인 AI를 Claude로 연결했는지 확인하세요.');
+    throw new Error(res.errorMessage || '변환기 AI(Claude) 응답을 받지 못했습니다. Claude 연결 키/모델을 확인해 주세요.');
   }
   try {
     return parseResult(res.content);
