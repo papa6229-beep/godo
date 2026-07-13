@@ -171,20 +171,21 @@ export const readBasicLayout = async (
 //   속도 우선 → 읽기 + 라이트 리라이트 + ##강조##를 1패스로. 지그재그 배치는 PreviewGodoFlow가 자동.
 export interface TypedBand { dataUrl: string; type: 'PHOTO' | 'TEXT' | 'LINE' }
 export interface BakedFlowResult {
-  mainIndex: number;                                  // 상단 대표(메인) 이미지 밴드 → 캡션 없이 풀폭. 없으면 -1
+  mainIndices: number[];                              // 상단 대표(마케팅) 영역 (사진) 밴드들 → 세로로 합쳐 메인 풀폭
   blocks: { imageIndex: number; caption: string }[];  // [사진 + 리라이트+강조 캡션]
   notes: string[];
 }
 
 const BAKED_FLOW_SYSTEM = [
   '당신은 국내(한국) 성인용품 쇼핑몰 상세페이지 편집자입니다. 입력은 통이미지를 위→아래로 자른 밴드들입니다.',
-  '각 밴드는 [i](사진) 또는 [i](설명글)로 라벨됩니다. (사진)=제품/패키지/마케팅 이미지. (설명글)=그 위 사진을 설명하는 텍스트 줄.',
+  '각 밴드는 [i](사진) 또는 [i](설명글)로 라벨됩니다. (사진)=제품/패키지/마케팅 이미지. (설명글)=그 위 사진을 설명하는 한글 텍스트 줄.',
   '',
   '[할 일]',
-  '1. mainIndex: 상단의 "가장 크고 대표적인 (사진)" 하나. 마케팅 이미지가 있으면 그것, 없으면 제품+패키지가 함께 나온 상단 대표 컷. 반드시 1개(캡션 없이 위 풀폭). (설명글)은 절대 아님.',
-  '2. blocks: mainIndex를 제외한 각 제품 (사진)마다 {imageIndex: 그 (사진) 밴드 번호, caption: 그 사진 "바로 아래 (설명글)"을 읽어 리라이트한 문구}. 위→아래 순서.',
+  '1. mainIndices: 최상단부터 "아래에 한글 설명 문장이 붙는 첫 제품 블록"이 시작되기 전까지의 (사진) 밴드 번호들(연속). 이 영역 = 크고 대표적인 마케팅 이미지(일본어·캐릭터·화려함·설명글 없음)일 수 있고, 여러 밴드면 전부 나열(세로로 합쳐 메인 1개가 됨).',
+  '   · 마케팅이 없으면(예: 버진루프) 상단의 "패키지+제품이 함께 나온 대표 (사진)" 1개만 mainIndices에 넣는다. 즉 mainIndices는 보통 최소 1개.',
+  '2. blocks: mainIndices 이후의 각 제품 (사진)마다 {imageIndex: 그 (사진) 밴드 번호, caption: 그 사진 "바로 아래 (설명글)"을 읽어 리라이트한 문구}. 위→아래 순서.',
   '   · (설명글) 밴드는 이미지가 아니다 → imageIndex로 쓰지 말 것(캡션 근거로만).',
-  '   · 바로 아래에 (설명글)이 없는 (사진)(순수 마케팅/헤딩성)은 blocks에 넣지 말 것.',
+  '   · 마케팅을 mainIndices에 넣었다면, 그 아래 "패키지+제품" 사진은 mainIndices가 아니라 blocks의 첫 번째가 된다(설명이 있으면 caption 포함).',
   '',
   '[구분 규칙]',
   '· 상품명·옵션명 "헤딩"(예 "버진 루프 하드"(금색 밑줄), "TORNADO/SPHERE" 같은 이름 단어)은 설명이 아님 → caption으로 쓰지 말 것.',
@@ -194,7 +195,7 @@ const BAKED_FLOW_SYSTEM = [
   '· 의미 단위 줄바꿈(\\n). 가장 중요한 소구 어구 1곳만 ##문구##로 감쌀 것.',
   '',
   '[출력] JSON 하나만(코드펜스/설명/머리말 금지):',
-  '{"mainIndex":0,"blocks":[{"imageIndex":2,"caption":"..\\n.."}],"notes":[]}',
+  '{"mainIndices":[0],"blocks":[{"imageIndex":2,"caption":"..\\n.."}],"notes":[]}',
 ].join('\n');
 
 export const readBakedFlow = async (bands: TypedBand[], ctx: BasicReadContext): Promise<BakedFlowResult> => {
@@ -227,12 +228,12 @@ export const readBakedFlow = async (bands: TypedBand[], ctx: BasicReadContext): 
     const text = stripFence(res.content);
     const m = text.match(/\{[\s\S]*\}/);
     const obj: any = m ? JSON.parse(m[0]) : {};
-    const mainIndex = num(obj.mainIndex);
+    const mainIndices = (Array.isArray(obj.mainIndices) ? obj.mainIndices : []).map((v: any) => num(v)).filter((n: number) => n >= 0);
     const blocks = (Array.isArray(obj.blocks) ? obj.blocks : [])
       .map((b: any) => ({ imageIndex: num(b?.imageIndex), caption: str(b?.caption) }))
       .filter((b: any) => b.imageIndex >= 0);
     const notes = Array.isArray(obj.notes) ? obj.notes.map(str).filter(Boolean) : [];
-    return { mainIndex, blocks, notes };
+    return { mainIndices, blocks, notes };
   } catch {
     throw new Error('AI 응답 해석 실패(JSON 파싱).');
   }
