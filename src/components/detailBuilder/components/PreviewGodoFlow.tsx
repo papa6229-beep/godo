@@ -27,32 +27,30 @@ const themedText = (c: string) => isGradient(c)
   ? { backgroundImage: c, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent' }
   : { color: c };
 
-// 문맥 줄맞춤(결정론): ①마침표(.!?)마다 문장을 다음 줄로 ②긴 문장은 문맥점(쉼표·강한 연결어미 '~며/는데/지만…'이
-//   중앙 근처면 거기서, 아니면 중앙 최근접 공백)에서 균형 분절. ##강조##는 마스킹해 내부 분절/파손 방지.
-const BREAK_CONNS = ['으며 ', '는데 ', '지만 ', '하며 ', '이며 ', '며 ', '에서 ', '으로 ', '에게 ', '토록 '];
-const chLen = (s: string) => [...s].length;
-const breakLongLine = (line: string, maxLen: number): string => {
-  line = line.trim();
-  if (chLen(line) <= maxLen) return line;
-  const mid = line.length / 2, win = line.length * 0.30;
-  const spaces: number[] = []; { let i = line.indexOf(' '); while (i >= 0) { spaces.push(i + 1); i = line.indexOf(' ', i + 1); } }
-  if (!spaces.length) return line;
-  const commas: number[] = []; { let m: RegExpExecArray | null; const cr = /, /g; while ((m = cr.exec(line))) commas.push(m.index + 2); }
-  const conn: number[] = []; for (const c of BREAK_CONNS) { let j = line.indexOf(c); while (j >= 0) { conn.push(j + c.length); j = line.indexOf(c, j + 1); } }
-  const pick = (arr: number[]): number | null => { let b: number | null = null, bd = Infinity; for (const p of arr) { if (p > 3 && p < line.length - 3) { const d = Math.abs(p - mid); if (d < bd) { bd = d; b = p; } } } return b; };
-  const near = [...commas, ...conn].filter((p) => Math.abs(p - mid) < win);
-  const best = pick(near.length ? near : spaces);
-  if (best == null) return line;
-  return line.slice(0, best).trim() + '\n' + breakLongLine(line.slice(best), maxLen);
-};
-const breakByFlow = (text: string, maxLen = 28): string => {
+// 문맥 줄맞춤(A안 · 구조 보존): 글자수 기계분절을 하지 않는다. 텍스트 유형을 먼저 구분해
+//   ①불릿(♡♥●◆…) 항목은 통째 1줄 ②치수·수치(100×35×35mm·233g)는 원자 단위로 보호(내부 분절 금지)
+//   ③스펙 항목(외장 사이즈:·상품 중량:)은 각 행 ④일반 문장은 마침표 단위로만 나누고, 나머지는 브라우저 자연
+//   줄바꿈(word-break:keep-all)에 맡긴다. ##강조##는 마스킹해 파손 방지. (기존 maxLen breakLongLine 폐기)
+const BULLET = '♡♥❤●◆★☆■▶•‣∙·';
+const breakByFlow = (text: string): string => {
   const masks: string[] = [];
-  let t = (text || '').replace(/##.*?##/g, (mm) => { masks.push(mm); return 'M' + (masks.length - 1) + 'M'; });
-  t = t.replace(/\s+/g, ' ').trim();
+  let t = (text || '').replace(/##.*?##/g, (mm) => { masks.push(mm); return `${masks.length - 1}`; });
+  t = t.replace(/[ \t]+/g, ' ').replace(/\r/g, '').trim();
   if (!t) return '';
-  const sents = t.split(/(?<=[.!?])\s+/);
-  const out = sents.map((s) => breakLongLine(s, maxLen)).filter(Boolean).join('\n');
-  return out.replace(/M(\d+)M/g, (_, i) => masks[+i] || '');
+  // ② 치수/수치 원자 보호: 내부 공백을 nbsp로 → breakByFlow·브라우저 모두 안 쪼갬. (예 "100 × 35 × 35mm")
+  t = t.replace(/\d[\d.]*(?:\s*[×xX*]\s*\d[\d.]*)+\s*(?:mm|cm|㎜|㎝|kg|g|ml|cc|ℓ)?/g, (m) => m.replace(/\s+/g, ' '));
+  // ① 줄머리 불릿 앞에서 줄바꿈(문장부호/줄머리 뒤에 오는 불릿만 = 문장 끝 장식 ♥은 제외)
+  t = t.replace(new RegExp(`([.!?。]|^|\\n)\\s*([${BULLET}])`, 'g'), '$1\n$2');
+  // ③ 스펙 라벨 앞에서 줄바꿈(외장 사이즈:·상품 중량:·내용 등)
+  t = t.replace(/\s+((?:[가-힣]{1,4}\s)?(?:사이즈|중량|무게|길이|용량|규격|성분|재질)\s*[:：])/g, '\n$1');
+  // ④ 각 줄 처리: 불릿 줄은 통째, 일반 줄은 마침표 단위로만 분할(길이분할 없음)
+  const out = t.split('\n').flatMap((line) => {
+    const s = line.trim();
+    if (!s) return [];
+    if (new RegExp(`^[${BULLET}]`).test(s)) return [s];               // 불릿 = 통째 1항목
+    return s.split(/(?<=[.!?])\s+/).map((x) => x.trim()).filter(Boolean); // 일반 = 문장 단위
+  }).join('\n');
+  return out.replace(/(\d+)/g, (_, i) => masks[+i] || '');
 };
 
 // 캡션 내 ##키워드## → 테마색 볼드 강조(godo 디자인 언어와 동일). 그 외는 그대로.

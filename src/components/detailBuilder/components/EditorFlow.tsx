@@ -133,13 +133,15 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       onChange(prev => ({
         ...prev,
         mainImage: '', // 상품 전환 시 이전 섬네일 즉시 제거(성공 시에만 아래서 재설정 → 잔류 누수 차단)
-        flowEyebrow: p.eyebrow || prev.flowEyebrow || '',
-        productNameKr: p.productNameKr || prev.productNameKr,
-        productNameEn: p.productNameEn || prev.productNameEn,
-        brandName: p.brandName || prev.brandName,
-        flowHeaderText: p.flowHeaderText || prev.flowHeaderText,
-        flowImages: p.flowImages.length ? p.flowImages : (prev.flowImages || []),
-        flowBlocks: baseBlocks.length ? baseBlocks : (prev.flowBlocks || getFlowBlocks(prev)),
+        // 상품 간 상태 누수 차단: 새 import는 이전 상품값으로 폴백하지 않음(빈 값이면 빈 값 그대로).
+        //   간호처럼 인트로가 비면 결과도 비어야 정상. 동일 상품 편집은 별도 경로(setBlocks/setField)가 prev 유지.
+        flowEyebrow: p.eyebrow || '',
+        productNameKr: p.productNameKr || '',
+        productNameEn: p.productNameEn || '',
+        brandName: p.brandName || '',
+        flowHeaderText: p.flowHeaderText || '',
+        flowImages: p.flowImages || [],
+        flowBlocks: baseBlocks,
         // 섬네일은 로고 박힌 목록이미지 대신 상세 이미지에서 자동 선택(아래) — 여기선 안 건드림
       }));
       // 원본 레이아웃 열 수 판정(이미지 크기) → 2열/1열 보존
@@ -190,11 +192,13 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
           } else {
             // 단순형1: 원본 2차 이미지 그대로(분할·읽기·OCR 없음). preserved 렌더 = 원본비율·중앙·과확대 없음.
             const rawBlocks = (p.flowImages || []).map((u: string) => ({ id: newBlockId(), image: u, caption: '', preserved: true }));
-            // 썸네일: 단순형1은 유사도 픽이 다이어그램을 고르기 쉬움 → 억지 선택 대신 unavailable(이전 픽 클리어).
-            //   (통이미지 crop-fallback은 후속 설계 — 저신뢰면 unavailable 유지가 원칙)
-            onChange(prev => ({ ...prev, flowBlocks: rawBlocks, mainImage: '' }));
+            // 썸네일: 일반 단순형1(스타킹·타액)은 위 autoPickThumbnail 결과 유지(회귀 복원). 단, 극단적으로 긴
+            //   마케팅 통이미지(롬프류 세로/가로 > 8)는 유사도 픽이 다이어그램을 골라 unavailable(억지선택 금지·사람이 후처리).
+            let extremeLong = false;
+            for (const u of (p.flowImages || [])) { const sz = await imgSize(u); if (sz && sz.w && sz.h / sz.w > 8) { extremeLong = true; break; } }
+            onChange(prev => ({ ...prev, flowBlocks: rawBlocks, ...(extremeLong ? { mainImage: '' } : {}) }));
             setBaking(null);
-            setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 단순형1 원본 유지 (${rawBlocks.length}장) · ${verdict.note}${ov ? ` · override:${ov}` : ''}` });
+            setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 단순형1 원본 유지 (${rawBlocks.length}장)${extremeLong ? ' · 섬네일 미생성(긴 통이미지·수동)' : ''} · ${verdict.note}${ov ? ` · override:${ov}` : ''}` });
           }
         }
       } catch (autoErr: any) {
