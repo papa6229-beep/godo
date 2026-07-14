@@ -9,6 +9,7 @@ import { toProxyUrl } from '../services/exportImagePrep';
 import { imageSignature, signatureDistance, normalizeThumbnail } from '../services/flowThumbnail';
 import { rewriteFlowCaptions, rewriteHeaderText } from '../services/flowCaptionService';
 import { convertBakedToFlow, convertBakedByCrop } from '../services/bakedFlowConverter';
+import { classifyBakedPattern } from '../services/bakedCropReader';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -173,11 +174,28 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
             setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 분리형 자동 리라이트 완료` });
           }
         } else {
-          setBaking({ phase: '통이미지 자동 읽기 시작' });
-          const res = await convertBakedByCrop(p.flowImages, autoCtx, (pr) => setBaking(pr));
-          onChange(prev => ({ ...prev, flowBlocks: res.flowBlocks }));
-          setBaking(null);
-          setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지 자동 변환 완료 (파트 ${res.flowBlocks.length}개)` });
+          // 단순형2(통이미지 3차 반복) 확신 높을 때만 분할. 그 외/애매 → 단순형1 raw pass-through(원본 그대로).
+          //   숨은 override(개발/관리자용 백도어): localStorage 'godoConverterOverride' = 'simple1'|'simple2'.
+          setBaking({ phase: '유형 판정' });
+          let ov: string | null = null;
+          try { ov = window.localStorage.getItem('godoConverterOverride'); } catch { /* ignore */ }
+          const verdict = await classifyBakedPattern(p.flowImages);
+          const useSimple2 = ov === 'simple2' ? true : ov === 'simple1' ? false : verdict.isSimple2;
+          if (useSimple2) {
+            setBaking({ phase: '통이미지 자동 읽기 시작' });
+            const res = await convertBakedByCrop(p.flowImages, autoCtx, (pr) => setBaking(pr));
+            onChange(prev => ({ ...prev, flowBlocks: res.flowBlocks }));
+            setBaking(null);
+            setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지(단순형2) 자동 변환 완료 (파트 ${res.flowBlocks.length}개)` });
+          } else {
+            // 단순형1: 원본 2차 이미지 그대로(분할·읽기·OCR 없음). preserved 렌더 = 원본비율·중앙·과확대 없음.
+            const rawBlocks = (p.flowImages || []).map((u: string) => ({ id: newBlockId(), image: u, caption: '', preserved: true }));
+            // 썸네일: 단순형1은 유사도 픽이 다이어그램을 고르기 쉬움 → 억지 선택 대신 unavailable(이전 픽 클리어).
+            //   (통이미지 crop-fallback은 후속 설계 — 저신뢰면 unavailable 유지가 원칙)
+            onChange(prev => ({ ...prev, flowBlocks: rawBlocks, mainImage: '' }));
+            setBaking(null);
+            setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 단순형1 원본 유지 (${rawBlocks.length}장) · ${verdict.note}${ov ? ` · override:${ov}` : ''}` });
+          }
         }
       } catch (autoErr: any) {
         setCaptioning(null); setBaking(null);

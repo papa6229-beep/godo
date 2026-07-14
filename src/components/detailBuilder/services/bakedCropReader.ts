@@ -151,6 +151,31 @@ const readCaptionStrips = async (strips: string[]): Promise<string[]> => {
   return caps.slice(0, strips.length);
 };
 
+// ── 단순형1 vs 단순형2 판정(비전 0콜, 로컬 픽셀만) ──
+//   철학: "simple1을 찾는 게 아니라, simple2 3차 반복 패턴이 강할 때만 잡는 positive filter".
+//   고정 임계값(§10 실측, 5샘플 5정답): simple2 = PHOTO 밴드 ≥5 AND TEXT밴드비율 <0.25.
+//   근거: 트리니티 photo20/tr0·버진루프 photo7/tr0 = simple2 / 스타킹 photo3·타액 photo1(밴드부족)·
+//   롬프 photo13~19이나 tr0.63~0.76(텍스트과다 마케팅) = simple1. 애매하면 simple1(raw).
+export interface BakedPatternVerdict { isSimple2: boolean; photoBands: number; textRatio: number; note: string }
+export const classifyBakedPattern = async (detailImageUrls: string[]): Promise<BakedPatternVerdict> => {
+  let bestPhoto = 0, bestTr = 1, loaded = false;
+  for (const u of detailImageUrls) {
+    try {
+      const img = await loadImage(toProxyUrl(u));
+      const { H, rows } = scanRows(img);
+      const bands = segmentBands(H, rows.map(rowKind));
+      const photo = bands.filter((b) => b.kind === 'PHOTO').length;
+      const text = bands.filter((b) => b.kind === 'TEXT').length;
+      const tr = bands.length ? text / bands.length : 0;
+      loaded = true;
+      // 이미지 하나라도 강한 simple2 패턴이면 simple2(통이미지 분할 경로).
+      if (photo >= 5 && tr < 0.25) return { isSimple2: true, photoBands: photo, textRatio: +tr.toFixed(2), note: `photo=${photo}, textRatio=${tr.toFixed(2)}` };
+      if (photo > bestPhoto) { bestPhoto = photo; bestTr = tr; }
+    } catch { /* 개별 로드 실패 무시 */ }
+  }
+  return { isSimple2: false, photoBands: bestPhoto, textRatio: +bestTr.toFixed(2), note: loaded ? `no strong simple2 pattern (photo=${bestPhoto}, tr=${bestTr.toFixed(2)})` : 'load fail' };
+};
+
 /** 통이미지 URL(들) → 결정론 분할로 [깨끗한 제품 크롭 + 리라이트된 캡션] 파트 목록. */
 export const readCropParts = async (
   detailImageUrls: string[],
