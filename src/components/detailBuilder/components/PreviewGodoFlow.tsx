@@ -156,6 +156,8 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
               const out: any[] = [];
               let grid: any[] = [];
               let secIdx = 0;
+              let pointNum = 0; // 옵션 없는 상품의 3차 블록 번호(POINT 01, 02…)
+              const hasAnyOption = blocks.some((b: any) => (b.option || '').trim());
               const flushGrid = () => {
                 if (!grid.length) return;
                 out.push(<div key={'grid' + out.length} className="grid grid-cols-2 gap-x-6 gap-y-10 my-8">{grid}</div>);
@@ -171,9 +173,10 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                       <RenderWatermark targetKey={`flowImage${i}`} />
                     </div>
                     {hasCap && (
-                      <div className="flex gap-3">
-                        <div className="w-[3px] rounded-full flex-shrink-0 self-stretch" style={accentBar} />
-                        <p className={`flex-1 py-0.5 font-medium text-gray-700 break-keep whitespace-pre-line ${compact ? 'text-[14.5px] leading-[1.75]' : 'text-[16px] leading-[1.85]'}`}>
+                      // 캡션도 가운데 정렬(이미지와 축 일치 → 시선 분산 해소). 상단 중앙 짧은 액센트바.
+                      <div className="flex flex-col items-center gap-2.5 mt-1">
+                        <span className="w-8 h-[3px] rounded-full" style={accentBar} />
+                        <p className={`w-full font-medium text-gray-700 break-keep whitespace-pre-line text-center ${compact ? 'text-[14px] leading-[1.7]' : 'text-[16px] leading-[1.9]'}`}>
                           {renderHighlight(b.caption, themeColor)}
                         </p>
                       </div>
@@ -223,8 +226,18 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                 if (cols === 2) {
                   grid.push(cell(b, i, true)); // 2열 그리드에 누적(2개씩 흐름)
                 } else {
-                  // 1열 스택: 섹션 사이 내 디자인 구분선(원본 금색선 대체) + 여유 간격(블록↔블록 ~70px)
-                  if (secIdx > 0) {
+                  // 1열 스택 구분(line.png 언어): 옵션 없는 상품 = POINT 넘버 뱃지 + 빨간 라인(구분감 강화).
+                  //   옵션 있는 상품은 위 OPTION 헤더로 구분하므로 여기선 점 구분선 유지(혼동 방지).
+                  if (!hasAnyOption) {
+                    pointNum++;
+                    out.push(
+                      <div key={'pt' + i} className="mt-14 mb-6 flex items-center gap-3">
+                        <span className="text-[11px] font-black tracking-[0.15em] uppercase px-2.5 py-1 rounded text-white" style={accentBar}>POINT</span>
+                        <span className="text-[20px] font-black text-gray-900 tabular-nums leading-none">{String(pointNum).padStart(2, '0')}</span>
+                        <div className="flex-1 h-0.5 rounded-full" style={dimLine} />
+                      </div>
+                    );
+                  } else if (secIdx > 0) {
                     out.push(
                       <div key={'div' + i} className="flex items-center justify-center gap-2.5 my-8">
                         <span className="h-px w-10 rounded-full" style={dimLine} />
