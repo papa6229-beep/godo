@@ -85,6 +85,31 @@
 
 ---
 
+## PART 7. 단순형 최종 완료 상태 (정리 · 기본형 착수 전 기준선)
+사장님 "통과" 확정. 오늘 커밋 아크(main HEAD `1060969`):
+`9271805`(노랑 사각프레임 제거) → `b4df38c`(P0.2 라벨/크기/간격/1차줄맞춤) → `10a08f2`(단순형3 2차분리·썸네일 상태격리·캡션점수선정) → `7e32ebf`(POINT 구분·캡션 가운데정렬) → `e42e06d`(헤더강조·줄맞춤강화) → `86889e8`(단순형1 분류기·raw pass-through) → `56486d0`(줄맞춤 구조보존 A안·상태누수 전수제거·단순형1 썸네일 회귀복원) → `1060969`(2열 캡션 text-wrap:balance).
+
+### 파이프라인 라우팅(현재 · 동결)
+- 진입: `EditorFlow.importExcel` → `parseMainMallArrayBuffer`(상품1개/파일, `/files/goodsm/`만 상품). `hasTypedText`(캡션 유무)로 1차 분기.
+- **hasTypedText=true → 단순형3**: `rewriteFlowCaptions`(텍스트 배치, 비전0). 선두 무캡션=2차 `preserved`. 2열/1열 `detectColumns`.
+- **hasTypedText=false → `classifyBakedPattern`**(로컬픽셀, PHOTO밴드≥5 & TEXT비율<0.25):
+  - **simple2**: `convertBakedByCrop`→`readCropParts`(결정론 분할·노랑프레임 제거·좌우 라벨 컬러바운딩 제외·빨강치수 보존).
+  - **simple1**: raw pass-through(원본 이미지 `preserved`, 분할·읽기·OCR 없음). 극단긴(h/w>8) 썸네일 unavailable.
+  - override 백도어: `localStorage.godoConverterOverride`='simple1'|'simple2'.
+- 공용: 타입 `FlowBlock{image,caption?,option?,marketing?,preserved?}` → 렌더 `PreviewGodoFlow` → export DOM→JPEG. 헤더 강조 `rewriteHeaderText`(상품당 1콜).
+- 렌더 규칙: 이미지 비율별 폭(치수82/일반66/세로60/2열100)·중앙. 구분=옵션상품 OPTION헤더/무옵션 POINT넘버. 캡션 가운데+`text-wrap:balance`. 줄맞춤 `breakByFlow`(불릿통째·치수nbsp원자·스펙행·문장단위, 기계분절 없음).
+
+### 검증 상태
+- 7샘플(롬프·스타킹·타액·버진루프·트리니티·닛포리·옵션닛포리)+간호 이미지부 사장님 통과. 텍스트 줄맞춤·상태누수·썸네일 회귀 수정 완료(로직·픽셀·Playwright 검증; 앱 실제 연속변환은 사장님 E2E).
+- **동결(건드리지 말 것)**: classifyBakedPattern·임계값·simple1 raw·simple2 분할·simple3·이미지 크기/순서/경계.
+
+### 열린 항목(나중)
+- 롬프류 썸네일 crop-fallback(유사 긴 마케팅 통이미지 10+ 샘플 확보 후 임계값 검증).
+- 혼합 다행 엑셀 배치(현재 1상품/파일; 파서 다행화+상품별 상태/실패격리).
+- **기본형**(다음 주제): 메모리상 "단순형과 데이터접근 동일·출력 레이아웃만 다름·헤딩 감지 자동변환". 착수 전 사장님 "기본형 고려사항" 정리 수령 예정.
+
+---
+
 ## PART 4. 위치·참조
 - **코드(현 main `9271805`)**: `services/bakedCropReader.ts`(isFrameYellow·deframe) · `bakedFlowConverter.ts`(convertBakedByCrop) · `flowCaptionService.ts`(rewriteFlowCaptions=단순형3) · `mainMallExcelParser.ts`(파싱·hasTypedText) · `components/EditorFlow.tsx:142`(분기) · `PreviewGodoFlow.tsx`(렌더).
 - **실제 통이미지**: 버진루프 `test/버진루프.jpg`(=1591767619_0, 650×3029) · 트리니티 `test/트리니티.jpg`(=1614833663_0, 650×9354) · 옵션닛포리(단순형3) `1661580288_*`(590×4090, 개별컷).
