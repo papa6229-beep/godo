@@ -27,9 +27,33 @@ const themedText = (c: string) => isGradient(c)
   ? { backgroundImage: c, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent' }
   : { color: c };
 
-// 1차 상단 소개문: 문장(다./요.) 단위로 줄바꿈해 문맥상 줄맞춤(결정론·AI콜 없음). ##강조##는 렌더가 처리.
-const formatHeaderText = (t: string) =>
-  (t || '').replace(/\s+/g, ' ').replace(/(다|요)\.\s+/g, '$1.\n').trim();
+// 문맥 줄맞춤(결정론): ①마침표(.!?)마다 문장을 다음 줄로 ②긴 문장은 문맥점(쉼표·강한 연결어미 '~며/는데/지만…'이
+//   중앙 근처면 거기서, 아니면 중앙 최근접 공백)에서 균형 분절. ##강조##는 마스킹해 내부 분절/파손 방지.
+const BREAK_CONNS = ['으며 ', '는데 ', '지만 ', '하며 ', '이며 ', '며 ', '에서 ', '으로 ', '에게 ', '토록 '];
+const chLen = (s: string) => [...s].length;
+const breakLongLine = (line: string, maxLen: number): string => {
+  line = line.trim();
+  if (chLen(line) <= maxLen) return line;
+  const mid = line.length / 2, win = line.length * 0.30;
+  const spaces: number[] = []; { let i = line.indexOf(' '); while (i >= 0) { spaces.push(i + 1); i = line.indexOf(' ', i + 1); } }
+  if (!spaces.length) return line;
+  const commas: number[] = []; { let m: RegExpExecArray | null; const cr = /, /g; while ((m = cr.exec(line))) commas.push(m.index + 2); }
+  const conn: number[] = []; for (const c of BREAK_CONNS) { let j = line.indexOf(c); while (j >= 0) { conn.push(j + c.length); j = line.indexOf(c, j + 1); } }
+  const pick = (arr: number[]): number | null => { let b: number | null = null, bd = Infinity; for (const p of arr) { if (p > 3 && p < line.length - 3) { const d = Math.abs(p - mid); if (d < bd) { bd = d; b = p; } } } return b; };
+  const near = [...commas, ...conn].filter((p) => Math.abs(p - mid) < win);
+  const best = pick(near.length ? near : spaces);
+  if (best == null) return line;
+  return line.slice(0, best).trim() + '\n' + breakLongLine(line.slice(best), maxLen);
+};
+const breakByFlow = (text: string, maxLen = 28): string => {
+  const masks: string[] = [];
+  let t = (text || '').replace(/##.*?##/g, (mm) => { masks.push(mm); return 'M' + (masks.length - 1) + 'M'; });
+  t = t.replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  const sents = t.split(/(?<=[.!?])\s+/);
+  const out = sents.map((s) => breakLongLine(s, maxLen)).filter(Boolean).join('\n');
+  return out.replace(/M(\d+)M/g, (_, i) => masks[+i] || '');
+};
 
 // 캡션 내 ##키워드## → 테마색 볼드 강조(godo 디자인 언어와 동일). 그 외는 그대로.
 const renderHighlight = (text: string, themeColor: string) => {
@@ -135,7 +159,7 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
               </div>
             )}
             {(flowHeaderText || '').trim() && (
-              <p className="text-[17px] leading-[1.75] font-medium text-gray-600 break-keep whitespace-pre-line">{renderHighlight(formatHeaderText(flowHeaderText), themeColor)}</p>
+              <p className="text-[17px] leading-[1.75] font-medium text-gray-600 break-keep whitespace-pre-line">{renderHighlight(breakByFlow(flowHeaderText, 34), themeColor)}</p>
             )}
           </header>
         )}
@@ -177,7 +201,7 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                       <div className="flex flex-col items-center gap-2.5 mt-1">
                         <span className="w-8 h-[3px] rounded-full" style={accentBar} />
                         <p className={`w-full font-medium text-gray-700 break-keep whitespace-pre-line text-center ${compact ? 'text-[14px] leading-[1.7]' : 'text-[16px] leading-[1.9]'}`}>
-                          {renderHighlight(b.caption, themeColor)}
+                          {renderHighlight(breakByFlow(b.caption, compact ? 20 : 28), themeColor)}
                         </p>
                       </div>
                     )}

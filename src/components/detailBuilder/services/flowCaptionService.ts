@@ -199,6 +199,37 @@ export const rewriteFlowCaptions = async (
   return out;
 };
 
+// ── 1차 상단 소개문 강조: 헤더 1개당 Claude 1콜(가벼움). 팩트·문장 유지 + 핵심 소구 어구 1~2곳 ##강조##. ──
+//   줄바꿈은 렌더러(breakByFlow)가 결정론으로 처리 → 여기선 강조만. 실패/무키 시 원문 그대로 반환(무해).
+const HEADER_SYSTEM =
+  '성인용품 쇼핑몰 상세페이지의 최상단 소개문입니다. 아래 규칙으로 다듬으세요.\n' +
+  '1. 의미·팩트(숫자·사이즈·재질·기능)·문장 구성을 원본 그대로 유지(요약·확장·창작·과장 금지).\n' +
+  '2. 어휘·표현만 아주 살짝 자연스럽게(원본과 거의 같게, 분량 유지).\n' +
+  '3. 가장 중요한 소구 어구 1~2곳을 ##문구##로 감싸 강조(문장당 최대 1곳).\n' +
+  '4. 출력은 다듬은 소개문 본문만(머리말·따옴표·설명·줄바꿈 지시 금지).';
+export const rewriteHeaderText = async (
+  headerText: string,
+  ctx: { productNameKr?: string; brandName?: string },
+): Promise<string> => {
+  const t = (headerText || '').trim();
+  if (!t || !hasProviderKey(CONVERTER_PROVIDER)) return headerText;
+  try {
+    const res = await chatWithProvider({
+      providerId: CONVERTER_PROVIDER, modelIdOverride: CONVERTER_MODEL, purpose: 'agent_run',
+      temperature: 0.5, maxTokens: 800,
+      messages: [
+        { role: 'system', content: HEADER_SYSTEM },
+        { role: 'user', content: `상품명: ${ctx.productNameKr || ''} / 브랜드: ${ctx.brandName || ''}\n원본 소개문:\n${t}\n\n규칙대로 다듬고 ##강조##를 넣어 본문만 출력하세요.` },
+      ],
+    });
+    if (res.ok && res.content) {
+      const out = res.content.replace(/```[a-z]*/gi, '').trim();
+      if (out) return out;
+    }
+  } catch { /* 실패 시 원문 유지 */ }
+  return headerText;
+};
+
 // 블록 각각에 대해 VLM 묘사 → Gemma 캡션 → block.caption 채움. onlyEmpty=true면 빈 캡션만 채움.
 export const generateFlowCaptions = async (
   data: ProductData,

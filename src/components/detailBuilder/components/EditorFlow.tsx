@@ -7,7 +7,7 @@ import { getFlowBlocks, imagesToBlocks, newBlockId } from '../services/flowBlock
 import { extractProductImages } from '../services/flowImageSplitter';
 import { toProxyUrl } from '../services/exportImagePrep';
 import { imageSignature, signatureDistance, normalizeThumbnail } from '../services/flowThumbnail';
-import { rewriteFlowCaptions } from '../services/flowCaptionService';
+import { rewriteFlowCaptions, rewriteHeaderText } from '../services/flowCaptionService';
 import { convertBakedToFlow, convertBakedByCrop } from '../services/bakedFlowConverter';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
@@ -182,6 +182,13 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       } catch (autoErr: any) {
         setCaptioning(null); setBaking(null);
         setImportNote({ ok: false, text: '자동 AI 처리 실패: ' + (autoErr?.message || String(autoErr)) + ' (구조는 남음 · 버튼으로 재시도 가능)' });
+      }
+      // 1차 상단문 강조(헤더 전용 1콜) — 두 경로 공통. 줄맞춤은 렌더러가, 여기선 ##강조##만. 실패/무키면 원문.
+      if ((p.flowHeaderText || '').trim()) {
+        try {
+          const nh = await rewriteHeaderText(p.flowHeaderText, { productNameKr: p.productNameKr, brandName: p.brandName });
+          if (nh && nh.trim() && nh !== p.flowHeaderText) onChange(prev => ({ ...prev, flowHeaderText: nh }));
+        } catch { /* 원문 유지 */ }
       }
     } catch (err: any) {
       setImportNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
