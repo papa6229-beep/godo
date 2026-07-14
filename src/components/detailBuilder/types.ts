@@ -16,6 +16,7 @@ export interface FlowBlock {
   image: string;      // dataURL(base64) 또는 CDN URL
   caption?: string;   // 이미지 아래 SEO 텍스트(원본 프리필 or AI 생성/수동)
   option?: string;    // 옵션형일 때 이 이미지가 속한 옵션(예: "01. 키타노 미나"). 없으면 미설정
+  marketing?: boolean; // true=2차 마케팅 대표컷(원본 보존·풀폭 렌더). 통이미지 baked 경로에서만 설정.
 }
 
 export interface OptionItem {

@@ -126,6 +126,7 @@ const SYSTEM = [
   '각 띠에 적힌 한글 설명 문장을 읽어, 표현·톤만 자연스럽게 라이트 리라이트하세요(숫자·사이즈·무게·재질 등 팩트는 원문 그대로, 창작 금지).',
   '· 의미 단위로 줄바꿈(\\n) — 한 줄이 완결된 덩어리가 되게.',
   '· 각 문구에서 가장 중요한 소구 어구 "1곳만" ##문구## 로 감쌀 것(빨강 강조).',
+  '· 짧은 식별 라벨(예: 「"버진 루프" 정면 사진」·「"모에 구멍 트리니티" 단면 사진」 = 제품명+정면/단면/삽입/사용/컷+"사진/이미지")은 그대로 두지 말 것: 뒤에 실제 설명이 이어지면 라벨을 떼고 설명만 남기고, 라벨만 있으면 제품명·따옴표를 빼고 "정면 모습"·"단면 구조"처럼 짧고 자연스러운 한 구절로 다듬어라(없는 사실·수치 창작 금지, 못 다듬겠으면 라벨 원문 유지).',
   '· 그 띠가 한글 설명 문장이 아니면(상품명/옵션명 헤딩, 통짜 일본어·영어, 치수 숫자만, 빈 것) 반드시 빈 문자열 "".',
   '· 입력 띠 개수와 정확히 같은 길이의 배열을 순서대로 반환.',
   '[출력] JSON 하나만: {"captions":["..\\n..",""]}',
@@ -197,17 +198,25 @@ export const readCropParts = async (
       let hasPhoto = false;
       for (let y = top; y < bot; y++) if (kinds[y] === 'PHOTO') { hasPhoto = true; break; }
       if (!hasPhoto || bot - top < MIN_PHOTO) return null;
-      // 좌우: 코어 구간의 비-흰 픽셀 바운딩(전폭으로 안 늘려서 우측 짤림/여백 방지). 성긴 샘플로 빠르게.
-      let left = W, right = 0;
-      const xs = Math.max(1, Math.floor(W / 200)), ys = Math.max(1, Math.floor((bot - top) / 120));
-      for (let y = top; y < bot; y += ys) {
-        for (let x = 0; x < W; x += xs) {
-          const [r, g, b] = get(x, y);
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          // 노랑 프레임은 배경 취급(바운딩에서 제외) → 크롭이 실제 제품으로 조여져 세로 rail이 빠진다.
-          if (lum < WHITE_LUM - 6 && !isFrameYellow(r, g, b)) { if (x < left) left = x; if (x > right) right = x; }
+      // 좌우 바운딩: 제품(컬러/채도 있는 픽셀)로만 경계 잡음 → 제품 오른쪽/왼쪽에 흰 갭으로 분리된
+      //   "짧은 검정 라벨 텍스트"("「제품명」정면 사진" 등, 저채도)는 자동 제외. 프레임 노랑도 제외.
+      //   유지: 빨강 치수선(고채도)·제품 내부 검정부(벌브/그림자 — 컬러에 둘러싸여 x범위 안이라 포함됨).
+      const boundBy = (test: (r: number, g: number, b: number, lum: number, sat: number) => boolean) => {
+        let lft = W, rgt = 0;
+        for (let y = top; y < bot; y += ys) {
+          for (let x = 0; x < W; x += xs) {
+            const [r, g, b] = get(x, y);
+            const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            const sat = Math.max(r, g, b) - Math.min(r, g, b);
+            if (test(r, g, b, lum, sat)) { if (x < lft) lft = x; if (x > rgt) rgt = x; }
+          }
         }
-      }
+        return [lft, rgt] as const;
+      };
+      const xs = Math.max(1, Math.floor(W / 200)), ys = Math.max(1, Math.floor((bot - top) / 120));
+      let [left, right] = boundBy((r, g, b, lum, sat) => sat >= COLOR_SAT && lum < 245 && !isFrameYellow(r, g, b));
+      // 무채색(컬러 거의 없는) 제품 폴백: 비-흰(프레임 제외)으로 재바운딩 → 라벨 제외 이점은 없지만 제품은 안전.
+      if (right - left < W * 0.08) [left, right] = boundBy((r, g, b, lum) => lum < WHITE_LUM - 6 && !isFrameYellow(r, g, b));
       if (right <= left) { left = 0; right = W - 1; }
       const padX = Math.round(W * 0.01), padY = 6;
       const x = Math.max(0, left - padX), rx = Math.min(W - 1, right + padX);

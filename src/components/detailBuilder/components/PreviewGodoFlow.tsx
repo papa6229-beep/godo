@@ -8,9 +8,28 @@ import { getFlowBlocks } from '../services/flowBlocks';
 
 const IMG_BORDER = '1px solid #e5e7eb';
 const isGradient = (c: string) => !!c && c.toLowerCase().includes('gradient');
+
+// 3차 제품 이미지: 비율에 따라 폭을 한 단계 작게·일관되게(전폭 금지, 가운데 정렬).
+//   가로형/치수(넓음) 82% · 세로형 60% · 일반 66%. 2열 셀은 셀폭 100%. (모바일 완화는 export=고정폭이라 불요)
+const FlowImage = ({ src, alt, twoCol }: { src: string; alt: string; twoCol: boolean }) => {
+  const [tier, setTier] = React.useState<'wide' | 'portrait' | 'general'>('general');
+  const onLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const w = e.currentTarget.naturalWidth, h = e.currentTarget.naturalHeight;
+    if (w && h) { const r = w / h; setTier(r >= 1.65 ? 'wide' : r < 0.85 ? 'portrait' : 'general'); }
+  };
+  const maxWidth = twoCol ? '100%' : tier === 'wide' ? '82%' : tier === 'portrait' ? '60%' : '66%';
+  return (
+    <img src={src} onLoad={onLoad} alt={alt} className="block h-auto object-contain rounded-xl"
+      style={{ maxWidth, maxHeight: twoCol ? 320 : 500, margin: '0 auto' }} />
+  );
+};
 const themedText = (c: string) => isGradient(c)
   ? { backgroundImage: c, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent' }
   : { color: c };
+
+// 1차 상단 소개문: 문장(다./요.) 단위로 줄바꿈해 문맥상 줄맞춤(결정론·AI콜 없음). ##강조##는 렌더가 처리.
+const formatHeaderText = (t: string) =>
+  (t || '').replace(/\s+/g, ' ').replace(/(다|요)\.\s+/g, '$1.\n').trim();
 
 // 캡션 내 ##키워드## → 테마색 볼드 강조(godo 디자인 언어와 동일). 그 외는 그대로.
 const renderHighlight = (text: string, themeColor: string) => {
@@ -116,7 +135,7 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
               </div>
             )}
             {(flowHeaderText || '').trim() && (
-              <p className="text-[17px] leading-[1.75] font-medium text-gray-600 break-keep whitespace-pre-line">{flowHeaderText}</p>
+              <p className="text-[17px] leading-[1.75] font-medium text-gray-600 break-keep whitespace-pre-line">{renderHighlight(formatHeaderText(flowHeaderText), themeColor)}</p>
             )}
           </header>
         )}
@@ -142,25 +161,30 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                 out.push(<div key={'grid' + out.length} className="grid grid-cols-2 gap-x-6 gap-y-10 my-8">{grid}</div>);
                 grid = [];
               };
-              const cell = (b: any, i: number, compact: boolean) => (
-                <div key={b.id || i} className="flex flex-col gap-4">
-                  {/* 이미지 크기 통일: 최대 높이 캡 + 가운데 정렬(들쭉날쭉·과대 방지). 흰 배경 무대. */}
-                  <div className="relative w-full overflow-hidden rounded-xl bg-white flex justify-center">
-                    <img src={b.image} className="block object-contain max-w-full h-auto" style={{ maxHeight: compact ? 360 : 500 }} alt={`flow-${i}`} />
-                    <RenderWatermark targetKey={`flowImage${i}`} />
+              const cell = (b: any, i: number, compact: boolean) => {
+                const hasCap = (b.caption || '').trim();
+                return (
+                  <div key={b.id || i} className="flex flex-col gap-3.5">
+                    {/* 이미지 크기 통일: 비율별 폭 캡 + 가운데 정렬(전폭 금지·들쭉날쭉 방지). */}
+                    <div className="relative w-full flex justify-center">
+                      <FlowImage src={b.image} alt={`flow-${i}`} twoCol={compact} />
+                      <RenderWatermark targetKey={`flowImage${i}`} />
+                    </div>
+                    {hasCap && (
+                      <div className="flex gap-3">
+                        <div className="w-[3px] rounded-full flex-shrink-0 self-stretch" style={accentBar} />
+                        <p className={`flex-1 py-0.5 font-medium text-gray-700 break-keep whitespace-pre-line ${compact ? 'text-[14.5px] leading-[1.75]' : 'text-[16px] leading-[1.85]'}`}>
+                          {renderHighlight(b.caption, themeColor)}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-3">
-                    <div className="w-[3px] rounded-full flex-shrink-0 self-stretch" style={accentBar} />
-                    <p className={`flex-1 py-0.5 font-medium text-gray-700 break-keep whitespace-pre-line ${compact ? 'text-[14.5px] leading-[1.75]' : 'text-[16px] leading-[1.85]'}`}>
-                      {renderHighlight(b.caption, themeColor)}
-                    </p>
-                  </div>
-                </div>
-              );
+                );
+              };
               blocks.forEach((b: any, i: number) => {
                 const optChanged = (b.option || '') !== (blocks[i - 1]?.option || '');
                 const showOptHeader = optChanged && (b.option || '').trim();
-                const hasText = (b.caption || '').trim();
+                const isMarketing = !!b.marketing; // 2차 마케팅 대표컷만 풀폭 보존. 캡션 없는 3차 제품컷은 아래 sized 경로로.
                 if (showOptHeader) {
                   flushGrid();
                   out.push(
@@ -172,11 +196,11 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                   );
                   secIdx = 0;
                 }
-                if (!hasText) {
-                  // 풀폭(엣지-투-엣지) — 마케팅·통이미지 대표컷(설명 없음)
+                if (isMarketing) {
+                  // 풀폭(엣지-투-엣지) — 2차 마케팅 대표컷(원본 보존). 다음 3차와 간격 확보(mb-10).
                   flushGrid();
                   out.push(
-                    <div key={'full' + i} className="my-3 relative w-full overflow-hidden">
+                    <div key={'full' + i} className="mt-2 mb-10 relative w-full overflow-hidden">
                       <img src={b.image} className="w-full h-auto block" alt={`flow-${i}`} />
                       <RenderWatermark targetKey={`flowImage${i}`} />
                     </div>
@@ -187,10 +211,10 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                 if (cols === 2) {
                   grid.push(cell(b, i, true)); // 2열 그리드에 누적(2개씩 흐름)
                 } else {
-                  // 1열 스택: 섹션 사이 내 디자인 구분선(원본 금색선 대체)
+                  // 1열 스택: 섹션 사이 내 디자인 구분선(원본 금색선 대체) + 여유 간격(블록↔블록 ~70px)
                   if (secIdx > 0) {
                     out.push(
-                      <div key={'div' + i} className="flex items-center justify-center gap-2.5 my-10">
+                      <div key={'div' + i} className="flex items-center justify-center gap-2.5 my-8">
                         <span className="h-px w-10 rounded-full" style={dimLine} />
                         <span className="w-1.5 h-1.5 rounded-full" style={accentBar} />
                         <span className="h-px w-10 rounded-full" style={dimLine} />

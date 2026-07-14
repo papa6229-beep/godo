@@ -9,7 +9,7 @@ import type { BasicReadContext, TypedBand } from './basicVisionReader';
 import { readCropParts } from './bakedCropReader';
 import { newBlockId } from './flowBlocks';
 
-export interface BakedFlowBlock { id: string; image: string; caption: string }
+export interface BakedFlowBlock { id: string; image: string; caption: string; marketing?: boolean }
 export interface BakedFlowConvertResult { flowBlocks: BakedFlowBlock[]; bandCount: number; notes: string[] }
 export interface BakedFlowProgress { phase: string }
 
@@ -69,7 +69,7 @@ export const convertBakedToFlow = async (
   const mainUrls = [...mainSet].sort((a, b) => a - b).map((i) => kept[i].dataUrl);
   if (mainUrls.length) {
     onProgress?.({ phase: mainUrls.length > 1 ? '상단 마케팅 병합' : '메인 이미지' });
-    flowBlocks.push({ id: newBlockId(), image: await mergeBandsVertically(mainUrls), caption: '' });
+    flowBlocks.push({ id: newBlockId(), image: await mergeBandsVertically(mainUrls), caption: '', marketing: true });
   }
 
   const capByIdx = new Map<number, string>();
@@ -102,7 +102,7 @@ export const convertBakedByCrop = async (
     for (const p of r.parts) {
       count++;
       if (!p.crop) continue;
-      flowBlocks.push({ id: newBlockId(), image: p.crop, caption: p.kind === 'marketing' ? '' : (p.caption || '') });
+      flowBlocks.push({ id: newBlockId(), image: p.crop, caption: p.kind === 'marketing' ? '' : (p.caption || ''), marketing: p.kind === 'marketing' });
     }
   }
   if (!flowBlocks.length) throw new Error('AI가 크롭 파트를 찾지 못했습니다. (통이미지 구조/키 확인)');
