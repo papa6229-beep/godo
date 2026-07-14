@@ -75,6 +75,16 @@
 
 ---
 
+## PART 6. 단순형3 2차 분리 + 썸네일 (커밋 `10a08f2`)
+사장님 확인: 단순형2 트리니티·버진루프 **성공**. 이어 단순형3(닛포리·옵션닛포리) 테스트 이슈 수정(수정된 A안·비전 0콜).
+- **2차 분리(회귀수정)**: P0.2의 marketing 플래그가 단순형3 캡션없는 2차를 sized/2열로 밀어넣던 회귀. **정규식 파서 결과에서 "첫 캡션 블록보다 앞의 선두 무캡션 이미지"만 `FlowBlock.preserved=true`**(뒤에 캡션 2개+ 이어질 때만). 렌더러가 3차 그리드/축소 배제·원본비율·중앙. **재확인**: opt닛포리 `_0` Playwright = 원본 590px 중앙(얇은 좌측조각 아님).
+- **썸네일 상태누수**: `EditorFlow.importExcel`이 성공시에만 mainImage 세팅 → **import 시작 시 `mainImage:''` 리셋**. 후순위 옵션닛포리에 직전 썸네일 잔류 차단.
+- **다중옵션 없음**: 기존 `autoPickThumbnail`(opt>=2→'') 유지(신규 없음).
+- **썸네일 선정**: 후보=3차만(2차 제외), **캡션 의미 점수**(패키지 가점·사용/단면/치수 제외·동점시 선두). 유사도는 baked(캡션없음)에서만. **재확인**: 닛포리 실측 시뮬 → `1695191131_1.jpg`(_1 패키지) 선정.
+- **미검증(사장님 E2E)**: 앱 실제 변환(닛포리 원격이미지+Claude 필요). 픽셀/로직은 오프라인 확인.
+
+---
+
 ## PART 4. 위치·참조
 - **코드(현 main `9271805`)**: `services/bakedCropReader.ts`(isFrameYellow·deframe) · `bakedFlowConverter.ts`(convertBakedByCrop) · `flowCaptionService.ts`(rewriteFlowCaptions=단순형3) · `mainMallExcelParser.ts`(파싱·hasTypedText) · `components/EditorFlow.tsx:142`(분기) · `PreviewGodoFlow.tsx`(렌더).
 - **실제 통이미지**: 버진루프 `test/버진루프.jpg`(=1591767619_0, 650×3029) · 트리니티 `test/트리니티.jpg`(=1614833663_0, 650×9354) · 옵션닛포리(단순형3) `1661580288_*`(590×4090, 개별컷).
