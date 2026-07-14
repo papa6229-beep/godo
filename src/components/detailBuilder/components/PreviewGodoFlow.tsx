@@ -196,6 +196,18 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                   );
                   secIdx = 0;
                 }
+                if (b.preserved) {
+                  // 단순형3 2차 보존이미지: 원본 비율·중앙 정렬·축소 금지(3차 그리드/축소 클래스 배제).
+                  flushGrid();
+                  out.push(
+                    <div key={'pres' + i} className="relative w-full flex justify-center" style={{ margin: '36px auto 52px' }}>
+                      <img src={b.image} className="block h-auto object-contain" style={{ width: 'auto', maxWidth: '100%' }} alt={`flow-${i}`} />
+                      <RenderWatermark targetKey={`flowImage${i}`} />
+                    </div>
+                  );
+                  secIdx = 0;
+                  return;
+                }
                 if (isMarketing) {
                   // 풀폭(엣지-투-엣지) — 2차 마케팅 대표컷(원본 보존). 다음 3차와 간격 확보(mb-10).
                   flushGrid();

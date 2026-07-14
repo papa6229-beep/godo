@@ -40,32 +40,53 @@ const detectColumns = async (urls: string[]): Promise<1 | 2> => {
 const THUMB_TALL = 2.5;
 const isRemoteUrl = (s: string) => /^https?:\/\//i.test(s) && !s.startsWith('data:');
 
+// 섬네일 후보 캡션 의미 그룹(상품별 정규식 남발 대신 소수 그룹). 비전 없이 이미 있는 캡션 텍스트만 사용.
+const PACKAGE_SIGNALS = ['패키지', '본품', '제품 외관', '외관', '전체 모습', '전체모습', '구성', '박스'];
+const EXCLUSION_SIGNALS = ['사이즈', '크기', '길이', '직경', '중량', '무게', '단면', '내부', '삽입', '늘어', '신축', '벌려', '벌리', '사용', '자극', '돌기'];
+// -1=제외(사용/단면/치수), 100=패키지 가점, 0=중립 후보.
+const captionRole = (cap: string): number => {
+  const t = cap || '';
+  if (EXCLUSION_SIGNALS.some((s) => t.includes(s))) return -1;
+  return PACKAGE_SIGNALS.some((s) => t.includes(s)) ? 100 : 0;
+};
+
 const autoPickThumbnail = async (
   blocks: any[],
   mallThumbUrl: string,
   hasOptions: boolean,
   optionCount: number,
 ): Promise<{ image: string; issue: boolean; reason: string }> => {
-  // 옵션 2종+ = 옵션마다 제품/패키지 달라 단일 대표 섬네일 자동판단 난해 → 이슈(닛포리류, 어차피 수동)
-  if (hasOptions && optionCount >= 2) return { image: '', issue: true, reason: '옵션 다수(수동)' };
+  // 옵션 2종+ = 옵션마다 대표가 달라 전체 상품 단일 대표 섬네일 불가 → 없음(기존 로직 유지)
+  if (hasOptions && optionCount >= 2) return { image: '', issue: true, reason: '옵션 다수(전체 대표 없음)' };
 
-  // 후보 수집: 통이미지는 정밀추출한 조각(base64), 아니면 원본 URL
+  // 후보 = 3차만(2차 보존이미지 제외)
+  const third = blocks.filter((b) => !b.preserved && !b.marketing);
+  if (!third.length) return { image: '', issue: true, reason: '3차 후보 없음' };
+  const normOut = async (src: string) => {
+    const norm = await normalizeThumbnail(isRemoteUrl(src) ? toProxyUrl(src) : src);
+    return { image: norm || src, issue: false, reason: '' };
+  };
+
+  // ── 단순형3(이미지별 캡션 존재): 캡션 의미로 선정. 패키지 가점 > 제외신호 없는 선두 3차 > 동점시 원본순서. 유사도 미사용. ──
+  const hasCaptions = third.some((b) => (b.caption || '').trim());
+  if (hasCaptions) {
+    const eligible = third.map((b, idx) => ({ b, idx, score: captionRole(b.caption) })).filter((x) => x.score >= 0);
+    if (!eligible.length) return { image: '', issue: true, reason: '적합 후보 없음(사용/단면/치수만)' };
+    const maxS = Math.max(...eligible.map((x) => x.score));
+    const top = eligible.filter((x) => x.score === maxS).sort((a, b) => a.idx - b.idx); // 동점 → 선두 순서
+    return normOut(top[0].b.image);
+  }
+
+  // ── 통이미지(baked)·캡션 없음: 기존 유사도 매칭 유지(회귀 0). 세로 통짜는 서브컷 추출 후보. ──
   const cands: string[] = [];
-  for (const b of blocks) {
+  for (const b of third) {
     const sz = await imgSize(b.image);
     if (!sz || !sz.w) continue;
     if (sz.h / sz.w >= THUMB_TALL) {
-      try {
-        const segs = await extractProductImages(toProxyUrl(b.image));
-        segs.forEach((s) => cands.push(s.dataUrl));
-      } catch { /* 추출 실패 무시 */ }
-    } else {
-      cands.push(b.image);
-    }
+      try { (await extractProductImages(toProxyUrl(b.image))).forEach((s) => cands.push(s.dataUrl)); } catch { /* 추출 실패 무시 */ }
+    } else cands.push(b.image);
   }
   if (!cands.length) return { image: '', issue: true, reason: '후보 없음' };
-
-  // 원본 섬네일과 가장 닮은 후보 선택(이미지 유사도) — 빠름. (VLM 방식은 로컬에서 분 단위라 폐기)
   let best = '';
   const mallSig = mallThumbUrl ? await imageSignature(toProxyUrl(mallThumbUrl)) : null;
   if (mallSig) {
@@ -77,11 +98,8 @@ const autoPickThumbnail = async (
       if (d < bestDist) { bestDist = d; best = src; }
     }
   }
-  if (!best) best = cands[0]; // 원본섬네일 없거나 매칭 불가 → 첫 후보 폴백
-
-  // 크기 정규화(bbox 트림 + 표준 프레임 fit) — 모든 섬네일 제품크기 균일
-  const norm = await normalizeThumbnail(isRemoteUrl(best) ? toProxyUrl(best) : best);
-  return { image: norm || best, issue: false, reason: '' };
+  if (!best) best = cands[0];
+  return normOut(best);
 };
 
 const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateAction<ProductData>) => void }> = ({ data, onChange }) => {
@@ -105,9 +123,15 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       const p = await parseMainMallArrayBuffer(buf);
       if (!p) { setImportNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
       // 구조화 페어링: 이미지 + (있으면) 원본 설명 텍스트를 캡션에 프리필 + 옵션 태그. 통이미지는 원본 그대로.
-      const baseBlocks = (p.detailBlocks || []).map(b => ({ id: newBlockId(), image: b.image, caption: b.text || '', option: b.option || '' }));
+      const baseBlocks: any[] = (p.detailBlocks || []).map(b => ({ id: newBlockId(), image: b.image, caption: b.text || '', option: b.option || '' }));
+      // 2차 보존 분리: "첫 캡션 블록보다 앞에 있는 선두 무캡션 이미지"만 2차로 표시(뒤에 캡션 블록 2개+ 이어질 때만).
+      //   → 3차 그리드/축소 배제, 렌더러가 원본비율·중앙정렬로. 통이미지(baked) 단일블록은 firstCap=-1이라 미해당.
+      const firstCap = baseBlocks.findIndex(b => (b.caption || '').trim());
+      const captionedCount = baseBlocks.filter(b => (b.caption || '').trim()).length;
+      if (firstCap > 0 && captionedCount >= 2) for (let i = 0; i < firstCap; i++) baseBlocks[i].preserved = true;
       onChange(prev => ({
         ...prev,
+        mainImage: '', // 상품 전환 시 이전 섬네일 즉시 제거(성공 시에만 아래서 재설정 → 잔류 누수 차단)
         flowEyebrow: p.eyebrow || prev.flowEyebrow || '',
         productNameKr: p.productNameKr || prev.productNameKr,
         productNameEn: p.productNameEn || prev.productNameEn,
