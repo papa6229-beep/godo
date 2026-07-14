@@ -110,6 +110,33 @@
 
 ---
 
+## PART 8. 다음 세션 = 기본형 작업 (핸드오프 · git 검증됨)
+사장님 확정: **단순형 완성**. 다음은 **기본형 변환기**를 단순형처럼 "원본 다양성 대응 + 신규 고도몰 레이아웃"으로 완성 → 최종 단순형과 통합. **⚠️ 시작 규칙: 아래를 사실로 믿지 말고 원본(코드·이미지) 재관측부터.**
+
+### 8-1. 기본형은 단순형과 완전 분리(안전)
+- **수동 버튼 선택**(자동 아님): `DesignTeamDashboard.tsx`에 3버튼 → **'godo'=기본형**(PreviewGodo+Editor+godoBasicConvert, 기본값) / **'godoFlow'=단순형**(PreviewGodoFlow+EditorFlow+flowCaptionService) / bananamall. `DetailPageBuilder`가 layoutMode로 렌더러 분기.
+- **렌더러 별개 컴포넌트** → 기본형 작업이 단순형에 영향 0. git 검증: 내 07-13/14 단순형 수정이 만진 공유파일(`basicVisionReader`·`flowImageSplitter`·`types`)은 전부 **단순형 전용 심볼에만 additive**, 기본형 호출함수(`readBasicLayout`·`splitImageByWhitespace`·`extractProductImages`·ProductData 기본형필드) 무변경. `PreviewGodo.tsx`는 07-11 커밋 `2827d52` 이후 무변경.
+
+### 8-2. ⚠️ 전제 교정 (중요)
+- **`test/godo_pinger_v4_full.jpeg`는 앱 출력이 아니라 Python POC**(손타이핑+수동 밴드슬라이스, `test/_gen_poc*.py`·`_pinger_bands/`). 07-11 앱 변환기는 통째 revert(백업 브랜치 `backup/inapp-pipeline-20260711`). **현 앱 변환기 = 07-13 재작성본**(`godoBasicConvert.ts`+`readBasicLayout`). → "07-11로 되돌릴 것" 없음. 렌더러(레이아웃)는 이미 v4 목표; **변환기만 미완성**.
+- blanket revert 금지(단순형 의존 `splitClassified`/`readBakedFlow`/`flowBlocks` 삭제됨).
+
+### 8-3. 현재 기본형 실제 문제 (재확인: `test/설명용/새 폴더/detail_page_핑거 위글_전립선 마사져.jpg`)
+- 골격 정상(메인/요약정보/KEY FEATURE/Point01·02/SIZE), AI 설명 **좌측정렬 깔끔**(PreviewGodo `renderPoint` p maxWidth420·text-center 아님, `PreviewGodo.tsx:260-274`).
+- **핵심 버그 = 캡션 중복**: Point 설명이 [좌측 AI버전] + [바로 아래 **가운데정렬 박스 중복본**](문구 미묘히 다름=원문 vs 리라이트) 두 번. 이게 사장님이 본 "단순형 섞임". **중복 박스 출처는 코드로 확정 필요**(godoBasicConvert가 원문/텍스트-이미지를 desc와 별도 슬롯에 또 넣는 것으로 추정).
+
+### 8-4. 기본형 개요 핵심 (`test/설명용/기본형 개요.xlsx`)
+- 하위 2종: 통이미지형/분리형. **단순형과 차이 = 메인이미지 + 제품스펙(요약정보) 존재**. 최상단 직접입력텍스트만 단순형과 동일, 그 아래론 직접입력텍스트 없음.
+- 기본 요소: 메인이미지/제품스펙/특징설명 이미지+텍스트(배치 다양·텍스트없이 롬프식 통이미지만인 경우도)/사이즈이미지. 패키지·옵션 있을 수 있음. **GIF 중 가로형·파란테두리(바나나몰 표기) 제외**. **섬네일=메인(2단컬러 누끼) 부적절→특징 누끼컷 권장**.
+
+### 8-5. 다음 스텝(제안 순서)
+1. `godoBasicConvert.ts`·`readBasicLayout`(basicVisionReader)·`PreviewGodo.tsx` 정독 → **가운데 박스 중복 출처 확정**.
+2. current↔v4 delta 표 작성(중복/텍스트품질/소제목/구조).
+3. 우선순위: 중복 제거 → 텍스트 라이트리라이트(단순형 방식 기본형 전용 재사용) → 원본 다양성(통/분리·GIF·패키지·옵션·섬네일 누끼) 대응. Playwright 반복검증, 단순형 무영향.
+- v4 구조·A기본값 기록 = `docs/MASTER_REPORT_2026-07-11.md`(godoSpacing section56/element52/heading10, Point maxW420, SIZE weight pill 등).
+
+---
+
 ## PART 4. 위치·참조
 - **코드(현 main `9271805`)**: `services/bakedCropReader.ts`(isFrameYellow·deframe) · `bakedFlowConverter.ts`(convertBakedByCrop) · `flowCaptionService.ts`(rewriteFlowCaptions=단순형3) · `mainMallExcelParser.ts`(파싱·hasTypedText) · `components/EditorFlow.tsx:142`(분기) · `PreviewGodoFlow.tsx`(렌더).
 - **실제 통이미지**: 버진루프 `test/버진루프.jpg`(=1591767619_0, 650×3029) · 트리니티 `test/트리니티.jpg`(=1614833663_0, 650×9354) · 옵션닛포리(단순형3) `1661580288_*`(590×4090, 개별컷).
