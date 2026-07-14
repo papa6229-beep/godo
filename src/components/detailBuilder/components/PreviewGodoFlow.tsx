@@ -157,7 +157,7 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
               </div>
             )}
             {(flowHeaderText || '').trim() && (
-              <p className="text-[17px] leading-[1.75] font-medium text-gray-600 break-keep whitespace-pre-line">{renderHighlight(breakByFlow(flowHeaderText, 34), themeColor)}</p>
+              <p className="text-[17px] leading-[1.75] font-medium text-gray-600 break-keep whitespace-pre-line [text-wrap:balance]">{renderHighlight(breakByFlow(flowHeaderText), themeColor)}</p>
             )}
           </header>
         )}
@@ -198,8 +198,8 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
                       // 캡션도 가운데 정렬(이미지와 축 일치 → 시선 분산 해소). 상단 중앙 짧은 액센트바.
                       <div className="flex flex-col items-center gap-2.5 mt-1">
                         <span className="w-8 h-[3px] rounded-full" style={accentBar} />
-                        <p className={`w-full font-medium text-gray-700 break-keep whitespace-pre-line text-center ${compact ? 'text-[14px] leading-[1.7]' : 'text-[16px] leading-[1.9]'}`}>
-                          {renderHighlight(breakByFlow(b.caption, compact ? 20 : 28), themeColor)}
+                        <p className={`w-full font-medium text-gray-700 break-keep whitespace-pre-line text-center [text-wrap:balance] ${compact ? 'text-[14px] leading-[1.7]' : 'text-[16px] leading-[1.9]'}`}>
+                          {renderHighlight(breakByFlow(b.caption), themeColor)}
                         </p>
                       </div>
                     )}
