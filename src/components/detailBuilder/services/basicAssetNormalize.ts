@@ -33,6 +33,95 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
     img.src = src;
   });
 
+// ── HERO 메인이미지 영역 정규화 (Step 3-b) ──
+//   문제: 선정된 HERO 원본이 가로로 납작한 직사각형이면 메인 슬롯에서 배너처럼 약하게 보임.
+//   해결: 외곽 여백 trim → 제품 bbox → "정사각형 우선(세로형 제품만 약세로 4:5~5:6)" 캔버스에
+//         제품을 중앙·크게 재배치. 가로 배너 비율은 만들지 않음. 제품 비율 훼손/잘림 없음.
+//   결과를 data.mainImage에 저장 → PreviewGodo HERO·썸네일 메인이 동일 자산 공유(여백으로 인한
+//   썸네일 제품 축소 방지). ⚠️ HERO 후보 선정(selectHeroIndex)은 무변경 — 자산 가공만.
+export interface HeroNormalizeResult {
+  dataUrl: string; normalized: boolean;
+  sourceSize: { w: number; h: number };
+  productBbox: { x0: number; y0: number; x1: number; y1: number } | null;
+  canvasRatio: string;   // '1:1' | '5:6' | '4:5'
+  outputSize: { w: number; h: number };
+  reason: string;
+}
+const HERO = {
+  BG_TOLERANCE: 16,      // 배경 판정(제품/그림자 보존 위해 패키지보다 약간 관대)
+  PRODUCT_FRAC: 0.86,    // 제품이 캔버스 제약 변에서 차지할 비율(나머지=안전 여백)
+  TALL_TRIGGER: 1.15,    // 제품 h/w 가 이 이상이면 세로형 → 약세로 캔버스
+  MAX_TALL_HW: 1.25,     // 캔버스 최대 세로비(4:5). 그 사이 5:6(1.2)
+  BASE_W: 1000,          // 정규화 캔버스 기준 폭
+  FF_MAX_DIM: 500,       // 여백 판정 다운스케일 상한
+} as const;
+
+export const normalizeHeroMainImage = async (src: string): Promise<HeroNormalizeResult> => {
+  const fail = (reason: string, w = 0, h = 0): HeroNormalizeResult => ({
+    dataUrl: src, normalized: false, sourceSize: { w, h }, productBbox: null, canvasRatio: '1:1', outputSize: { w, h }, reason,
+  });
+  if (typeof document === 'undefined' || !src) return fail('환경/소스 없음');
+  let img: HTMLImageElement;
+  try { img = await loadImage(src); } catch { return fail('이미지 로드 실패'); }
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  if (!W || !H) return fail('크기 0');
+
+  // 1) 외곽 밝은 배경 flood-fill trim → 제품 content bbox
+  const scale = Math.min(1, HERO.FF_MAX_DIM / Math.max(W, H));
+  const tw = Math.max(1, Math.round(W * scale)), th = Math.max(1, Math.round(H * scale));
+  const sc = document.createElement('canvas'); sc.width = tw; sc.height = th;
+  const sctx = sc.getContext('2d', { willReadFrequently: true });
+  if (!sctx) return fail('canvas 없음', W, H);
+  sctx.drawImage(img, 0, 0, tw, th);
+  let d: Uint8ClampedArray;
+  try { d = sctx.getImageData(0, 0, tw, th).data; } catch { return fail('픽셀 접근 불가(CORS)', W, H); }
+  const corner = (x: number, y: number): [number, number, number] => { const i = (y * tw + x) * 4; return [d[i], d[i + 1], d[i + 2]]; };
+  const cs = [corner(0, 0), corner(tw - 1, 0), corner(0, th - 1), corner(tw - 1, th - 1)];
+  const bg = [0, 1, 2].map((c) => median4(cs.map((v) => v[c]))) as [number, number, number];
+  const area = tw * th;
+  const isBg = new Uint8Array(area);
+  for (let p = 0; p < area; p++) { const i = p * 4; if (Math.max(Math.abs(d[i] - bg[0]), Math.abs(d[i + 1] - bg[1]), Math.abs(d[i + 2] - bg[2])) <= HERO.BG_TOLERANCE) isBg[p] = 1; }
+  const seen = new Uint8Array(area); const stack = new Int32Array(area); let sp = 0;
+  const push = (p: number) => { if (isBg[p] && !seen[p]) { seen[p] = 1; stack[sp++] = p; } };
+  for (let x = 0; x < tw; x++) { push(x); push((th - 1) * tw + x); }
+  for (let y = 0; y < th; y++) { push(y * tw); push(y * tw + tw - 1); }
+  while (sp > 0) { const p = stack[--sp]; const x = p % tw; const y = (p - x) / tw; if (x + 1 < tw) push(p + 1); if (x - 1 >= 0) push(p - 1); if (y + 1 < th) push(p + tw); if (y - 1 >= 0) push(p - tw); }
+  let x0 = tw, y0 = th, x1 = -1, y1 = -1;
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) if (!seen[y * tw + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return fail('제품 콘텐츠 없음', W, H);
+  const inv = 1 / scale;
+  const fx0 = Math.floor(x0 * inv), fy0 = Math.floor(y0 * inv), fx1 = Math.min(W, Math.ceil((x1 + 1) * inv)), fy1 = Math.min(H, Math.ceil((y1 + 1) * inv));
+  const pw = fx1 - fx0, ph = fy1 - fy0;
+  if (pw < 4 || ph < 4) return fail('제품 bbox 비정상', W, H);
+
+  // 2) 캔버스 비율 결정 — 정사각 우선, 세로형 제품만 약세로(5:6~4:5). 가로 배너 금지.
+  let ratioHW = 1.0; let ratioLabel = '1:1';
+  if (ph > pw * HERO.TALL_TRIGGER) {
+    ratioHW = ph / pw >= 1.4 ? HERO.MAX_TALL_HW : 1.2;
+    ratioLabel = ratioHW === HERO.MAX_TALL_HW ? '4:5' : '5:6';
+  }
+  const canvasW = HERO.BASE_W, canvasH = Math.round(canvasW * ratioHW);
+
+  // 3) 제품을 제약 변의 PRODUCT_FRAC까지 확대(비율 유지) 후 중앙 배치
+  const s2 = Math.min((canvasW * HERO.PRODUCT_FRAC) / pw, (canvasH * HERO.PRODUCT_FRAC) / ph);
+  const drawW = Math.round(pw * s2), drawH = Math.round(ph * s2);
+  const dx = Math.round((canvasW - drawW) / 2), dy = Math.round((canvasH - drawH) / 2);
+  const out = document.createElement('canvas'); out.width = canvasW; out.height = canvasH;
+  const octx = out.getContext('2d');
+  if (!octx) return fail('출력 canvas 없음', W, H);
+  octx.fillStyle = '#ffffff'; octx.fillRect(0, 0, canvasW, canvasH);
+  octx.imageSmoothingEnabled = true; octx.imageSmoothingQuality = 'high';
+  octx.drawImage(img, fx0, fy0, pw, ph, dx, dy, drawW, drawH);
+  let dataUrl: string;
+  try { dataUrl = out.toDataURL('image/jpeg', 0.92); } catch { return fail('toDataURL 실패', W, H); }
+  return {
+    dataUrl, normalized: true, sourceSize: { w: W, h: H },
+    productBbox: { x0: fx0, y0: fy0, x1: fx1, y1: fy1 }, canvasRatio: ratioLabel,
+    outputSize: { w: canvasW, h: canvasH },
+    reason: `${W}x${H}(제품 ${pw}x${ph}) → ${ratioLabel} 캔버스 ${canvasW}x${canvasH}, 제품 중앙 ${drawW}x${drawH}`,
+  };
+};
+
 // ── 바나나몰 자체 홍보 GIF 판정 (Step 2-2) ──
 //   개요.xlsx 규칙: "GIF 가로형·파란 외곽테두리(바나나몰) 움짤은 안 씀". 업체 제공 GIF는 유지.
 //   복합 조건(하드코딩 없음): 확장자 .gif AND 가로형 AND 4변 파란 프레임 비율 기준 이상.

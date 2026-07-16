@@ -7,7 +7,7 @@ import { splitImageByWhitespace, extractProductImages } from './flowImageSplitte
 import { toProxyUrl } from './exportImagePrep';
 import { readBasicLayout } from './basicVisionReader';
 import { tagBasicBands, dhashHamming, type BasicBandType, type TaggedBand } from './basicBandTagger';
-import { normalizePackageImage, isBananamallPromoGif } from './basicAssetNormalize';
+import { normalizePackageImage, isBananamallPromoGif, normalizeHeroMainImage } from './basicAssetNormalize';
 
 export interface BasicConvertInput {
   productNameKr: string;
@@ -224,10 +224,43 @@ export const convertBasicWithAI = async (
     decisions.push({ role, requested: reqIndex, reqType: t, result: 'accepted', final: reqIndex, reason: 'ok' });
     return reqIndex;
   };
-  const mainIndexV = validateRole(r.mainIndex, 'main');
+  // feature/size/package 먼저 검증(HERO가 이들을 피하고 dHash 참조로 쓰기 위해). feature 선정 로직은 무변경.
   const featureIndexV = validateRole(r.featureIndex, 'feature');
   const sizeIndexV = validateRole(r.sizeIndex, 'size');
   const packageIndexV = validateRole(r.packageIndex, 'package');
+
+  // ── Step 3: HERO = 깨끗한 제품 누끼컷 자동 선정 (요약정보 합성밴드/패키지/컬러배너 제외) ──
+  //   Claude mainIndex를 clean 자격 검사 → 통과하면 존중, 실패하면 후보풀 최고점. feature와 다른 컷 선호.
+  //   실측 임계(핑거위글): color>0.20=배너/합성, smallCC>10=baked텍스트, fill>0.62=박스(패키지),
+  //   largestCC<0.12=제품작음, packageIndex/sizeIndex와 dHash≤10=중복 패키지/사이즈.
+  const hashOf = (i: number): boolean[] => (i >= 0 && i < tagged.length ? tagged[i].metrics.dhash : []);
+  const heroExcludeRefs = [packageIndexV, sizeIndexV].filter((x) => x >= 0);
+  const heroEligible = (i: number): boolean => {
+    if (i < 0 || i >= bands.length || usedImg.has(i) || promoFlags[i]) return false;   // 이미 feature/size/package로 예약된 것 제외
+    if (typeAt(i) === 'TEXT') return false;
+    const m = tagged[i].metrics;
+    if (m.color > 0.20 || m.smallCC > 10 || m.largestCC < 0.12 || m.fillRatio > 0.62) return false;
+    for (const ex of heroExcludeRefs) if (dhashHamming(hashOf(i), hashOf(ex)) <= 10) return false;  // 패키지/사이즈 중복컷
+    return true;
+  };
+  const heroScore = (i: number): number => { const m = tagged[i].metrics; return m.largestCC * 2 - m.color - m.smallCC * 0.02 + Math.min(m.height, 700) / 2000; };
+  const heroDupFeature = (i: number): boolean => featureIndexV >= 0 && dhashHamming(hashOf(i), hashOf(featureIndexV)) <= 10;
+  const selectHeroIndex = (claudeMain: number): number => {
+    const reqType = claudeMain >= 0 && claudeMain < bands.length ? (promoFlags[claudeMain] ? 'PROMO_GIF' : (typeAt(claudeMain) ?? '-')) : '-';
+    const pool = bands.map((_, i) => i).filter(heroEligible);
+    if (!pool.length) {
+      decisions.push({ role: 'main', requested: claudeMain, reqType, result: 'no-clean→empty', final: -1, reason: '깨끗한 제품컷 후보 없음 → 수동 지정 필요' });
+      return -1;
+    }
+    let chosen: number;
+    if (heroEligible(claudeMain) && !heroDupFeature(claudeMain)) chosen = claudeMain;   // Claude 픽이 적격+feature와 다름 → 존중
+    else chosen = [...pool].sort((a, b) => (heroDupFeature(a) !== heroDupFeature(b) ? (heroDupFeature(a) ? 1 : -1) : heroScore(b) - heroScore(a)))[0];
+    usedImg.add(chosen);
+    const cm = tagged[chosen].metrics;
+    decisions.push({ role: 'main', requested: claudeMain, reqType, result: chosen === claudeMain ? 'accepted(clean)' : 'reselected(clean)', final: chosen, reason: `largestCC ${cm.largestCC.toFixed(3)}·color ${cm.color.toFixed(3)}·fill ${cm.fillRatio.toFixed(2)}·smallCC ${cm.smallCC}${heroDupFeature(chosen) ? ' (feature와 동일 — 단일후보)' : ''}` });
+    return chosen;
+  };
+  const mainIndexV = selectHeroIndex(r.mainIndex);
 
   // Point 이미지: dedup-aware 2패스. Point 01+02 "전체"를 통틀어 동일/근접 사진 1회만·같은 밴드 인덱스 재사용 금지.
   //   패스1 = Claude 직접 픽(차단X·인덱스 미사용·전체 Point 근접중복X면 채택). ← 교차(01↔02) 중복도 금지.
@@ -305,7 +338,18 @@ export const convertBasicWithAI = async (
   if (rejectedCount) notes.push(`TEXT 밴드 ${rejectedCount}건을 이미지 슬롯에서 차단(설명 중복 방지).`);
   mark('response_validation_ms');
 
-  const mainImage = at(mainIndexV);
+  // ── Step 3-b: HERO 메인이미지 영역 정규화 — 선정된 밴드를 정사각 우선 캔버스에 제품 중앙·크게 재배치. ──
+  //    canonical field data.mainImage에 저장 → PreviewGodo HERO·썸네일 메인이 동일 정규화 자산 공유.
+  let mainImage = at(mainIndexV);
+  if (mainImage) {
+    const hero = await normalizeHeroMainImage(mainImage);
+    if (hero.normalized) { mainImage = hero.dataUrl; notes.push(`HERO 정규화: ${hero.reason}`); }
+    if (DEV) {
+      // eslint-disable-next-line no-console
+      console.log('[기본형 HERO] band %o | %s | ratio %s | bbox %o | %o→%o | %s',
+        mainIndexV, hero.normalized ? 'NORMALIZED' : 'KEPT', hero.canvasRatio, hero.productBbox, hero.sourceSize, hero.outputSize, hero.reason);
+    }
+  }
   const featureImage = at(featureIndexV);
   const sizeImage = at(sizeIndexV);
 

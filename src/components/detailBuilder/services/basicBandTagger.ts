@@ -28,6 +28,7 @@ export interface BasicBandMetrics {
   smallCC: number;      // 작은(글자형) 연결요소 개수
   ncomp: number;        // 전체 연결요소 개수
   fg: number;           // 전경(비-흰 or 유채색) 픽셀 비율
+  fillRatio: number;    // 전경이 자기 bbox를 채우는 비율(사각 박스/패키지 판별용, 높을수록 박스형)
   dhash: boolean[];     // 9x8 difference hash(64bit) — "같은 사진 다른 밴드" 중복 판정용
 }
 
@@ -120,7 +121,7 @@ const computeMetrics = (img: HTMLImageElement): BasicBandMetrics | null => {
   const scale = Math.min(1, TAGGER_THRESHOLDS.CC_MAX_DIM / Math.max(W, H));
   const tw = Math.max(1, Math.round(W * scale));
   const th = Math.max(1, Math.round(H * scale));
-  const cc = { largest: 0, small: 0, ncomp: 0, fg: 0 };
+  const cc = { largest: 0, small: 0, ncomp: 0, fg: 0, fillRatio: 0 };
   const sc = document.createElement('canvas');
   sc.width = tw; sc.height = th;
   const sctx = sc.getContext('2d', { willReadFrequently: true });
@@ -132,15 +133,22 @@ const computeMetrics = (img: HTMLImageElement): BasicBandMetrics | null => {
       const area = tw * th;
       const fg = new Uint8Array(area);
       let fgCount = 0;
+      let minX = tw, maxX = -1, minY = th, maxY = -1;   // 전경 bbox(fillRatio용)
       for (let p = 0; p < area; p++) {
         const i = p * 4;
         const r = sdata[i], g = sdata[i + 1], b = sdata[i + 2];
         const lum = 0.299 * r + 0.587 * g + 0.114 * b;
         const sat = Math.max(r, g, b) - Math.min(r, g, b);
         // 전경 = 흰색보다 어두움 OR 유채색
-        if (lum < 200 || (sat >= 45 && lum < 245)) { fg[p] = 1; fgCount++; }
+        if (lum < 200 || (sat >= 45 && lum < 245)) {
+          fg[p] = 1; fgCount++;
+          const x = p % tw, y = (p - x) / tw;
+          if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
       }
       cc.fg = area ? fgCount / area : 0;
+      // fillRatio = 전경이 자기 bbox를 채우는 비율(사각 박스=높음 ~0.9, 유기적 제품=낮음 ~0.3~0.55)
+      if (maxX >= 0) { const bboxA = (maxX - minX + 1) * (maxY - minY + 1); cc.fillRatio = bboxA ? fgCount / bboxA : 0; }
       const seen = new Uint8Array(area);
       const stack = new Int32Array(area);
       const sizes: number[] = [];
@@ -182,7 +190,7 @@ const computeMetrics = (img: HTMLImageElement): BasicBandMetrics | null => {
   return {
     width: W, height: H,
     white: whiteR, color: colorR, ink: inkR, meanSat,
-    maxRowDark, largestCC: cc.largest, smallCC: cc.small, ncomp: cc.ncomp, fg: cc.fg,
+    maxRowDark, largestCC: cc.largest, smallCC: cc.small, ncomp: cc.ncomp, fg: cc.fg, fillRatio: cc.fillRatio,
     dhash,
   };
 };
@@ -224,7 +232,7 @@ export const tagBasicBands = async (dataUrls: string[]): Promise<TaggedBand[]> =
     if (!metrics) {
       out.push({
         dataUrl: url, type: 'UNKNOWN',
-        metrics: { width: 0, height: 0, white: 0, color: 0, ink: 0, meanSat: 0, maxRowDark: 0, largestCC: 0, smallCC: 0, ncomp: 0, fg: 0, dhash: [] },
+        metrics: { width: 0, height: 0, white: 0, color: 0, ink: 0, meanSat: 0, maxRowDark: 0, largestCC: 0, smallCC: 0, ncomp: 0, fg: 0, fillRatio: 0, dhash: [] },
         reason: '지표 계산 실패(로드/픽셀 접근 불가) → UNKNOWN',
       });
       continue;
