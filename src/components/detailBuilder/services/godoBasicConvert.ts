@@ -229,8 +229,8 @@ export const convertBasicWithAI = async (
   const sizeIndexV = validateRole(r.sizeIndex, 'size');
   const packageIndexV = validateRole(r.packageIndex, 'package');
 
-  // Point 이미지: dedup-aware 2패스. 같은 Point 내 동일/근접 사진 반복 금지(dHash)·같은 밴드 인덱스 재사용 금지.
-  //   패스1 = Claude 직접 픽(차단X·인덱스 미사용·같은 Point 내 근접중복X면 채택. Point01↔02 중복은 허용).
+  // Point 이미지: dedup-aware 2패스. Point 01+02 "전체"를 통틀어 동일/근접 사진 1회만·같은 밴드 인덱스 재사용 금지.
+  //   패스1 = Claude 직접 픽(차단X·인덱스 미사용·전체 Point 근접중복X면 채택). ← 교차(01↔02) 중복도 금지.
   //   패스2 = 거부분만 ±1~2에서 [차단X·미사용·어떤 Point와도 근접중복X·PHOTO/MIXED] "유일" 후보로 대체, 애매/없으면 비움.
   const DUP_HAMMING = 10;                                 // dHash 해밍 ≤ 이 값이면 동일 사진(실측: 동일 0~3 vs 다른 27+)
   const hashAt = (i: number): boolean[] => tagged[i]?.metrics.dhash ?? [];
@@ -263,15 +263,14 @@ export const convertBasicWithAI = async (
       decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'rejected(reuse)', final: -1, reason: 'already_used_index → 대체 시도' });
       continue;
     }
-    if (dupWith(s.reqIndex, pt)) {                        // 같은 Point 내 동일사진 → 대체 시도
+    if (dupWith(s.reqIndex, null)) {                      // Point 01+02 전체에서 동일사진 → 대체 시도(교차 중복도 금지)
       rejectedSlots.push(s); finalPoint[s.role] = -1;
-      decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'rejected(dup)', final: -1, reason: `Point${pt} 내 동일사진(dHash) → 대체 시도` });
+      decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'rejected(dup)', final: -1, reason: 'Point 전체 동일사진(dHash) → 대체 시도' });
       continue;
     }
-    const crossDup = dupWith(s.reqIndex, null);          // 배정 전 판정(자기 자신 제외)
     reservePoint(s.reqIndex, pt);
     finalPoint[s.role] = s.reqIndex;
-    decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'accepted', final: s.reqIndex, reason: crossDup ? 'ok(Point간 중복 허용)' : 'ok' });
+    decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'accepted', final: s.reqIndex, reason: 'ok' });
   }
   for (const s of rejectedSlots) {                       // 패스2(보수적 대체 — 어떤 Point와도 중복없는 유일 후보만)
     const pt = pointNum(s.role);
