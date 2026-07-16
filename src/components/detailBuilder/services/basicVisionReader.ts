@@ -5,6 +5,7 @@
 import { chatWithProvider } from '../../../services/aiProviderAdapter';
 import { hasProviderKey } from '../../../services/aiKeyVault';
 import type { ChatContentPart } from '../../../types/aiProvider';
+import type { BasicBandType } from './basicBandTagger';
 
 // 변환기 브레인 = Claude(클라우드) 고정. 생성기 문구용 로컬 Gemma(design 두뇌)와 분리 —
 // design 두뇌에 묶으면 로컬 LM Studio로 가서 대용량 이미지에 HTTP 400. 변환기는 항상 Claude.
@@ -68,6 +69,12 @@ const SYSTEM = [
   '3. caption은 의미 단위로 줄바꿈(\\n) — 한 줄이 완결된 덩어리가 되게(조사/서술어 어색하게 자르지 말 것).',
   '4. 각 caption에서 가장 중요한 소구 어구 1곳만 ##문구## 로 감쌀 것(빨강 강조용). 없으면 생략.',
   '5. size(치수)는 옵션마다 다양해 부정확 → 스펙에 넣지 말 것(별도 사이즈 이미지로 처리).',
+  '6. ⚠️ 각 밴드에는 (PHOTO)/(TEXT)/(MIXED)/(UNKNOWN) 타입이 붙는다.',
+  '   · (TEXT) 밴드 = 글자만 박힌 설명/스펙 이미지. 스펙·설명·요약·캡션을 "읽는 근거"로만 사용한다.',
+  '     → mainIndex·featureIndex·sizeIndex·packageIndex·Point 블록의 index 등 "어떤 이미지 슬롯에도" 절대 배정하지 말 것.',
+  '       (배정하면 같은 문장이 라이브 설명 + 텍스트 이미지로 두 번 나오는 중복이 된다.)',
+  '   · 이미지 슬롯 우선순위: (PHOTO) 우선 → (MIXED) 차선 → (UNKNOWN)은 다른 후보 없을 때만. (TEXT)는 이미지로 금지.',
+  '   · Point 블록의 index는 그 설명이 "가리키는 실제 제품 (PHOTO/MIXED) 밴드"여야 한다(설명 원문이 박힌 TEXT 밴드가 아니라).',
   '',
   '[슬롯]',
   '- mainIndex: 배경 위 제품 누끼 히어로 컷(가장 대표적인 단독 컷).',
@@ -129,11 +136,13 @@ const parseResult = (raw: string): BasicVisionResult => {
 export const readBasicLayout = async (
   bands: string[],
   ctx: BasicReadContext,
+  bandTypes?: BasicBandType[],   // 기본형 태거(로컬 픽셀)가 붙인 밴드 타입 — 프롬프트 가드용. 없으면 UNKNOWN.
 ): Promise<BasicVisionResult> => {
   if (!hasProviderKey(CONVERTER_PROVIDER)) {
     throw new Error('변환기 AI(Claude) 키가 연결되어 있지 않습니다. 관리자 설정 → AI 연결에서 Claude API 키를 붙여넣어 주세요.');
   }
   const small = await Promise.all(bands.map((b) => downscale(b)));
+  const typeOf = (i: number): BasicBandType => bandTypes?.[i] ?? 'UNKNOWN';
 
   const content: ChatContentPart[] = [{
     type: 'text',
@@ -141,10 +150,10 @@ export const readBasicLayout = async (
       `상품명(한글): ${ctx.productNameKr || '(미상)'}\n` +
       `영문명: ${ctx.productNameEn || ''}\n브랜드: ${ctx.brandName || ''}\n` +
       (ctx.introText ? `상세 상단 요약 텍스트(근거): ${ctx.introText.slice(0, 600)}\n` : '') +
-      `\n아래 밴드 ${small.length}장을 위→아래 순서로 봅니다. 규칙대로 읽고 배치해 JSON 하나만 출력하세요.`,
+      `\n아래 밴드 ${small.length}장을 위→아래 순서로 봅니다. 각 밴드 옆의 (PHOTO/TEXT/MIXED/UNKNOWN) 타입 규칙(규칙6)을 지켜 배치하고 JSON 하나만 출력하세요.`,
   }];
   small.forEach((s, i) => {
-    content.push({ type: 'text', text: `[${i}]` });
+    content.push({ type: 'text', text: `[${i}](${typeOf(i)})` });
     content.push({ type: 'image', image: s });
   });
 
