@@ -7,6 +7,7 @@ import { splitImageByWhitespace, extractProductImages } from './flowImageSplitte
 import { toProxyUrl } from './exportImagePrep';
 import { readBasicLayout } from './basicVisionReader';
 import { tagBasicBands, type BasicBandType, type TaggedBand } from './basicBandTagger';
+import { normalizePackageImage } from './basicAssetNormalize';
 
 export interface BasicConvertInput {
   productNameKr: string;
@@ -122,6 +123,14 @@ export const convertBasicWithAI = async (
 ): Promise<BasicConvertResult> => {
   const notes: string[] = [];
 
+  // ── 기준선 계측(Phase2 Step1) — 단계별 wall time. 결과물엔 무영향(측정만). ──
+  //    주의: whitespace_split_ms엔 이미지 다운로드+디코딩이 포함(splitImageByWhitespace 내부 loadImage).
+  //          band_tagging_ms엔 밴드별 재디코딩 포함. 필요시 후속 단계에서 세분.
+  const timings: Record<string, number> = {};
+  const _t0 = performance.now();
+  let _tPrev = _t0;
+  const mark = (k: string): void => { const now = performance.now(); timings[k] = +(now - _tPrev).toFixed(1); _tPrev = now; };
+
   // ① 통이미지 여백분할 → 밴드(텍스트 밴드 포함: 스펙·설명 읽기용). 순서 유지.
   onProgress?.({ phase: '통이미지 분할' });
   const bands: string[] = [];
@@ -134,6 +143,7 @@ export const convertBasicWithAI = async (
     }
   }
   if (!bands.length) throw new Error('상세 통이미지에서 밴드를 추출하지 못했습니다. (이미지 URL/프록시 확인)');
+  mark('whitespace_split_ms');
 
   // ①-b 밴드 타입 태깅(로컬 픽셀, AI 0콜) — TEXT 밴드를 이미지 슬롯에서 차단하기 위한 메타데이터.
   onProgress?.({ phase: '밴드 타입 분석' });
@@ -152,6 +162,7 @@ export const convertBasicWithAI = async (
     // eslint-disable-next-line no-console
     console.groupEnd();
   }
+  mark('band_tagging_ms');
 
   // ② Claude 비전 1콜: 밴드 읽기 + 슬롯 배정 + 라이트 리라이트 + 의미 줄바꿈. (타입 전달 = 프롬프트 가드)
   onProgress?.({ phase: `AI 읽기·배치 (밴드 ${bands.length}장)` });
@@ -162,6 +173,13 @@ export const convertBasicWithAI = async (
     introText: input.introText,
   }, bandTypes);
   notes.push(...r.notes);
+  mark('claude_request_ms');
+  if (DEV) {
+    // eslint-disable-next-line no-console
+    console.log('[기본형 Claude응답] 요청 인덱스 → main:%o feature:%o size:%o package:%o | point1:%o point2:%o',
+      r.mainIndex, r.featureIndex, r.sizeIndex, r.packageIndex,
+      r.point1.blocks.map((b) => b.index), r.point2.blocks.map((b) => b.index));
+  }
 
   // ③ 로컬 검증(Layer C): TEXT 밴드는 어떤 <img> 슬롯에도 못 들어간다. Claude가 실수해도 여기서 차단.
   //    (캡션/설명은 그대로 유지 — 라이브 HTML 설명은 살리고 "중복 텍스트 이미지"만 제거하는 게 목표.)
@@ -242,11 +260,26 @@ export const convertBasicWithAI = async (
   }
   const rejectedCount = decisions.filter((d) => d.result.startsWith('rejected')).length;
   if (rejectedCount) notes.push(`TEXT 밴드 ${rejectedCount}건을 이미지 슬롯에서 차단(설명 중복 방지).`);
+  mark('response_validation_ms');
 
   const mainImage = at(mainIndexV);
   const featureImage = at(featureIndexV);
   const sizeImage = at(sizeIndexV);
-  const packageImage = at(packageIndexV);
+
+  // ── Step 2-1: 패키지 여백 정규화 — 선택 로직은 그대로, 선택된 패키지 밴드의 가장자리 배경만 트림. ──
+  //    PreviewGodo·썸네일이 공유하는 canonical field(packageImage)에 정규화 결과를 저장(별도 자산 X).
+  let packageImage = at(packageIndexV);
+  if (packageImage) {
+    const pkg = await normalizePackageImage(packageImage);
+    packageImage = pkg.dataUrl;   // 트림 보류 시 원본 그대로(내부 폴백)
+    if (pkg.trimmed) notes.push(`패키지 여백 정규화: ${pkg.reason}`);
+    if (DEV) {
+      // eslint-disable-next-line no-console
+      console.log('[기본형 패키지] band %o | %s | bbox %o | pad %o | %o→%o',
+        packageIndexV, pkg.trimmed ? 'TRIMMED' : 'KEPT', pkg.contentBbox, pkg.padding, pkg.sourceSize, pkg.outputSize, pkg.reason);
+    }
+  }
+  mark('package_normalization_ms');
 
   const summaryInfo: SummaryInfo = {
     feature: r.summary.feature ?? '',
@@ -269,7 +302,7 @@ export const convertBasicWithAI = async (
     featureImage,
     sizeImage,
     packageImage,
-    ...(packageImage ? { isPackageImageEnabled: true } : {}),
+    isPackageImageEnabled: !!packageImage,   // 제약6: 패키지 없으면 명시적 비활성(직전 상품 값 잔류 방지)
 
     point1Title: r.point1.title || '',
     aiPoint1Desc: p1[0]?.caption ?? '',
@@ -295,6 +328,19 @@ export const convertBasicWithAI = async (
   }
   if (r.keyFeatures.length !== 3) notes.push(`keyFeatures ${r.keyFeatures.length}개(3 아님) — 메인특징 수동 보완 필요.`);
   if (!mainImage) notes.push('메인 이미지 후보 없음 — 수동 지정 필요.');
+
+  // ── 기준선 계측 마감: 패키지 자동배치 계산 + 총합. (validation/package_normalization은 위에서 별도 마킹) ──
+  mark('package_layout_ms');
+  timings.total_conversion_ms = +(performance.now() - _t0).toFixed(1);
+  if (DEV) {
+    // eslint-disable-next-line no-console
+    console.groupCollapsed('[기본형 성능] 단계별 처리시간(ms)');
+    // eslint-disable-next-line no-console
+    console.table(timings);
+    // eslint-disable-next-line no-console
+    console.groupEnd();
+  }
+  notes.push(`⏱ 총 ${timings.total_conversion_ms}ms (Claude ${timings.claude_request_ms ?? '-'}ms · 분할 ${timings.whitespace_split_ms ?? '-'}ms · 태깅 ${timings.band_tagging_ms ?? '-'}ms · 검증 ${timings.response_validation_ms ?? '-'}ms · 패키지 ${timings.package_normalization_ms ?? '-'}ms)`);
 
   return { data, notes, bandCount: bands.length };
 };

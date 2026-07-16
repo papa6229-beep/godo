@@ -144,8 +144,11 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
     if (!f) return;
     setBusy('structure'); setNote(null); setNotes([]); setPending(null); setPhase('엑셀 파싱');
     try {
+      const _tExcel = performance.now();
       const buf = await f.arrayBuffer();
       const p = await parseMainMallArrayBuffer(buf);
+      // eslint-disable-next-line no-console
+      if (import.meta.env.DEV) console.log(`[기본형 성능] excel_parse_ms=${(performance.now() - _tExcel).toFixed(1)}`);
       if (!p) { setNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
       const urls: string[] = p.flowImages || [];
       if (!urls.length) { setNote({ ok: false, text: `⚠ ${p.productNameKr} · 상세 이미지 0장(goodsm 없음)` }); return; }
@@ -153,7 +156,10 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
         productNameKr: p.productNameKr, productNameEn: p.productNameEn, brandName: p.brandName,
         themeColor: data.themeColor, introText: p.flowHeaderText, detailImageUrls: urls,
       };
+      const _tStruct = performance.now();
       const res = await buildBasicStructure(input, (pr) => setPhase(pr.phase));
+      // eslint-disable-next-line no-console
+      if (import.meta.env.DEV) console.log(`[기본형 성능] structure_build_ms=${(performance.now() - _tStruct).toFixed(1)} (①구조: extractProductImages 다운로드+디코딩+분류 포함)`);
       onChange(prev => ({ ...prev, ...res.data }));
       setNotes(res.notes || []);
       setPending(input);
