@@ -6,8 +6,8 @@ import type { ProductData, SummaryInfo } from '../types';
 import { splitImageByWhitespace, extractProductImages } from './flowImageSplitter';
 import { toProxyUrl } from './exportImagePrep';
 import { readBasicLayout } from './basicVisionReader';
-import { tagBasicBands, type BasicBandType, type TaggedBand } from './basicBandTagger';
-import { normalizePackageImage } from './basicAssetNormalize';
+import { tagBasicBands, dhashHamming, type BasicBandType, type TaggedBand } from './basicBandTagger';
+import { normalizePackageImage, isBananamallPromoGif } from './basicAssetNormalize';
 
 export interface BasicConvertInput {
   productNameKr: string;
@@ -80,8 +80,13 @@ export const buildBasicStructure = async (
   onProgress?.({ phase: '통이미지 분할(제품 컷)' });
   const cuts: string[] = [];
   for (const url of input.detailImageUrls) {
+    const proxied = toProxyUrl(url);
     try {
-      const segs = await extractProductImages(toProxyUrl(url));
+      if ((await isBananamallPromoGif(url, proxied)).isPromo) {   // 바나나몰 홍보 GIF는 구조 배치 후보에서도 제외
+        notes.push('바나나몰 홍보 GIF 제외(구조 배치).');
+        continue;
+      }
+      const segs = await extractProductImages(proxied);
       for (const s of segs) cuts.push(s.dataUrl);
     } catch {
       notes.push(`이미지 분할 실패(건너뜀): ${url.slice(0, 50)}…`);
@@ -132,12 +137,18 @@ export const convertBasicWithAI = async (
   const mark = (k: string): void => { const now = performance.now(); timings[k] = +(now - _tPrev).toFixed(1); _tPrev = now; };
 
   // ① 통이미지 여백분할 → 밴드(텍스트 밴드 포함: 스펙·설명 읽기용). 순서 유지.
+  //    각 밴드가 온 원본 URL의 "바나나몰 홍보 GIF" 여부(promoFlags)를 병렬 추적 — 이미지 슬롯 전면 차단용.
   onProgress?.({ phase: '통이미지 분할' });
   const bands: string[] = [];
+  const promoFlags: boolean[] = [];
   for (const url of input.detailImageUrls) {
+    const proxied = toProxyUrl(url);
+    let promo = false;
+    try { promo = (await isBananamallPromoGif(url, proxied)).isPromo; } catch { promo = false; }
     try {
-      const segs = await splitImageByWhitespace(toProxyUrl(url));
-      for (const s of segs) bands.push(s.dataUrl);
+      const segs = await splitImageByWhitespace(proxied);
+      for (const s of segs) { bands.push(s.dataUrl); promoFlags.push(promo); }
+      if (promo) notes.push('바나나몰 홍보 GIF 감지 → 이미지 슬롯에서 제외(캡션 근거로도 미사용).');
     } catch {
       notes.push(`이미지 분할 실패(건너뜀): ${url.slice(0, 60)}…`);
     }
@@ -154,10 +165,10 @@ export const convertBasicWithAI = async (
     console.groupCollapsed(`[기본형 태거] 밴드 ${tagged.length}장`);
     // eslint-disable-next-line no-console
     console.table(tagged.map((t, i) => ({
-      idx: i, type: t.type, h: t.metrics.height,
+      idx: i, type: promoFlags[i] ? 'PROMO_GIF' : t.type, h: t.metrics.height,
       largestCC: +t.metrics.largestCC.toFixed(3), smallCC: t.metrics.smallCC,
       color: +t.metrics.color.toFixed(3), white: +t.metrics.white.toFixed(2),
-      maxRowDark: +t.metrics.maxRowDark.toFixed(3), reason: t.reason,
+      maxRowDark: +t.metrics.maxRowDark.toFixed(3), reason: promoFlags[i] ? '바나나몰 홍보 GIF' : t.reason,
     })));
     // eslint-disable-next-line no-console
     console.groupEnd();
@@ -171,7 +182,7 @@ export const convertBasicWithAI = async (
     productNameEn: input.productNameEn,
     brandName: input.brandName,
     introText: input.introText,
-  }, bandTypes);
+  }, bandTypes, promoFlags);
   notes.push(...r.notes);
   mark('claude_request_ms');
   if (DEV) {
@@ -186,19 +197,27 @@ export const convertBasicWithAI = async (
   onProgress?.({ phase: '슬롯 검증·조립·패키지 배치' });
   const at = (i: number): string | null => (i >= 0 && i < bands.length ? bands[i] : null);
   const typeAt = (i: number): BasicBandType | null => (i >= 0 && i < bandTypes.length ? bandTypes[i] : null);
+  // 이미지 슬롯 차단 사유(허용이면 null): 바나나몰 홍보 GIF 또는 TEXT 밴드.
+  const imageBlockReason = (i: number): string | null => {
+    if (i < 0 || i >= bands.length) return 'out_of_range';
+    if (promoFlags[i]) return 'bananamall_promo_gif';
+    if (typeAt(i) === 'TEXT') return 'text_band_not_allowed_for_image_slot';
+    return null;
+  };
   type Decision = { role: string; requested: number; reqType: string; result: string; final: number; reason: string };
   const decisions: Decision[] = [];
   const usedImg = new Set<number>();
 
-  // 단일 역할 슬롯(main/feature/size/package): TEXT면 거부 → 빈 슬롯(잘못된 사진보다 빈 슬롯이 안전).
+  // 단일 역할 슬롯(main/feature/size/package): 차단대상(TEXT/promo)이면 거부 → 빈 슬롯(잘못된 사진보다 빈 슬롯이 안전).
   const validateRole = (reqIndex: number, role: string): number => {
     if (reqIndex < 0 || reqIndex >= bands.length) {
       decisions.push({ role, requested: reqIndex, reqType: '-', result: 'none', final: -1, reason: '요청 없음/범위 밖' });
       return -1;
     }
     const t = typeAt(reqIndex)!;
-    if (t === 'TEXT') {
-      decisions.push({ role, requested: reqIndex, reqType: t, result: 'rejected→empty', final: -1, reason: 'text_band_not_allowed_for_image_slot' });
+    const block = imageBlockReason(reqIndex);
+    if (block) {
+      decisions.push({ role, requested: reqIndex, reqType: promoFlags[reqIndex] ? 'PROMO_GIF' : t, result: 'rejected→empty', final: -1, reason: block });
       return -1;
     }
     usedImg.add(reqIndex);
@@ -210,7 +229,18 @@ export const convertBasicWithAI = async (
   const sizeIndexV = validateRole(r.sizeIndex, 'size');
   const packageIndexV = validateRole(r.packageIndex, 'package');
 
-  // Point 이미지: 2패스. 패스1 = 유효(비-TEXT) 인덱스 예약 → 패스2 = 거부분만 ±1~2 "유일한" 미사용 PHOTO/MIXED로 보수 대체.
+  // Point 이미지: dedup-aware 2패스. 같은 Point 내 동일/근접 사진 반복 금지(dHash)·같은 밴드 인덱스 재사용 금지.
+  //   패스1 = Claude 직접 픽(차단X·인덱스 미사용·같은 Point 내 근접중복X면 채택. Point01↔02 중복은 허용).
+  //   패스2 = 거부분만 ±1~2에서 [차단X·미사용·어떤 Point와도 근접중복X·PHOTO/MIXED] "유일" 후보로 대체, 애매/없으면 비움.
+  const DUP_HAMMING = 10;                                 // dHash 해밍 ≤ 이 값이면 동일 사진(실측: 동일 0~3 vs 다른 27+)
+  const hashAt = (i: number): boolean[] => tagged[i]?.metrics.dhash ?? [];
+  const usedPointImgs: { idx: number; point: number }[] = [];   // 지금까지 Point에 배정된 이미지(중복판정용)
+  const pointNum = (role: string): number => (role.startsWith('point1') ? 1 : 2);
+  const dupWith = (i: number, scopePoint: number | null): boolean =>   // scopePoint=null이면 전체 Point 대상
+    usedPointImgs.some((u) => (scopePoint === null || u.point === scopePoint)
+      && (u.idx === i || dhashHamming(hashAt(i), hashAt(u.idx)) <= DUP_HAMMING));
+  const reservePoint = (i: number, point: number): void => { usedImg.add(i); usedPointImgs.push({ idx: i, point }); };
+
   const p1 = r.point1.blocks;
   const p2 = r.point2.blocks;
   const pointSlots = [
@@ -223,30 +253,44 @@ export const convertBasicWithAI = async (
   ];
   const finalPoint: Record<string, number> = {};
   const rejectedSlots: { role: string; reqIndex: number }[] = [];
-  for (const s of pointSlots) {                          // 패스1
+  for (const s of pointSlots) {                          // 패스1(Claude 직접 픽)
+    const pt = pointNum(s.role);
     if (s.reqIndex < 0 || s.reqIndex >= bands.length) { finalPoint[s.role] = -1; continue; }
     const t = typeAt(s.reqIndex)!;
-    if (t === 'TEXT') { rejectedSlots.push(s); finalPoint[s.role] = -1; continue; }
-    usedImg.add(s.reqIndex);
+    if (imageBlockReason(s.reqIndex)) { rejectedSlots.push(s); finalPoint[s.role] = -1; continue; }  // TEXT/promo
+    if (usedImg.has(s.reqIndex)) {                        // 같은 밴드 인덱스 재사용 → 대체 시도
+      rejectedSlots.push(s); finalPoint[s.role] = -1;
+      decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'rejected(reuse)', final: -1, reason: 'already_used_index → 대체 시도' });
+      continue;
+    }
+    if (dupWith(s.reqIndex, pt)) {                        // 같은 Point 내 동일사진 → 대체 시도
+      rejectedSlots.push(s); finalPoint[s.role] = -1;
+      decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'rejected(dup)', final: -1, reason: `Point${pt} 내 동일사진(dHash) → 대체 시도` });
+      continue;
+    }
+    const crossDup = dupWith(s.reqIndex, null);          // 배정 전 판정(자기 자신 제외)
+    reservePoint(s.reqIndex, pt);
     finalPoint[s.role] = s.reqIndex;
-    decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'accepted', final: s.reqIndex, reason: 'ok' });
+    decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'accepted', final: s.reqIndex, reason: crossDup ? 'ok(Point간 중복 허용)' : 'ok' });
   }
-  for (const s of rejectedSlots) {                       // 패스2(보수적 대체)
-    const cands = new Set<number>();
+  for (const s of rejectedSlots) {                       // 패스2(보수적 대체 — 어떤 Point와도 중복없는 유일 후보만)
+    const pt = pointNum(s.role);
+    const cands: number[] = [];
     for (let d = 1; d <= 2; d++) for (const j of [s.reqIndex - d, s.reqIndex + d]) {
-      if (j >= 0 && j < bands.length && !usedImg.has(j)) {
+      if (j >= 0 && j < bands.length && !usedImg.has(j) && !imageBlockReason(j)) {
         const tj = typeAt(j);
-        if (tj === 'PHOTO' || tj === 'MIXED') cands.add(j);
+        if ((tj === 'PHOTO' || tj === 'MIXED') && !dupWith(j, null)) cands.push(j);
       }
     }
-    const uniq = [...cands];
+    const rt = promoFlags[s.reqIndex] ? 'PROMO_GIF' : (typeAt(s.reqIndex) ?? 'TEXT');
+    const uniq = [...new Set(cands)];
     if (uniq.length === 1) {
-      usedImg.add(uniq[0]);
+      reservePoint(uniq[0], pt);
       finalPoint[s.role] = uniq[0];
-      decisions.push({ role: s.role, requested: s.reqIndex, reqType: 'TEXT', result: 'rejected→fallback', final: uniq[0], reason: `±2 유일 ${typeAt(uniq[0])} 밴드 ${uniq[0]}` });
+      decisions.push({ role: s.role, requested: s.reqIndex, reqType: rt, result: 'rejected→fallback', final: uniq[0], reason: `±2 유일·중복없는 ${typeAt(uniq[0])} 밴드 ${uniq[0]}` });
     } else {
       finalPoint[s.role] = -1;
-      decisions.push({ role: s.role, requested: s.reqIndex, reqType: 'TEXT', result: 'rejected→empty', final: -1, reason: uniq.length ? `±2 후보 다수(${uniq.join(',')}) → 모호 → 비움` : '±2 후보 없음 → 비움' });
+      decisions.push({ role: s.role, requested: s.reqIndex, reqType: rt, result: 'rejected→empty', final: -1, reason: uniq.length ? `±2 후보 다수/모호(${uniq.join(',')}) → 비움` : '±2 유일·중복없는 후보 없음 → 비움' });
     }
   }
 

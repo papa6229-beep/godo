@@ -33,6 +33,58 @@ const loadImage = (src: string): Promise<HTMLImageElement> =>
     img.src = src;
   });
 
+// ── 바나나몰 자체 홍보 GIF 판정 (Step 2-2) ──
+//   개요.xlsx 규칙: "GIF 가로형·파란 외곽테두리(바나나몰) 움짤은 안 씀". 업체 제공 GIF는 유지.
+//   복합 조건(하드코딩 없음): 확장자 .gif AND 가로형 AND 4변 파란 프레임 비율 기준 이상.
+//   실측(1667813619_1.gif 800×450): 4변 blueFrac 0.86~0.95 / 내부 0.05 → 매우 견고.
+//   ⚠️ OCR·신규 AI 없음. 밴드는 split에서 JPEG로 변해 mime 소실 → "원본 URL 확장자"로 판정.
+export interface PromoGifResult { isPromo: boolean; reason: string; edgeBlue: [number, number, number, number] }
+// 임계 근거(1667813619_1.gif 실측, 네이티브 800×450·엣지7px): 4변 파랑 0.75~0.83.
+//   제품/패키지 밴드 대조군(cb14/25/03/24): 4변 0.00. → 분리 폭 압도적, 임계 0.50 안전.
+//   ⚠️ 다운스케일이 얇은 파란 프레임을 희석시킴 → MAX_DIM 크게(네이티브 유지) + 얇은 엣지 필수.
+const PROMO = {
+  MIN_ASPECT: 1.2,      // width/height 이 이상이면 가로형
+  EDGE_PX_FRAC: 0.015,  // 가장자리 두께 = 짧은 변의 이 비율(최소 4px) — 두꺼우면 내부가 섞여 희석됨
+  BLUE_EDGE_FRAC: 0.50, // 한 변이 '파란 프레임'이려면 파랑 픽셀 비율 이 이상(gif 0.75 vs 대조군 0.00)
+  MAX_DIM: 1000,        // 판정용 상한(대부분 홍보 gif 네이티브 유지 → 프레임 희석 방지)
+} as const;
+const isBlue = (r: number, g: number, b: number): boolean => (b - r) > 30 && (b - g) > 20 && b > 90;
+
+export const isBananamallPromoGif = async (sourceUrl: string, loadUrl: string): Promise<PromoGifResult> => {
+  const no = (reason: string): PromoGifResult => ({ isPromo: false, reason, edgeBlue: [0, 0, 0, 0] });
+  if (!/\.gif(\?|#|$)/i.test(sourceUrl || '')) return no('gif 아님');       // 확장자 게이트(비-gif는 로드 안 함)
+  if (typeof document === 'undefined') return no('환경 없음');
+  let img: HTMLImageElement;
+  try { img = await loadImage(loadUrl); } catch { return no('로드 실패'); }
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  if (!W || !H) return no('크기 0');
+  if (W < H * PROMO.MIN_ASPECT) return no(`세로/정방형(${W}x${H}) → 가로형 아님`);
+
+  const scale = Math.min(1, PROMO.MAX_DIM / Math.max(W, H));
+  const tw = Math.max(1, Math.round(W * scale)), th = Math.max(1, Math.round(H * scale));
+  const c = document.createElement('canvas'); c.width = tw; c.height = th;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return no('canvas 없음');
+  ctx.drawImage(img, 0, 0, tw, th);
+  let d: Uint8ClampedArray;
+  try { d = ctx.getImageData(0, 0, tw, th).data; } catch { return no('픽셀 접근 불가(CORS)'); }
+
+  const t = Math.max(4, Math.round(Math.min(tw, th) * PROMO.EDGE_PX_FRAC));
+  const blueFrac = (xs: () => Iterable<[number, number]>): number => {
+    let n = 0, blue = 0;
+    for (const [x, y] of xs()) { const i = (y * tw + x) * 4; n++; if (isBlue(d[i], d[i + 1], d[i + 2])) blue++; }
+    return n ? blue / n : 0;
+  };
+  const top = blueFrac(function* () { for (let y = 0; y < t; y++) for (let x = 0; x < tw; x++) yield [x, y]; });
+  const bot = blueFrac(function* () { for (let y = th - t; y < th; y++) for (let x = 0; x < tw; x++) yield [x, y]; });
+  const lft = blueFrac(function* () { for (let x = 0; x < t; x++) for (let y = 0; y < th; y++) yield [x, y]; });
+  const rgt = blueFrac(function* () { for (let x = tw - t; x < tw; x++) for (let y = 0; y < th; y++) yield [x, y]; });
+  const edgeBlue: [number, number, number, number] = [+top.toFixed(2), +bot.toFixed(2), +lft.toFixed(2), +rgt.toFixed(2)];
+  const allBlue = top >= PROMO.BLUE_EDGE_FRAC && bot >= PROMO.BLUE_EDGE_FRAC && lft >= PROMO.BLUE_EDGE_FRAC && rgt >= PROMO.BLUE_EDGE_FRAC;
+  if (!allBlue) return { isPromo: false, reason: `파란 프레임 아님(4변 ${edgeBlue.join('/')})`, edgeBlue };
+  return { isPromo: true, reason: `바나나몰 홍보 GIF(가로형 ${W}x${H} · 4변 파랑 ${edgeBlue.join('/')})`, edgeBlue };
+};
+
 const median4 = (vals: number[]): number => {
   const s = [...vals].sort((a, b) => a - b);
   return (s[1] + s[2]) / 2;

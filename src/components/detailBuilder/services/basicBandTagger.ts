@@ -28,7 +28,16 @@ export interface BasicBandMetrics {
   smallCC: number;      // 작은(글자형) 연결요소 개수
   ncomp: number;        // 전체 연결요소 개수
   fg: number;           // 전경(비-흰 or 유채색) 픽셀 비율
+  dhash: boolean[];     // 9x8 difference hash(64bit) — "같은 사진 다른 밴드" 중복 판정용
 }
+
+// 두 dHash의 해밍 거리(다른 비트 수). 길이 다르면 최대치(64) 반환(비교 불가 = 다름).
+export const dhashHamming = (a: boolean[], b: boolean[]): number => {
+  if (!a?.length || !b?.length || a.length !== b.length) return 64;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+  return d;
+};
 
 export interface TaggedBand {
   dataUrl: string;
@@ -157,10 +166,24 @@ const computeMetrics = (img: HTMLImageElement): BasicBandMetrics | null => {
     }
   }
 
+  // ── dHash(9x8 그레이스케일 difference hash) — 같은 사진이 다른 밴드로 중복될 때 판정 ──
+  const dhash: boolean[] = [];
+  const hc = document.createElement('canvas'); hc.width = 9; hc.height = 8;
+  const hctx = hc.getContext('2d', { willReadFrequently: true });
+  if (hctx) {
+    hctx.drawImage(img, 0, 0, 9, 8);
+    try {
+      const hd = hctx.getImageData(0, 0, 9, 8).data;
+      const gray = (x: number, y: number): number => { const i = (y * 9 + x) * 4; return 0.299 * hd[i] + 0.587 * hd[i + 1] + 0.114 * hd[i + 2]; };
+      for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) dhash.push(gray(x, y) < gray(x + 1, y));
+    } catch { /* dhash 빈 배열 = 비교 불가 */ }
+  }
+
   return {
     width: W, height: H,
     white: whiteR, color: colorR, ink: inkR, meanSat,
     maxRowDark, largestCC: cc.largest, smallCC: cc.small, ncomp: cc.ncomp, fg: cc.fg,
+    dhash,
   };
 };
 
@@ -201,7 +224,7 @@ export const tagBasicBands = async (dataUrls: string[]): Promise<TaggedBand[]> =
     if (!metrics) {
       out.push({
         dataUrl: url, type: 'UNKNOWN',
-        metrics: { width: 0, height: 0, white: 0, color: 0, ink: 0, meanSat: 0, maxRowDark: 0, largestCC: 0, smallCC: 0, ncomp: 0, fg: 0 },
+        metrics: { width: 0, height: 0, white: 0, color: 0, ink: 0, meanSat: 0, maxRowDark: 0, largestCC: 0, smallCC: 0, ncomp: 0, fg: 0, dhash: [] },
         reason: '지표 계산 실패(로드/픽셀 접근 불가) → UNKNOWN',
       });
       continue;
