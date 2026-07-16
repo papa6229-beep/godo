@@ -138,49 +138,66 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
   const [notes, setNotes] = React.useState<string[]>([]);
   const [pending, setPending] = React.useState<any>(null); // ①이 만든 BasicConvertInput → ②에서 사용
 
-  // ① 엑셀 → 구조 변환 (AI 없음, 즉시)
+  // 공용 AI 변환 실행 — 로컬 input을 직접 받아 정확히 1회 Claude 호출(React state를 다시 읽지 않음 = stale 방지).
+  const runAIWith = async (input: any, jobId: string) => {
+    setBusy('ai'); setPhase('AI 읽기 준비');
+    try {
+      // eslint-disable-next-line no-console
+      if (import.meta.env.DEV) console.log(`[기본형 자동변환] job=${jobId} Claude call=1`);
+      const res = await convertBasicWithAI(input, (pr) => setPhase(pr.phase));
+      onChange(prev => ({ ...prev, ...res.data }));
+      setNotes(res.notes || []);
+      setNote({ ok: true, text: `✓ 변환 완료 · 밴드 ${res.bandCount}장 → 문구·스펙 채움` });
+      // eslint-disable-next-line no-console
+      if (import.meta.env.DEV) console.log(`[기본형 자동변환] job=${jobId} completed`);
+    } catch (err: any) {
+      // 구조 배치 결과는 유지됨 → 🤖 AI 다시 읽기로 수동 재시도
+      setNote({ ok: false, text: 'AI 오류: ' + (err?.message || String(err)) + ' — 🤖 AI 다시 읽기로 재시도하세요.' });
+    } finally { setBusy(false); setPhase(''); }
+  };
+
+  // 엑셀 파일 선택 → 파싱 → 구조 배치 → (성공 시) 자동으로 AI 읽기까지 한 흐름. 사용자는 파일만 고르면 됨.
+  //   ⚠️ useEffect 상태 감시가 아니라 이 핸들러 안에서 로컬 변수로 순차 실행 → StrictMode·중복 change에도 1회.
   const onExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; e.target.value = '';
-    if (!f) return;
+    const f = e.target.files?.[0]; e.target.value = '';   // 같은 파일 재선택 가능하도록 즉시 초기화
+    if (!f || busy) return;                                // 실행 중이면 무시(중복 조작 방지)
+    const jobId = `basic-${Date.now()}`;
     setBusy('structure'); setNote(null); setNotes([]); setPending(null); setPhase('엑셀 파싱');
+    let input: any = null;
     try {
       const _tExcel = performance.now();
       const buf = await f.arrayBuffer();
       const p = await parseMainMallArrayBuffer(buf);
       // eslint-disable-next-line no-console
-      if (import.meta.env.DEV) console.log(`[기본형 성능] excel_parse_ms=${(performance.now() - _tExcel).toFixed(1)}`);
-      if (!p) { setNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); return; }
+      if (import.meta.env.DEV) console.log(`[기본형 자동변환] job=${jobId} start · excel_parse_ms=${(performance.now() - _tExcel).toFixed(1)}`);
+      if (!p) { setNote({ ok: false, text: '엑셀을 읽지 못했습니다(형식 확인).' }); setBusy(false); setPhase(''); return; }
       const urls: string[] = p.flowImages || [];
-      if (!urls.length) { setNote({ ok: false, text: `⚠ ${p.productNameKr} · 상세 이미지 0장(goodsm 없음)` }); return; }
-      const input = {
+      if (!urls.length) { setNote({ ok: false, text: `⚠ ${p.productNameKr} · 상세 이미지 0장(goodsm 없음)` }); setBusy(false); setPhase(''); return; }
+      input = {
         productNameKr: p.productNameKr, productNameEn: p.productNameEn, brandName: p.brandName,
         themeColor: data.themeColor, introText: p.flowHeaderText, detailImageUrls: urls,
       };
       const _tStruct = performance.now();
       const res = await buildBasicStructure(input, (pr) => setPhase(pr.phase));
       // eslint-disable-next-line no-console
-      if (import.meta.env.DEV) console.log(`[기본형 성능] structure_build_ms=${(performance.now() - _tStruct).toFixed(1)} (①구조: extractProductImages 다운로드+디코딩+분류 포함)`);
-      onChange(prev => ({ ...prev, ...res.data }));
+      if (import.meta.env.DEV) console.log(`[기본형 성능] structure_build_ms=${(performance.now() - _tStruct).toFixed(1)} (①구조)`);
+      onChange(prev => ({ ...prev, ...res.data }));   // 구조 먼저 반영(AI 실패해도 유지)
       setNotes(res.notes || []);
-      setPending(input);
-      setNote({ ok: true, text: `✓ ${p.productNameKr} · 컷 ${res.bandCount}개 배치(구조). 이제 ② AI로 읽기.` });
+      setPending(input);                              // 수동 재시도용 보관
     } catch (err: any) {
-      setNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });
-    } finally { setBusy(false); setPhase(''); }
+      setNote({ ok: false, text: '오류: ' + (err?.message || String(err)) });  // 파싱/구조 실패 → AI 호출 안 함(직전 상품 폴백 없음)
+      setBusy(false); setPhase('');
+      return;
+    }
+    // 구조 성공 → 이어서 자동 AI 읽기 (정확히 1회, 방금 만든 로컬 input 직접 전달)
+    await runAIWith(input, jobId);
   };
 
-  // ② Claude가 통이미지 읽어 문구·스펙 채우고 재배치
+  // 수동 재시도(🤖 AI 다시 읽기): 보관된 input으로 다시 AI. 사용자가 명시적으로 누를 때만.
   const runAI = async () => {
-    if (!pending) return;
-    setBusy('ai'); setNote(null); setPhase('AI 읽기 준비');
-    try {
-      const res = await convertBasicWithAI(pending, (pr) => setPhase(pr.phase));
-      onChange(prev => ({ ...prev, ...res.data }));
-      setNotes(res.notes || []);
-      setNote({ ok: true, text: `✓ AI 읽기 완료 · 밴드 ${res.bandCount}장 → 문구·스펙 채움` });
-    } catch (err: any) {
-      setNote({ ok: false, text: 'AI 오류: ' + (err?.message || String(err)) });
-    } finally { setBusy(false); setPhase(''); }
+    if (!pending || busy) return;
+    setNote(null);
+    await runAIWith(pending, `basic-retry-${Date.now()}`);
   };
 
   return (
@@ -188,17 +205,17 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <span className="text-xs font-bold text-violet-300">🧩 기본형 자동변환 (통이미지 → 고도몰 섹션형)</span>
         <div className="flex gap-2">
-          <label className={`text-xs px-3 py-1.5 rounded cursor-pointer font-bold transition-colors ${busy === 'structure' ? 'bg-violet-800/50 text-violet-400' : 'bg-violet-500/20 text-violet-200 hover:bg-violet-500/30'}`}>
-            {busy === 'structure' ? (phase || '변환 중…') : '① 엑셀 변환(.xlsx)'}
+          <label className={`text-xs px-3 py-1.5 rounded font-bold transition-colors ${busy ? 'bg-violet-800/50 text-violet-400 cursor-progress' : 'bg-violet-500/20 text-violet-200 hover:bg-violet-500/30 cursor-pointer'}`}>
+            {busy ? (phase || '변환 중…') : '📄 엑셀 선택 → 자동 변환(.xlsx)'}
             <input type="file" accept=".xlsx" className="sr-only" onChange={onExcel} disabled={!!busy} />
           </label>
           <button type="button" onClick={runAI} disabled={!!busy || !pending}
             className={`text-xs px-3 py-1.5 rounded font-bold transition-colors ${(!pending || !!busy) ? 'bg-slate-700/40 text-slate-500 cursor-not-allowed' : 'bg-fuchsia-500/25 text-fuchsia-200 hover:bg-fuchsia-500/35'}`}>
-            {busy === 'ai' ? (phase || '읽는 중…') : '② 🤖 AI로 읽기'}
+            {busy === 'ai' ? (phase || 'AI 분석 중…') : '🤖 AI 다시 읽기'}
           </button>
         </div>
       </div>
-      <p className="text-[11px] text-slate-400 leading-relaxed"><b className="text-violet-300">①</b> 엑셀 업로드 → 컷을 슬롯에 배치(문구·스펙 비움 · <b>AI·키 불필요</b>, 즉시). <b className="text-fuchsia-300">②</b> Claude가 통이미지를 읽어 문구·스펙 채우고 재배치.</p>
+      <p className="text-[11px] text-slate-400 leading-relaxed"><b className="text-violet-300">엑셀 파일만 선택</b>하면 파싱 → 구조 배치 → <b className="text-fuchsia-300">Claude AI 읽기</b>까지 자동 실행됩니다(추가 클릭 불필요). 실패 시 <b>🤖 AI 다시 읽기</b>로 재시도.</p>
       {note && <p className={`text-[11px] font-bold ${note.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{note.text}</p>}
       {notes.length > 0 && <ul className="text-[11px] text-amber-300/90 list-disc pl-4 space-y-0.5">{notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
     </div>
