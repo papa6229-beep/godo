@@ -103,8 +103,34 @@ export const parseProductName = (
   return { eyebrow, nameKr, nameEn, brandInline };
 };
 
-// files/goodsm/{상품번호}/ = 제품 통이미지. 깨진 URL(...jpgx.jpg) 방어.
-const isProductImage = (u: string): boolean => /\/files\/goodsm\//i.test(u) && !/\.jpgx\.jpg/i.test(u);
+// 상세이미지 분류 — 실제 상품 상세이미지를 files/goodsm 한 경로로만 인정하던 것을 일반화(2026-07-20).
+//   구형 상품은 상세자료가 files/goodsm 밖(banana_img/product_image 등)에 있어 통째로 누락됐다(시엑스: 10타입 중 7개 소실).
+//   판정은 "상품번호 포함 = 무조건 제품" 같은 단일조건이 아니라 여러 신호를 함께 쓴다:
+//     ① 깨진 URL(중복 확장자 .jpgx.jpg 등) → 제외
+//     ② 여러 상품이 공유하는 공통 장식/배너 영역(conf·k 디렉터리, 알려진 공용배너 파일명) → 제외
+//     ③ 상품 소유 저장소(files/goodsm/ · 구형 product_image/ · URL에 상품번호 포함) → 제품
+//     ④ 그 외 알 수 없는 경로 = 상세 본문 <img>이므로 "모른다"는 이유로 조용히 버리지 않고 후보로 유지(제품 취급)
+//   근거(실측 9샘플): 장식은 예외없이 /banana_img/conf/·/banana_img/k/(sulmung·mooeja·saunpum·kimtop=공유배너),
+//     제품은 files/goodsm/{no}/ 또는 banana_img/product_image/man/{no}_detail_*(구형·상품별). 기존 8샘플 수집결과 불변.
+
+// 깨진 이미지: 확장자가 중복돼 실제로 안 열리는 URL(예: ...saunpumnonex.jpgx.jpg)
+const isBrokenImageUrl = (u: string): boolean => /\.(?:jpe?g|png|gif)x\.(?:jpe?g|png|gif)/i.test(u);
+// 공통 장식/배너: 여러 상품이 공유하는 배너·설명 이미지(상품별이 아님 → 상세에서 제외).
+//   conf/=공통 설명배너(sulmung·mooeja·saunpum 등), k/=공통 상단배너(kimtop). 디렉터리 신호 + 공용배너 파일명 보조.
+const isCommonDecoration = (u: string): boolean =>
+  /\/banana_img\/(?:conf|k)\//i.test(u) || /\/(?:sulmung|mooeja|saunpum|kimtop)\w*\.(?:jpe?g|png|gif)(?:[?#]|$)/i.test(u);
+// 상품 소유 저장소로 확실한 경로(상품번호는 디지털만이라 정규식 이스케이프 불필요).
+const isOwnedProductPath = (u: string, productNo: string): boolean =>
+  /\/files\/goodsm\//i.test(u) ||                 // 신형 표준 경로
+  /\/banana_img\/product_image\//i.test(u) ||     // 구형 상품 상세 경로
+  (!!productNo && new RegExp(`(?:^|[^0-9])${productNo}(?:[^0-9]|$)`).test(u)); // URL에 상품번호
+// 최종: 제품 상세이미지 후보인가. 장식/깨짐이면 제외, 소유경로면 제품, 그 외 알 수 없는 경로는 후보로 유지.
+const isProductImage = (u: string, productNo: string): boolean => {
+  if (isBrokenImageUrl(u)) return false;
+  if (isCommonDecoration(u)) return false;
+  if (isOwnedProductPath(u, productNo)) return true;
+  return true; // 알 수 없는 경로 = 상세 본문 <img> → 조용히 버리지 않음(장식만 위에서 걸러짐)
+};
 const IMG_RE = /(?:src|href)\s*=\s*["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|gif))["']/gi;
 const IMG_TAG_RE = /<img[^>]*?(?:src|href)\s*=\s*["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|gif))["'][^>]*>/gi;
 
@@ -114,6 +140,7 @@ const IMG_TAG_RE = /<img[^>]*?(?:src|href)\s*=\s*["'](https?:\/\/[^"']+\.(?:jpg|
 //   - 공통배너(goodsm 아님)는 이미지에서 제외하되, 그 주변 텍스트는 인접 규칙대로 흡수
 const parseDetailStructure = (
   html: string,
+  productNo: string,
 ): { intro: string; blocks: DetailBlock[]; excludedImages: string[] } => {
   const tokens: Array<{ type: 'img'; url: string } | { type: 'text'; text: string }> = [];
   let last = 0;
@@ -133,7 +160,7 @@ const parseDetailStructure = (
   const prodIdx: number[] = [];
   tokens.forEach((t, i) => {
     if (t.type === 'img') {
-      if (isProductImage(t.url)) {
+      if (isProductImage(t.url, productNo)) {
         if (!seen.has(t.url)) { seen.add(t.url); prodIdx.push(i); }
       } else if (!excludedImages.includes(t.url)) {
         excludedImages.push(t.url);
@@ -172,12 +199,13 @@ export const parseMainMallArrayBuffer = async (buf: ArrayBuffer): Promise<Parsed
   if (!rows || rows.length < 2) return null;
   const r = rows[1];
 
+  const productNo = String(r[COL.no] || '').trim();
   const detail = String(r[COL.detail] || '');
   const rawName = String(r[COL.name] || '');
   const parsedName = parseProductName(rawName);
 
-  // 상세설명 HTML을 순서대로 구조화(이미지↔텍스트 페어링 + 옵션 태그 분리)
-  const { intro, blocks, excludedImages } = parseDetailStructure(detail);
+  // 상세설명 HTML을 순서대로 구조화(이미지↔텍스트 페어링 + 옵션 태그 분리). 상품번호 = 구형 경로 상세이미지 식별 신호.
+  const { intro, blocks, excludedImages } = parseDetailStructure(detail, productNo);
   const flowImages = blocks.map((b) => b.image);
   const hasTypedText = blocks.some((b) => (b.text || '').length > 0);
   const rawImageCount = [...detail.matchAll(IMG_RE)].length;
@@ -200,7 +228,7 @@ export const parseMainMallArrayBuffer = async (buf: ArrayBuffer): Promise<Parsed
   }
 
   return {
-    productNo: String(r[COL.no] || '').trim(),
+    productNo,
     productNameKr: parsedName.nameKr || cleanProductName(rawName),
     productNameEn: parsedName.nameEn,
     eyebrow: parsedName.eyebrow,
