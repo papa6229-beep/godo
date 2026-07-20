@@ -18,6 +18,8 @@ export interface FlowBlock {
   option?: string;    // 옵션형일 때 이 이미지가 속한 옵션(예: "01. 키타노 미나"). 없으면 미설정
   marketing?: boolean; // true=2차 마케팅 대표컷(원본 보존·풀폭 렌더). 통이미지 baked 경로에서만 설정.
   preserved?: boolean; // true=단순형3 선두 무캡션 2차 보존이미지(원본비율·중앙정렬·축소금지). 정규식 파서 후처리로 설정.
+  optionHeader?: string; // [OPTION_PRESERVE] 옵션 헤더 표기(배지 'OPTION' 뒤, 예 "01 · F타입"·"09–10 · B타입 / C타입"). 없으면 개요/무헤더.
+  reviewNote?: string;   // [OPTION_PRESERVE] 검수 필요 사유(NEEDS_REVIEW 등). 있으면 작은 배지 렌더.
 }
 
 export interface OptionItem {
@@ -100,6 +102,9 @@ export interface ProductData {
   // [신모델] 이미지+캡션 가변 블록 리스트 — 자동분할 조각·개별이미지의 단위.
   // caption = 각 이미지 아래 SEO 텍스트(나중에 AI가 채움). 순서 유지·재배치 가능.
   flowBlocks?: FlowBlock[];
+  // [OPTION_PRESERVE] 단순형 렌더 모드 오버라이드. 설정 시 PreviewGodoFlow가 옵션 보존 전용 분기로 렌더(찢기·POINT 없음).
+  //   미설정=기존 단순형 렌더(simple1/2/3) 그대로. 다옵션 업체 완성페이지형에서만 EditorFlow가 설정.
+  flowMode?: 'optionPreserve';
 
   // [고도몰] KEY FEATURE 좌측 이미지 마우스 크기·위치(드래그/리사이즈)
   featureImageLayout?: { x: number; y: number; width: number; height: number };
