@@ -11,6 +11,7 @@ import { rewriteFlowCaptions, rewriteHeaderText } from '../services/flowCaptionS
 import { convertBakedToFlow, convertBakedByCrop } from '../services/bakedFlowConverter';
 import { classifyBakedPattern } from '../services/bakedCropReader';
 import { decideOptionPreserve, buildOptionPreserveBlocks } from '../services/optionPreserveConverter';
+import { convertBakedGrid } from '../services/bakedGridConvert';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -200,15 +201,25 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
             setBaking(null);
             setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 통이미지(단순형2) 자동 변환 완료 (파트 ${res.flowBlocks.length}개)` });
           } else {
-            // 단순형1: 원본 2차 이미지 그대로(분할·읽기·OCR 없음). preserved 렌더 = 원본비율·중앙·과확대 없음.
-            const rawBlocks = (p.flowImages || []).map((u: string) => ({ id: newBlockId(), image: u, caption: '', preserved: true }));
-            // 썸네일: 일반 단순형1(스타킹·타액)은 위 autoPickThumbnail 결과 유지(회귀 복원). 단, 극단적으로 긴
-            //   마케팅 통이미지(롬프류 세로/가로 > 8)는 유사도 픽이 다이어그램을 골라 unavailable(억지선택 금지·사람이 후처리).
-            let extremeLong = false;
-            for (const u of (p.flowImages || [])) { const sz = await imgSize(u); if (sz && sz.w && sz.h / sz.w > 8) { extremeLong = true; break; } }
-            onChange(prev => ({ ...prev, flowBlocks: rawBlocks, ...(extremeLong ? { mainImage: '' } : {}) }));
-            setBaking(null);
-            setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 단순형1 원본 유지 (${rawBlocks.length}장)${extremeLong ? ' · 섬네일 미생성(긴 통이미지·수동)' : ''} · ${verdict.note}${ov ? ` · override:${ov}` : ''}` });
+            // 격자 있는 baked 통이미지(텐가류)면 색-무관 셀컷 + 테두리제거 + 마케팅보존으로 재구성.
+            //   격자 없으면(롬프·스타킹·타액 등) 기존 단순형1 raw 그대로 → 기존 결과 불변.
+            let gridRes: any = null;
+            if (ov !== 'simple1') { try { setBaking({ phase: '격자 재구성' }); gridRes = await convertBakedGrid(p.flowImages); } catch { gridRes = null; } }
+            if (gridRes && gridRes.flowBlocks.length) {
+              onChange(prev => ({ ...prev, flowBlocks: gridRes.flowBlocks, flowColumns: gridRes.columns }));
+              setBaking(null);
+              setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 격자 재구성 (${gridRes.flowBlocks.length}블록·${gridRes.columns}열) · ${gridRes.notes[0] || ''}` });
+            } else {
+              // 단순형1: 원본 2차 이미지 그대로(분할·읽기·OCR 없음). preserved 렌더 = 원본비율·중앙·과확대 없음.
+              const rawBlocks = (p.flowImages || []).map((u: string) => ({ id: newBlockId(), image: u, caption: '', preserved: true }));
+              // 썸네일: 일반 단순형1(스타킹·타액)은 위 autoPickThumbnail 결과 유지(회귀 복원). 단, 극단적으로 긴
+              //   마케팅 통이미지(롬프류 세로/가로 > 8)는 유사도 픽이 다이어그램을 골라 unavailable(억지선택 금지·사람이 후처리).
+              let extremeLong = false;
+              for (const u of (p.flowImages || [])) { const sz = await imgSize(u); if (sz && sz.w && sz.h / sz.w > 8) { extremeLong = true; break; } }
+              onChange(prev => ({ ...prev, flowBlocks: rawBlocks, ...(extremeLong ? { mainImage: '' } : {}) }));
+              setBaking(null);
+              setImportNote({ ok: true, text: `✓ ${p.productNameKr} · 단순형1 원본 유지 (${rawBlocks.length}장)${extremeLong ? ' · 섬네일 미생성(긴 통이미지·수동)' : ''} · ${verdict.note}${ov ? ` · override:${ov}` : ''}` });
+            }
           }
         }
       } catch (autoErr: any) {
