@@ -164,7 +164,34 @@ const PreviewGodoFlow = forwardRef<HTMLDivElement, Props>(({ data, onWatermarkLa
         {hasHeader && <div style={{ height: HEADER_GAP }} />}
 
         {/* ===== 이미지+캡션 블록 세로 스택 ===== */}
-        {blocks.length === 0 ? (
+        {data.flowMode === 'optionPreserve' ? (
+          // [OPTION_PRESERVE 전용] 업체 완성 옵션페이지 통짜 보존. 개요 통째 + OPTION 0N 헤더 + 원본 이미지.
+          //   찢기·POINT·캡션분리 없음. 기존 루프는 아래 : 분기로 그대로(1바이트 불변).
+          <div className="px-[56px] pb-16 flex flex-col">
+            {(() => {
+              const accentBar = isGradient(accent) ? { backgroundImage: accent } : { background: accent };
+              const dimLine = { background: isGradient(accent) ? '#d1d5db' : accent, opacity: 0.3 };
+              return blocks.map((b: any, i: number) => (
+                <div key={b.id || i}>
+                  {b.optionHeader && (
+                    <div className="mt-14 mb-6 flex items-center gap-3">
+                      <span className="text-xs font-black tracking-[0.15em] uppercase px-2.5 py-1 rounded text-white" style={accentBar}>OPTION</span>
+                      <span className="text-[22px] font-black text-gray-900 break-keep leading-tight">{b.optionHeader}</span>
+                      <div className="flex-1 h-0.5 rounded-full" style={dimLine} />
+                    </div>
+                  )}
+                  {b.reviewNote && (
+                    <div className="mb-3 text-[12px] font-bold text-amber-600 break-keep">⚠ {b.reviewNote}</div>
+                  )}
+                  <div className="relative w-full flex justify-center" style={{ margin: b.optionHeader ? '0 auto 52px' : '8px auto 44px' }}>
+                    <img src={b.image} className="block h-auto object-contain" style={{ width: 'auto', maxWidth: '100%' }} alt={`option-${i}`} />
+                    <RenderWatermark targetKey={`flowImage${i}`} />
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
+        ) : blocks.length === 0 ? (
           <div className="mx-[56px] mb-16 border-2 border-dashed border-gray-200 rounded-xl py-24 flex items-center justify-center text-gray-300 font-black text-2xl select-none">
             통이미지를 추가하세요
           </div>

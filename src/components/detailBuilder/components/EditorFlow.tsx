@@ -10,6 +10,7 @@ import { imageSignature, signatureDistance, normalizeThumbnail } from '../servic
 import { rewriteFlowCaptions, rewriteHeaderText } from '../services/flowCaptionService';
 import { convertBakedToFlow, convertBakedByCrop } from '../services/bakedFlowConverter';
 import { classifyBakedPattern } from '../services/bakedCropReader';
+import { decideOptionPreserve, buildOptionPreserveBlocks } from '../services/optionPreserveConverter';
 
 const fileToDataUrl = (file: File, cb: (url: string) => void) => {
   const r = new FileReader();
@@ -142,6 +143,7 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
         flowHeaderText: p.flowHeaderText || '',
         flowImages: p.flowImages || [],
         flowBlocks: baseBlocks,
+        flowMode: undefined, // 상품 전환 시 렌더 모드 초기화(이전 optionPreserve 잔류 차단). OPTION_PRESERVE면 아래서 재설정.
         // 섬네일은 로고 박힌 목록이미지 대신 상세 이미지에서 자동 선택(아래) — 여기선 안 건드림
       }));
       // 원본 레이아웃 열 수 판정(이미지 크기) → 2열/1열 보존
@@ -166,7 +168,15 @@ const EditorFlow: React.FC<{ data: ProductData; onChange: (v: React.SetStateActi
       // ── 업로드 즉시 자동실행: 분리형=캡션 리라이트 / 통이미지형=통이미지 읽기(둘 다 리라이트+##강조## 포함) ──
       const autoCtx = { productNameKr: p.productNameKr, brandName: p.brandName, flowHeaderText: p.flowHeaderText, introText: p.flowHeaderText };
       try {
-        if (p.hasTypedText) {
+        // [OPTION_PRESERVE] 다옵션 업체 완성페이지형 = 찢지 않고 옵션 단위 통짜 보존(독립 분기, classify 우회).
+        //   판정은 엑셀·구조 조합(optionPreserveConverter). EXISTING_FLOW면 아래 기존 경로 그대로.
+        const route = decideOptionPreserve(p);
+        if (route.verdict === 'OPTION_PRESERVE' || route.verdict === 'NEEDS_REVIEW') {
+          const opBlocks = buildOptionPreserveBlocks(p, route);
+          onChange(prev => ({ ...prev, flowMode: 'optionPreserve', flowBlocks: opBlocks }));
+          const rv = route.verdict === 'NEEDS_REVIEW' ? ' · ⚠검수필요' : '';
+          setImportNote({ ok: true, text: `✓ ${p.productNameKr} · OPTION 보존형 (${p.optionValues.length}옵션·이미지 ${opBlocks.length}블록)${rv} · ${route.reason}` });
+        } else if (p.hasTypedText) {
           const withText = baseBlocks.filter((b: any) => (b.caption || '').trim());
           if (withText.length) {
             setCaptioning({ done: 0, total: withText.length });
