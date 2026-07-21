@@ -6,7 +6,7 @@
 import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
-import { fetchImageBytes } from '../_shared/detailImageFetch.js';
+import { fetchImageBytes, consumeRateLimit } from '../_shared/detailImageFetch.js';
 
 interface ExtendedRequest extends IncomingMessage {
   body?: Record<string, unknown>;
@@ -31,8 +31,23 @@ const queryParam = (req: ExtendedRequest, key: string): string => {
   }
 };
 
+// [SEC-03] 무인증 공개 라우트라 남용 비용을 줄이기 위한 최소 제한.
+// 인스턴스 로컬이므로 전역 보장은 아니다(서버 스토어 도입 시 보완).
+const clientKeyOf = (req: ExtendedRequest): string => {
+  const fwd = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(fwd) ? fwd[0] : fwd;
+  const first = (raw || '').split(',')[0].trim();
+  return first || req.socket?.remoteAddress || 'unknown';
+};
+
 export default async function handler(req: ExtendedRequest, res: VercelResponse) {
   const action = actionOf(req);
+
+  if (action === 'image-base64' || action === 'image-proxy') {
+    if (!consumeRateLimit(clientKeyOf(req))) {
+      return sendErrorResponse(res, 'RATE_LIMITED', '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.', 429);
+    }
+  }
 
   switch (action) {
     // export(html-to-image)용: CDN URL → base64 data URL. 작은 이미지에 적합.
