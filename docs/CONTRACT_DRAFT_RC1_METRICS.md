@@ -9,9 +9,20 @@
 ## C-1. 카테고리 출처 계약
 
 **우선순위**
-1. **주문라인의 주문 당시 `categoryCode`** — 주문 시점 사실을 보존한다.
+1. **주문라인의 `categoryCode`** — 주문 시점 사실을 보존한다.
 2. 라인에 없으면 **상품 인덱스의 현재 `categoryCode`**로 보충한다.
 3. 둘 다 없으면 `uncategorized`.
+
+> **⚠️ 전제 정정 (2026-07-21 재추적)**
+> "주문 당시 categoryCode"는 고도몰 원본 주문 라인에 있는 필드가 **아니다.**
+> `godomallRevenue.ts:223 mapLine()`이 **적재 시점에 상품 인덱스와 조인해서** 만든다:
+> `categoryCode: matched.categoryCode || 'uncategorized'`
+> 따라서 정확한 의미는 **"적재 시점 상품 카테고리 스냅샷"**이다.
+> 그래도 계약의 취지는 유효하다 — 라인값은 **적재 시점 스냅샷**, 클라이언트가 넘기는 products는 **현재값**이므로
+> 상품 카테고리를 재분류하면 둘이 갈린다. 라인 우선이 곧 "과거 집계를 소급 변경하지 않는다"는 뜻이다.
+>
+> 부수 결과: RevenueOrder 경로에서 `line.categoryCode`는 **절대 비지 않는다**(`|| 'uncategorized'`).
+> 즉 규칙 ②(보충)는 이 경로에서 발동하지 않으며, `mapLine`을 거치지 않는 데이터셋에서만 의미가 있다.
 
 **기록 의무**: 결과에 `categorySource: 'orderLine' | 'productIndex' | 'none'`을 남길 수 있도록 **CommerceSnapshot 계약에 필드를 추가**한다. 카테고리 재분류가 일어난 상품의 과거 매출이 어떤 기준으로 집계됐는지 사후 추적이 가능해야 한다.
 
@@ -97,7 +108,15 @@ CSV 어댑터    ─┘
 **문의 canonical status 5종 (확정)**: `open` / `in_progress` / `answered` / `closed` / `unknown`
 계산 엔진 안에서 `미답변`·`unanswered`·`pending` 등을 정규식으로 해석하는 코드는 **최종적으로 전부 제거**한다(현재 6정의 — `csTeamDashboardFacts.ts:83`, `:320,378`, `csDashboardStatistics.ts:79`, `departmentDataSourceOfTruth.ts:76,125`, `analyticsQueryEngine.ts:572`, `departmentChatFacts.ts:83`).
 
-**금지**: 계산 모듈이 `bool()` 헬퍼를 각자 구현하는 것. **현재 상태 — 실측 3변종:**
+> **⚠️ 긴급도 정정 (2026-07-21 재추적)**
+> 매출분석 주문은 `godomallRevenue.ts:180 deriveOrderState()`를 거치며, 여기서 `paid`/`canceled`는
+> **원시 `'Y'`를 읽는 것이 아니라 결제일·취소일·주문상태로 판정한 boolean**이다.
+> 그리고 합성 데이터도 `syntheticCommerceUniverse.ts:504`에서 **같은 `mapOrdersToRevenue`를 통과**한다.
+> 따라서 아래 `bool()` 3변종은 **이 경로에서는 이미 boolean을 받으므로 현재 활성 결함이 아니라 잠재 결함**이다.
+> "고도몰이 `'Y'`를 보내면 엔진마다 갈린다"는 이전 서술은 **이 경로에 한해 성립하지 않는다 — 철회한다.**
+> 제거는 모든 진입점이 canonical boolean으로 잠긴 것을 확인한 뒤에 한다.
+
+**금지**: 계산 모듈이 `bool()` 헬퍼를 각자 구현하는 것. **현재 상태 — 실측 3변종(잠재):**
 - `revenueMetricContract.ts:38` / `planner:153` / `scopeInsight:107` / `marketingAnalysisFacts:227` → `'y'`만
 - `marketingAnalysisExecutor.ts:49` → `'Y'`·`1` 포함
 - `departmentDataService.ts:68` → `'1'`·`'true'` 포함, **`'Y'` 없음**
