@@ -389,14 +389,29 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, [], nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
-  // ── share: 비중 ──
+  // C-7 계약: 분모·분자·정렬·본문 원값/단위가 모두 **basisMetric 하나**를 따른다.
+  //   · metric === 'share'(지표로서의 share)는 하위호환을 위해 revenue로 정규화한다.
+  //     (Metric과 Operation 양쪽에 share가 존재하므로 기준을 명시한다)
+  //   · 평균 지표(객단가·평균평점)는 평균의 합을 분모로 쓰는 것이 의미가 없어 계산을 거부한다.
+  //   · 동률은 매출을 숨은 보조 정렬로 쓰지 않고 key로 결정적으로 정렬한다.
   if (plan.operation === 'share') {
-    const total = rows.reduce((s, r) => s + r.acc.rev, 0);
-    const withShare = rows.map((r) => ({ ...r, value: total > 0 ? r.acc.rev / total : 0 })).sort((a, b) => b.acc.rev - a.acc.rev);
-    const bullets = withShare.map((r) => `${r.label}: ${won(r.acc.rev)} (${formatSharePercent(r.value)})`);
-    const reply = [`${scope} ${plan.groupBy ? AXIS_LABEL[plan.groupBy] : ''} 비중입니다.`, ...bullets].join('\n');
+    const basisMetric: Metric = metric === 'share' ? 'revenue' : metric;
+    const SHARE_BASIS_ALLOWED: Metric[] = ['revenue', 'quantity', 'orderCount', 'inquiryCount', 'reviewCount'];
+    if (!SHARE_BASIS_ALLOWED.includes(basisMetric)) {
+      const reply = `${METRIC_LABEL[basisMetric]}은(는) 평균값이라 비중(점유율)을 계산할 수 없습니다. `
+        + `평균끼리 더한 값을 분모로 쓰면 의미가 없기 때문입니다. `
+        + `매출·판매수량·주문수·문의수·리뷰수 기준으로 다시 질문해 주세요.`;
+      return { handled: true, reply, suppressChart: true };
+    }
+    const basisOf = (r: Row): number => metricValue(r.acc, basisMetric);
+    const total = rows.reduce((s, r) => s + basisOf(r), 0);
+    const withShare = rows
+      .map((r) => ({ ...r, basis: basisOf(r), value: total > 0 ? basisOf(r) / total : 0 }))
+      .sort((a, b) => (b.basis - a.basis) || a.key.localeCompare(b.key));
+    const bullets = withShare.map((r) => `${r.label}: ${fmtMetric(r.basis, basisMetric)} (${formatSharePercent(r.value)})`);
+    const reply = [`${scope} ${plan.groupBy ? AXIS_LABEL[plan.groupBy] : ''} ${METRIC_LABEL[basisMetric]} 비중입니다.`, ...bullets].join('\n');
     const shareRows: Row[] = withShare.map((r) => ({ key: r.key, label: r.label, value: Math.round(r.value * 1000) / 10, acc: r.acc }));
-    const cs = rankedBarSpec(shareRows, 'share', `${scope} 비중`, '비중(%)', true);
+    const cs = rankedBarSpec(shareRows, 'share', `${scope} ${METRIC_LABEL[basisMetric]} 비중`, '비중(%)', true);
     return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 

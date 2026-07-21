@@ -570,6 +570,35 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
     `got ${count({ startDate: '2025-03-01', endDate: '2025-03-31' })}`);
 }
 
+// ── T21. share basisMetric 계약 (평균 지표 거부 / metric='share' 정규화) ─────
+{
+  const dataset = { orders: ORDERS, reviews: REVIEWS, inquiries: INQUIRIES };
+  const run = (metric, groupBy = 'category') => commerce.executeCommerceQueryPlan(
+    { metric, groupBy, operation: 'share', filters: { years: [2025], months: [3] }, sort: 'desc', originalQuestion: 't' },
+    dataset, { nowMs: Date.parse('2025-04-01T00:00:00Z') },
+  );
+  // 평균 지표는 평균의 합이 분모가 되어 의미가 없으므로 숫자를 만들지 않고 거부한다.
+  // averageRating은 리뷰에 categoryCode가 없어 카테고리 축에서는 데이터 자체가 비므로
+  // share 판정에 도달하는 축(product)으로 검증한다.
+  for (const [m, axis] of [['averageOrderValue', 'category'], ['averageRating', 'product']]) {
+    const r = run(m, axis);
+    const reply = String(r?.reply ?? '').replace(/\n/g, ' ');
+    ok(`T21-a ${m} share는 계산 거부(숫자 미생성, 축=${axis})`,
+      !!r && r.handled === true && /계산할 수 없습니다/.test(reply) && !/%/.test(reply),
+      `reply: ${reply.slice(0, 110)}`);
+  }
+  // metric === 'share'는 revenue 기준으로 정규화(Metric·Operation 양쪽에 share가 존재).
+  const rs = run('share');
+  const rsReply = String(rs?.reply ?? '').replace(/\n/g, ' ');
+  ok('T21-b metric="share"는 매출 기준으로 정규화(78.3%·원)',
+    /78(\.[0-9])?%/.test(rsReply) && /원/.test(rsReply), `reply: ${rsReply.slice(0, 110)}`);
+  // 비중 허용 기준 5종은 모두 계산된다.
+  for (const m of ['revenue', 'quantity', 'orderCount']) {
+    const r = run(m);
+    ok(`T21-c ${m} share 계산 가능`, !!r && r.handled === true && /%/.test(String(r.reply ?? '')), `reply: ${String(r?.reply ?? '').slice(0, 80)}`);
+  }
+}
+
 // ── T20. 기간 규칙 단일화 (orders / compareTo / 달력 검증) ───────────────────
 {
   const ord = (orderNo, orderDate, amt) => ({
