@@ -627,11 +627,42 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-1c planner 재구매 주문수 1 (미분류 미포함)', val('repeatPurchaseOrderCount') === FP_GOLDEN.repeat.count, `got ${val('repeatPurchaseOrderCount')}`);
     ok('T22-1d planner 첫구매 매출 10,000', val('firstPurchaseRevenue') === FP_GOLDEN.first.revenue, `got ${val('firstPurchaseRevenue')}`);
     ok('T22-1e planner 재구매 매출 20,000 (미분류 미포함)', val('repeatPurchaseRevenue') === FP_GOLDEN.repeat.revenue, `got ${val('repeatPurchaseRevenue')}`);
-    // 미분류 1건·30,000원이 evidence 또는 warning에 남아야 한다(고정 KPI가 first/repeat만 표시하므로).
-    const res = planner.executeMarketingIntelligencePlan({ plan, orders: FP_ORDERS, products: [], nowMs });
-    const blob = JSON.stringify({ evidence: res?.evidence ?? [], warnings: res?.plan?.warnings ?? [], narrative: res?.narrative ?? {} });
-    ok('T22-1f planner 미분류 1건·30,000원 근거(evidence/warning) 제공',
-      /미분류|unknown/.test(blob) && /30,?000/.test(blob), `근거 문자열에 미분류/30,000 없음`);
+    // 전체 매출도 불변이어야 한다.
+    ok('T22-1a2 planner 전체 매출 60,000 불변', val('revenue') === FP_GOLDEN.total.revenue, `got ${val('revenue')}`);
+    // firstRepeat 차원은 세 그룹을 반환해야 한다.
+    const dimRes = planner.executeMarketingIntelligencePlan({
+      plan: { ...plan, dimensions: ['firstRepeat'], requestedMetrics: ['revenue'], executableMetrics: ['revenue'] },
+      orders: FP_ORDERS, products: [], nowMs,
+    });
+    const dimKeys = [...pointsOf(dimRes).keys()].join(' | ');
+    // 계약: 키는 영문(first/repeat/unknown), 표시 라벨만 한글(첫구매/재구매/미분류).
+    ok('T22-1g planner firstRepeat 차원 = first/repeat/unknown 세 그룹',
+      dimKeys.includes('first') && dimKeys.includes('repeat') && dimKeys.includes('unknown'), `keys: ${dimKeys}`);
+    const dimSeries = dimRes?.primaryChartSpec?.series ?? [];
+    const unknownSeries = dimSeries.find((x) => String(x.key) === 'unknown' || String(x.name) === 'unknown');
+    const unknownVal = (unknownSeries?.points ?? []).reduce((a, pt) => a + Number(pt.value ?? 0), 0);
+    ok('T22-1g2 planner firstRepeat unknown 그룹 = 30,000원 (라벨 미분류)',
+      unknownVal === FP_GOLDEN.unknown.revenue
+      && /미분류/.test(String(unknownSeries?.label ?? unknownSeries?.name ?? '')),
+      `value ${unknownVal} / label ${unknownSeries?.label ?? unknownSeries?.name}`);
+
+    // 양성: 첫구매 관련 분석에는 미분류 1건·30,000원 근거가 실제로 표시된다.
+    const fpRes = planner.executeMarketingIntelligencePlan({
+      plan: { ...plan, requestedMetrics: ['firstPurchaseOrderCount'], executableMetrics: ['firstPurchaseOrderCount'] },
+      orders: FP_ORDERS, products: [], nowMs,
+    });
+    const fpBlob = JSON.stringify({ evidence: fpRes?.evidence ?? [], warnings: fpRes?.plan?.warnings ?? [] });
+    ok('T22-1f 첫구매 분석: 미분류 1건·30,000원 근거가 실제로 표시됨',
+      /미분류/.test(fpBlob) && /1건/.test(fpBlob) && /30,000/.test(fpBlob), `blob: ${fpBlob.slice(0, 200)}`);
+
+    // 음성: 일반 매출 분석에는 불필요한 미분류 경고를 붙이지 않는다.
+    const plainRes = planner.executeMarketingIntelligencePlan({
+      plan: { ...plan, requestedMetrics: ['revenue'], executableMetrics: ['revenue'], dimensions: ['time'] },
+      orders: FP_ORDERS, products: [], nowMs,
+    });
+    const plainBlob = JSON.stringify({ evidence: plainRes?.evidence ?? [], warnings: plainRes?.plan?.warnings ?? [] });
+    ok('T22-1h 일반 매출 분석: 불필요한 미분류 경고 없음',
+      !/첫구매 여부가 없는 주문/.test(plainBlob), `blob: ${plainBlob.slice(0, 200)}`);
   } catch (e) { ok('T22-1 planner 3상태', false, e.message); }
 
   // (6) marketingTemporalCrosstab — firstRepeat 차원 키 (planner가 재사용)

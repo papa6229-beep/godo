@@ -12,6 +12,7 @@
 import { getMarketingTimeBucketKey, getMarketingDimensionKey, type MarketingTimeBucket, type MarketingCrossTabDimension, type MarketingCrossTabRequest } from './marketingTemporalCrosstab';
 import type { MarketingChartSpec, MarketingChartSeries, MarketingChatChartArtifact, MarketingChartNarrative } from './marketingChatChartSpec';
 import { countOrderOnce, seenOrdersFor, resolveOrderKey, cellRegistryKey, resolveFirstPurchase, lineCategoryKey, categoryLabelOf } from './lineAxisAggregation';
+import { classifyFirstPurchase, FIRST_PURCHASE_LABEL } from './firstPurchaseContract';
 
 // ── plan/result 타입 ──────────────────────────────────────────────────────────
 export type MarketingPlanGoal = 'compare' | 'trend' | 'rank' | 'share' | 'relationship' | 'conversion' | 'diagnose' | 'summary';
@@ -408,7 +409,10 @@ const addOrder = (a: Acc, o: Order): void => {
   for (const l of o.lines || []) a.quantity += numv(l.quantity);
   if (hasCoupon(o)) a.couponOrders += 1;
   if (usesReward(o)) a.rewardOrders += 1;
-  if (boolv(o.isFirstPurchase)) { a.firstOrders += 1; a.firstRevenue += amt; } else { a.repeatOrders += 1; a.repeatRevenue += amt; }
+  // C-8: 3상태. unknown은 first/repeat 어느 쪽에도 넣지 않는다(전체 orderCount·revenue에는 이미 포함됨).
+  const fpClass = classifyFirstPurchase(o.isFirstPurchase);
+  if (fpClass === 'first') { a.firstOrders += 1; a.firstRevenue += amt; }
+  else if (fpClass === 'repeat') { a.repeatOrders += 1; a.repeatRevenue += amt; }
 };
 const metricFromAcc = (a: Acc, metric: string, totals: { revenue: number; orderCount: number }): number => {
   switch (metric) {
@@ -615,6 +619,28 @@ const buildPlanChartSpec = (plan: MarketingIntelligencePlan, orders: Order[], pr
     { id: 'ev_metric', label: '주 지표', value: METRIC_LABEL[primaryMetric] ?? primaryMetric, source: 'derived' },
     { id: 'ev_basis', label: '근거 데이터 조각', value: goodsMode ? '주문라인·상품·문의/리뷰(집계)·기간' : '주문일·주문금액·쿠폰 사용 여부·회원그룹·첫구매/재구매·시나리오', source: 'derived' }
   ];
+  // C-8: 미분류(첫구매 여부 불명) 근거는 **첫구매/재구매 분석과 관계있는 요청에만** 붙인다.
+  //   일반 매출 분석까지 경고를 남발하면 화면이 오염된다.
+  //   집계 셀·라인마다 세지 않고, 필터·기간을 통과한 **고유 주문 기준으로 한 번만** 센다.
+  const wantsFirstRepeat = plan.executableMetrics.some((m) => /first|repeat/i.test(m))
+    || plan.requestedMetrics.some((m) => /first|repeat/i.test(m))
+    || plan.dimensions.includes('firstRepeat')
+    || plan.segments.some((s) => s.kind === 'firstRepeat')
+    || plan.filters.some((f) => /firstRepeat/i.test(f.kind))
+    || plan.comparison === 'segment_vs_segment';
+  if (wantsFirstRepeat) {
+    const unknownOrders = counted.filter((o) => classifyFirstPurchase(o.isFirstPurchase) === 'unknown');
+    if (unknownOrders.length > 0) {
+      const unknownRevenue = unknownOrders.reduce((s, o) => s + numv(o.totalAmount), 0);
+      evidence.push({
+        id: 'ev_first_purchase_unknown',
+        label: `첫구매 여부 ${FIRST_PURCHASE_LABEL.unknown}`,
+        value: `${unknownOrders.length}건 · ${won(unknownRevenue)}`,
+        source: 'orders'
+      });
+      warnings.push(`첫구매 여부가 없는 주문 ${unknownOrders.length}건(${won(unknownRevenue)})은 첫구매·재구매 어느 쪽에도 포함되지 않았습니다. 두 값의 합이 전체와 다를 수 있습니다.`);
+    }
+  }
   return { chartSpec, evidence };
 };
 

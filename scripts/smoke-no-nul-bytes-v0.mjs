@@ -36,18 +36,25 @@ const files = walk(process.cwd());
 const offenders = [];
 for (const f of files) {
   const buf = readFileSync(f);
+  // NUL(0x00)뿐 아니라 백스페이스(0x08) 등 제어문자 전반을 막는다.
+  // 편집 도중 이스케이프가 실제 제어문자로 기록되는 사고가 반복 확인됐다.
+  // 허용: TAB(9) / LF(10) / CR(13).
   let count = 0;
-  for (const byte of buf) if (byte === 0) count += 1;
-  if (count > 0) offenders.push({ file: path.relative(process.cwd(), f), count });
+  const kinds = new Set();
+  for (const byte of buf) {
+    if (byte === 9 || byte === 10 || byte === 13) continue;
+    if (byte < 32 || byte === 127) { count += 1; kinds.add(byte); }
+  }
+  if (count > 0) offenders.push({ file: path.relative(process.cwd(), f), count, kinds: [...kinds].map((b) => `0x${b.toString(16).padStart(2, '0')}`).join(',') });
 }
 
 console.log(`검사 파일 ${files.length}개 (확장자 ${[...SOURCE_EXT].join(' ')})`);
 if (offenders.length === 0) {
-  console.log('  PASS  실제 U+0000 바이트 0개');
+  console.log('  PASS  실제 제어문자(NUL·BS 등) 0개');
   console.log('\n=== 결과: 1 pass / 0 fail ===');
   process.exit(0);
 }
-for (const o of offenders) console.log(`  FAIL  ${o.file} — NUL ${o.count}개`);
+for (const o of offenders) console.log(`  FAIL  ${o.file} — 제어문자 ${o.count}개 (${o.kinds})`);
 console.log(`\n=== 결과: 0 pass / ${offenders.length} fail ===`);
 console.log('소스에는 실제 NUL 대신 \\u0000 이스케이프를 사용하세요.');
 process.exit(1);
