@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync, existsSy
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 
 const REPO = process.cwd();
 const read = (rel) => readFileSync(path.join(REPO, rel), 'utf8');
@@ -17,6 +18,55 @@ let pass = 0, fail = 0;
 const ok = (n, c) => { console.log(`  ${c ? 'PASS' : 'FAIL'}  ${n}`); c ? pass++ : fail++; };
 console.log('=== Marketing Dashboard Dynamic Smart Chart Render v0 smoke ===');
 
+// ── AST 기반 금지 호출 검사 (RC-6: 문자열 검사 위양성 제거) ────────────────
+// 정규식은 주석·문자열·import 이름에도 걸려 위양성을 만든다.
+// TypeScript 컴파일러로 파싱해 **실제 CallExpression의 피호출자 이름**만 본다.
+const require_ = createRequire(path.join(REPO, 'package.json'));
+const ts = require_('typescript');
+const findForbiddenCalls = (absPath, forbidden) => {
+  const src = ts.createSourceFile(absPath, readFileSync(absPath, 'utf8'), ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX);
+  const hits = [];
+  const nameOf = (expr) => {
+    if (ts.isIdentifier(expr)) return expr.text;
+    if (ts.isPropertyAccessExpression(expr)) return expr.name.text;
+    return '';
+  };
+  const walk = (node) => {
+    if (ts.isCallExpression(node)) {
+      const n = nameOf(node.expression);
+      if (forbidden.includes(n)) {
+        hits.push({ name: n, line: src.getLineAndCharacterOfPosition(node.getStart(src)).line + 1 });
+      }
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(src);
+  return hits;
+};
+
+// 삼항 조건부 렌더의 else 가지(whenFalse)에 className="marketing-smart-chart" 엘리먼트가 있는지.
+const hasSmartChartFallback = (absPath) => {
+  const src = ts.createSourceFile(absPath, readFileSync(absPath, 'utf8'), ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX);
+  let found = false;
+  const hasSmartChartClass = (node) => {
+    let hit = false;
+    const scan = (n) => {
+      if (ts.isJsxAttribute(n) && n.name.getText(src) === 'className' && n.initializer
+        && ts.isStringLiteral(n.initializer) && n.initializer.text.split(/\s+/).includes('marketing-smart-chart')) hit = true;
+      ts.forEachChild(n, scan);
+    };
+    scan(node);
+    return hit;
+  };
+  const walk = (node) => {
+    if (ts.isConditionalExpression(node) && hasSmartChartClass(node.whenFalse)) found = true;
+    ts.forEachChild(node, walk);
+  };
+  walk(src);
+  return found;
+};
+
+const DASH_PATH = path.join(REPO, 'src/components/MarketingAnalysisDashboard.tsx');
 const DASH = read('src/components/MarketingAnalysisDashboard.tsx');
 const CSS = read('src/components/MarketingAnalysisDashboard.css');
 const PANEL = read('src/components/DepartmentWorkspacePanel.tsx');
@@ -29,7 +79,10 @@ ok('4. MarketingChatChartArtifact import from marketingChatChartSpec', /import t
 
 // ── 렌더 분기 ──
 ok('5. artifact 있을 때 chartSpec 패널 렌더 분기', /marketingChartArtifact \?\s*\(\s*<MarketingChartSpecPanel/.test(DASH));
-ok('6. artifact 없을 때 기존 focus smart chart fallback 유지', /: \(\s*<div className="marketing-smart-chart">/.test(DASH) && /view\.chipLabel/.test(DASH));
+// 6. fallback 유지 — JSX 줄바꿈·괄호 포맷에 의존하는 정규식은 포맷만 바뀌어도 깨진다(위양성).
+//    조건부 렌더의 **else 가지에 marketing-smart-chart 엘리먼트가 있는지**를 AST로 확인한다.
+ok('6. artifact 없을 때 기존 focus smart chart fallback 유지(AST)',
+  hasSmartChartFallback(DASH_PATH) && /view\.chipLabel/.test(DASH));
 ok('7. focus chip 기능 유지(marketing-focus-selector)', /marketing-focus-selector/.test(DASH) && /MarketingFocusMetric/.test(DASH));
 ok('8. dev marker marketing-dynamic-chart-active/intent/type/available', /data-marketing-dynamic-chart-active/.test(DASH) && /data-marketing-dynamic-chart-intent/.test(DASH) && /data-marketing-dynamic-chart-type/.test(DASH) && /data-marketing-dynamic-chart-available/.test(DASH));
 
@@ -51,7 +104,11 @@ ok('18. requiredData unsupported 패널에서 표시', /chartSpec\.requiredData\
 
 // ── 금지: chartSpec JSON 그대로 노출 / 계산 로직 재구현 ──
 ok('19. chartSpec JSON.stringify 노출 없음', !/JSON\.stringify\([^)]*chartSpec/.test(DASH) && !/JSON\.stringify\([^)]*artifact/.test(DASH));
-ok('20. 새 계산 엔진/facts 재구현 없음(buildMarketing* 신규 호출 없음 — 기존 buildMarketingAnalysisFacts만)', !/buildMarketingTemporalCrosstab|buildMarketingChatChartResponse|runMarketingChartRequest/.test(DASH));
+// 20. 새 계산 엔진 재구현 금지 — 정규식은 주석·문자열에도 걸려 위양성이 난다.
+//     TypeScript AST로 **실제 CallExpression**만 검사한다(주석·문자열은 통과).
+ok('20. 새 계산 엔진/facts 재구현 없음(실제 호출 기준, AST 검사)',
+  findForbiddenCalls(DASH_PATH, ['buildMarketingTemporalCrosstab', 'buildMarketingChatChartResponse', 'runMarketingChartRequest']).length === 0,
+  );
 
 // ── CSS 마커 ──
 ok('21. CSS: chartSpec 패널/그래프 클래스', /marketing-chart-spec-panel/.test(CSS) && /marketing-chart-grouped-bars/.test(CSS) && /marketing-chart-line/.test(CSS) && /marketing-chart-ranked-bars/.test(CSS) && /marketing-chart-unsupported/.test(CSS));
