@@ -641,17 +641,32 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-6b crosstab firstRepeat: false → repeat', k(false).key === 'repeat', `got ${k(false).key}`);
     ok('T22-6c crosstab firstRepeat: undefined → unknown/미분류 (repeat 아님)',
       k(undefined).key === 'unknown', `got ${k(undefined).key} (label=${k(undefined).label})`);
-    // 키 함수만이 아니라 실제 집계 결과에 세 행이 나와야 한다.
+    // 실제 집계 결과에서 값까지 확인한다(음성 검사만 두면 미분류가 사라져도 통과한다).
     const ct = crosstab.buildMarketingTemporalCrosstab({
       orders: FP_ORDERS, request: { timeBucket: 'month', dimensions: ['firstRepeat'], metrics: ['revenue', 'orderCount'] }, nowMs,
     });
-    const blob2 = JSON.stringify(ct);
-    const hasRow = (k) => new RegExp(`"${k}"`).test(blob2);
-    ok('T22-6d crosstab 집계에 first/repeat/unknown 세 행',
-      hasRow('first') && hasRow('repeat') && (hasRow('unknown') || /미분류/.test(blob2)),
-      `unknown 행 없음`);
-    ok('T22-6e crosstab 미분류 30,000원이 재구매에 합산되지 않음',
-      !/50000|50,000/.test(blob2), `재구매가 50,000으로 부풀어 있음`);
+    const ctRows = ct?.rows ?? [];
+    const row = (k) => ctRows.find((x) => String(x.dimensionKey) === k);
+    const shownCt = ctRows.map((x) => `${x.dimensionKey}(${x.dimensionLabel})=${x.revenue}/${x.orderCount}건`).join(', ') || '(없음)';
+    ok('T22-6d crosstab 주축 first 1건·10,000원',
+      Number(row('first')?.orderCount) === 1 && Number(row('first')?.revenue) === 10000, `rows: ${shownCt}`);
+    ok('T22-6e crosstab 주축 repeat 1건·20,000원 (미분류 미포함)',
+      Number(row('repeat')?.orderCount) === 1 && Number(row('repeat')?.revenue) === 20000, `rows: ${shownCt}`);
+    ok('T22-6f crosstab 주축 unknown 1건·30,000원 · label=미분류',
+      Number(row('unknown')?.orderCount) === 1 && Number(row('unknown')?.revenue) === 30000
+      && String(row('unknown')?.dimensionLabel) === '미분류', `rows: ${shownCt}`);
+    ok('T22-6g crosstab 세 행 합계 3건·60,000원',
+      ctRows.reduce((a, x) => a + Number(x.orderCount ?? 0), 0) === FP_GOLDEN.total.count
+      && ctRows.reduce((a, x) => a + Number(x.revenue ?? 0), 0) === FP_GOLDEN.total.revenue, `rows: ${shownCt}`);
+    // 보조축일 때도 unknown으로 분리되어야 한다.
+    const ct2 = crosstab.buildMarketingTemporalCrosstab({
+      orders: FP_ORDERS, request: { timeBucket: 'month', dimensions: ['category', 'firstRepeat'], metrics: ['revenue', 'orderCount'] }, nowMs,
+    });
+    const sec = (ct2?.rows ?? []).filter((x) => String(x.secondaryDimensionKey) === 'unknown');
+    ok('T22-6h crosstab 보조축 secondaryDimensionKey=unknown · label=미분류 · 1건·30,000원',
+      sec.length === 1 && Number(sec[0].orderCount) === 1 && Number(sec[0].revenue) === 30000
+      && String(sec[0].secondaryDimensionLabel) === '미분류',
+      `secondary: ${(ct2?.rows ?? []).map((x) => `${x.secondaryDimensionKey}=${x.revenue}`).join(', ') || '(없음)'}`);
   } catch (e) { ok('T22-6 crosstab firstRepeat', false, e.message); }
 
   // (3) marketingAnalysisFacts — 고정 KPI
