@@ -12,6 +12,7 @@
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartSeries, MarketingChartNarrative, MarketingChartType } from './marketingChatChartSpec';
 import { parseMarketingChatQuery } from './marketingChatQueryRouting';
 import { buildMarketingAnalysisResponse } from './marketingAnalysisExecutor';
+import { countOrderOnce, seenOrdersFor, resolveOrderKey, cellRegistryKey, resolveFirstPurchase, lineCategoryKey, categoryLabelOf } from './lineAxisAggregation';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 export type MarketingAnalysisScope = {
@@ -60,7 +61,7 @@ export type MarketingInsightPack = {
     highestRevenuePoint?: string; lowestRevenuePoint?: string; largestIncreasePoint?: string; largestDecreasePoint?: string;
     trendDirection: 'up' | 'down' | 'mixed' | 'flat'; volatilityNote?: string;
   };
-  categoryBreakdown?: Array<{ category: string; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number; couponUsageRate?: number }>;
+  categoryBreakdown?: Array<{ categoryKey: string; category: string; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number; couponUsageRate?: number }>;
   productBreakdown?: Array<{ goodsNo?: string; productName: string; category?: string; brand?: string; revenue: number; revenueShare: number; orderCount: number; quantity: number; averageOrderValue: number; inquiryCount?: number; reviewCount?: number; averageRating?: number }>;
   customerBreakdown?: {
     firstRepeat?: Array<{ label: 'first' | 'repeat'; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number }>;
@@ -312,20 +313,34 @@ function buildInsightPack(input: { scope: MarketingAnalysisScope; question: Mark
   const catMap = new Map<string, Agg & { label: string }>();
   const prodMap = new Map<string, Agg & { name: string; category: string; brand: string }>();
   let lineTotalRev = 0;
-  for (const o of scoped) {
-    const oCoupon = hasCoupon(o);
+  // C-1/C-5: 카테고리는 라인 categoryCode만 사용(productIndex 재조인 금지),
+  //   매출·수량은 라인 합산, 주문수·쿠폰주문수는 집계칸별 주문 중복 제거.
+  //   category와 product는 cellRegistryKey의 axisKind로 분리한다(같은 문자열 키 충돌 방지).
+  const seenOrdersByCell = new Map<string, Set<string>>();
+  scoped.forEach((o, orderIndex) => {
+    const flags = {
+      coupon: hasCoupon(o),
+      reward: usesReward(o),
+      first: resolveFirstPurchase((o as Row).isFirstPurchase)
+    };
+    const orderKey = resolveOrderKey((o as Row).orderNo, orderIndex);
     for (const l of (o.lines || []) as Row[]) {
       const g = strv(l.goodsNo); const meta = goodsMeta(g); const lr = numv(l.lineRevenue); const q = numv(l.quantity);
       lineTotalRev += lr;
-      const c = catMap.get(meta.category) || { ...newAgg(), label: meta.category === 'uncategorized' ? '미분류' : `카테고리 ${meta.category}` };
-      c.revenue += lr; c.orderCount += 1; c.quantity += q; if (oCoupon) c.couponOrders += 1; catMap.set(meta.category, c);
+      const catKey = lineCategoryKey(l);
+      const c = catMap.get(catKey) || { ...newAgg(), label: categoryLabelOf(catKey) };
+      c.revenue += lr; c.quantity += q;
+      countOrderOnce(c, seenOrdersFor(seenOrdersByCell, cellRegistryKey('category', catKey)), orderKey, flags);
+      catMap.set(catKey, c);
       const pk = g || meta.name;
-      const p = prodMap.get(pk) || { ...newAgg(), name: meta.name, category: meta.category, brand: meta.brand };
-      p.revenue += lr; p.orderCount += 1; p.quantity += q; if (oCoupon) p.couponOrders += 1; prodMap.set(pk, p);
+      const p = prodMap.get(pk) || { ...newAgg(), name: meta.name, category: catKey, brand: meta.brand };
+      p.revenue += lr; p.quantity += q;
+      countOrderOnce(p, seenOrdersFor(seenOrdersByCell, cellRegistryKey('product', pk)), orderKey, flags);
+      prodMap.set(pk, p);
     }
-  }
+  });
   const lineShare = (rev: number): number => (lineTotalRev ? round1(rev / lineTotalRev * 100) : 0);
-  const categoryBreakdown = [...catMap.entries()].map(([, a]) => ({ category: a.label, revenue: Math.round(a.revenue), revenueShare: lineShare(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a), couponUsageRate: a.orderCount ? round1(a.couponOrders / a.orderCount * 100) : 0 })).sort((x, y) => y.revenue - x.revenue);
+  const categoryBreakdown = [...catMap.entries()].map(([key, a]) => ({ categoryKey: key, category: a.label, revenue: Math.round(a.revenue), revenueShare: lineShare(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a), couponUsageRate: a.orderCount ? round1(a.couponOrders / a.orderCount * 100) : 0 })).sort((x, y) => y.revenue - x.revenue);
 
   // 문의/리뷰 by goods (기간 내)
   const inqByGoods = new Map<string, number>();

@@ -570,7 +570,8 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
       message: '카테고리별 매출 알려줘', orders: CATSRC_ORDERS, products: CATSRC_PRODUCTS,
       reviews: [], inquiries: [], nowMs,
     });
-    const m = new Map((r?.result?.insightPack?.categoryBreakdown ?? []).map((x) => [String(x.category), Number(x.revenue ?? 0)]));
+    // 계약: 키는 uncategorized로 통일(categoryKey), 표시 라벨만 '미분류'(category)
+    const m = new Map((r?.result?.insightPack?.categoryBreakdown ?? []).map((x) => [String(x.categoryKey ?? x.category), Number(x.revenue ?? 0)]));
     assertCategorySource('T9~T11-c scopeInsight', m);
   } catch (e) { ok('T9~T11-c scopeInsight 카테고리 출처', false, `실행 실패: ${e.message}`); }
 }
