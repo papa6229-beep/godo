@@ -52,6 +52,7 @@ const entries = [
   'src/services/commerceDataQueryEngine.ts',
   'src/services/marketingIntelligencePlanner.ts',
   'src/services/marketingScopeInsightEngine.ts',
+  'src/services/firstPurchaseContract.ts',
 ].map((p) => path.join(REPO, p));
 
 console.log('[1/3] 컴파일');
@@ -69,6 +70,7 @@ const analytics = await load('analyticsQueryEngine.js');
 const commerce = await load('commerceDataQueryEngine.js');
 const planner = await load('marketingIntelligencePlanner.js');
 const scope = await load('marketingScopeInsightEngine.js');
+const fpContract = await load('firstPurchaseContract.js');
 
 // ── fixture ──────────────────────────────────────────────────────────────────
 const PERIOD = { start: '2025-03-01', end: '2025-03-31' };
@@ -568,6 +570,79 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
   ok('T19-d 시작·종료 모두 → 2건 (A,B 경계 포함)',
     count({ startDate: '2025-03-01', endDate: '2025-03-31' }) === 2,
     `got ${count({ startDate: '2025-03-01', endDate: '2025-03-31' })}`);
+}
+
+// ── T22. C-8 첫구매 3상태 공통 계약 (소비자 5곳) ────────────────────────────
+// 공통 정답 fixture: 첫구매 10,000 / 재구매 20,000 / 미분류 30,000
+//   전체 3건·60,000원 / first 1건·10,000 / repeat 1건·20,000 / unknown 1건·30,000
+//   unknown이 repeat에 섞이면 실패.
+const FP_ORDERS = [
+  { orderNo: 'F1', orderDate: '2025-03-05', paid: true, canceled: false, memberKey: 'f1',
+    isFirstPurchase: true, totalAmount: 10000, productRevenueByLines: 10000,
+    lines: [line('G1', '상품G1', 'catF', 1, 10000)] },
+  { orderNo: 'F2', orderDate: '2025-03-06', paid: true, canceled: false, memberKey: 'f2',
+    isFirstPurchase: false, totalAmount: 20000, productRevenueByLines: 20000,
+    lines: [line('G2', '상품G2', 'catF', 1, 20000)] },
+  { orderNo: 'F3', orderDate: '2025-03-07', paid: true, canceled: false, memberKey: 'f3',
+    /* isFirstPurchase 없음 → 미분류 */ totalAmount: 30000, productRevenueByLines: 30000,
+    lines: [line('G3', '상품G3', 'catF', 1, 30000)] },
+];
+const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, revenue: 10000 }, repeat: { count: 1, revenue: 20000 }, unknown: { count: 1, revenue: 30000 } };
+
+{
+  const nowMs = Date.parse('2025-04-01T00:00:00Z');
+  // 공용 계약 자체
+  ok('T22-0 classifyFirstPurchase: true/false/undefined/비정상',
+    fpContract.classifyFirstPurchase(true) === 'first'
+    && fpContract.classifyFirstPurchase(false) === 'repeat'
+    && fpContract.classifyFirstPurchase(undefined) === 'unknown'
+    && fpContract.classifyFirstPurchase('무엇') === 'unknown',
+    'contract');
+
+  // (1) planner 일반 집계 — 시간 축(주문 기준)
+  try {
+    const plan = {
+      id: 'fp', originalQuestion: 'fp', goal: 'summary',
+      requestedMetrics: ['orderCount'], executableMetrics: ['orderCount'],
+      periods: [{ label: '2025-03', startDate: '2025-03-01', endDate: '2025-03-31' }],
+      timeBucket: 'month', dimensions: ['time'], segments: [], filters: [],
+      comparison: 'none', chartRecommendation: { chartType: 'bar', reason: '' },
+      dataRequirements: [], confidence: 'high', warnings: [],
+    };
+    const val = (metric) => {
+      const res = planner.executeMarketingIntelligencePlan({ plan: { ...plan, requestedMetrics: [metric], executableMetrics: [metric] }, orders: FP_ORDERS, products: [], nowMs });
+      const pts = [...pointsOf(res).values()];
+      return pts.reduce((s, p) => s + Number(p.value ?? 0), 0);
+    };
+    ok('T22-1a planner 전체 주문수 3', val('orderCount') === FP_GOLDEN.total.count, `got ${val('orderCount')}`);
+    ok('T22-1b planner 첫구매 주문수 1', val('firstPurchaseOrderCount') === FP_GOLDEN.first.count, `got ${val('firstPurchaseOrderCount')}`);
+    ok('T22-1c planner 재구매 주문수 1 (미분류 미포함)', val('repeatPurchaseOrderCount') === FP_GOLDEN.repeat.count, `got ${val('repeatPurchaseOrderCount')}`);
+    ok('T22-1d planner 첫구매 매출 10,000', val('firstPurchaseRevenue') === FP_GOLDEN.first.revenue, `got ${val('firstPurchaseRevenue')}`);
+    ok('T22-1e planner 재구매 매출 20,000 (미분류 미포함)', val('repeatPurchaseRevenue') === FP_GOLDEN.repeat.revenue, `got ${val('repeatPurchaseRevenue')}`);
+  } catch (e) { ok('T22-1 planner 3상태', false, e.message); }
+
+  // (2) scopeInsight firstRepeat 분류
+  try {
+    const r = scope.buildMarketingScopeInsightResponse({ message: '첫구매 재구매 비교', orders: FP_ORDERS, products: [], reviews: [], inquiries: [], nowMs });
+    const fr = r?.result?.insightPack?.customerBreakdown?.firstRepeat ?? [];
+    const get = (k) => fr.find((x) => String(x.label) === k);
+    ok('T22-2a scope 첫구매 1건·10,000', Number(get('first')?.orderCount) === 1 && Number(get('first')?.revenue) === 10000, `got ${JSON.stringify(get('first'))}`);
+    ok('T22-2b scope 재구매 1건·20,000 (미분류 미포함)', Number(get('repeat')?.orderCount) === 1 && Number(get('repeat')?.revenue) === 20000, `got ${JSON.stringify(get('repeat'))}`);
+    ok('T22-2c scope 미분류 1건·30,000 별도 표시', Number(get('unknown')?.orderCount) === 1 && Number(get('unknown')?.revenue) === 30000, `got ${JSON.stringify(get('unknown'))} | 전체: ${fr.map((x) => x.label).join(',')}`);
+    const sum = fr.reduce((s, x) => s + Number(x.orderCount ?? 0), 0);
+    ok('T22-2d scope firstRepeat 합계 = 전체 3건', sum === FP_GOLDEN.total.count, `got ${sum}`);
+  } catch (e) { ok('T22-2 scope 3상태', false, e.message); }
+
+  // (3) commerceDataQueryEngine customerType 축
+  try {
+    const r = commerce.executeCommerceQueryPlan(
+      { metric: 'orderCount', groupBy: 'customerType', operation: 'rank', filters: { years: [2025], months: [3] }, sort: 'desc', originalQuestion: 'fp' },
+      { orders: FP_ORDERS, reviews: [], inquiries: [] }, { nowMs },
+    );
+    const reply = String(r?.reply ?? '').replace(/\n/g, ' ');
+    ok('T22-3a commerce customerType에 미분류가 별도로 나타남', /미분류/.test(reply), `reply: ${reply.slice(0, 130)}`);
+    ok('T22-3b commerce 재구매가 2건으로 부풀지 않음', !/재구매[^0-9]*2건/.test(reply), `reply: ${reply.slice(0, 130)}`);
+  } catch (e) { ok('T22-3 commerce customerType 3상태', false, e.message); }
 }
 
 // ── T21. share basisMetric 계약 (평균 지표 거부 / metric='share' 정규화) ─────

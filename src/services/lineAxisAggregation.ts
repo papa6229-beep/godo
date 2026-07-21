@@ -14,6 +14,8 @@
 //                     (재조인하면 상품 카테고리 변경 시 과거 매출이 소급 재분류된다)
 // ────────────────────────────────────────────────────────────────────────────
 
+import { firstPurchaseTristate } from './firstPurchaseContract';
+
 /**
  * 주문 1건이 가진 주문 단위 속성. 라인마다 다시 평가하지 않는다.
  * first는 3상태다 — isFirstPurchase가 optional이라 firstSaleFl이 없는 실주문은 undefined다.
@@ -21,13 +23,11 @@
  */
 export type OrderScopedFlags = { coupon: boolean; reward: boolean; first: boolean | undefined };
 
-/** isFirstPurchase 원시값 → 3상태. undefined를 false(재구매)로 뭉개지 않는다. */
-export const resolveFirstPurchase = (value: unknown): boolean | undefined => {
-  if (value === undefined || value === null || value === '') return undefined;
-  if (value === true || value === 'true' || value === 'y' || value === 'Y' || value === 1) return true;
-  if (value === false || value === 'false' || value === 'n' || value === 'N' || value === 0) return false;
-  return undefined;
-};
+/**
+ * isFirstPurchase 원시값 → 3상태. 판정은 firstPurchaseContract 한 곳에만 둔다(C-8).
+ * 여기서 다시 구현하지 않는다.
+ */
+export const resolveFirstPurchase = firstPurchaseTristate;
 
 /** 주문 중복 제거 대상 카운터. 소비자마다 보유 필드가 달라 전부 optional로 둔다. */
 export type OrderScopedCounters = {
