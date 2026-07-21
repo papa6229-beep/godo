@@ -26,13 +26,13 @@
 
 **검증 기대값 (정정)**: `catLINE = 10,000` / `uncategorized = 50,000`(P5 20,000 + P6 30,000) / `catINDEX`·`catFALLBACK`는 결과에 존재하면 실패.
 
-**기록 의무**: 결과에 `categorySource: 'orderLine' | 'productIndex' | 'none'`을 남길 수 있도록 **CommerceSnapshot 계약에 필드를 추가**한다. 카테고리 재분류가 일어난 상품의 과거 매출이 어떤 기준으로 집계됐는지 사후 추적이 가능해야 한다.
+**기록 의무**: 결과에 `categorySource: 'ingestSnapshot' | 'none'`을 남길 수 있도록 **CommerceSnapshot 계약에 필드를 추가**한다. 어떤 기준으로 집계됐는지 사후 추적이 가능해야 한다.
 
 **표기 규칙**: 키는 `uncategorized`로 통일하고, 화면 표시 라벨만 `미분류`로 한다. 현재 `scopeInsight`는 키 자체를 `미분류`로 만들어(`:320`) 다른 엔진과 대조가 불가능하다.
 
 **현재 상태 (실측 — 금액까지 고정한 검증 결과)**
 
-정답: `catLINE=10,000` / `catFALLBACK=20,000` / `uncategorized=30,000` / `catINDEX`는 존재 시 실패
+정답: `catLINE=10,000` / `uncategorized=50,000` / `catINDEX`·`catFALLBACK`는 존재 시 실패
 
 | 엔진 | 실제 반환 | 계약 대비 |
 |---|---|---|
@@ -122,9 +122,7 @@ CSV 어댑터    ─┘
 - `marketingAnalysisExecutor.ts:49` → `'Y'`·`1` 포함
 - `departmentDataService.ts:68` → `'1'`·`'true'` 포함, **`'Y'` 없음**
 
-→ 고도몰 원시값이 `'Y'`로 오면 엔진마다 유효주문 판정이 갈린다. **어댑터에서 한 번 정규화하면 이 문제 자체가 사라진다.**
-
----
+→ 위 3변종은 **현재 경로에서는 잠재 결함**이다(바로 위 정정 참조). 제거는 모든 진입점이 canonical boolean으로 잠긴 것을 확인한 뒤에 하며, 어댑터 하나를 고쳤다는 이유로 소멸했다고 보고하지 않는다.
 
 ---
 
