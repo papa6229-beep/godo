@@ -140,10 +140,26 @@ const CATSRC_PRODUCTS = [
   { goodsNo: 'P5', productId: 'P5', goodsName: '상품5', categoryCode: 'catFALLBACK' },
   // P6은 상품 인덱스에 없음
 ];
+// 정답: 카테고리별 금액까지 고정한다(키 존재 여부만 보면 P6가 catINDEX로 잘못 들어가도 통과한다).
 const CATSRC_GOLDEN = {
-  P4: { category: 'catLINE', source: 'orderLine', why: '주문 당시 라인 카테고리 우선' },
-  P5: { category: 'catFALLBACK', source: 'productIndex', why: '라인에 없어 상품 인덱스로 보충' },
-  P6: { category: 'uncategorized', source: 'none', why: '양쪽 모두 없음' },
+  amounts: { catLINE: 10000, catFALLBACK: 20000, uncategorized: 30000 },
+  forbidden: ['catINDEX'], // 결과에 존재하면 실패 — 라인 카테고리를 인덱스가 덮어썼다는 뜻
+  source: { P4: 'orderLine', P5: 'productIndex', P6: 'none' },
+};
+
+// 엔진별 (카테고리명 → 금액) 맵을 정답과 대조한다.
+const assertCategorySource = (engineLabel, actualMap) => {
+  const entries = [...actualMap.entries()];
+  const shown = entries.map(([k, v]) => `${k}=${v}`).join(' | ') || '(없음)';
+  for (const [cat, expected] of Object.entries(CATSRC_GOLDEN.amounts)) {
+    const hit = entries.find(([k]) => k.includes(cat));
+    ok(`${engineLabel}: ${cat} = ${expected.toLocaleString()}원`,
+      !!hit && Number(hit[1]) === expected, `got ${hit ? hit[1] : '항목 없음'} | 전체: ${shown}`);
+  }
+  for (const bad of CATSRC_GOLDEN.forbidden) {
+    ok(`${engineLabel}: ${bad}는 결과에 없어야 함(라인 카테고리 우선)`,
+      !entries.some(([k]) => k.includes(bad)), `전체: ${shown}`);
+  }
 };
 
 const REVIEWS = [
@@ -348,11 +364,8 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
     const res = planner.executeMarketingIntelligencePlan({
       plan: mkPlan('category', 'revenue'), orders: CATSRC_ORDERS, products: CATSRC_PRODUCTS, nowMs,
     });
-    const keys = [...pointsOf(res).keys()].join(' | ');
-    ok(`T9-a planner: 라인 카테고리(catLINE)를 기준으로 사용`, keys.includes('catLINE'),
-      `got [${keys}] — catINDEX가 보이면 상품인덱스를 쓴다는 뜻`);
-    ok(`T10-a planner: 라인에 없으면 상품인덱스(catFALLBACK)로 보충`, keys.includes('catFALLBACK'), `got [${keys}]`);
-    ok(`T11-a planner: 양쪽 모두 없으면 미분류`, /미분류|uncategorized/.test(keys), `got [${keys}]`);
+    const m = new Map([...pointsOf(res).entries()].map(([k, v]) => [k, v.value]));
+    assertCategorySource('T9~T11-a planner', m);
   } catch (e) { ok('T9~T11-a planner 카테고리 출처', false, `실행 실패: ${e.message}`); }
 
   // (b) analyticsQueryEngine
@@ -361,12 +374,8 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
       { orders: CATSRC_ORDERS, reviews: [], inquiries: [], source: { dataKind: 'synthetic' } },
       { metric: 'categoryRevenue', startDate: PERIOD.start, endDate: PERIOD.end },
     );
-    const keys = (r.rows ?? []).map((x) => String(x.label ?? x.key ?? '')).join(' | ');
-    ok('T9-b analyticsQueryEngine: 라인 카테고리(catLINE) 사용', keys.includes('catLINE'), `got [${keys}]`);
-    ok('T10-b analyticsQueryEngine: 라인에 없으면 상품인덱스(catFALLBACK)로 보충',
-      keys.includes('catFALLBACK'), `got [${keys}] — 상품 인덱스를 참조하지 않으면 실패한다`);
-    ok('T11-b analyticsQueryEngine: 양쪽 모두 없으면 미분류',
-      /미분류|uncategorized/.test(keys), `got [${keys}]`);
+    const m = new Map((r.rows ?? []).map((x) => [String(x.label ?? x.key ?? ''), Number(x.value ?? 0)]));
+    assertCategorySource('T9~T11-b analyticsQueryEngine', m);
   } catch (e) { ok('T9~T11-b analyticsQueryEngine 카테고리 출처', false, `실행 실패: ${e.message}`); }
 
   // (c) scopeInsight
@@ -375,10 +384,8 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
       message: '카테고리별 매출 알려줘', orders: CATSRC_ORDERS, products: CATSRC_PRODUCTS,
       reviews: [], inquiries: [], nowMs,
     });
-    const keys = (r?.result?.insightPack?.categoryBreakdown ?? []).map((x) => x.category).join(' | ');
-    ok('T9-c scopeInsight: 라인 카테고리(catLINE) 사용', keys.includes('catLINE'), `got [${keys}]`);
-    ok('T10-c scopeInsight: 라인에 없으면 상품인덱스(catFALLBACK)로 보충', keys.includes('catFALLBACK'), `got [${keys}]`);
-    ok('T11-c scopeInsight: 양쪽 모두 없으면 미분류', /미분류|uncategorized/.test(keys), `got [${keys}]`);
+    const m = new Map((r?.result?.insightPack?.categoryBreakdown ?? []).map((x) => [String(x.category), Number(x.revenue ?? 0)]));
+    assertCategorySource('T9~T11-c scopeInsight', m);
   } catch (e) { ok('T9~T11-c scopeInsight 카테고리 출처', false, `실행 실패: ${e.message}`); }
 }
 
