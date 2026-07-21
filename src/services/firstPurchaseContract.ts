@@ -27,7 +27,15 @@ export const FIRST_PURCHASE_LABEL: Record<FirstPurchaseClass, string> = {
 
 /**
  * 원시값 → 3상태. undefined·null·빈문자열·인식 불가 값은 전부 'unknown'이다.
- * 어댑터가 canonical boolean으로 정규화하기 전까지의 방어이기도 하다(C-4).
+ *
+ * ⚠️ 입력 범위에 대한 명시:
+ *   · **정식 RevenueOrder 경로의 canonical 타입은 `boolean | undefined`** 하나뿐이다
+ *     (godomallRevenue의 mapOrdersToRevenue가 firstSaleFl을 boolean으로 만들고,
+ *      값이 없으면 필드 자체가 없다).
+ *   · `'y' / 'n' / 'true' / 'false' / 1 / 0` 을 함께 받는 것은
+ *     **기존 느슨한 입력(과거 스냅샷·CSV·수기 데이터) 호환용 정규화**이며
+ *     "운영 데이터의 정식 타입"이 아니다. 어댑터 정규화(C-4)가 완료되면
+ *     이 호환 분기는 축소 대상이다.
  */
 export const classifyFirstPurchase = (value: unknown): FirstPurchaseClass => {
   if (value === true || value === 'true' || value === 'y' || value === 'Y' || value === 1) return 'first';

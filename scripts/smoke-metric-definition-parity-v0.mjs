@@ -53,6 +53,10 @@ const entries = [
   'src/services/marketingIntelligencePlanner.ts',
   'src/services/marketingScopeInsightEngine.ts',
   'src/services/firstPurchaseContract.ts',
+  'src/services/marketingTemporalCrosstab.ts',
+  'src/services/marketingAnalysisFacts.ts',
+  'src/services/marketingAnalysisExecutor.ts',
+  'src/services/marketingAnalysisQueryCompiler.ts',
 ].map((p) => path.join(REPO, p));
 
 console.log('[1/3] 컴파일');
@@ -71,6 +75,10 @@ const commerce = await load('commerceDataQueryEngine.js');
 const planner = await load('marketingIntelligencePlanner.js');
 const scope = await load('marketingScopeInsightEngine.js');
 const fpContract = await load('firstPurchaseContract.js');
+const crosstab = await load('marketingTemporalCrosstab.js');
+const facts = await load('marketingAnalysisFacts.js');
+const executor = await load('marketingAnalysisExecutor.js');
+const analysisCompiler = await load('marketingAnalysisQueryCompiler.js');
 
 // ── fixture ──────────────────────────────────────────────────────────────────
 const PERIOD = { start: '2025-03-01', end: '2025-03-31' };
@@ -619,11 +627,73 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-1c planner 재구매 주문수 1 (미분류 미포함)', val('repeatPurchaseOrderCount') === FP_GOLDEN.repeat.count, `got ${val('repeatPurchaseOrderCount')}`);
     ok('T22-1d planner 첫구매 매출 10,000', val('firstPurchaseRevenue') === FP_GOLDEN.first.revenue, `got ${val('firstPurchaseRevenue')}`);
     ok('T22-1e planner 재구매 매출 20,000 (미분류 미포함)', val('repeatPurchaseRevenue') === FP_GOLDEN.repeat.revenue, `got ${val('repeatPurchaseRevenue')}`);
+    // 미분류 1건·30,000원이 evidence 또는 warning에 남아야 한다(고정 KPI가 first/repeat만 표시하므로).
+    const res = planner.executeMarketingIntelligencePlan({ plan, orders: FP_ORDERS, products: [], nowMs });
+    const blob = JSON.stringify({ evidence: res?.evidence ?? [], warnings: res?.plan?.warnings ?? [], narrative: res?.narrative ?? {} });
+    ok('T22-1f planner 미분류 1건·30,000원 근거(evidence/warning) 제공',
+      /미분류|unknown/.test(blob) && /30,?000/.test(blob), `근거 문자열에 미분류/30,000 없음`);
   } catch (e) { ok('T22-1 planner 3상태', false, e.message); }
 
-  // (2) scopeInsight firstRepeat 분류
+  // (6) marketingTemporalCrosstab — firstRepeat 차원 키 (planner가 재사용)
   try {
-    const r = scope.buildMarketingScopeInsightResponse({ message: '첫구매 재구매 비교', orders: FP_ORDERS, products: [], reviews: [], inquiries: [], nowMs });
+    const k = (v) => crosstab.getMarketingDimensionKey({ isFirstPurchase: v }, 'firstRepeat');
+    ok('T22-6a crosstab firstRepeat: true → first', k(true).key === 'first', `got ${k(true).key}`);
+    ok('T22-6b crosstab firstRepeat: false → repeat', k(false).key === 'repeat', `got ${k(false).key}`);
+    ok('T22-6c crosstab firstRepeat: undefined → unknown/미분류 (repeat 아님)',
+      k(undefined).key === 'unknown', `got ${k(undefined).key} (label=${k(undefined).label})`);
+    // 키 함수만이 아니라 실제 집계 결과에 세 행이 나와야 한다.
+    const ct = crosstab.buildMarketingTemporalCrosstab({
+      orders: FP_ORDERS, request: { timeBucket: 'month', dimensions: ['firstRepeat'], metrics: ['revenue', 'orderCount'] }, nowMs,
+    });
+    const blob2 = JSON.stringify(ct);
+    const hasRow = (k) => new RegExp(`"${k}"`).test(blob2);
+    ok('T22-6d crosstab 집계에 first/repeat/unknown 세 행',
+      hasRow('first') && hasRow('repeat') && (hasRow('unknown') || /미분류/.test(blob2)),
+      `unknown 행 없음`);
+    ok('T22-6e crosstab 미분류 30,000원이 재구매에 합산되지 않음',
+      !/50000|50,000/.test(blob2), `재구매가 50,000으로 부풀어 있음`);
+  } catch (e) { ok('T22-6 crosstab firstRepeat', false, e.message); }
+
+  // (3) marketingAnalysisFacts — 고정 KPI
+  try {
+    const f = facts.buildMarketingAnalysisFacts({ orders: FP_ORDERS, nowMs });
+    const c = f?.customer ?? f?.facts?.customer ?? f;
+    const findNum = (key) => {
+      const stack = [c]; while (stack.length) { const o = stack.pop();
+        if (o && typeof o === 'object') { if (typeof o[key] === 'number') return o[key]; for (const v of Object.values(o)) if (v && typeof v === 'object') stack.push(v); } }
+      return -1;
+    };
+    ok('T22-3a facts 첫구매 주문수 1', findNum('firstPurchaseOrderCount') === 1, `got ${findNum('firstPurchaseOrderCount')}`);
+    ok('T22-3b facts 첫구매 매출 10,000', findNum('firstPurchaseRevenue') === 10000, `got ${findNum('firstPurchaseRevenue')}`);
+    ok('T22-3c facts 재구매 주문수 1 (미분류 미포함)', findNum('repeatPurchaseOrderCount') === 1, `got ${findNum('repeatPurchaseOrderCount')}`);
+    ok('T22-3d facts 재구매 매출 20,000 (미분류 미포함)', findNum('repeatPurchaseRevenue') === 20000, `got ${findNum('repeatPurchaseRevenue')}`);
+    ok('T22-3e facts 미분류 1건·30,000 근거 제공', findNum('unknownPurchaseOrderCount') === 1 && findNum('unknownPurchaseRevenue') === 30000,
+      `건수 ${findNum('unknownPurchaseOrderCount')} / 매출 ${findNum('unknownPurchaseRevenue')}`);
+  } catch (e) { ok('T22-3 facts 3상태', false, e.message); }
+
+  // (4) marketingAnalysisExecutor — 실제 사용 경로(컴파일러 → 실행)
+  try {
+    const plan = analysisCompiler.compileMarketingAnalysisQuery('첫구매와 재구매 매출 비교', { nowMs });
+    const res = executor.executeMarketingAnalysisPlan(plan, FP_ORDERS, nowMs);
+    const rows = res?.rows ?? [];
+    const shown = rows.map((x) => `${x.label}=${x.value}`).join(', ') || '(없음)';
+    const g = (labels) => rows.find((x) => labels.includes(String(x.label)));
+    ok('T22-4a executor 첫구매 10,000원', Number(g(['first', '첫구매'])?.value) === 10000, `rows: ${shown}`);
+    ok('T22-4b executor 재구매 20,000원 (미분류 미포함)', Number(g(['repeat', '재구매'])?.value) === 20000, `rows: ${shown}`);
+    ok('T22-4c executor 미분류 30,000원 세 번째 그룹', Number(g(['unknown', '미분류'])?.value) === 30000, `rows: ${shown}`);
+    ok('T22-4d executor 세 그룹 합계 = 60,000원 (전체 불변)',
+      rows.reduce((sum, x) => sum + Number(x.value ?? 0), 0) === FP_GOLDEN.total.revenue,
+      `합계 ${rows.reduce((sum, x) => sum + Number(x.value ?? 0), 0)} | rows: ${shown}`);
+    ok('T22-4e executor 제목/차트에서 미분류가 재구매로 표시되지 않음',
+      !/미분류[^,]*재구매|재구매[^,]*미분류/.test(String(res?.title ?? '')) && rows.filter((x) => String(x.label) === '재구매').length <= 1,
+      `title: ${res?.title}`);
+  } catch (e) { ok('T22-4 executor 3상태', false, `실행 실패: ${e.message}`); }
+
+  // (2) scopeInsight firstRepeat 분류
+  //  ⚠️ 메시지에 '첫구매'/'재구매'가 들어가면 :162-163이 customerScope 필터를 걸어
+  //     주문이 선별된다. 분류 자체를 보려면 중립 메시지를 써야 한다(이전 FAIL은 테스트 접근 오류).
+  try {
+    const r = scope.buildMarketingScopeInsightResponse({ message: '2025년 매출 알려줘', orders: FP_ORDERS, products: [], reviews: [], inquiries: [], nowMs });
     const fr = r?.result?.insightPack?.customerBreakdown?.firstRepeat ?? [];
     const get = (k) => fr.find((x) => String(x.label) === k);
     ok('T22-2a scope 첫구매 1건·10,000', Number(get('first')?.orderCount) === 1 && Number(get('first')?.revenue) === 10000, `got ${JSON.stringify(get('first'))}`);
@@ -631,6 +701,11 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-2c scope 미분류 1건·30,000 별도 표시', Number(get('unknown')?.orderCount) === 1 && Number(get('unknown')?.revenue) === 30000, `got ${JSON.stringify(get('unknown'))} | 전체: ${fr.map((x) => x.label).join(',')}`);
     const sum = fr.reduce((s, x) => s + Number(x.orderCount ?? 0), 0);
     ok('T22-2d scope firstRepeat 합계 = 전체 3건', sum === FP_GOLDEN.total.count, `got ${sum}`);
+    const revSum = fr.reduce((s2, x) => s2 + Number(x.revenue ?? 0), 0);
+    ok('T22-2e scope firstRepeat 매출 합계 = 60,000 (전체 불변)', revSum === FP_GOLDEN.total.revenue, `got ${revSum}`);
+    const narrative = JSON.stringify(r?.result?.narrative ?? {});
+    ok('T22-2f scope narrative가 미분류를 재구매라고 부르지 않음',
+      !/재구매[^"]*3건|재구매[^"]*50,?000/.test(narrative), `narrative: ${narrative.slice(0, 160)}`);
   } catch (e) { ok('T22-2 scope 3상태', false, e.message); }
 
   // (3) commerceDataQueryEngine customerType 축
@@ -640,9 +715,9 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
       { orders: FP_ORDERS, reviews: [], inquiries: [] }, { nowMs },
     );
     const reply = String(r?.reply ?? '').replace(/\n/g, ' ');
-    ok('T22-3a commerce customerType에 미분류가 별도로 나타남', /미분류/.test(reply), `reply: ${reply.slice(0, 130)}`);
-    ok('T22-3b commerce 재구매가 2건으로 부풀지 않음', !/재구매[^0-9]*2건/.test(reply), `reply: ${reply.slice(0, 130)}`);
-  } catch (e) { ok('T22-3 commerce customerType 3상태', false, e.message); }
+    ok('T22-5a commerce customerType에 미분류가 별도로 나타남', /미분류/.test(reply), `reply: ${reply.slice(0, 130)}`);
+    ok('T22-5b commerce 재구매가 2건으로 부풀지 않음', !/재구매[^0-9]*2건/.test(reply), `reply: ${reply.slice(0, 130)}`);
+  } catch (e) { ok('T22-5 commerce customerType 3상태', false, e.message); }
 }
 
 // ── T21. share basisMetric 계약 (평균 지표 거부 / metric='share' 정규화) ─────
