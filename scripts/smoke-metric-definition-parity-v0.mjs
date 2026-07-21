@@ -58,6 +58,7 @@ const entries = [
   'src/services/marketingAnalysisExecutor.ts',
   'src/services/marketingAnalysisQueryCompiler.ts',
   'src/services/marketingTeamChatFacts.ts',
+  'src/services/marketingFirstRepeatDisplay.ts',
 ].map((p) => path.join(REPO, p));
 
 console.log('[1/3] 컴파일');
@@ -81,6 +82,7 @@ const facts = await load('marketingAnalysisFacts.js');
 const executor = await load('marketingAnalysisExecutor.js');
 const analysisCompiler = await load('marketingAnalysisQueryCompiler.js');
 const chatFacts = await load('marketingTeamChatFacts.js');
+const frDisplay = await load('marketingFirstRepeatDisplay.js');
 
 // ── fixture ──────────────────────────────────────────────────────────────────
 const PERIOD = { start: '2025-03-01', end: '2025-03-31' };
@@ -950,6 +952,56 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T23-c chat 미분류 0건이면 문구 없음',
       !JSON.stringify(noUnknown ?? {}).includes('첫구매 여부 미분류'), '거짓 문구 표시됨');
   }
+}
+
+// ── T24. D-1 대시보드 표시 모델 (순수 모듈 실제 반환값) ─────────────────────
+// 테스트용 복제 구현·TSX 문자열 검사·정규식 문구 탐색을 쓰지 않는다.
+// 실제 주문 fixture → buildMarketingAnalysisFacts → 표시 함수 순으로 계약을 연결한다.
+{
+  const nowMs = Date.parse('2025-04-01T00:00:00Z');
+  const sumOf = (orders) => facts.buildMarketingAnalysisFacts({ orders, nowMs }).summary;
+  const sU = sumOf(FP_ORDERS);                                        // 미분류 있음
+  const sN = sumOf(FP_ORDERS.filter((o) => 'isFirstPurchase' in o));  // 미분류 없음
+  const barVal = (bars, label) => Number(bars.find((b) => String(b.label).includes(label))?.value);
+
+  // ── unknown 있음 ──
+  const barsU = frDisplay.buildFirstRepeatBars(sU);
+  ok('T24-a firstRepeat bars: 첫구매 10,000원·1건', barVal(barsU, '첫구매 매출') === 10000 && barVal(barsU, '첫구매 주문수') === 1,
+    `bars: ${barsU.map((b) => `${b.label}=${b.value}`).join(', ')}`);
+  ok('T24-b firstRepeat bars: 재구매 20,000원·1건', barVal(barsU, '재구매 매출') === 20000 && barVal(barsU, '재구매 주문수') === 1, 'bars');
+  ok('T24-c firstRepeat bars: 미분류 30,000원·1건',
+    barVal(barsU, '미분류(첫구매 여부 없음) 매출') === 30000 && barVal(barsU, '미분류(첫구매 여부 없음) 주문수') === 1, 'bars');
+  const aovU = frDisplay.buildFirstRepeatAovBars(sU);
+  ok('T24-d AOV bars: 첫구매 10,000 · 재구매 20,000 · 미분류 30,000',
+    barVal(aovU, '첫구매 객단가') === 10000 && barVal(aovU, '재구매 객단가') === 20000 && barVal(aovU, '미분류(첫구매 여부 없음) 객단가') === 30000,
+    `bars: ${aovU.map((b) => `${b.label}=${b.value}`).join(', ')}`);
+  const cardU = frDisplay.buildFirstRepeatCardModel(sU);
+  ok('T24-e 카드 모델: 16.7 / 33.3 / 50 · showUnknown=true',
+    cardU.firstRevenueShare === 16.7 && cardU.repeatRevenueShare === 33.3 && cardU.unknownRevenueShare === 50 && cardU.showUnknown === true,
+    JSON.stringify(cardU));
+  ok('T24-f 카드 모델 비중 합계 ≈ 100%',
+    Math.abs(cardU.firstRevenueShare + cardU.repeatRevenueShare + cardU.unknownRevenueShare - 100) <= 0.5,
+    `${cardU.firstRevenueShare}+${cardU.repeatRevenueShare}+${cardU.unknownRevenueShare}`);
+  ok('T24-g 비교 문구·설명에 "첫구매 여부 없음" 의미 전달',
+    frDisplay.buildFirstRepeatComparisonText(sU).includes('미분류(첫구매 여부 없음)')
+    && cardU.unknownNote.includes('전체 실적에는 포함되지만 첫구매·재구매 두 그룹에는 포함되지 않습니다'),
+    `${frDisplay.buildFirstRepeatComparisonText(sU)} | ${cardU.unknownNote}`);
+
+  // ── unknown 없음 ──
+  const barsN = frDisplay.buildFirstRepeatBars(sN);
+  const aovN = frDisplay.buildFirstRepeatAovBars(sN);
+  const cardN = frDisplay.buildFirstRepeatCardModel(sN);
+  ok('T24-h unknown=0: firstRepeat/AOV bars에 미분류 없음',
+    !barsN.some((b) => String(b.label).includes('미분류')) && !aovN.some((b) => String(b.label).includes('미분류')),
+    `bars: ${[...barsN, ...aovN].map((b) => b.label).join(', ')}`);
+  ok('T24-i unknown=0: showUnknown=false · 설명 데이터 없음',
+    cardN.showUnknown === false && cardN.unknownNote === '' && cardN.unknownOrderCount === 0, JSON.stringify(cardN));
+  ok('T24-j unknown=0: 비교 문구에 미분류 없음',
+    !frDisplay.buildFirstRepeatComparisonText(sN).includes('미분류') && !frDisplay.buildFirstRepeatAovComparisonText(sN).includes('미분류'),
+    frDisplay.buildFirstRepeatComparisonText(sN));
+  ok('T24-k unknown=0: first/repeat 기존 반환값 불변',
+    barVal(barsN, '첫구매 매출') === 10000 && barVal(barsN, '재구매 매출') === 20000
+    && cardN.firstAov === 10000 && cardN.repeatAov === 20000, JSON.stringify(cardN));
 }
 
 // ── T21. share basisMetric 계약 (평균 지표 거부 / metric='share' 정규화) ─────
