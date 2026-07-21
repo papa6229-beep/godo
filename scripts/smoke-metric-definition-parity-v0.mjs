@@ -57,6 +57,7 @@ const entries = [
   'src/services/marketingAnalysisFacts.ts',
   'src/services/marketingAnalysisExecutor.ts',
   'src/services/marketingAnalysisQueryCompiler.ts',
+  'src/services/marketingTeamChatFacts.ts',
 ].map((p) => path.join(REPO, p));
 
 console.log('[1/3] 컴파일');
@@ -79,6 +80,7 @@ const crosstab = await load('marketingTemporalCrosstab.js');
 const facts = await load('marketingAnalysisFacts.js');
 const executor = await load('marketingAnalysisExecutor.js');
 const analysisCompiler = await load('marketingAnalysisQueryCompiler.js');
+const chatFacts = await load('marketingTeamChatFacts.js');
 
 // ── fixture ──────────────────────────────────────────────────────────────────
 const PERIOD = { start: '2025-03-01', end: '2025-03-31' };
@@ -819,6 +821,27 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-5a commerce customerType에 미분류가 별도로 나타남', /미분류/.test(reply), `reply: ${reply.slice(0, 130)}`);
     ok('T22-5b commerce 재구매가 2건으로 부풀지 않음', !/재구매[^0-9]*2건/.test(reply), `reply: ${reply.slice(0, 130)}`);
   } catch (e) { ok('T22-5 commerce customerType 3상태', false, e.message); }
+}
+
+// ── T23. C-8 4B 표시 소비자 (채팅) ──────────────────────────────────────────
+{
+  const nowMs = Date.parse('2025-04-01T00:00:00Z');
+  const build = (orders) => chatFacts.buildMarketingTeamChatFacts
+    ? chatFacts.buildMarketingTeamChatFacts({ orders, nowMs })
+    : null;
+  const withUnknown = build(FP_ORDERS);
+  const noUnknown = build(FP_ORDERS.filter((o) => 'isFirstPurchase' in o));
+  if (!withUnknown) {
+    ok('T23 chatFacts 진입점', false, `export 확인 필요: ${Object.keys(chatFacts).join(', ')}`);
+  } else {
+    const blob = JSON.stringify(withUnknown);
+    ok('T23-a chat summary에 미분류 주문수·매출 필드 전달',
+      /unknownFirstPurchaseOrderCount/.test(blob) && /unknownFirstPurchaseRevenue/.test(blob), 'summary 필드 없음');
+    ok('T23-b chat 요약/비교 문구에 미분류 1건·30,000원 표시',
+      blob.includes('미분류') && blob.includes('30,000'), `blob: ${blob.slice(0, 200)}`);
+    ok('T23-c chat 미분류 0건이면 문구 없음',
+      !JSON.stringify(noUnknown ?? {}).includes('첫구매 여부 미분류'), '거짓 문구 표시됨');
+  }
 }
 
 // ── T21. share basisMetric 계약 (평균 지표 거부 / metric='share' 정규화) ─────

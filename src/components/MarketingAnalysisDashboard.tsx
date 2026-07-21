@@ -117,12 +117,17 @@ function buildFocusView(focus: MarketingFocusMetric, facts: MarketingAnalysisFac
         { label: '첫구매 매출', value: s.firstPurchaseRevenue, display: won(s.firstPurchaseRevenue), group: 'rev' },
         { label: '재구매 매출', value: s.repeatPurchaseRevenue, display: won(s.repeatPurchaseRevenue), group: 'rev' },
         { label: '첫구매 주문수', value: s.firstPurchaseOrderCount, display: cnt(s.firstPurchaseOrderCount), group: 'cnt' },
-        { label: '재구매 주문수', value: s.repeatPurchaseOrderCount, display: cnt(s.repeatPurchaseOrderCount), group: 'cnt' }
+        { label: '재구매 주문수', value: s.repeatPurchaseOrderCount, display: cnt(s.repeatPurchaseOrderCount), group: 'cnt' },
+        // C-8: 첫구매 여부 정보가 빠진 주문. 고객 유형이 아니라 데이터 품질 상태다.
+        ...(s.unknownFirstPurchaseOrderCount > 0 ? [
+          { label: '미분류(첫구매 여부 없음) 매출', value: s.unknownFirstPurchaseRevenue, display: won(s.unknownFirstPurchaseRevenue), group: 'rev' },
+          { label: '미분류(첫구매 여부 없음) 주문수', value: s.unknownFirstPurchaseOrderCount, display: cnt(s.unknownFirstPurchaseOrderCount), group: 'cnt' }
+        ] : [])
       ];
       return {
         chipLabel: chip,
         selectedKpi: { label: '재구매 매출', value: s.repeatPurchaseRevenue, kind: 'won' },
-        comparison: { label: '첫구매 vs 재구매 매출', text: `첫구매 ${won(s.firstPurchaseRevenue)} vs 재구매 ${won(s.repeatPurchaseRevenue)}` },
+        comparison: { label: '첫구매 vs 재구매 매출', text: `첫구매 ${won(s.firstPurchaseRevenue)} vs 재구매 ${won(s.repeatPurchaseRevenue)}${s.unknownFirstPurchaseOrderCount > 0 ? ' · 미분류(첫구매 여부 없음) ' + won(s.unknownFirstPurchaseRevenue) + '·' + cnt(s.unknownFirstPurchaseOrderCount) : ''}` },
         chart: base('첫구매/재구매 비교', `${periodLabel} · 첫구매와 재구매 매출/주문수 비교`, bars, highestSummary(bars, 'rev'))
       };
     }
@@ -229,13 +234,14 @@ function buildFocusView(focus: MarketingFocusMetric, facts: MarketingAnalysisFac
         { label: '총 객단가', value: s.averageOrderValue, display: won(s.averageOrderValue), group: 'aov' },
         { label: '첫구매 객단가', value: s.firstPurchaseAverageOrderValue, display: won(s.firstPurchaseAverageOrderValue), group: 'aov' },
         { label: '재구매 객단가', value: s.repeatPurchaseAverageOrderValue, display: won(s.repeatPurchaseAverageOrderValue), group: 'aov' },
+        ...(s.unknownFirstPurchaseOrderCount > 0 ? [{ label: '미분류(첫구매 여부 없음) 객단가', value: s.unknownFirstPurchaseAverageOrderValue, display: won(s.unknownFirstPurchaseAverageOrderValue), group: 'aov' }] : []),
         { label: '쿠폰 사용 객단가', value: s.couponAverageOrderValue, display: won(s.couponAverageOrderValue), group: 'aov' },
         { label: '쿠폰 미사용 객단가', value: s.nonCouponAverageOrderValue, display: won(s.nonCouponAverageOrderValue), group: 'aov' }
       ];
       return {
         chipLabel: chip,
         selectedKpi: { label: '객단가', value: s.averageOrderValue, kind: 'won' },
-        comparison: { label: '첫구매 vs 재구매 객단가', text: `첫구매 ${won(s.firstPurchaseAverageOrderValue)} vs 재구매 ${won(s.repeatPurchaseAverageOrderValue)}` },
+        comparison: { label: '첫구매 vs 재구매 객단가', text: `첫구매 ${won(s.firstPurchaseAverageOrderValue)} vs 재구매 ${won(s.repeatPurchaseAverageOrderValue)}${s.unknownFirstPurchaseOrderCount > 0 ? ' · 미분류(첫구매 여부 없음) ' + won(s.unknownFirstPurchaseAverageOrderValue) : ''}` },
         chart: base('객단가 비교', `${periodLabel} · 전체/첫구매/재구매/쿠폰 객단가`, bars, highestSummary(bars, 'aov'))
       };
     }
@@ -747,6 +753,7 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
   const snap = useMemo(() => buildDepartmentSourceOfTruthSnapshot(revenue), [revenue]);
   const firstRevenueShare = s.totalRevenue > 0 ? Math.round((s.firstPurchaseRevenue / s.totalRevenue) * 100) : 0;
   const repeatRevenueShare = s.totalRevenue > 0 ? Math.round((s.repeatPurchaseRevenue / s.totalRevenue) * 100) : 0;
+  const unknownRevenueShare = s.totalRevenue > 0 ? Math.round((s.unknownFirstPurchaseRevenue / s.totalRevenue) * 100) : 0;
   const view = useMemo(() => buildFocusView(focus, facts, PERIOD_LABEL[preset]), [focus, facts, preset]);
   // 상위 3~4개만 먼저 노출(나머지는 [세부 분석]에서 확인). facts.insights.map + idx<4 가드.
   const INSIGHT_LIMIT = 4;
@@ -968,8 +975,24 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
               <span className="mkt-fr-label">재구매 매출 비중</span>
               <span className="mkt-fr-value tabular-nums">{repeatRevenueShare}%</span>
             </div>
+            {/* C-8: 첫구매 여부 정보가 빠진 주문. '미분류 고객'이 아니라 데이터 품질 상태로 표기한다. */}
+            {s.unknownFirstPurchaseOrderCount > 0 && (
+              <>
+                <div className="mkt-fr-cell">
+                  <span className="mkt-fr-label">미분류(첫구매 여부 없음) 객단가</span>
+                  <span className="mkt-fr-value tabular-nums">{won(s.unknownFirstPurchaseAverageOrderValue)}</span>
+                </div>
+                <div className="mkt-fr-cell">
+                  <span className="mkt-fr-label">미분류(첫구매 여부 없음) 매출 비중</span>
+                  <span className="mkt-fr-value tabular-nums">{unknownRevenueShare}%</span>
+                </div>
+              </>
+            )}
           </div>
           <p className="mkt-fr-note">※ 첫구매/재구매는 주문 단위 관찰값이며 인과를 단정하지 않습니다.</p>
+          {s.unknownFirstPurchaseOrderCount > 0 && (
+            <p className="mkt-fr-note">※ 첫구매 여부 미분류 주문 {cnt(s.unknownFirstPurchaseOrderCount)}·{won(s.unknownFirstPurchaseRevenue)}은 전체 실적에는 포함되지만 첫구매·재구매 두 그룹에는 포함되지 않습니다.</p>
+          )}
         </div>
         {/* 마케팅 사고 흐름: 누가 샀나 → 어떻게 샀나 → 무엇이 팔렸나. 기본 노출은 제한, 전체는 모달. */}
         <div className="mkt-dim-grid">

@@ -33,6 +33,9 @@ export type MarketingTeamChatFacts = {
     averageOrderValue: number;
     firstPurchaseRevenue: number;
     repeatPurchaseRevenue: number;
+    // C-8: 첫구매 여부 정보가 빠진 주문(데이터 품질 상태). first+repeat+unknown = 전체.
+    unknownFirstPurchaseOrderCount: number;
+    unknownFirstPurchaseRevenue: number;
     couponOrderCount: number;
     totalCouponDiscountAmount: number;
     totalRewardUseAmount: number;
@@ -170,6 +173,8 @@ export function buildMarketingTeamChatFacts(input: {
       averageOrderValue: s.averageOrderValue,
       firstPurchaseRevenue: s.firstPurchaseRevenue,
       repeatPurchaseRevenue: s.repeatPurchaseRevenue,
+      unknownFirstPurchaseOrderCount: s.unknownFirstPurchaseOrderCount,
+      unknownFirstPurchaseRevenue: s.unknownFirstPurchaseRevenue,
       couponOrderCount: s.couponOrderCount,
       totalCouponDiscountAmount: s.totalCouponDiscountAmount,
       totalRewardUseAmount: s.totalRewardUseAmount
@@ -237,7 +242,7 @@ export function buildMarketingChatContext(
   const summaryBlock =
     `[마케팅 분석 요약 · ${facts.periodLabel}]\n` +
     `- 총매출 ${won(s.totalRevenue)} · 주문수 ${s.orderCount}건 · 객단가 ${won(s.averageOrderValue)}\n` +
-    `- 첫구매 매출 ${won(s.firstPurchaseRevenue)} · 재구매 매출 ${won(s.repeatPurchaseRevenue)}\n` +
+    `- 첫구매 매출 ${won(s.firstPurchaseRevenue)} · 재구매 매출 ${won(s.repeatPurchaseRevenue)}${s.unknownFirstPurchaseOrderCount > 0 ? ' · 첫구매 여부 미분류 ' + s.unknownFirstPurchaseOrderCount + '건·' + won(s.unknownFirstPurchaseRevenue) : ''}\n` +
     `- 쿠폰 사용 주문 ${s.couponOrderCount}건 · 쿠폰 할인 총액 ${won(s.totalCouponDiscountAmount)} · 리워드 사용액 ${won(s.totalRewardUseAmount)}`;
 
   // intent별 상세 블록 (switch가 default 포함 모든 경로에서 할당)
@@ -263,7 +268,7 @@ export function buildMarketingChatContext(
       break;
     case 'first_repeat_purchase':
       detailBlock =
-        `[첫구매/재구매 비교]\n- 첫구매 매출 ${won(s.firstPurchaseRevenue)} · 재구매 매출 ${won(s.repeatPurchaseRevenue)} (관찰값)`;
+        `[첫구매/재구매 비교]\n- 첫구매 매출 ${won(s.firstPurchaseRevenue)} · 재구매 매출 ${won(s.repeatPurchaseRevenue)} (관찰값)${s.unknownFirstPurchaseOrderCount > 0 ? '\n- 첫구매 여부 미분류 주문 ' + s.unknownFirstPurchaseOrderCount + '건·' + won(s.unknownFirstPurchaseRevenue) + '은 전체 실적에는 포함되지만 첫구매·재구매 두 그룹에는 포함되지 않습니다.' : ''}`;
       break;
     case 'unsupported_roas':
       detailBlock = `[외부 연동 필요 · 미계산]\n${requiredLine(facts, 'adSpend')}`;
