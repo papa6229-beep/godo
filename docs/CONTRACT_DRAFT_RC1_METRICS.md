@@ -8,21 +8,23 @@
 
 ## C-1. 카테고리 출처 계약
 
-**우선순위**
-1. **주문라인의 `categoryCode`** — 주문 시점 사실을 보존한다.
-2. 라인에 없으면 **상품 인덱스의 현재 `categoryCode`**로 보충한다.
-3. 둘 다 없으면 `uncategorized`.
+**규칙 (정정 확정)**
+1. 분석 카테고리는 **`RevenueOrderLine.categoryCode` 하나만** 기준으로 한다.
+2. 값이 없으면 **`uncategorized`로 확정**한다.
+3. **하위 분석 엔진은 현재 `productIndex`로 다시 분류하지 않는다.**
 
-> **⚠️ 전제 정정 (2026-07-21 재추적)**
-> "주문 당시 categoryCode"는 고도몰 원본 주문 라인에 있는 필드가 **아니다.**
-> `godomallRevenue.ts:223 mapLine()`이 **적재 시점에 상품 인덱스와 조인해서** 만든다:
-> `categoryCode: matched.categoryCode || 'uncategorized'`
-> 따라서 정확한 의미는 **"적재 시점 상품 카테고리 스냅샷"**이다.
-> 그래도 계약의 취지는 유효하다 — 라인값은 **적재 시점 스냅샷**, 클라이언트가 넘기는 products는 **현재값**이므로
-> 상품 카테고리를 재분류하면 둘이 갈린다. 라인 우선이 곧 "과거 집계를 소급 변경하지 않는다"는 뜻이다.
+> **왜 "보충"을 없앴나 (2026-07-21 재추적)**
+> `line.categoryCode`는 고도몰 원본 라인 필드가 **아니다.** `godomallRevenue.ts:223 mapLine()`이
+> **적재 시점에 상품목록과 조인해서** 만든다: `categoryCode: matched.categoryCode || 'uncategorized'`.
+> 즉 이미 **"적재 시점 상품 카테고리 스냅샷"**이다.
 >
-> 부수 결과: RevenueOrder 경로에서 `line.categoryCode`는 **절대 비지 않는다**(`|| 'uncategorized'`).
-> 즉 규칙 ②(보충)는 이 경로에서 발동하지 않으며, `mapLine`을 거치지 않는 데이터셋에서만 의미가 있다.
+> 여기에 하위 소비자가 **현재** 상품목록으로 다시 보충하면, 상품 카테고리를 재분류하는 순간
+> **과거 매출까지 새 카테고리로 소급 재분류**된다. 그래서 보충 규칙 자체를 폐기한다.
+>
+> `categorySource`는 실제보다 강한 이름(`order_line` 등)을 쓰지 않는다 →
+> **`'ingestSnapshot' | 'none'`**.
+
+**검증 기대값 (정정)**: `catLINE = 10,000` / `uncategorized = 50,000`(P5 20,000 + P6 30,000) / `catINDEX`·`catFALLBACK`는 결과에 존재하면 실패.
 
 **기록 의무**: 결과에 `categorySource: 'orderLine' | 'productIndex' | 'none'`을 남길 수 있도록 **CommerceSnapshot 계약에 필드를 추가**한다. 카테고리 재분류가 일어난 상품의 과거 매출이 어떤 기준으로 집계됐는지 사후 추적이 가능해야 한다.
 
@@ -34,13 +36,12 @@
 
 | 엔진 | 실제 반환 | 계약 대비 |
 |---|---|---|
-| `marketingIntelligencePlanner` (`:510,:514`) | `catINDEX=10,000 \| catFALLBACK=20,000 \| uncategorized=30,000` | ① 미구현 — **라인 카테고리를 인덱스가 덮어씀** |
-| `marketingScopeInsightEngine` (`:253-255`) | `카테고리 catINDEX=10,000 \| 카테고리 catFALLBACK=20,000 \| 미분류=30,000` | ① 미구현 + **키 표기 불일치(미분류)** |
-| `analyticsQueryEngine` | `catLINE=10,000 \| uncategorized=**50,000**` | ② 미구현 — **P5(20,000)와 P6(30,000)이 미분류로 뭉침** |
+| `marketingIntelligencePlanner` (`:510,:514`) | `catINDEX=10,000 \| catFALLBACK=20,000 \| uncategorized=30,000` | ❌ 현재 productIndex로 재분류 |
+| `marketingScopeInsightEngine` (`:253-255`) | `카테고리 catINDEX=10,000 \| 카테고리 catFALLBACK=20,000 \| 미분류=30,000` | ❌ 동일 + **키 표기 불일치(미분류)** |
+| `analyticsQueryEngine` | `catLINE=10,000 \| uncategorized=50,000` | ✅ **계약 부합 — 소스 수정 불필요** |
 
-→ 세 엔진이 계약의 **서로 다른 절반씩만** 구현하고 있다. 특히 `analyticsQueryEngine`의 `uncategorized=50,000`은 **키 존재 여부만 검사했다면 통과했을 오류**다 — 정답표에 금액을 고정해야 잡힌다.
-
-**영향**: 상품 카테고리를 재분류하면 planner/scopeInsight는 **과거 매출까지 새 카테고리로 소급**되고, analyticsQueryEngine은 주문 당시 값을 유지한다. 같은 질문에 다른 답이 나온다.
+→ **`analyticsQueryEngine`은 이미 라인 기준이라 정정된 계약을 그대로 통과한다.** A-3에서 소스를 건드리지 않는다.
+planner·scopeInsight만 **현재 상품목록 재분류를 제거**하면 된다.
 
 ---
 
@@ -141,3 +142,46 @@ CSV 어댑터    ─┘
 1. 실제 고도몰 `Order_Search` 응답의 `paid`/취소 필드 원시 표기 — 실데이터 확인 필요
 2. 문의 원시 상태값의 전체 목록 — 어떤 값들이 오는지 확인 후 canonical 매핑표 작성
 3. 재고 단계 경계(5 / 20)가 사업 기준으로 타당한지 — 운영 판단 필요
+
+---
+
+## C-5. 라인 축 집계 규칙 (신설)
+
+라인 반복문이 오염시키는 것은 `orderCount` 하나가 아니다. **`marketingIntelligencePlanner.ts:517-527` 실측**:
+
+```ts
+for (const l of (o.lines || [])) {
+  acc.revenue += lr; acc.lineRevenue += lr; acc.orderCount += 1; acc.quantity += numv(l.quantity);
+  if (oCoupon) acc.couponOrders += 1; if (oReward) acc.rewardOrders += 1;
+  if (oFirst) { acc.firstOrders += 1; ... } else { acc.repeatOrders += 1; ... }
+}
+```
+
+→ `orderCount` / `couponOrders` / `rewardOrders` / `firstOrders` / `repeatOrders`가 **전부 라인마다 증가**한다.
+`marketingScopeInsightEngine.ts:321-324`의 `couponOrders`도 같다.
+
+**규칙**
+
+| 지표 | 집계 방식 |
+|---|---|
+| `revenue`, `lineRevenue`, `quantity` | **라인별 합산** |
+| `orderCount`, `couponOrders`, `rewardOrders`, `firstOrders`, `repeatOrders` | **같은 집계칸 안에서 `orderNo` 기준 중복 제거** |
+
+**부분 수정 금지**: `orderCount`만 주문 기준으로 고치고 `couponOrders`를 라인 기준으로 두면 **쿠폰 사용률이 100%를 초과**한다. 반드시 함께 고친다. 회귀 가드로 `T13`(모든 카테고리의 쿠폰 사용률 ≤ 100%)을 둔다.
+
+## C-6. 기간 필터 계약 (B단계)
+
+- `AnalyticsReview` / `AnalyticsInquiry` 타입에 **현재 `createdAt`이 없다**(`analyticsQueryEngine.ts:42-59`). B단계에서 `createdAt?: string`을 추가한다.
+- **시작일·종료일 포함**(경계 포함).
+- **기간을 지정하면 `createdAt`이 없는 자료는 제외**한다. 기간 미지정 시에는 전체를 포함한다.
+
+## C-7. share 계약 (C단계)
+
+`share` 연산은 분모뿐 아니라 **정렬 기준·본문 값·단위까지 `plan.metric`을 따른다.**
+
+| metric | 분모 | 본문 값 | 단위 |
+|---|---|---|---|
+| `revenue` | 매출 합 | 매출액 | 원 |
+| `quantity` | 수량 합 | 수량 | 개 |
+
+현재는 `commerceDataQueryEngine.ts:394`가 항상 `r.acc.rev`를 써서 **계산·정렬·표시가 전부 매출 기준**이다.

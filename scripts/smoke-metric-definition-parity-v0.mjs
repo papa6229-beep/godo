@@ -77,9 +77,12 @@ const line = (goodsNo, goodsName, categoryCode, quantity, lineRevenue) =>
   ({ goodsNo, goodsName, categoryCode, categoryLabel: categoryCode, quantity, lineRevenue });
 
 // O1: 기간 시작 경계. 같은 상품 P1의 옵션 라인 2개 → 상품 주문수는 1이어야 한다.
+//     쿠폰·리워드·첫구매를 모두 보유 → 라인마다 증가시키면 쿠폰 사용률이 100%를 넘는다.
 const O1 = {
   orderNo: 'O1', orderDate: '2025-03-01', paid: true, canceled: false, memberKey: 'm1',
   totalAmount: 40000, productRevenueByLines: 40000,
+  discountSummary: { hasCoupon: true, totalCouponDiscountAmount: 5000 },
+  useMileageAmount: 1000, isFirstPurchase: true,
   lines: [line('P1', '상품1', 'catA', 1, 10000), line('P1', '상품1', 'catA', 3, 30000)],
 };
 // O2: 기간 종료 경계. 같은 카테고리(catA)의 다른 상품 P2 + 다른 카테고리 P3.
@@ -141,10 +144,18 @@ const CATSRC_PRODUCTS = [
   // P6은 상품 인덱스에 없음
 ];
 // 정답: 카테고리별 금액까지 고정한다(키 존재 여부만 보면 P6가 catINDEX로 잘못 들어가도 통과한다).
+//
+// C-1 계약(정정): 분석 카테고리는 RevenueOrderLine.categoryCode 하나만 기준으로 한다.
+//   이 값은 '주문 당시 원본 카테고리'가 아니라 mapOrdersToRevenue 실행 시 상품목록과
+//   조인된 **스냅샷**이다(godomallRevenue.ts:223). 값이 없으면 uncategorized로 확정하며,
+//   하위 소비자는 현재 productIndex로 다시 보충하지 않는다
+//   (보충하면 상품 카테고리 변경 시 과거 매출이 소급 재분류된다).
+// → P5(20,000)와 P6(30,000)은 둘 다 uncategorized로 합산되어 50,000이 정답이다.
 const CATSRC_GOLDEN = {
-  amounts: { catLINE: 10000, catFALLBACK: 20000, uncategorized: 30000 },
-  forbidden: ['catINDEX'], // 결과에 존재하면 실패 — 라인 카테고리를 인덱스가 덮어썼다는 뜻
-  source: { P4: 'orderLine', P5: 'productIndex', P6: 'none' },
+  amounts: { catLINE: 10000, uncategorized: 50000 },
+  forbidden: ['catINDEX', 'catFALLBACK'], // 현재 상품목록으로 보충했다는 증거 → 실패
+  // categorySource는 실제보다 강한 이름(order_line 등)을 쓰지 않는다.
+  source: { P4: 'ingestSnapshot', P5: 'none', P6: 'none' },
 };
 
 // 엔진별 (카테고리명 → 금액) 맵을 정답과 대조한다.
@@ -171,7 +182,10 @@ const INQUIRIES = [
   { goodsNo: 'P1', status: 'unanswered', createdAt: '2025-03-01' }, // 시작 경계 → 포함
   { goodsNo: 'P2', status: 'answered', createdAt: '2025-03-31' },   // 종료 경계 → 포함
   { goodsNo: 'P3', status: 'unanswered', createdAt: '2025-02-15' }, // 기간 밖
+  { goodsNo: 'P1', status: 'unanswered' },                          // createdAt 없음 → 기간 지정 시 제외
 ];
+// ⚠️ AnalyticsReview / AnalyticsInquiry 타입에는 현재 createdAt 필드가 없다
+//    (analyticsQueryEngine.ts:42-59). B 단계에서 `createdAt?: string` 추가가 함께 필요하다.
 
 // ── 정답표(손계산, 상수로 못박음) ─────────────────────────────────────────────
 const GOLDEN = {
@@ -200,6 +214,12 @@ const GOLDEN = {
   },
   reviewCount_inPeriod: 1,
   inquiryCount_inPeriod: 2,
+
+  // 주문 기반 지표(매출·수량만 라인 합산, 나머지는 집계칸별 orderNo 중복 제거)
+  //   catA 유효주문 = {O1(쿠폰·리워드·첫구매), O2(없음·재구매)}
+  couponOrders_catA: 1,
+  couponUsageRate_catA: 50,   // 1 / 2 주문 = 50% (라인 기준이면 2/3 = 66.7%)
+  couponUsageRate_P1: 100,    // P1 주문 = {O1} 하나 → 100%. 라인 기준이면 200%가 될 수 있다
 };
 
 // ── T1. canonical 계약이 정답표와 일치하는가(= fixture 자체 검증) ─────────────
@@ -304,6 +324,13 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
     } else {
       ok('T5 scopeInsight catA 주문수 = 2 (라인 수 아님)',
         Number(catA.orderCount) === GOLDEN.category.catA.orderCount, `got ${catA.orderCount}`);
+      // 주문 기반 지표: 쿠폰 사용률은 주문 기준이어야 한다.
+      ok('T12 scopeInsight catA 쿠폰 사용률 = 50% (주문 기준)',
+        Number(catA.couponUsageRate) === GOLDEN.couponUsageRate_catA, `got ${catA.couponUsageRate}% (라인 기준이면 66.7%)`);
+      // 부분 수정 방지 가드: orderCount만 고치고 couponOrders를 라인 기준으로 두면 100%를 넘는다.
+      const over = rows.filter((x) => Number(x.couponUsageRate) > 100);
+      ok('T13 어떤 카테고리도 쿠폰 사용률이 100%를 넘지 않음',
+        over.length === 0, over.map((x) => `${x.category}=${x.couponUsageRate}%`).join(', ') || 'ok');
       ok('T5-b scopeInsight catA 객단가 = 45,000 (라인당 아님)',
         Number(catA.averageOrderValue) === Math.round(GOLDEN.category.catA.lineRevenue / GOLDEN.category.catA.orderCount),
         `got ${catA.averageOrderValue}`);
@@ -329,8 +356,15 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
   if (iq.error) skipped('T7 inquiryCount 기간 필터', iq.error);
   else {
     const total = (iq.rows ?? []).reduce((s, r) => s + Number(r.value ?? 0), 0);
-    ok('T7 analyticsQueryEngine inquiryCount(기간 내) = 2 (양 경계 포함)', total === GOLDEN.inquiryCount_inPeriod, `got ${total}`);
+    ok('T7 analyticsQueryEngine inquiryCount(기간 내) = 2 (양 경계 포함, createdAt 없는 자료 제외)',
+      total === GOLDEN.inquiryCount_inPeriod, `got ${total} — 기간 밖 1건 + createdAt 없는 1건이 섞이면 4`);
   }
+  // 기간을 지정하지 않으면 전체가 나와야 한다(기간 필터가 무조건 거르지 않는지 확인).
+  try {
+    const all = analytics.runAnalyticsQuery(dataset, { metric: 'inquiryCount' });
+    const total = (all.rows ?? []).reduce((s, r) => s + Number(r.value ?? 0), 0);
+    ok('T7-b 기간 미지정 시 문의 전체 4건', total === INQUIRIES.length, `got ${total}`);
+  } catch (e) { ok('T7-b 기간 미지정 시 문의 전체', false, e.message); }
 }
 
 // ── T8. commerceDataQueryEngine share가 metric을 존중하는가 ──────────────────
@@ -343,16 +377,28 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
   };
   try {
     const r = commerce.executeCommerceQueryPlan(plan, dataset, { nowMs: Date.parse('2025-04-01T00:00:00Z') });
-    if (!r || !r.handled) skipped('T8 quantity share', 'plan 미처리(handled=false)');
+    if (!r || !r.handled) ok('T8 quantity share', false, 'plan 미처리(handled=false)');
     else {
-      // 수량 비중이면 catA=50%, 매출 비중이면 catA≈78.3%
-      const reply = String(r.reply ?? '');
-      const isQuantityShare = /50(\.0)?%/.test(reply);
-      const isRevenueShare = /78(\.[0-9])?%/.test(reply);
-      ok('T8 quantity share 요청에 수량 비중(catA 50%)을 반환',
-        isQuantityShare && !isRevenueShare,
-        `revenue비중반환=${isRevenueShare} | reply: ${reply.slice(0, 120).replace(/\n/g, ' ')}`);
+      const reply = String(r.reply ?? '').replace(/\n/g, ' ');
+      // (a) 비중 계산 기준: 수량이면 catA=50%, 매출이면 catA≈78.3%
+      ok('T8-a quantity share 비중이 수량 기준(catA 50%)',
+        /50(\.0)?%/.test(reply) && !/78(\.[0-9])?%/.test(reply), `reply: ${reply.slice(0, 130)}`);
+      // (b) 본문 값·단위: quantity면 '개', revenue면 '원'
+      ok('T8-b quantity share 본문 단위가 "개" (원 아님)',
+        /개/.test(reply) && !/원/.test(reply), `reply: ${reply.slice(0, 130)}`);
+      // (c) 정렬 기준도 metric을 따라야 한다. 수량은 catA=5, catB=5로 동률이므로
+      //     매출 기준 정렬(catA 우선)이 그대로 보이면 정렬이 metric을 따르지 않는 신호다.
+      ok('T8-c quantity 기준에서 두 카테고리가 동률(5개)로 표시',
+        (reply.match(/5개/g) || []).length >= 2, `reply: ${reply.slice(0, 130)}`);
     }
+    // 대조군: revenue share는 기존대로 '원'·78.3%여야 한다(C 수정 시 회귀 방지).
+    const rRev = commerce.executeCommerceQueryPlan(
+      { ...plan, metric: 'revenue', originalQuestion: '2025년 3월 카테고리별 매출 비중' },
+      dataset, { nowMs: Date.parse('2025-04-01T00:00:00Z') },
+    );
+    const rev = String(rRev?.reply ?? '').replace(/\n/g, ' ');
+    ok('T8-d 대조군: revenue share는 원·78.3% 유지',
+      /78(\.[0-9])?%/.test(rev) && /원/.test(rev), `reply: ${rev.slice(0, 130)}`);
   } catch (e) { skipped('T8 quantity share', `실행 실패: ${e.message}`); }
 }
 
