@@ -205,6 +205,18 @@ for (const l of (o.lines || [])) {
 | 4 | `marketingAnalysisExecutor` | 첫구매/재구매 분류 |
 | 5 | `commerceDataQueryEngine` 필터·customerType 축 | customerType 분류 |
 
+**표시 소비자(하위 항목) — 계산을 고쳐도 사용자에게서 미분류가 다시 사라지는 지점**
+
+| # | 표시 소비자 | 문제 |
+|---|---|---|
+| D-1 | `MarketingAnalysisDashboard.tsx` | 첫구매·재구매 매출/주문수만 표시. `firstRevenueShare`/`repeatRevenueShare`만 계산 → 미분류가 화면에서 사라짐 |
+| D-2 | `marketingTeamChatFacts.ts` | facts summary에서 첫구매·재구매 값만 복사. 일반 요약·첫구매/재구매 비교 답변에 미분류 미전달 |
+
+**기존 스모크의 잘못된 2분류 전제(정정 대상)** — `smoke-marketing-analysis-facts-core-v0.mjs:58-59`
+- `firstPurchaseOrderCount + repeatPurchaseOrderCount === orderCount`
+- `firstPurchaseRevenue + repeatPurchaseRevenue === totalRevenue`
+→ **3분류 계약으로 정정**: `first + repeat + unknown = 전체`
+
 **완료된 범위**: 공용 함수 `lineAxisAggregation.resolveFirstPurchase()` + A-1 planner goodsMode + A-2 scope 라인축.
 **남은 5개 소비자는 B에 섞지 않고 RC-1 병합 전 별도 조각으로 테스트 후 정리한다.**
 
