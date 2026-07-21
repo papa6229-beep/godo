@@ -55,8 +55,10 @@ ok('3. orderCount > 0', s.orderCount > 0);
 ok('4. averageOrderValue = totalRevenue/orderCount', s.averageOrderValue === Math.round(s.totalRevenue / s.orderCount));
 
 // ── 첫/재구매 ──
-ok('5. first/repeat purchase metrics 존재 + 합 = 전체', typeof s.firstPurchaseOrderCount === 'number' && typeof s.repeatPurchaseOrderCount === 'number' && s.firstPurchaseOrderCount + s.repeatPurchaseOrderCount === s.orderCount);
-ok('6. first/repeat 매출 합 = 총매출', s.firstPurchaseRevenue + s.repeatPurchaseRevenue === s.totalRevenue);
+// C-8: 첫구매/재구매는 3상태다. 첫구매 여부가 없는 주문은 unknown으로 분리되므로
+//   'first + repeat = 전체'가 아니라 'first + repeat + unknown = 전체'가 계약이다.
+ok('5. first/repeat/unknown metrics 존재 + 3분류 합 = 전체', typeof s.firstPurchaseOrderCount === 'number' && typeof s.repeatPurchaseOrderCount === 'number' && typeof s.unknownFirstPurchaseOrderCount === 'number' && s.firstPurchaseOrderCount + s.repeatPurchaseOrderCount + s.unknownFirstPurchaseOrderCount === s.orderCount);
+ok('6. first/repeat/unknown 매출 합 = 총매출', s.firstPurchaseRevenue + s.repeatPurchaseRevenue + s.unknownFirstPurchaseRevenue === s.totalRevenue);
 ok('   first/repeat AOV 계산 정상', s.firstPurchaseAverageOrderValue === (s.firstPurchaseOrderCount ? Math.round(s.firstPurchaseRevenue / s.firstPurchaseOrderCount) : 0));
 
 // ── 회원그룹 ──

@@ -13,6 +13,7 @@
 //   - 매출 집계 대상(유효 주문) 판정은 revenueMetricContract.isValidOrder로 단일화(부서 공통 기준).
 
 import { isValidOrder } from './revenueMetricContract';
+import { classifyFirstPurchase, FIRST_PURCHASE_LABEL } from './firstPurchaseContract';
 
 // ── 기간/축/필수데이터 타입 ───────────────────────────────────────────────────
 export type MarketingAnalysisPeriodPreset =
@@ -109,6 +110,9 @@ export type MarketingAnalysisFacts = {
     repeatPurchaseOrderCount: number;
     repeatPurchaseRevenue: number;
     repeatPurchaseAverageOrderValue: number;
+    unknownFirstPurchaseOrderCount: number;
+    unknownFirstPurchaseRevenue: number;
+    unknownFirstPurchaseAverageOrderValue: number;
 
     couponOrderCount: number;
     couponRevenue: number;
@@ -352,10 +356,14 @@ export function buildMarketingAnalysisFacts(input: {
   const totalRevenue = counted.reduce((s, o) => s + num(o.totalAmount), 0);
   const orderCount = counted.length;
 
-  const firstOrders = counted.filter((o) => bool(o.isFirstPurchase));
-  const repeatOrders = counted.filter((o) => !bool(o.isFirstPurchase));
+  // C-8: 3상태. unknown은 first/repeat 어느 쪽에도 넣지 않고 별도로 센다.
+  //   전체(orderCount/totalRevenue)에는 계속 포함되므로 first+repeat+unknown = 전체다.
+  const firstOrders = counted.filter((o) => classifyFirstPurchase(o.isFirstPurchase) === 'first');
+  const repeatOrders = counted.filter((o) => classifyFirstPurchase(o.isFirstPurchase) === 'repeat');
+  const unknownFirstPurchaseOrders = counted.filter((o) => classifyFirstPurchase(o.isFirstPurchase) === 'unknown');
   const firstRevenue = firstOrders.reduce((s, o) => s + num(o.totalAmount), 0);
   const repeatRevenue = repeatOrders.reduce((s, o) => s + num(o.totalAmount), 0);
+  const unknownFirstPurchaseRevenue = unknownFirstPurchaseOrders.reduce((s, o) => s + num(o.totalAmount), 0);
 
   const couponOrders = counted.filter(hasCoupon);
   const nonCouponOrders = counted.filter((o) => !hasCoupon(o));
@@ -381,6 +389,10 @@ export function buildMarketingAnalysisFacts(input: {
     repeatPurchaseOrderCount: repeatOrders.length,
     repeatPurchaseRevenue: repeatRevenue,
     repeatPurchaseAverageOrderValue: calculateAverageOrderValue(repeatRevenue, repeatOrders.length),
+    // C-8: 미분류(첫구매 여부 불명). first+repeat+unknown = orderCount/totalRevenue.
+    unknownFirstPurchaseOrderCount: unknownFirstPurchaseOrders.length,
+    unknownFirstPurchaseRevenue,
+    unknownFirstPurchaseAverageOrderValue: calculateAverageOrderValue(unknownFirstPurchaseRevenue, unknownFirstPurchaseOrders.length),
     couponOrderCount: couponOrders.length,
     couponRevenue,
     couponAverageOrderValue: calculateAverageOrderValue(couponRevenue, couponOrders.length),
@@ -547,6 +559,18 @@ function buildInsights(ctx: {
 }): MarketingInsight[] {
   const out: MarketingInsight[] = [];
   const { summary, byMemberGroup, byOrderChannel, topCategories, repeatRevenue, totalRevenue } = ctx;
+  // C-8: 미분류가 있으면 데이터 완전성 관찰을 남긴다(0건이면 붙이지 않는다).
+  //   첫구매+재구매가 전체보다 작은 이유를 값으로 설명한다.
+  if (summary.unknownFirstPurchaseOrderCount > 0) {
+    const share = totalRevenue ? Math.round((summary.unknownFirstPurchaseRevenue / totalRevenue) * 1000) / 10 : 0;
+    out.push({
+      id: 'first_purchase_unknown',
+      title: `첫구매 여부 ${FIRST_PURCHASE_LABEL.unknown} ${summary.unknownFirstPurchaseOrderCount}건`,
+      summary: `첫구매 여부가 없는 주문 ${summary.unknownFirstPurchaseOrderCount}건(${summary.unknownFirstPurchaseRevenue.toLocaleString('ko-KR')}원, 전체 매출의 ${share}%)은 전체 실적에는 포함되지만 첫구매·재구매 두 그룹에는 포함되지 않습니다. 두 값의 합이 전체와 다를 수 있습니다.`,
+      severity: 'warning',
+      evidenceIds: ['unknownFirstPurchaseOrderCount', 'unknownFirstPurchaseRevenue']
+    });
+  }
 
   // 1. 최대 매출 회원그룹
   if (byMemberGroup[0]) {

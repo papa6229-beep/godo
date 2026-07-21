@@ -713,8 +713,30 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-3b facts 첫구매 매출 10,000', findNum('firstPurchaseRevenue') === 10000, `got ${findNum('firstPurchaseRevenue')}`);
     ok('T22-3c facts 재구매 주문수 1 (미분류 미포함)', findNum('repeatPurchaseOrderCount') === 1, `got ${findNum('repeatPurchaseOrderCount')}`);
     ok('T22-3d facts 재구매 매출 20,000 (미분류 미포함)', findNum('repeatPurchaseRevenue') === 20000, `got ${findNum('repeatPurchaseRevenue')}`);
-    ok('T22-3e facts 미분류 1건·30,000 근거 제공', findNum('unknownPurchaseOrderCount') === 1 && findNum('unknownPurchaseRevenue') === 30000,
-      `건수 ${findNum('unknownPurchaseOrderCount')} / 매출 ${findNum('unknownPurchaseRevenue')}`);
+    ok('T22-3e facts 미분류 1건·30,000원 summary 필드', findNum('unknownFirstPurchaseOrderCount') === 1 && findNum('unknownFirstPurchaseRevenue') === 30000,
+      `건수 ${findNum('unknownFirstPurchaseOrderCount')} / 매출 ${findNum('unknownFirstPurchaseRevenue')}`);
+    // 3분류 합계 계약: first + repeat + unknown = 전체 (기존 2분류 전제 폐기)
+    ok('T22-3f facts 3분류 합계 = 전체 3건',
+      findNum('firstPurchaseOrderCount') + findNum('repeatPurchaseOrderCount') + findNum('unknownFirstPurchaseOrderCount') === FP_GOLDEN.total.count,
+      `합계 ${findNum('firstPurchaseOrderCount') + findNum('repeatPurchaseOrderCount') + findNum('unknownFirstPurchaseOrderCount')}`);
+    ok('T22-3g facts 3분류 매출 합계 = 60,000원',
+      findNum('firstPurchaseRevenue') + findNum('repeatPurchaseRevenue') + findNum('unknownFirstPurchaseRevenue') === FP_GOLDEN.total.revenue,
+      `합계 ${findNum('firstPurchaseRevenue') + findNum('repeatPurchaseRevenue') + findNum('unknownFirstPurchaseRevenue')}`);
+    ok('T22-3h facts 전체 3건·60,000원 불변',
+      findNum('orderCount') === FP_GOLDEN.total.count && findNum('totalRevenue') === FP_GOLDEN.total.revenue,
+      `${findNum('orderCount')}건 / ${findNum('totalRevenue')}원`);
+    // 미분류 존재 시 데이터 완전성 관찰(양성) / 0건이면 없음(음성)
+    const insBlob = JSON.stringify(f?.insights ?? []);
+    ok('T22-3i facts 미분류 데이터 완전성 관찰 제공',
+      insBlob.includes('미분류') && insBlob.includes('30,000') && insBlob.includes('두 그룹에는 포함되지 않습니다'),
+      `insights: ${insBlob.slice(0, 180)}`);
+    const f2 = facts.buildMarketingAnalysisFacts({ orders: FP_ORDERS.filter((o) => 'isFirstPurchase' in o), nowMs });
+    ok('T22-3j facts 미분류 0건이면 관찰 없음',
+      !JSON.stringify(f2?.insights ?? []).includes('첫구매 여부 미분류'), '거짓 관찰이 붙음');
+    // 재구매 비중은 전체(60,000) 기준
+    ok('T22-3k facts 재구매 비중 = 20,000/60,000 = 33.3%',
+      Math.abs((findNum('repeatPurchaseRevenue') / findNum('totalRevenue')) * 100 - 33.3) <= 0.1,
+      `${((findNum('repeatPurchaseRevenue') / findNum('totalRevenue')) * 100).toFixed(1)}%`);
   } catch (e) { ok('T22-3 facts 3상태', false, e.message); }
 
   // (4) marketingAnalysisExecutor — 실제 사용 경로(컴파일러 → 실행)
