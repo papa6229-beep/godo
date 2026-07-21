@@ -570,6 +570,49 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
     `got ${count({ startDate: '2025-03-01', endDate: '2025-03-31' })}`);
 }
 
+// ── T20. 기간 규칙 단일화 (orders / compareTo / 달력 검증) ───────────────────
+{
+  const ord = (orderNo, orderDate, amt) => ({
+    orderNo, orderDate, paid: true, canceled: false,
+    totalAmount: amt, productRevenueByLines: amt,
+    lines: [line('Z1', '상품Z', 'catZ', 1, amt)],
+  });
+  const orders = [
+    ord('N1', '2025-03-01', 10000),   // 시작 경계
+    ord('N2', '2025-03-31', 20000),   // 종료 경계
+    ord('N3', '2025-02-10', 30000),   // 이전
+    ord('N4', '', 40000),             // orderDate 누락
+    ord('N5', 'not-a-date', 50000),   // 형식 오류
+    ord('N6', '2025-02-30', 60000),   // 달력에 없는 날짜
+  ];
+  const ds = { orders, reviews: [], inquiries: [], source: { dataKind: 'synthetic' } };
+  const cnt = (spec) => {
+    try {
+      const r = analytics.runAnalyticsQuery(ds, { metric: 'orderCount', ...spec });
+      return (r.rows ?? []).reduce((s, x) => s + Number(x.value ?? 0), 0);
+    } catch (e) { return `ERR:${e.message}`; }
+  };
+  ok('T20-a 기간 미지정 → 주문 전체 6건 (날짜 누락·오류 포함)', cnt({}) === 6, `got ${cnt({})}`);
+  ok('T20-b 종료일만 → 누락·형식오류·달력없음 주문 제외 (N1,N2,N3 = 3건)',
+    cnt({ endDate: '2025-03-31' }) === 3, `got ${cnt({ endDate: '2025-03-31' })}`);
+  ok('T20-c 시작·종료 모두 → 경계 포함 2건 (N1,N2)',
+    cnt({ startDate: '2025-03-01', endDate: '2025-03-31' }) === 2,
+    `got ${cnt({ startDate: '2025-03-01', endDate: '2025-03-31' })}`);
+  ok('T20-d 달력에 없는 2025-02-30은 2월 범위에서도 제외',
+    cnt({ startDate: '2025-02-01', endDate: '2025-02-28' }) === 1,
+    `got ${cnt({ startDate: '2025-02-01', endDate: '2025-02-28' })} (N3만 남아야 함)`);
+  // 비교기간도 같은 함수를 쓰는지 — 경계 포함 확인
+  try {
+    const r = analytics.runAnalyticsQuery(ds, {
+      metric: 'periodComparison', startDate: '2025-03-01', endDate: '2025-03-31',
+      compareTo: { startDate: '2025-02-01', endDate: '2025-02-28', label: '전월' },
+    });
+    const cmp = (r.rows ?? []).find((x) => String(x.key) === 'compare');
+    ok('T20-e compareTo도 같은 기간 함수 사용 (2월 유효주문 1건)',
+      Number(cmp?.orderCount) === 1, `got ${cmp?.orderCount}`);
+  } catch (e) { ok('T20-e compareTo 기간 함수', false, e.message); }
+}
+
 // ── T18. category / product 키 충돌 (axisKind 분리 실증) ─────────────────────
 // categoryCode와 goodsNo가 같은 문자열 'X'인 데이터.
 // scope는 한 실행에서 categoryBreakdown과 productBreakdown을 함께 만들므로,
