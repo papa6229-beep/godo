@@ -81,6 +81,35 @@ for (const [label, url] of denyCases) {
   ok(`거부: ${label}`, 'error' in r && r.status === 400);
 }
 
+// ⭐ fail-closed 회귀검증: 차단 대역 IP를 **명시적으로 allowlist에 넣어도** 거부되어야 한다.
+//    (운영자 실수로 내부 IP가 allowlist에 들어가는 경우를 방어)
+const allowlistedButBlocked = [
+  ['사설 10/8', 'http://10.0.0.1/a.jpg', '10.0.0.1'],
+  ['사설 192.168/16', 'http://192.168.1.1/a.jpg', '192.168.1.1'],
+  ['사설 172.16/12', 'http://172.20.0.5/a.jpg', '172.20.0.5'],
+  ['loopback', 'http://127.0.0.1/a.jpg', '127.0.0.1'],
+  ['메타데이터 169.254.169.254', 'http://169.254.169.254/latest/meta-data/', '169.254.169.254'],
+  ['CGNAT 100.64/10', 'http://100.64.0.1/a.jpg', '100.64.0.1'],
+  ['IPv6 loopback', 'http://[::1]/a.jpg', '[::1]'],
+  ['IPv6 ULA', 'http://[fc00::1]/a.jpg', '[fc00::1]'],
+  ['IPv4-mapped IPv6', 'http://[::ffff:127.0.0.1]/a.jpg', '[::ffff:127.0.0.1]'],
+  ['10진수 IP', 'http://2130706433/a.jpg', '2130706433'],
+];
+for (const [label, url, host] of allowlistedButBlocked) {
+  const r = await fetchImageBytes(url, {
+    allowedHosts: [host.replace(/^\[|\]$/g, ''), host], // 대괄호 유무 양쪽 등록
+    resolveHost: neverResolve,
+    useCache: false,
+  });
+  ok(`fail-closed: allowlist에 넣어도 거부 — ${label}`, 'error' in r && r.status === 400);
+}
+// 공인 IP는 allowlist에 명시하면 통과 대상(정책상 거부 사유 없음)
+const rPublicLiteral = await fetchImageBytes('http://203.1.113.5/a.jpg', {
+  allowedHosts: ['203.1.113.5'], resolveHost: neverResolve, useCache: false, timeoutMs: 1500,
+});
+ok('공인 IP 리터럴은 호스트 정책 통과(이후 네트워크 단계에서 실패)',
+  !('error' in rPublicLiteral) || rPublicLiteral.status === 502);
+
 // DNS가 사설 IP를 반환하면 차단(재바인딩 완화 — 완전 차단은 아님)
 const rPrivateDns = await fetchImageBytes('https://cdn-banana.bizhost.kr/a.jpg', {
   resolveHost: async () => ['10.0.0.9'], useCache: false,
@@ -128,16 +157,24 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 const base = `http://127.0.0.1:${port}`;
 
-// 기본 포트 정책(80/443)에서는 로컬 서버 포트가 거부되어야 한다.
+// 기본 옵션(테스트 플래그 없음)에서는 loopback이라 거부되어야 한다.
+const rDefault = await fetchImageBytes(`${base}/ok.jpg`, {
+  allowedHosts: ['127.0.0.1'], allowedPorts: [port], resolveHost: neverResolve, useCache: false,
+});
+ok('기본값에서는 로컬 서버(loopback)도 거부', 'error' in rDefault && rDefault.status === 400);
+
+// 기본 포트 정책(80/443)에서는 비표준 포트가 거부되어야 한다.
 const rPort = await fetchImageBytes(`${base}/ok.jpg`, {
   allowedHosts: ['127.0.0.1'], resolveHost: neverResolve, useCache: false,
+  allowPrivateAddressesForTests: true,
 });
 ok('기본 포트 정책은 비표준 포트를 거부', 'error' in rPort && rPort.status === 400);
 
-// 나머지 흐름은 포트를 명시 허용해 실제로 검증한다.
+// 나머지 흐름은 포트/사설대역을 명시 허용(테스트 전용)해 실제로 검증한다.
 const o = {
   allowedHosts: ['127.0.0.1'],
   allowedPorts: [port],
+  allowPrivateAddressesForTests: true,
   resolveHost: neverResolve,
   useCache: false,
   maxRedirects: 2,

@@ -186,6 +186,12 @@ export interface FetchImageOptions {
   allowedHosts?: Iterable<string>;
   /** 허용 포트. 기본은 표준 포트(80/443)만. 로컬 가짜 서버 검증 등에서만 확장한다. */
   allowedPorts?: Iterable<string | number>;
+  /**
+   * 사설/loopback 대역 허용. **기본 false(fail-closed)** 이며 로컬 가짜 서버 검증 전용이다.
+   * 서버 라우트(api/detail/[action].ts)와 dev 미들웨어는 이 값을 절대 넘기지 않으므로
+   * 요청 입력으로는 도달할 수 없다.
+   */
+  allowPrivateAddressesForTests?: boolean;
   /** 테스트 주입용 DNS 해석기. 기본은 node:dns/promises lookup(all). */
   resolveHost?: (hostname: string) => Promise<string[]>;
   maxBytes?: number;
@@ -206,7 +212,8 @@ const checkTarget = async (
   url: URL,
   allowed: Set<string>,
   allowedPorts: Set<string>,
-  resolve: (h: string) => Promise<string[]>
+  resolve: (h: string) => Promise<string[]>,
+  allowPrivate: boolean
 ): Promise<TargetCheck> => {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     return { ok: false, error: 'http/https만 허용됩니다.', status: 400 };
@@ -221,10 +228,14 @@ const checkTarget = async (
   if (!allowed.has(host)) {
     return { ok: false, error: '허용되지 않은 이미지 호스트입니다.', status: 400 };
   }
-  // 여기 도달했다는 것은 운영자가 명시적으로 허용한 호스트라는 뜻이다.
-  // IP 리터럴을 직접 allowlist에 넣은 경우(로컬 개발/테스트)는 DNS 조회 대상이 아니다.
-  // ⚠️ 운영 환경변수 allowlist에는 내부 IP를 넣지 말 것.
-  if (literalIpBlocked(host) !== null) return { ok: true };
+  // 호스트가 IP 리터럴이면 DNS 조회 대상이 아니다. 단 fail-closed 원칙에 따라
+  // 사설·loopback·link-local·메타데이터 등 차단 대역은 **allowlist에 들어 있어도 거부**한다
+  // (운영자가 실수로 내부 IP를 allowlist에 넣어도 뚫리지 않게 한다).
+  const literal = literalIpBlocked(host);
+  if (literal === true && !allowPrivate) {
+    return { ok: false, error: '허용되지 않은 주소입니다.', status: 400 };
+  }
+  if (literal !== null) return { ok: true };
   let addresses: string[];
   try {
     addresses = await resolve(host);
@@ -246,6 +257,7 @@ export const fetchImageBytes = async (rawUrl: string, opts: FetchImageOptions = 
   const allowedPorts = new Set(
     [...(opts.allowedPorts ?? ['80', '443'])].map((p) => String(p))
   );
+  const allowPrivate = opts.allowPrivateAddressesForTests === true;
   const resolve = opts.resolveHost ?? defaultResolve;
   const maxBytes = opts.maxBytes ?? MAX_BYTES;
   const maxRedirects = opts.maxRedirects ?? MAX_REDIRECTS;
@@ -272,7 +284,7 @@ export const fetchImageBytes = async (rawUrl: string, opts: FetchImageOptions = 
     let hops = 0;
     // 리다이렉트를 수동으로 따라가며 매 홉마다 전 검사를 다시 수행한다.
     for (;;) {
-      const check = await checkTarget(current, allowed, allowedPorts, resolve);
+      const check = await checkTarget(current, allowed, allowedPorts, resolve, allowPrivate);
       if (!check.ok) return { error: check.error, status: check.status };
 
       const resp = await fetch(current.toString(), {
