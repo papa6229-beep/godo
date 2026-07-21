@@ -48,7 +48,7 @@ export function buildMarketingAnalysisNarrative(result: MarketingAnalysisResult)
     //   행 정렬이 바뀌어도 "미분류가 첫구매보다…" 같은 잘못된 설명이 생기지 않는다.
     const fromLabel = d.fromLabel ?? result.rows[0].label;
     const toLabel = d.toLabel ?? result.rows[result.rows.length - 1].label;
-    lines.push(`- 해석: ${toLabel}이(가) ${fromLabel}보다 ${d.direction === 'up' ? '높' : d.direction === 'down' ? '낮' : '비슷하'}게 나타납니다.`);
+    lines.push(`- 해석: ${toLabel} 항목이 ${fromLabel}보다 ${d.direction === 'up' ? '높' : d.direction === 'down' ? '낮' : '비슷하'}게 나타납니다.`);
     if (metric === 'averageOrderValue') lines.push(`- 객단가는 기간 전체 매출 ÷ 주문수 기준입니다(월별 단순 평균 아님).`);
   }
   lines.push('', `- ${CAVEAT}`);

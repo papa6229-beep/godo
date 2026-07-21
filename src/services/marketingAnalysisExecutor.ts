@@ -130,16 +130,23 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
       const keys = [...new Set(scoped.filter((o) => isValidOrder(o)).map((o) => String((o as Record<string, unknown>)[field] ?? '미분류')))];
       groups = keys.map((k) => ({ key: k, label: k, pred: (o) => String((o as Record<string, unknown>)[field] ?? '미분류') === k }));
     }
-    const rows = groups.map((g) => aggToRow(g.label, aggregateAllValid(scoped, g.pred), metric)).sort((a, b) => b.value - a.value);
+    // 그룹 키를 유지한다. 비교 대상 선택은 표시 라벨이 아니라 **키**로 한다
+    //   (표시 문자열을 정체성으로 쓰면 라벨이 바뀔 때 조용히 깨진다).
+    const groupRows = groups.map((g) => ({ key: g.key, row: aggToRow(g.label, aggregateAllValid(scoped, g.pred), metric) }));
+    const rows = groupRows.map((x) => x.row).sort((a, b) => b.value - a.value);
     const title = `${plan.comparison.period ? resolvePeriodToRange(plan.comparison.period, nowMs ? new Date(nowMs).getFullYear() : 0, nowMs).label + ' ' : ''}${dim === 'coupon' ? '쿠폰 사용/미사용' : dim === 'firstRepeat' ? '첫구매/재구매' : dim === 'memberGroup' ? '회원그룹별' : '주문채널별'} ${label} 비교`;
     // 객단가/주문수/매출 세그먼트 비교는 막대 비교(2~4개=compact groupedBar, 5+=rankedBar). 도넛 아님.
     const segChartType = selectMarketingChartType({ intent: plan.intent, metric, comparisonType: 'segmentCompare', rowCount: rows.length, suppressed: plan.chart.suppressed });
-    const chartSpec = buildChartSpec({ id: `mkt_segment_${dim}_${metric}`, title, subtitle: `${label}${rows.some((r) => r.orderCount) ? ' · 주문수' : ''}`, metric, chartType: segChartType, compact: rows.length <= 4,
+    // 미분류가 실제로 있을 때만 subtitle에 표시한다(없으면 기존 제목·부제 유지).
+    const hasUnknownGroup = dim === 'firstRepeat' && groupRows.some((x) => x.key === 'unknown');
+    const segSubtitle = `${label}${rows.some((r) => r.orderCount) ? ' · 주문수' : ''}${hasUnknownGroup ? ' · 미분류 포함' : ''}`;
+    const chartSpec = buildChartSpec({ id: `mkt_segment_${dim}_${metric}`, title, subtitle: segSubtitle, metric, chartType: segChartType, compact: rows.length <= 4,
       series: [{ key: metric, label, metric, points: rows.map((r) => ({ bucketKey: r.label, bucketLabel: r.label, value: r.value, orderCount: r.orderCount, revenue: r.revenue, averageOrderValue: r.aov })) }] });
     // C-8: firstRepeat 비교는 first↔repeat만 의미가 있다. 미분류는 표시 대상이지 비교 상대가 아니다.
     //   행 정렬(값 내림차순)에 의존하면 미분류가 최상단일 때 엉뚱한 두 그룹을 비교하게 된다.
-    const firstRow = dim === 'firstRepeat' ? rows.find((r) => r.label === FIRST_PURCHASE_LABEL.first) : undefined;
-    const repeatRow = dim === 'firstRepeat' ? rows.find((r) => r.label === FIRST_PURCHASE_LABEL.repeat) : undefined;
+    const rowByKey = (k: string): MarketingAnalysisRow | undefined => groupRows.find((x) => x.key === k)?.row;
+    const firstRow = dim === 'firstRepeat' ? rowByKey('first') : undefined;
+    const repeatRow = dim === 'firstRepeat' ? rowByKey('repeat') : undefined;
     const segDiff = firstRow && repeatRow ? diffBetween(firstRow, repeatRow) : diffOf(rows);
     return { plan, title, metricLabel: label, rows, available: rows.some((r) => r.value > 0), unsupported: false, chartSpec, diff: segDiff };
   }

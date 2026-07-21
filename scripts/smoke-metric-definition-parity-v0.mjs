@@ -775,8 +775,29 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-4i executor reply에 미분류 30,000원이 실제로 등장',
       reply.includes('미분류') && reply.includes('30,000'), `reply: ${reply.slice(0, 160)}`);
     ok('T22-4j executor 해석 문장이 미분류를 첫구매와 비교하지 않음',
-      !reply.includes('미분류이(가) 첫구매보다') && reply.includes('재구매이(가) 첫구매보다'),
+      !reply.includes('미분류 항목이 첫구매보다') && reply.includes('재구매 항목이 첫구매보다'),
       `reply: ${reply.slice(0, 200)}`);
+    ok('T22-4k executor subtitle에 미분류 포함 표시', String(res?.chartSpec?.subtitle ?? '').includes('미분류 포함'),
+      `subtitle: ${res?.chartSpec?.subtitle}`);
+
+    // unknown = 0 음성 검증: 미분류 행·포인트·문구가 모두 없어야 한다.
+    const only2 = FP_ORDERS.filter((o) => 'isFirstPurchase' in o);
+    const res2 = executor.executeMarketingAnalysisPlan(plan, only2, nowMs);
+    const rows2 = res2?.rows ?? [];
+    const pts2 = (res2?.chartSpec?.series ?? []).flatMap((x) => x.points ?? []);
+    const nr2 = executor.buildMarketingAnalysisResponseFromPlan(plan, only2, nowMs);
+    const reply2 = String(nr2?.reply ?? '').replace(/\n/g, ' ');
+    ok('T22-4l unknown=0: rows에 미분류 없음', !rows2.some((x) => String(x.label) === '미분류'),
+      `rows: ${rows2.map((x) => `${x.label}=${x.value}`).join(', ')}`);
+    ok('T22-4m unknown=0: chartSpec points에 미분류 없음', !pts2.some((x) => String(x.bucketLabel) === '미분류'),
+      `points: ${pts2.map((x) => x.bucketLabel).join(', ')}`);
+    ok('T22-4n unknown=0: title/subtitle/reply에 미분류 문구 없음',
+      !String(res2?.title ?? '').includes('미분류') && !String(res2?.chartSpec?.subtitle ?? '').includes('미분류') && !reply2.includes('미분류'),
+      `title: ${res2?.title} | subtitle: ${res2?.chartSpec?.subtitle}`);
+    const d2 = res2?.diff ?? {};
+    ok('T22-4o unknown=0: diff는 여전히 첫구매→재구매',
+      d2.fromLabel === '첫구매' && d2.toLabel === '재구매' && d2.absolute === 10000,
+      `from ${d2.fromLabel} / to ${d2.toLabel} / abs ${d2.absolute}`);
     ok('T22-4e executor 제목/차트에서 미분류가 재구매로 표시되지 않음',
       !/미분류[^,]*재구매|재구매[^,]*미분류/.test(String(res?.title ?? '')) && rows.filter((x) => String(x.label) === '재구매').length <= 1,
       `title: ${res?.title}`);
