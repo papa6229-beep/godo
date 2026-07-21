@@ -14,8 +14,20 @@
 //                     (재조인하면 상품 카테고리 변경 시 과거 매출이 소급 재분류된다)
 // ────────────────────────────────────────────────────────────────────────────
 
-/** 주문 1건이 가진 주문 단위 속성. 라인마다 다시 평가하지 않는다. */
-export type OrderScopedFlags = { coupon: boolean; reward: boolean; first: boolean };
+/**
+ * 주문 1건이 가진 주문 단위 속성. 라인마다 다시 평가하지 않는다.
+ * first는 3상태다 — isFirstPurchase가 optional이라 firstSaleFl이 없는 실주문은 undefined다.
+ *   true=첫구매 / false=재구매 / undefined=미분류(둘 다 아님)
+ */
+export type OrderScopedFlags = { coupon: boolean; reward: boolean; first: boolean | undefined };
+
+/** isFirstPurchase 원시값 → 3상태. undefined를 false(재구매)로 뭉개지 않는다. */
+export const resolveFirstPurchase = (value: unknown): boolean | undefined => {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value === true || value === 'true' || value === 'y' || value === 'Y' || value === 1) return true;
+  if (value === false || value === 'false' || value === 'n' || value === 'N' || value === 0) return false;
+  return undefined;
+};
 
 /** 주문 중복 제거 대상 카운터. 소비자마다 보유 필드가 달라 전부 optional로 둔다. */
 export type OrderScopedCounters = {
@@ -32,8 +44,16 @@ export type OrderScopedCounters = {
  */
 export const resolveOrderKey = (orderNo: unknown, fallbackIndex: number): string => {
   const raw = orderNo === undefined || orderNo === null ? '' : String(orderNo).trim();
-  return raw || `__noOrderNo_${fallbackIndex}`;
+  // 실제 주문번호와 대체키는 서로 다른 namespace를 쓴다(주문번호가 'idx:3'인 경우와 충돌 방지).
+  return raw ? `ord:${raw}` : `idx:${fallbackIndex}`;
 };
+
+/**
+ * 집계칸 레지스트리 키. 문자열 이어붙이기는 ["a b","c"]와 ["a","b c"]가 충돌하므로 쓰지 않는다.
+ * A-2처럼 카테고리·상품을 한 실행에서 함께 집계할 때를 대비해 축 종류를 반드시 포함한다.
+ */
+export const cellRegistryKey = (axisKind: string, axisKey: string, bucketKey = ''): string =>
+  JSON.stringify([axisKind, axisKey, bucketKey]);
 
 /** 집계칸별 "이미 센 주문" 레지스트리 조회(없으면 생성). */
 export const seenOrdersFor = (registry: Map<string, Set<string>>, cellKey: string): Set<string> => {
@@ -59,10 +79,11 @@ export const countOrderOnce = (
   acc.orderCount += 1;
   if (flags.coupon && acc.couponOrders !== undefined) acc.couponOrders += 1;
   if (flags.reward && acc.rewardOrders !== undefined) acc.rewardOrders += 1;
-  if (flags.first) {
+  // first는 3상태다. undefined(미분류)는 첫구매도 재구매도 아니며 orderCount에만 포함된다.
+  if (flags.first === true) {
     if (acc.firstOrders !== undefined) acc.firstOrders += 1;
-  } else if (acc.repeatOrders !== undefined) {
-    acc.repeatOrders += 1;
+  } else if (flags.first === false) {
+    if (acc.repeatOrders !== undefined) acc.repeatOrders += 1;
   }
   return true;
 };

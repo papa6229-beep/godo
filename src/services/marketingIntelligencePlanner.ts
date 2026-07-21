@@ -11,7 +11,7 @@
 
 import { getMarketingTimeBucketKey, getMarketingDimensionKey, type MarketingTimeBucket, type MarketingCrossTabDimension, type MarketingCrossTabRequest } from './marketingTemporalCrosstab';
 import type { MarketingChartSpec, MarketingChartSeries, MarketingChatChartArtifact, MarketingChartNarrative } from './marketingChatChartSpec';
-import { countOrderOnce, seenOrdersFor, resolveOrderKey, lineCategoryKey, categoryLabelOf } from './lineAxisAggregation';
+import { countOrderOnce, seenOrdersFor, resolveOrderKey, cellRegistryKey, resolveFirstPurchase, lineCategoryKey, categoryLabelOf } from './lineAxisAggregation';
 
 // ── plan/result 타입 ──────────────────────────────────────────────────────────
 export type MarketingPlanGoal = 'compare' | 'trend' | 'rank' | 'share' | 'relationship' | 'conversion' | 'diagnose' | 'summary';
@@ -521,7 +521,8 @@ const buildPlanChartSpec = (plan: MarketingIntelligencePlan, orders: Order[], pr
     const seenOrdersByCell = new Map<string, Set<string>>();
     counted.forEach((o, orderIndex) => {
       const cb = calBucket(strv(o.orderDate));
-      const flags = { coupon: hasCoupon(o), reward: usesReward(o), first: boolv(o.isFirstPurchase) };
+      // first는 true/false/undefined를 그대로 보존한다(undefined를 재구매로 뭉개지 않음).
+      const flags = { coupon: hasCoupon(o), reward: usesReward(o), first: resolveFirstPurchase(o.isFirstPurchase) };
       const orderKey = resolveOrderKey((o as Record<string, unknown>).orderNo, orderIndex);
       for (const l of (o.lines || []) as Record<string, unknown>[]) {
         const g = strv(l.goodsNo);
@@ -530,9 +531,9 @@ const buildPlanChartSpec = (plan: MarketingIntelligencePlan, orders: Order[], pr
         const lr = numv(l.lineRevenue);
         // 라인 합산
         acc.revenue += lr; acc.lineRevenue += lr; acc.quantity += numv(l.quantity);
-        if (flags.first) acc.firstRevenue += lr; else acc.repeatRevenue += lr;
+        if (flags.first === true) acc.firstRevenue += lr; else if (flags.first === false) acc.repeatRevenue += lr;
         // 주문 기반(집계칸당 한 번만)
-        countOrderOnce(acc, seenOrdersFor(seenOrdersByCell, `${k.key} ${cb.key}`), orderKey, flags);
+        countOrderOnce(acc, seenOrdersFor(seenOrdersByCell, cellRegistryKey(dim, k.key, cb.key)), orderKey, flags);
         totalRevenue += lr;
       }
     });

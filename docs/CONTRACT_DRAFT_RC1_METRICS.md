@@ -183,3 +183,27 @@ for (const l of (o.lines || [])) {
 | `quantity` | 수량 합 | 수량 | 개 |
 
 현재는 `commerceDataQueryEngine.ts:394`가 항상 `r.acc.rev`를 써서 **계산·정렬·표시가 전부 매출 기준**이다.
+
+## C-8. 첫구매/재구매 3상태 (신설 — RC-1 후속)
+
+`RevenueOrder.isFirstPurchase`는 **optional**이다(`godomallRevenue.ts` — `firstSaleFl`이 없으면 undefined).
+따라서 판정은 3상태여야 한다.
+
+| 값 | 처리 |
+|---|---|
+| `true` | 첫구매 (`firstOrders`, `firstRevenue`) |
+| `false` | 재구매 (`repeatOrders`, `repeatRevenue`) |
+| `undefined` | **미분류 — 둘 다 증가시키지 않는다.** 단 `orderCount`에는 포함 |
+
+**현재 상태**: `boolv(o.isFirstPurchase)` 패턴이 `undefined`를 `false`(재구매)로 뭉갠다 →
+`marketingIntelligencePlanner.ts:404-410`(주문 축 `addOrder`), `marketingScopeInsightEngine.ts`(firstRepeat 분류) 등에 잔존.
+
+**이번 조치 범위**: 공용 함수 `lineAxisAggregation.resolveFirstPurchase()`와 A-1 goodsMode 경로만 3상태로 보정했다.
+**나머지 호출부는 RC-1 후속 항목으로 남긴다** — 공용 함수가 오류를 확산시키지 않게 하는 것이 이번 목적이다.
+
+## C-9. 집계 키 충돌 방지 (신설)
+
+- 집계칸 레지스트리 키: 문자열 이어붙이기 금지(`["a b","c"]`와 `["a","b c"]`가 충돌).
+  `cellRegistryKey(axisKind, axisKey, bucketKey)` = `JSON.stringify([...])` 사용.
+- **축 종류(`axisKind`)를 반드시 포함** — A-2처럼 category·product를 한 실행에서 함께 집계할 때 같은 문자열 키가 충돌한다.
+- 주문 키: 실제 주문번호와 대체키에 서로 다른 namespace(`ord:` / `idx:`)를 쓴다.

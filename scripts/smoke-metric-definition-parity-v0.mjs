@@ -513,6 +513,35 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
   ok('T16-c 전체 유효 주문수는 1', contract.countValidOrders(crossOrder) === 1, `got ${contract.countValidOrders(crossOrder)}`);
 }
 
+// ── T17. isFirstPurchase 3상태 (true / false / undefined) ────────────────────
+// isFirstPurchase는 optional이다(firstSaleFl 없는 실주문은 undefined).
+// undefined를 재구매로 뭉개면 재구매 주문수가 부풀려진다.
+{
+  const nowMs = Date.parse('2025-04-01T00:00:00Z');
+  const val = (orders, metric) => {
+    const res = planner.executeMarketingIntelligencePlan({
+      plan: mkPlan('category', metric), orders, products: [], nowMs,
+    });
+    const hit = [...pointsOf(res).entries()].find(([k]) => k.includes('catU'));
+    return hit ? hit[1].value : -1;
+  };
+  // isFirstPurchase 필드 자체가 없는 유효 주문 1건
+  const noFlagOrder = [{
+    orderNo: 'U1', orderDate: '2025-03-12', paid: true, canceled: false,
+    totalAmount: 10000, productRevenueByLines: 10000,
+    lines: [line('U1', '상품U', 'catU', 1, 10000)],
+  }];
+  ok('T17-a isFirstPurchase 없음 → orderCount 1', val(noFlagOrder, 'orderCount') === 1, `got ${val(noFlagOrder, 'orderCount')}`);
+  ok('T17-b isFirstPurchase 없음 → firstOrders 0', val(noFlagOrder, 'firstPurchaseOrderCount') === 0, `got ${val(noFlagOrder, 'firstPurchaseOrderCount')}`);
+  ok('T17-c isFirstPurchase 없음 → repeatOrders 0 (재구매로 뭉개지 않음)',
+    val(noFlagOrder, 'repeatPurchaseOrderCount') === 0, `got ${val(noFlagOrder, 'repeatPurchaseOrderCount')}`);
+  // 대조군: 명시적 false는 재구매로 센다
+  const explicitFalse = [{ ...noFlagOrder[0], orderNo: 'U2', isFirstPurchase: false }];
+  ok('T17-d isFirstPurchase=false → repeatOrders 1', val(explicitFalse, 'repeatPurchaseOrderCount') === 1, `got ${val(explicitFalse, 'repeatPurchaseOrderCount')}`);
+  const explicitTrue = [{ ...noFlagOrder[0], orderNo: 'U3', isFirstPurchase: true }];
+  ok('T17-e isFirstPurchase=true → firstOrders 1', val(explicitTrue, 'firstPurchaseOrderCount') === 1, `got ${val(explicitTrue, 'firstPurchaseOrderCount')}`);
+}
+
 // ── T9~T11. 카테고리 출처 계약 (라인 우선 → 상품인덱스 보충 → uncategorized) ──
 {
   const nowMs = Date.parse('2025-04-01T00:00:00Z');
