@@ -359,7 +359,7 @@ export function buildMarketingTemporalCrosstab(input: {
 
   const map = new Map<string, Acc>();
   const getAcc = (bucketKey: string, bLabel: string, d1: { key: string; label: string }, d2?: { key: string; label: string }): Acc => {
-    const k = `${bucketKey} ${d1.key} ${d2?.key ?? ''}`;
+    const k = `${bucketKey}\u0000${d1.key}\u0000${d2?.key ?? ''}`;
     let a = map.get(k);
     if (!a) {
       a = { bucketKey, bucketLabel: bLabel, dimKey: d1.key, dimLabel: d1.label, dim2Key: d2?.key, dim2Label: d2?.label, revenue: 0, discount: 0, coupon: 0, reward: 0, quantity: 0, orderSet: new Set<string>(), lineGran };
