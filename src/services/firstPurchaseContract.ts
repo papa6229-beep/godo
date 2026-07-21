@@ -18,6 +18,9 @@
 
 export type FirstPurchaseClass = 'first' | 'repeat' | 'unknown';
 
+/** 표시·집계 순서. 소비자가 배열을 다시 하드코딩하지 않도록 여기서 고정한다. */
+export const FIRST_PURCHASE_CLASSES: FirstPurchaseClass[] = ['first', 'repeat', 'unknown'];
+
 /** 화면 표시 라벨. 키는 영문으로 통일하고 라벨만 한글로 쓴다. */
 export const FIRST_PURCHASE_LABEL: Record<FirstPurchaseClass, string> = {
   first: '첫구매',

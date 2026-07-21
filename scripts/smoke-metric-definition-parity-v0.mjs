@@ -750,6 +750,39 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     const revSum = fr.reduce((s2, x) => s2 + Number(x.revenue ?? 0), 0);
     ok('T22-2e scope firstRepeat 매출 합계 = 60,000 (전체 불변)', revSum === FP_GOLDEN.total.revenue, `got ${revSum}`);
     const narrative = JSON.stringify(r?.result?.narrative ?? {});
+    // 비중 분모 검증: unknown 행만 추가하고 분모가 first+repeat로 남는 숨은 오류 방지.
+    const shareSum = fr.reduce((a, x) => a + Number(x.revenueShare ?? 0), 0);
+    ok('T22-2g scope 세 그룹 비중 합계 ≈ 100% (분모에 미분류 포함)',
+      Math.abs(shareSum - 100) <= 0.5, `합계 ${shareSum}% (${fr.map((x) => `${x.label} ${x.revenueShare}%`).join(', ')})`);
+    ok('T22-2h scope first/repeat 객단가가 기존 잘못된 분모를 쓰지 않음',
+      Number(get('first')?.averageOrderValue) === 10000 && Number(get('repeat')?.averageOrderValue) === 20000,
+      `first ${get('first')?.averageOrderValue} / repeat ${get('repeat')?.averageOrderValue}`);
+    // narrative 의미 검증(단어 존재가 아니라 값·의미)
+    const nar = JSON.stringify(r?.result?.narrative ?? {});
+    ok('T22-2i scope narrative에 미분류 1건·30,000원과 "두 그룹에 포함되지 않는다"는 의미 전달',
+      nar.includes('미분류') && nar.includes('1건') && nar.includes('30,000')
+      && nar.includes('두 그룹에는 포함되지 않습니다'), `narrative: ${nar.slice(0, 200)}`);
+    // 필터: 정확히 일치하는 상태만
+    const filt = (msg) => {
+      const rr = scope.buildMarketingScopeInsightResponse({ message: msg, orders: FP_ORDERS, products: [], reviews: [], inquiries: [], nowMs });
+      const sm = rr?.result?.insightPack?.summary ?? {};
+      return { count: Number(sm.orderCount ?? -1), revenue: Number(sm.totalRevenue ?? -1) };
+    };
+    const rep = filt('재구매 매출 알려줘');
+    ok('T22-2j scope 재구매 필터 = false 주문 1건·20,000원만 (미분류 제외)',
+      rep.count === 1 && rep.revenue === 20000, `got ${rep.count}건·${rep.revenue}원`);
+    const fst = filt('첫구매 매출 알려줘');
+    ok('T22-2k scope 첫구매 필터 = true 주문 1건·10,000원만',
+      fst.count === 1 && fst.revenue === 10000, `got ${fst.count}건·${fst.revenue}원`);
+    // 미분류 0건이면 거짓 경고 없음
+    const noUnknown = scope.buildMarketingScopeInsightResponse({
+      message: '2025년 매출 알려줘', orders: FP_ORDERS.filter((o) => 'isFirstPurchase' in o), products: [], reviews: [], inquiries: [], nowMs });
+    // 주의: 회원그룹 축도 미지정 시 라벨이 '미분류'라 단어 존재만 보면 안 된다.
+    //   첫구매 미분류 안내 문장 자체가 없는지 확인한다.
+    ok('T22-2l scope 미분류 0건이면 첫구매 미분류 안내가 붙지 않음',
+      !JSON.stringify(noUnknown?.result?.narrative ?? {}).includes('첫구매 여부 미분류'),
+      '첫구매 미분류 안내가 잘못 붙음');
+
     ok('T22-2f scope narrative가 미분류를 재구매라고 부르지 않음',
       !/재구매[^"]*3건|재구매[^"]*50,?000/.test(narrative), `narrative: ${narrative.slice(0, 160)}`);
   } catch (e) { ok('T22-2 scope 3상태', false, e.message); }

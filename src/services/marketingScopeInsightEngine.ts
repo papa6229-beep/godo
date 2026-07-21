@@ -13,6 +13,7 @@ import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartSeri
 import { parseMarketingChatQuery } from './marketingChatQueryRouting';
 import { buildMarketingAnalysisResponse } from './marketingAnalysisExecutor';
 import { countOrderOnce, seenOrdersFor, resolveOrderKey, cellRegistryKey, resolveFirstPurchase, lineCategoryKey, categoryLabelOf } from './lineAxisAggregation';
+import { classifyFirstPurchase, FIRST_PURCHASE_LABEL, FIRST_PURCHASE_CLASSES, type FirstPurchaseClass } from './firstPurchaseContract';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 export type MarketingAnalysisScope = {
@@ -64,7 +65,7 @@ export type MarketingInsightPack = {
   categoryBreakdown?: Array<{ categoryKey: string; category: string; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number; couponUsageRate?: number }>;
   productBreakdown?: Array<{ goodsNo?: string; productName: string; category?: string; brand?: string; revenue: number; revenueShare: number; orderCount: number; quantity: number; averageOrderValue: number; inquiryCount?: number; reviewCount?: number; averageRating?: number }>;
   customerBreakdown?: {
-    firstRepeat?: Array<{ label: 'first' | 'repeat'; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number }>;
+    firstRepeat?: Array<{ label: FirstPurchaseClass; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number }>;
     memberGroup?: Array<{ memberGroup: string; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number }>;
   };
   promotionBreakdown?: {
@@ -241,8 +242,9 @@ function buildInsightPack(input: { scope: MarketingAnalysisScope; question: Mark
   const passFilter = (o: Row): boolean => {
     if (!withinRange(o, range)) return false;
     if (scope.customerScope?.memberGroups?.length && !scope.customerScope.memberGroups.includes(strv(o.memberGroupName))) return false;
-    if (scope.customerScope?.firstRepeat === 'first' && !boolv(o.isFirstPurchase)) return false;
-    if (scope.customerScope?.firstRepeat === 'repeat' && boolv(o.isFirstPurchase)) return false;
+    // C-8: 필터는 정확히 일치하는 상태만 통과한다. unknown은 first/repeat 어느 쪽에도 포함되지 않는다.
+    if (scope.customerScope?.firstRepeat === 'first' && classifyFirstPurchase(o.isFirstPurchase) !== 'first') return false;
+    if (scope.customerScope?.firstRepeat === 'repeat' && classifyFirstPurchase(o.isFirstPurchase) !== 'repeat') return false;
     if (scope.promotionScope?.couponUsage === 'used' && !hasCoupon(o)) return false;
     if (scope.promotionScope?.couponUsage === 'not_used' && hasCoupon(o)) return false;
     return true;
@@ -357,10 +359,10 @@ function buildInsightPack(input: { scope: MarketingAnalysisScope; question: Mark
   }).sort((x, y) => y.revenue - x.revenue);
 
   // customerBreakdown
-  const frMap = byOrderDim((o) => boolv(o.isFirstPurchase) ? { key: 'first', label: '첫구매' } : { key: 'repeat', label: '재구매' });
+  const frMap = byOrderDim((o) => { const c = classifyFirstPurchase(o.isFirstPurchase); return { key: c, label: FIRST_PURCHASE_LABEL[c] }; });
   const mgMap = byOrderDim((o) => { const l = strv(o.memberGroupName) || '미분류'; return { key: l, label: l }; });
   const customerBreakdown = {
-    firstRepeat: ['first', 'repeat'].filter((k) => frMap.has(k)).map((k) => { const a = frMap.get(k)!; return { label: k as 'first' | 'repeat', revenue: Math.round(a.revenue), revenueShare: shareOf(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a) }; }),
+    firstRepeat: FIRST_PURCHASE_CLASSES.filter((k) => frMap.has(k)).map((k) => { const a = frMap.get(k)!; return { label: k, revenue: Math.round(a.revenue), revenueShare: shareOf(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a) }; }),
     memberGroup: [...mgMap.entries()].map(([, a]) => ({ memberGroup: a.label, revenue: Math.round(a.revenue), revenueShare: shareOf(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a) })).sort((x, y) => y.revenue - x.revenue)
   };
 
@@ -557,7 +559,17 @@ export function buildMarketingScopeInsightNarrative(result: MarketingScopeInsigh
     const fr = pack.customerBreakdown.firstRepeat || [];
     const mg = pack.customerBreakdown.memberGroup || [];
     add('고객 관찰', [
-      fr.length === 2 ? `첫구매/재구매 매출 비중은 ${fr.map((x) => `${x.label === 'first' ? '첫구매' : '재구매'} ${x.revenueShare}%`).join(', ')}이며 객단가는 ${fr.map((x) => `${x.label === 'first' ? '첫구매' : '재구매'} ${won(x.averageOrderValue)}`).join(', ')}입니다.` : '',
+      // C-8: 라벨은 공용 FIRST_PURCHASE_LABEL을 쓴다. 미분류는 두 그룹에서 제외되므로
+      //   '전체에는 포함되지만 두 그룹에는 포함되지 않는다'는 의미를 값과 함께 전달한다.
+      fr.filter((x) => x.label !== 'unknown').length === 2
+        ? `첫구매/재구매 매출 비중은 ${fr.filter((x) => x.label !== 'unknown').map((x) => `${FIRST_PURCHASE_LABEL[x.label]} ${x.revenueShare}%`).join(', ')}이며 객단가는 ${fr.filter((x) => x.label !== 'unknown').map((x) => `${FIRST_PURCHASE_LABEL[x.label]} ${won(x.averageOrderValue)}`).join(', ')}입니다.`
+        : '',
+      (() => {
+        const u = fr.find((x) => x.label === 'unknown');
+        return u && u.orderCount > 0
+          ? `첫구매 여부 ${FIRST_PURCHASE_LABEL.unknown} ${u.orderCount}건·${won(u.revenue)}은 전체 실적에는 포함되지만 첫구매·재구매 두 그룹에는 포함되지 않습니다.`
+          : '';
+      })(),
       mg.length ? `회원그룹 기준 매출 1위는 ${mg[0].memberGroup}(${mg[0].revenueShare}%)입니다.` : ''
     ]);
   }
