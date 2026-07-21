@@ -113,6 +113,39 @@ const PRODUCTS = [
   { goodsNo: 'P3', productId: 'P3', goodsName: '상품3', categoryCode: 'catB' },
 ];
 
+// ── 카테고리 출처 계약 검증용 별도 데이터셋 ──────────────────────────────────
+// 계약안(RC-1): ① 주문라인의 주문 당시 categoryCode 우선
+//               ② 없으면 상품 인덱스의 현재 categoryCode로 보충
+//               ③ 둘 다 없으면 uncategorized
+// 본 fixture는 ①과 ②가 서로 다른 값을 갖도록 설계해 "어느 쪽을 썼는지"를 판별한다.
+const CATSRC_ORDERS = [
+  { // P4: 라인에 catLINE, 상품인덱스에 catINDEX → 계약상 catLINE이 기준
+    orderNo: 'C1', orderDate: '2025-03-10', paid: true, canceled: false, memberKey: 'c1',
+    totalAmount: 10000, productRevenueByLines: 10000,
+    lines: [line('P4', '상품4', 'catLINE', 1, 10000)],
+  },
+  { // P5: 라인에 categoryCode 없음, 상품인덱스에 catFALLBACK → 계약상 catFALLBACK
+    orderNo: 'C2', orderDate: '2025-03-11', paid: true, canceled: false, memberKey: 'c2',
+    totalAmount: 20000, productRevenueByLines: 20000,
+    lines: [{ goodsNo: 'P5', goodsName: '상품5', quantity: 1, lineRevenue: 20000 }],
+  },
+  { // P6: 라인에도 없고 상품인덱스에도 없음 → 계약상 uncategorized
+    orderNo: 'C3', orderDate: '2025-03-12', paid: true, canceled: false, memberKey: 'c3',
+    totalAmount: 30000, productRevenueByLines: 30000,
+    lines: [{ goodsNo: 'P6', goodsName: '상품6', quantity: 1, lineRevenue: 30000 }],
+  },
+];
+const CATSRC_PRODUCTS = [
+  { goodsNo: 'P4', productId: 'P4', goodsName: '상품4', categoryCode: 'catINDEX' }, // 라인과 불일치
+  { goodsNo: 'P5', productId: 'P5', goodsName: '상품5', categoryCode: 'catFALLBACK' },
+  // P6은 상품 인덱스에 없음
+];
+const CATSRC_GOLDEN = {
+  P4: { category: 'catLINE', source: 'orderLine', why: '주문 당시 라인 카테고리 우선' },
+  P5: { category: 'catFALLBACK', source: 'productIndex', why: '라인에 없어 상품 인덱스로 보충' },
+  P6: { category: 'uncategorized', source: 'none', why: '양쪽 모두 없음' },
+};
+
 const REVIEWS = [
   { goodsNo: 'P1', rating: 5, createdAt: '2025-03-10' },   // 기간 안
   { goodsNo: 'P1', rating: 2, createdAt: '2025-02-20' },   // 기간 밖(이전)
@@ -231,15 +264,34 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
 // ── T5. scopeInsight 카테고리 주문수 ─────────────────────────────────────────
 {
   try {
+    // 실측 주의: '…주문수 알려줘' 메시지는 handled:true 이면서 result 필드 자체가 없다(다른 경로로 라우팅).
+    //   '카테고리별 매출'로 물어야 insightPack이 채워진다.
+    // 기간 파싱 영향을 배제하기 위해 기간 내 주문만 넣고 '전체 기간'으로 질의한다
+    //   → scoped = O1,O2 (O3는 취소로 isCounted 제외) = 정답표의 기간 내 유효주문과 동일.
     const r = scope.buildMarketingScopeInsightResponse({
-      message: '2025년 3월 카테고리별 주문수 알려줘', orders: ORDERS, products: PRODUCTS, reviews: REVIEWS, inquiries: INQUIRIES,
+      message: '카테고리별 매출 알려줘', orders: ORDERS_IN_PERIOD, products: PRODUCTS, reviews: REVIEWS, inquiries: INQUIRIES,
       nowMs: Date.parse('2025-04-01T00:00:00Z'),
     });
-    const pack = r?.result?.insightPack ?? r?.insightPack;
-    const rows = pack?.categoryBreakdown?.rows ?? pack?.categoryBreakdown ?? [];
-    const catA = (Array.isArray(rows) ? rows : []).find((x) => String(x.label ?? x.key ?? '').includes('catA'));
-    if (!catA) skipped('T5 scopeInsight catA 주문수', 'categoryBreakdown에 catA 없음');
-    else ok('T5 scopeInsight catA 주문수 = 2 (라인 수 아님)', Number(catA.orderCount) === GOLDEN.category.catA.orderCount, `got ${catA.orderCount}`);
+    // 같은 응답 안에서 summary(주문 기준)와 categoryBreakdown(라인 기준)이 어긋나는지도 함께 본다.
+    const summaryOrderCount = Number(r?.result?.insightPack?.summary?.orderCount ?? -1);
+    ok('T5-c scopeInsight summary.orderCount = 2 (주문 기준)',
+      summaryOrderCount === GOLDEN.orderCountValid_inPeriod, `got ${summaryOrderCount}`);
+    // 반환 구조 실측(marketingScopeInsightEngine.ts:63, :328, :641):
+    //   { handled, result, artifact, reply, suppressChart }
+    //   result.insightPack.categoryBreakdown[] = { category, revenue, revenueShare, orderCount, averageOrderValue, couponUsageRate }
+    //   category 라벨은 `카테고리 ${code}` 형식(:320)
+    const rows = r?.result?.insightPack?.categoryBreakdown ?? [];
+    const catA = rows.find((x) => String(x.category ?? '').includes('catA'));
+    if (!catA) {
+      ok('T5 scopeInsight catA 주문수 = 2 (라인 수 아님)', false,
+        `categoryBreakdown에 catA 없음 — 반환 항목: ${rows.map((x) => x.category).join(', ') || '(없음)'}`);
+    } else {
+      ok('T5 scopeInsight catA 주문수 = 2 (라인 수 아님)',
+        Number(catA.orderCount) === GOLDEN.category.catA.orderCount, `got ${catA.orderCount}`);
+      ok('T5-b scopeInsight catA 객단가 = 45,000 (라인당 아님)',
+        Number(catA.averageOrderValue) === Math.round(GOLDEN.category.catA.lineRevenue / GOLDEN.category.catA.orderCount),
+        `got ${catA.averageOrderValue}`);
+    }
   } catch (e) { skipped('T5 scopeInsight catA 주문수', `실행 실패: ${e.message}`); }
 }
 
@@ -286,6 +338,48 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
         `revenue비중반환=${isRevenueShare} | reply: ${reply.slice(0, 120).replace(/\n/g, ' ')}`);
     }
   } catch (e) { skipped('T8 quantity share', `실행 실패: ${e.message}`); }
+}
+
+// ── T9~T11. 카테고리 출처 계약 (라인 우선 → 상품인덱스 보충 → uncategorized) ──
+{
+  const nowMs = Date.parse('2025-04-01T00:00:00Z');
+  // (a) planner
+  try {
+    const res = planner.executeMarketingIntelligencePlan({
+      plan: mkPlan('category', 'revenue'), orders: CATSRC_ORDERS, products: CATSRC_PRODUCTS, nowMs,
+    });
+    const keys = [...pointsOf(res).keys()].join(' | ');
+    ok(`T9-a planner: 라인 카테고리(catLINE)를 기준으로 사용`, keys.includes('catLINE'),
+      `got [${keys}] — catINDEX가 보이면 상품인덱스를 쓴다는 뜻`);
+    ok(`T10-a planner: 라인에 없으면 상품인덱스(catFALLBACK)로 보충`, keys.includes('catFALLBACK'), `got [${keys}]`);
+    ok(`T11-a planner: 양쪽 모두 없으면 미분류`, /미분류|uncategorized/.test(keys), `got [${keys}]`);
+  } catch (e) { ok('T9~T11-a planner 카테고리 출처', false, `실행 실패: ${e.message}`); }
+
+  // (b) analyticsQueryEngine
+  try {
+    const r = analytics.runAnalyticsQuery(
+      { orders: CATSRC_ORDERS, reviews: [], inquiries: [], source: { dataKind: 'synthetic' } },
+      { metric: 'categoryRevenue', startDate: PERIOD.start, endDate: PERIOD.end },
+    );
+    const keys = (r.rows ?? []).map((x) => String(x.label ?? x.key ?? '')).join(' | ');
+    ok('T9-b analyticsQueryEngine: 라인 카테고리(catLINE) 사용', keys.includes('catLINE'), `got [${keys}]`);
+    ok('T10-b analyticsQueryEngine: 라인에 없으면 상품인덱스(catFALLBACK)로 보충',
+      keys.includes('catFALLBACK'), `got [${keys}] — 상품 인덱스를 참조하지 않으면 실패한다`);
+    ok('T11-b analyticsQueryEngine: 양쪽 모두 없으면 미분류',
+      /미분류|uncategorized/.test(keys), `got [${keys}]`);
+  } catch (e) { ok('T9~T11-b analyticsQueryEngine 카테고리 출처', false, `실행 실패: ${e.message}`); }
+
+  // (c) scopeInsight
+  try {
+    const r = scope.buildMarketingScopeInsightResponse({
+      message: '카테고리별 매출 알려줘', orders: CATSRC_ORDERS, products: CATSRC_PRODUCTS,
+      reviews: [], inquiries: [], nowMs,
+    });
+    const keys = (r?.result?.insightPack?.categoryBreakdown ?? []).map((x) => x.category).join(' | ');
+    ok('T9-c scopeInsight: 라인 카테고리(catLINE) 사용', keys.includes('catLINE'), `got [${keys}]`);
+    ok('T10-c scopeInsight: 라인에 없으면 상품인덱스(catFALLBACK)로 보충', keys.includes('catFALLBACK'), `got [${keys}]`);
+    ok('T11-c scopeInsight: 양쪽 모두 없으면 미분류', /미분류|uncategorized/.test(keys), `got [${keys}]`);
+  } catch (e) { ok('T9~T11-c scopeInsight 카테고리 출처', false, `실행 실패: ${e.message}`); }
 }
 
 // ── 출력 ─────────────────────────────────────────────────────────────────────
