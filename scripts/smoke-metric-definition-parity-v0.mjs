@@ -12,8 +12,9 @@
  *   - 기간 필터: 시작/종료 **양쪽 경계**와 **기간 밖** 자료를 모두 포함한다.
  *   - 정책 미확정 표현(paid:'Y' 등)은 fixture에서 배제한다. paid:true만 사용.
  *
- * 이 스크립트는 **현재 코드의 결함을 재현**하는 것이 목적이므로 FAIL이 정상이다.
- * 수정 후 전부 PASS가 되면 그때 코드와 함께 main에 병합한다.
+ * 상태: **회귀검사**. (초기에는 결함 재현용 RED 하네스였고 그때는 FAIL이 정상이었다.)
+ *   과거 결함을 재현했던 golden fixture를 그대로 보존해 재발을 막는 것이 현재 역할이다.
+ *   병합 기준은 **fail 0 / skip 0**이며, FAIL 또는 SKIP은 **병합 차단**이다.
  *
  * 실행: node scripts/smoke-metric-definition-parity-v0.mjs
  */
@@ -927,6 +928,36 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
       String(gRev?.reply ?? '').includes('첫구매 여부 정보가 없는 주문'), `reply: ${gReply.slice(0, 200)}`);
     ok('T22-5p unknown=0이면 미분류 안내 없음',
       !String(g2?.reply ?? '').includes('첫구매 여부 정보가 없는 주문'), '거짓 안내 표시됨');
+    // ── C-8 안내가 operation·축 위치와 무관하게 동일 적용되는가 (reply + warnings) ──
+    const NOTE = '미분류는 고객 유형이 아니라 첫구매 여부 정보가 없는 주문이며, 전체 실적에는 포함됩니다.';
+    const noteIn = (r) => ({
+      reply: String(r?.reply ?? '').includes(NOTE),
+      narr: (r?.artifact?.narrative?.warnings ?? []).some((w) => String(w).includes(NOTE)),
+      spec: (r?.artifact?.chartSpec?.warnings ?? []).some((w) => String(w).includes(NOTE)),
+    });
+    const nRank = noteIn(gRev);
+    ok('T22-5q rank: reply·narrative.warnings·chartSpec.warnings 모두 안내',
+      nRank.reply && nRank.narr && nRank.spec, JSON.stringify(nRank));
+    const nShare = noteIn(run({ metric: 'revenue', groupBy: 'customerType', operation: 'share' }));
+    ok('T22-5r share: reply·warnings 모두 안내', nShare.reply && nShare.narr && nShare.spec, JSON.stringify(nShare));
+    const nSeries = noteIn(sRes);
+    ok('T22-5s seriesBy(groupBy=month): reply·warnings 모두 안내',
+      nSeries.reply && nSeries.narr && nSeries.spec, JSON.stringify(nSeries));
+    // unknown=0이면 세 경로 모두 안내 없음
+    const z1 = noteIn(g2);
+    const z2 = noteIn(run({ metric: 'revenue', groupBy: 'customerType', operation: 'share' }, only2));
+    const z3 = noteIn(s2);
+    ok('T22-5t unknown=0: rank·share·seriesBy 세 경로 모두 안내 없음',
+      !z1.reply && !z1.narr && !z1.spec && !z2.reply && !z2.narr && !z2.spec && !z3.reply && !z3.narr && !z3.spec,
+      `${JSON.stringify(z1)} ${JSON.stringify(z2)} ${JSON.stringify(z3)}`);
+    // memberGroup 축의 '미분류' 라벨은 customerType 경고를 유발하지 않는다.
+    const mg = run({ metric: 'revenue', groupBy: 'memberGroup', operation: 'rank' });
+    const nMg = noteIn(mg);
+    ok('T22-5u memberGroup에 미분류가 있어도 customerType 경고 없음',
+      !nMg.reply && !nMg.narr && !nMg.spec, `reply: ${String(mg?.reply ?? '').replace(/\n/g, ' ').slice(0, 110)}`);
+    // 안내가 중복 출력되지 않는다(rank 전용 코드 잔존 방지)
+    const occurrences = String(gRev?.reply ?? '').split(NOTE).length - 1;
+    ok('T22-5v 안내가 한 번만 출력됨(중복 없음)', occurrences === 1, `등장 ${occurrences}회`);
     ok('T22-5n 입력 순서를 바꿔도 동률 정렬이 결정적',
       String(reversed?.reply ?? '') === String(normal?.reply ?? ''),
       `정순: ${String(normal?.reply ?? '').replace(/\n/g, ' ').slice(0, 90)} | 역순: ${String(reversed?.reply ?? '').replace(/\n/g, ' ').slice(0, 90)}`);
@@ -1140,4 +1171,5 @@ for (const [st, name, detail] of results) {
   console.log(`  ${st}  ${name}${detail ? `  — ${detail}` : ''}`);
 }
 console.log(`\n결과: ${pass} pass / ${fail} fail / ${skip} skip`);
-console.log('※ 이 스크립트는 현재 결함을 재현하는 것이 목적이므로 FAIL이 정상이다.');
+console.log('※ 회귀검사 하네스 — 병합 기준은 fail 0 / skip 0. FAIL 또는 SKIP은 병합 차단이다.');
+if (fail > 0 || skip > 0) process.exitCode = 1;

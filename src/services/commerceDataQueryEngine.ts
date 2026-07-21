@@ -285,14 +285,21 @@ function groupedSpec(t: Table, plan: QueryPlan, title: string, subtitle: string)
     available: t.groups.length > 0 && t.series.length > 0, evidence: [], warnings: []
   };
 }
-function artifactOf(cs: MarketingChartSpec, reply: string, bullets: string[], nowMs: number): MarketingChatChartArtifact {
+function artifactOf(cs: MarketingChartSpec, reply: string, bullets: string[], nowMs: number, warnings: string[] = []): MarketingChatChartArtifact {
   return {
     type: 'marketing_chart_spec', source: 'marketingScopeInsightEngine', intent: 'commerce_data_query',
-    plan: {}, request: cs.request, chartSpec: cs,
-    narrative: { title: cs.title, summary: reply.split('\n')[0] || cs.title, bullets, evidence: [], warnings: [] },
+    plan: {}, request: cs.request, chartSpec: { ...cs, warnings: [...(cs.warnings ?? []), ...warnings] },
+    narrative: { title: cs.title, summary: reply.split('\n')[0] || cs.title, bullets, evidence: [], warnings },
     evidence: [], createdAt: new Date(nowMs).toISOString()
   };
 }
+
+// C-8: customerType 축에 미분류가 있을 때의 공용 안내.
+//   operation(rank/share/trend/extremes…)이나 축 위치(groupBy/seriesBy)에 따라 달라지면 안 되므로
+//   판정과 문구를 한 곳에 둔다. 판단은 표시 라벨이 아니라 key === 'unknown' 존재로 한다.
+//   memberGroup 등 다른 축의 '미분류' 라벨은 이 경고를 발생시키지 않는다.
+export const CUSTOMER_TYPE_UNKNOWN_NOTE =
+  '미분류는 고객 유형이 아니라 첫구매 여부 정보가 없는 주문이며, 전체 실적에는 포함됩니다.';
 
 // ── 전 팀 공용 진입점: 이해(LLM→QueryPlan) → 실행. 열린 질문이면 null(호출부가 열린 경로). ──
 export async function answerCommerceQuestion(
@@ -335,6 +342,14 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
   const table = tabulate(plan, dataset, range, names);
   if (!table.groups.length) return { handled: true, reply: `${scope} 기준 해당하는 데이터가 없습니다.`, suppressChart: true };
 
+  // C-8: 미분류 안내 단일 판정 — groupBy·seriesBy 어느 위치든, operation과 무관하게 동일하게 적용한다.
+  const hasCustomerTypeUnknown =
+    (plan.groupBy === 'customerType' && table.groups.some((g) => g.key === 'unknown'))
+    || (plan.seriesBy === 'customerType' && table.series.some((s) => s.key === 'unknown'));
+  const axisWarnings: string[] = hasCustomerTypeUnknown ? [CUSTOMER_TYPE_UNKNOWN_NOTE] : [];
+  /** 응답 본문 끝에 공용 안내를 한 번만 붙인다(중복 방지). */
+  const withNote = (r: string): string => (hasCustomerTypeUnknown ? `${r}\n\n※ ${CUSTOMER_TYPE_UNKNOWN_NOTE}` : r);
+
   // ── seriesBy 있으면 grouped 비교(연도/세그먼트별 색). trend/compare 등 모두 여기로. ──
   if (plan.seriesBy && table.series.length >= 2) {
     const rows = sortNumericKey(table.groups.map((g) => ({ key: g.key, label: g.label, value: 0, acc: g.total })));
@@ -349,7 +364,7 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     const reply = [`${scope} ${gLabel}별 ${label}을(를) ${table.series.map((s) => s.label).join(' vs ')}로 비교했습니다.`, ...bullets].join('\n');
     const cs = groupedSpec(table, plan, `${scope} ${label} 비교`, `${gLabel}별 · ${table.series.map((s) => s.label).join(' vs ')}`);
     void rows;
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
+    return { handled: true, reply: withNote(reply), artifact: chartOn ? artifactOf(cs, withNote(reply), bullets, nowMs, axisWarnings) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
   const rows = rowsSingleSeries(table, metric);
@@ -361,7 +376,7 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     const detail = src === 'orders'
       ? ` (매출 ${won(a.rev)} · 주문 ${cnt(a.orders.size)} · 판매 ${qtyStr(a.qty)} · 객단가 ${won(metricValue(a, 'averageOrderValue'))})`
       : src === 'reviews' ? ` (리뷰 ${cnt(a.n)} · 평균 ${fmtMetric(metricValue(a, 'averageRating'), 'averageRating')})` : ` (문의 ${cnt(a.n)})`;
-    return { handled: true, reply: `${scope} ${label}: ${fmtMetric(v, metric)}${detail}.`, suppressChart: true };
+    return { handled: true, reply: withNote(`${scope} ${label}: ${fmtMetric(v, metric)}${detail}.`), suppressChart: true };
   }
 
   // ── extremes: 최고 + 최저 2개 ──
@@ -371,7 +386,7 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     const lo = act.reduce((a, b) => (b.value < a.value ? b : a));
     const reply = [`${scope} ${label} 최고·최저입니다.`, `최고: ${hi.label} ${fmtMetric(hi.value, metric)}`, `최저: ${lo.label} ${fmtMetric(lo.value, metric)}`, `차이: ${fmtMetric(hi.value - lo.value, metric)}`].join('\n');
     const cs = rankedBarSpec([hi, lo], metric, `${scope} ${label} 최고·최저`, '최고 vs 최저', false);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, reply.split('\n').slice(1), nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
+    return { handled: true, reply: withNote(reply), artifact: chartOn ? artifactOf(cs, withNote(reply), reply.split('\n').slice(1), nowMs, axisWarnings) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
   // ── argmax / argmin ──
@@ -384,7 +399,7 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     const reply = [`${scope} ${label}이(가) 가장 ${min ? '낮았던' : '높았던'} 것은 ${ext.label}(${fmtMetric(ext.value, metric)})입니다.`, ...bullets].join('\n');
     const isTime = plan.groupBy === 'month';
     const cs = isTime ? comboTimeSpec(rows, metric, `${scope} ${label} 추이`, `월별 · ${label}`) : rankedBarSpec(top, metric, `${scope} ${label} ${min ? '최저' : '최고'}`, label, false);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
+    return { handled: true, reply: withNote(reply), artifact: chartOn ? artifactOf(cs, withNote(reply), bullets, nowMs, axisWarnings) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
   // ── trend: 단일 series 추이(세로 combo) ──
@@ -395,7 +410,7 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     const lo = act.reduce((a, b) => (b.value < a.value ? b : a));
     const reply = `${scope} ${label} 추이입니다. 최고 ${hi.label}(${fmtMetric(hi.value, metric)}), 최저 ${lo.label}(${fmtMetric(lo.value, metric)}).`;
     const cs = comboTimeSpec(t, metric, `${scope} ${label} 추이`, `${plan.groupBy ? AXIS_LABEL[plan.groupBy] : '기간'}별 · ${label}`);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, [], nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
+    return { handled: true, reply: withNote(reply), artifact: chartOn ? artifactOf(cs, withNote(reply), [], nowMs, axisWarnings) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
   // C-7 계약: 분모·분자·정렬·본문 원값/단위가 모두 **basisMetric 하나**를 따른다.
@@ -421,7 +436,7 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
     const reply = [`${scope} ${plan.groupBy ? AXIS_LABEL[plan.groupBy] : ''} ${METRIC_LABEL[basisMetric]} 비중입니다.`, ...bullets].join('\n');
     const shareRows: Row[] = withShare.map((r) => ({ key: r.key, label: r.label, value: Math.round(r.value * 1000) / 10, acc: r.acc }));
     const cs = rankedBarSpec(shareRows, 'share', `${scope} ${METRIC_LABEL[basisMetric]} 비중`, '비중(%)', true);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
+    return { handled: true, reply: withNote(reply), artifact: chartOn ? artifactOf(cs, withNote(reply), bullets, nowMs, axisWarnings) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 
   // ── rank(+join 보조 지표): 순위 ──
@@ -451,12 +466,8 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
       return `${base}${extra}${shr}`;
     });
     const head = joinable ? `${scope} ${label} 상위 항목을 ${secLabel} 순으로 정렬했습니다.` : `${scope} ${label} ${plan.sort === 'asc' ? '하위' : '상위'} 순위입니다.`;
-    // C-8: customerType 축에 미분류가 있으면 정상 고객 유형이 아님을 명시한다.
-    //   판단은 표시 라벨이 아니라 key === 'unknown' 존재 여부로 한다.
-    const unknownNote = plan.groupBy === 'customerType' && ranked.some((r) => r.key === 'unknown')
-      ? ['', '※ 미분류는 고객 유형이 아니라 첫구매 여부 정보가 없는 주문이며, 전체 실적에는 포함됩니다.']
-      : [];
-    const reply = [head, ...bullets, ...unknownNote].join('\n');
+    // C-8 안내는 rank 전용이 아니라 공용 withNote가 담당한다(중복 방지).
+    const reply = [head, ...bullets].join('\n');
     // join이면 보조 지표(매출) 막대가 더 유의미 → 보조 지표로 차트.
     // join: 막대는 보조 지표(매출)지만, 1차 지표(문의수)를 데이터라벨로 각 막대에 노출.
     const chartRows: Row[] = joinable
@@ -464,6 +475,6 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
       : ranked;
     const chartMetric = joinable ? plan.secondaryMetric! : metric;
     const cs = rankedBarSpec(chartRows, chartMetric, `${scope} ${joinable ? secLabel : label} 순위`, joinable ? `${label} 상위 중 ${secLabel}` : label, false);
-    return { handled: true, reply, artifact: chartOn ? artifactOf(cs, reply, bullets, nowMs) : undefined, suppressChart: !!plan.chartSuppressed };
+    return { handled: true, reply: withNote(reply), artifact: chartOn ? artifactOf(cs, withNote(reply), bullets, nowMs, axisWarnings) : undefined, suppressChart: !!plan.chartSuppressed };
   }
 }
