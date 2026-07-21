@@ -11,6 +11,7 @@
 
 import { getMarketingTimeBucketKey, getMarketingDimensionKey, type MarketingTimeBucket, type MarketingCrossTabDimension, type MarketingCrossTabRequest } from './marketingTemporalCrosstab';
 import type { MarketingChartSpec, MarketingChartSeries, MarketingChatChartArtifact, MarketingChartNarrative } from './marketingChatChartSpec';
+import { countOrderOnce, seenOrdersFor, resolveOrderKey, lineCategoryKey, categoryLabelOf } from './lineAxisAggregation';
 
 // ── plan/result 타입 ──────────────────────────────────────────────────────────
 export type MarketingPlanGoal = 'compare' | 'trend' | 'rank' | 'share' | 'relationship' | 'conversion' | 'diagnose' | 'summary';
@@ -508,26 +509,33 @@ const buildPlanChartSpec = (plan: MarketingIntelligencePlan, orders: Order[], pr
     // P0-3/4: 상품/카테고리/브랜드 = 라인(goods) 기반 집계. series=goods 차원, bucket=시간(또는 전체).
     const prodIndex = new Map<string, Record<string, unknown>>();
     for (const p of products) { const id = strv(p.productId) || strv(p.goodsNo); if (id) prodIndex.set(id, p); }
-    const goodsKey = (goodsNo: string, goodsName?: string): { key: string; label: string } => {
+    // C-1: 카테고리는 주문 라인의 categoryCode만 쓴다(현재 productIndex 재조인 금지).
+    //      상품/브랜드 축은 기존대로 상품 인덱스에서 라벨을 보강한다.
+    const goodsKey = (goodsNo: string, goodsName?: string, line?: Record<string, unknown>): { key: string; label: string } => {
       const p = prodIndex.get(goodsNo);
       if (dim === 'product') return { key: goodsNo || 'unknown', label: strv(p?.productName) || goodsName || `상품 ${goodsNo || '미상'}` };
-      if (dim === 'category') { const c = strv(p?.categoryCode) || strv(p?.allCategoryCode) || 'uncategorized'; return { key: c, label: c === 'uncategorized' ? '미분류' : `카테고리 ${c}` }; }
+      if (dim === 'category') { const c = lineCategoryKey(line); return { key: c, label: categoryLabelOf(c) }; }
       const b = strv(p?.brandCode) || 'unknown'; return { key: b, label: b !== 'unknown' ? `브랜드 ${b}` : '브랜드 미연동' };
     };
-    for (const o of counted) {
+    // C-5: 라인 합산 지표와 주문 중복 제거 지표를 분리한다. 공용 규칙은 lineAxisAggregation에 있다.
+    const seenOrdersByCell = new Map<string, Set<string>>();
+    counted.forEach((o, orderIndex) => {
       const cb = calBucket(strv(o.orderDate));
-      const oCoupon = hasCoupon(o), oReward = usesReward(o), oFirst = boolv(o.isFirstPurchase);
+      const flags = { coupon: hasCoupon(o), reward: usesReward(o), first: boolv(o.isFirstPurchase) };
+      const orderKey = resolveOrderKey((o as Record<string, unknown>).orderNo, orderIndex);
       for (const l of (o.lines || []) as Record<string, unknown>[]) {
         const g = strv(l.goodsNo);
-        const k = goodsKey(g, strv(l.goodsName));
+        const k = goodsKey(g, strv(l.goodsName), l);
         const acc = cellAcc(k.key, k.label, cb.key, cb.label);
         const lr = numv(l.lineRevenue);
-        acc.revenue += lr; acc.lineRevenue += lr; acc.orderCount += 1; acc.quantity += numv(l.quantity);
-        if (oCoupon) acc.couponOrders += 1; if (oReward) acc.rewardOrders += 1;
-        if (oFirst) { acc.firstOrders += 1; acc.firstRevenue += lr; } else { acc.repeatOrders += 1; acc.repeatRevenue += lr; }
+        // 라인 합산
+        acc.revenue += lr; acc.lineRevenue += lr; acc.quantity += numv(l.quantity);
+        if (flags.first) acc.firstRevenue += lr; else acc.repeatRevenue += lr;
+        // 주문 기반(집계칸당 한 번만)
+        countOrderOnce(acc, seenOrdersFor(seenOrdersByCell, `${k.key} ${cb.key}`), orderKey, flags);
         totalRevenue += lr;
       }
-    }
+    });
     // 문의/리뷰 merge — 같은 goods key + 기간 내. 시간버킷이 있으면 createdAt으로 분해.
     const mergeRows = (rows: Record<string, unknown>[], kind: 'inquiry' | 'review'): void => {
       for (const r of rows) {

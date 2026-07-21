@@ -173,6 +173,37 @@ const assertCategorySource = (engineLabel, actualMap) => {
   }
 };
 
+// ── C-5 라인축 집계 검증용 별도 데이터셋 (기존 정답표 불변) ──────────────────
+// 두 주문 모두 같은 카테고리(catA)에 **복수 옵션 라인**을 가진다.
+//   L1: 쿠폰·리워드·첫구매  / P1 옵션 2라인
+//   L2: 없음·재구매        / P2 옵션 2라인
+// → catA 집계칸의 주문 기반 지표는 전부 2가 아니라 "주문 수" 기준이어야 한다.
+const LINEAGG_ORDERS = [
+  {
+    orderNo: 'L1', orderDate: '2025-03-05', paid: true, canceled: false, memberKey: 'l1',
+    totalAmount: 40000, productRevenueByLines: 40000,
+    discountSummary: { hasCoupon: true, totalCouponDiscountAmount: 3000 },
+    useMileageAmount: 500, isFirstPurchase: true,
+    lines: [line('P1', '상품1', 'catA', 1, 10000), line('P1', '상품1', 'catA', 3, 30000)],
+  },
+  {
+    orderNo: 'L2', orderDate: '2025-03-06', paid: true, canceled: false, memberKey: 'l2',
+    totalAmount: 50000, productRevenueByLines: 50000,
+    isFirstPurchase: false,
+    lines: [line('P2', '상품2', 'catA', 2, 20000), line('P2', '상품2', 'catA', 3, 30000)],
+  },
+];
+const LINEAGG_GOLDEN = {
+  orderCount: 2,       // L1, L2 — 라인 기준이면 4
+  couponOrders: 1,     // L1만 — 라인 기준이면 2
+  rewardOrders: 1,     // L1만 — 라인 기준이면 2
+  firstOrders: 1,      // L1만 — 라인 기준이면 2
+  repeatOrders: 1,     // L2만 — 라인 기준이면 2
+  couponUsageRate: 50, // 1/2 — 분자·분모가 함께 부풀면 그대로 50이라 이 값만으로는 못 잡는다
+  revenue: 90000,      // 라인 합산 (변경 없음)
+  quantity: 9,         // 라인 합산 (변경 없음)
+};
+
 const REVIEWS = [
   { goodsNo: 'P1', rating: 5, createdAt: '2025-03-10' },   // 기간 안
   { goodsNo: 'P1', rating: 2, createdAt: '2025-02-20' },   // 기간 밖(이전)
@@ -400,6 +431,86 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
     ok('T8-d 대조군: revenue share는 원·78.3% 유지',
       /78(\.[0-9])?%/.test(rev) && /원/.test(rev), `reply: ${rev.slice(0, 130)}`);
   } catch (e) { skipped('T8 quantity share', `실행 실패: ${e.message}`); }
+}
+
+// ── T14. planner 주문 기반 5개 지표 각각 (C-5) ───────────────────────────────
+{
+  const nowMs = Date.parse('2025-04-01T00:00:00Z');
+  const catAValue = (metric) => {
+    const res = planner.executeMarketingIntelligencePlan({
+      plan: mkPlan('category', metric), orders: LINEAGG_ORDERS, products: PRODUCTS, nowMs,
+    });
+    const hit = [...pointsOf(res).entries()].find(([k]) => k.includes('catA'));
+    return hit ? hit[1] : null;
+  };
+  try {
+    const oc = catAValue('orderCount');
+    const orderCount = oc ? oc.value : -1;
+    ok('T14-1 planner catA orderCount = 2 (주문 기준)', orderCount === LINEAGG_GOLDEN.orderCount, `got ${orderCount}`);
+
+    // couponOrders / rewardOrders는 비율×주문수로 역산한다(metricFromAcc가 절대값을 직접 노출하지 않음).
+    const cRate = catAValue('couponUsageRateWithinOrders');
+    const rRate = catAValue('rewardUsageRateWithinOrders');
+    const couponOrders = cRate ? Math.round((cRate.value * cRate.orderCount) / 100) : -1;
+    const rewardOrders = rRate ? Math.round((rRate.value * rRate.orderCount) / 100) : -1;
+    ok('T14-2 planner catA couponOrders = 1 (주문 기준)', couponOrders === LINEAGG_GOLDEN.couponOrders,
+      `got ${couponOrders} (rate ${cRate?.value}% × orderCount ${cRate?.orderCount})`);
+    ok('T14-3 planner catA rewardOrders = 1 (주문 기준)', rewardOrders === LINEAGG_GOLDEN.rewardOrders,
+      `got ${rewardOrders} (rate ${rRate?.value}% × orderCount ${rRate?.orderCount})`);
+
+    const fo = catAValue('firstPurchaseOrderCount');
+    const ro = catAValue('repeatPurchaseOrderCount');
+    ok('T14-4 planner catA firstOrders = 1 (주문 기준)', (fo ? fo.value : -1) === LINEAGG_GOLDEN.firstOrders, `got ${fo?.value}`);
+    ok('T14-5 planner catA repeatOrders = 1 (주문 기준)', (ro ? ro.value : -1) === LINEAGG_GOLDEN.repeatOrders, `got ${ro?.value}`);
+
+    // 라인 합산 지표는 그대로여야 한다(과잉 수정 방지 가드).
+    const rev = catAValue('revenue');
+    const qty = catAValue('quantity');
+    ok('T14-6 planner catA revenue = 90,000 (라인 합산 유지)', (rev ? rev.value : -1) === LINEAGG_GOLDEN.revenue, `got ${rev?.value}`);
+    ok('T14-7 planner catA quantity = 9 (라인 합산 유지)', (qty ? qty.value : -1) === LINEAGG_GOLDEN.quantity, `got ${qty?.value}`);
+  } catch (e) { ok('T14 planner 주문 기반 5지표', false, `실행 실패: ${e.message}`); }
+}
+
+// ── T15/T16. 공용 집계 함수 경계조건 (lineAxisAggregation) ───────────────────
+{
+  const nowMs = Date.parse('2025-04-01T00:00:00Z');
+  const catCount = (orders, catKey) => {
+    const res = planner.executeMarketingIntelligencePlan({
+      plan: mkPlan('category', 'orderCount'), orders, products: [], nowMs,
+    });
+    const hit = [...pointsOf(res).entries()].find(([k]) => k.includes(catKey));
+    return hit ? hit[1].orderCount : -1;
+  };
+
+  // T15-a: orderNo가 빈 **한 주문**의 같은 카테고리 복수 라인 → 주문수 1
+  //        (resolveOrderKey 순번이 라인마다 새로 만들어지면 2가 된다)
+  const emptyOneOrder = [{
+    orderNo: '', orderDate: '2025-03-07', paid: true, canceled: false,
+    totalAmount: 20000, productRevenueByLines: 20000,
+    lines: [line('E1', '상품E', 'catE', 1, 10000), line('E1', '상품E', 'catE', 1, 10000)],
+  }];
+  ok('T15-a orderNo 빈 주문 1건의 같은 카테고리 2라인 → 주문수 1',
+    catCount(emptyOneOrder, 'catE') === 1, `got ${catCount(emptyOneOrder, 'catE')}`);
+
+  // T15-b: orderNo가 빈 **서로 다른 두 주문** → 주문수 2
+  //        (빈 문자열을 공유 키로 쓰면 1로 합쳐진다)
+  const emptyTwoOrders = [
+    { orderNo: '', orderDate: '2025-03-07', paid: true, canceled: false, totalAmount: 10000, productRevenueByLines: 10000, lines: [line('E1', '상품E', 'catE', 1, 10000)] },
+    { orderNo: '', orderDate: '2025-03-08', paid: true, canceled: false, totalAmount: 10000, productRevenueByLines: 10000, lines: [line('E1', '상품E', 'catE', 1, 10000)] },
+  ];
+  ok('T15-b orderNo 빈 서로 다른 주문 2건 → 주문수 2',
+    catCount(emptyTwoOrders, 'catE') === 2, `got ${catCount(emptyTwoOrders, 'catE')}`);
+
+  // T16: 한 주문이 두 카테고리에 걸침 → 각 칸 주문수 1, 전체 유효주문 1
+  //      (seenOrdersFor가 전체 공용 Set이면 두 번째 카테고리가 0이 된다)
+  const crossOrder = [{
+    orderNo: 'M1', orderDate: '2025-03-09', paid: true, canceled: false,
+    totalAmount: 30000, productRevenueByLines: 30000,
+    lines: [line('X1', '상품X', 'catA', 1, 10000), line('X2', '상품Y', 'catB', 1, 20000)],
+  }];
+  ok('T16-a 한 주문이 catA·catB에 걸침 → catA 주문수 1', catCount(crossOrder, 'catA') === 1, `got ${catCount(crossOrder, 'catA')}`);
+  ok('T16-b 같은 주문 → catB 주문수 1 (공용 Set이면 0)', catCount(crossOrder, 'catB') === 1, `got ${catCount(crossOrder, 'catB')}`);
+  ok('T16-c 전체 유효 주문수는 1', contract.countValidOrders(crossOrder) === 1, `got ${contract.countValidOrders(crossOrder)}`);
 }
 
 // ── T9~T11. 카테고리 출처 계약 (라인 우선 → 상품인덱스 보충 → uncategorized) ──
