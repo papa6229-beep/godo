@@ -195,11 +195,18 @@ for (const l of (o.lines || [])) {
 | `false` | 재구매 (`repeatOrders`, `repeatRevenue`) |
 | `undefined` | **미분류 — 둘 다 증가시키지 않는다.** 단 `orderCount`에는 포함 |
 
-**현재 상태**: `boolv(o.isFirstPurchase)` 패턴이 `undefined`를 `false`(재구매)로 뭉갠다 →
-`marketingIntelligencePlanner.ts:404-410`(주문 축 `addOrder`), `marketingScopeInsightEngine.ts`(firstRepeat 분류) 등에 잔존.
+**현재 상태 — 잔존 소비자 전수(RC-1 병합 전 정리 대상)**
 
-**이번 조치 범위**: 공용 함수 `lineAxisAggregation.resolveFirstPurchase()`와 A-1 goodsMode 경로만 3상태로 보정했다.
-**나머지 호출부는 RC-1 후속 항목으로 남긴다** — 공용 함수가 오류를 확산시키지 않게 하는 것이 이번 목적이다.
+| # | 소비자 | 위치 |
+|---|---|---|
+| 1 | `marketingIntelligencePlanner` 일반(주문 축) 집계 | `addOrder` 내 `boolv(o.isFirstPurchase)` |
+| 2 | `marketingScopeInsightEngine` 필터·firstRepeat 분류 | `passFilter` / `byOrderDim` firstRepeat |
+| 3 | `marketingAnalysisFacts` | 첫구매/재구매 분류 |
+| 4 | `marketingAnalysisExecutor` | 첫구매/재구매 분류 |
+| 5 | `commerceDataQueryEngine` 필터·customerType 축 | customerType 분류 |
+
+**완료된 범위**: 공용 함수 `lineAxisAggregation.resolveFirstPurchase()` + A-1 planner goodsMode + A-2 scope 라인축.
+**남은 5개 소비자는 B에 섞지 않고 RC-1 병합 전 별도 조각으로 테스트 후 정리한다.**
 
 ## C-9. 집계 키 충돌 방지 (신설)
 
@@ -207,3 +214,13 @@ for (const l of (o.lines || [])) {
   `cellRegistryKey(axisKind, axisKey, bucketKey)` = `JSON.stringify([...])` 사용.
 - **축 종류(`axisKind`)를 반드시 포함** — A-2처럼 category·product를 한 실행에서 함께 집계할 때 같은 문자열 키가 충돌한다.
 - 주문 키: 실제 주문번호와 대체키에 서로 다른 namespace(`ord:` / `idx:`)를 쓴다.
+
+---
+
+## 병합 조건 (RC-1 → main)
+
+1. 지표 정합성 하네스 **의도된 FAIL 0건**
+2. **C-8 전체 소비자 3상태 정합** (위 5개 포함)
+3. **NUL 가드 통과** (`smoke-no-nul-bytes-v0`)
+4. 기존 위양성 스모크(`smoke-marketing-dashboard-dynamic-smart-chart-render-v0`)를 **수정 또는 공식 격리**하여 필수 검증이 **exit 0**으로 끝날 것
+5. `tsc -b` · `npm run build` · 신규 lint 0

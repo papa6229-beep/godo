@@ -40,6 +40,7 @@ export interface AnalyticsCustomer {
   totalPaidAmount: number;
 }
 export interface AnalyticsReview {
+  createdAt?: string; // 'YYYY-MM-DD...' — 기간 필터용(C-6). 없으면 기간 지정 시 제외된다.
   memberKey?: string;
   goodsNo?: string;
   categoryCode?: string;
@@ -49,6 +50,7 @@ export interface AnalyticsReview {
   topic: string;
 }
 export interface AnalyticsInquiry {
+  createdAt?: string; // 'YYYY-MM-DD...' — 기간 필터용(C-6). 없으면 기간 지정 시 제외된다.
   memberKey?: string;
   goodsNo?: string;
   categoryCode?: string;
@@ -235,6 +237,22 @@ const inPeriod = (date: string, start?: string, end?: string): boolean => {
   if (end && d > ymd(end)) return false;
   return true;
 };
+
+// C-6 기간 계약(리뷰/문의 등 날짜가 optional인 자료용).
+//   · 기간 조건이 하나도 없으면 날짜가 없어도 포함한다.
+//   · startDate 또는 endDate 중 하나라도 지정되면 날짜 누락·형식 오류 자료는 제외한다.
+//     (기존 inPeriod는 end만 지정된 경우 빈 날짜가 통과해 잘못 포함됐다)
+//   · 시작일·종료일 경계값은 포함한다.
+const isValidYmd = (s: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(s);
+const inPeriodStrict = (date: string | undefined, start?: string, end?: string): boolean => {
+  const hasRange = Boolean(start || end);
+  const d = ymd(date || '');
+  if (!hasRange) return true;
+  if (!isValidYmd(d)) return false;
+  if (start && d < ymd(start)) return false;
+  if (end && d > ymd(end)) return false;
+  return true;
+};
 const weekKey = (d: string): string => {
   const x = ymd(d);
   const dt = new Date(Number(x.slice(0, 4)), Number(x.slice(5, 7)) - 1, Number(x.slice(8, 10)));
@@ -380,8 +398,9 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
   }
   // 기간 필터
   const orders = dataset.orders.filter((o) => inPeriod(o.orderDate, spec.startDate, spec.endDate) && orderInFilters(o, spec.filters));
-  const reviews = dataset.reviews || [];
-  const inquiries = dataset.inquiries || [];
+  // C-6: 리뷰/문의도 기간 필터를 적용한다(기존에는 원본 배열을 그대로 써서 기간 무관 집계였다).
+  const reviews = (dataset.reviews || []).filter((r) => inPeriodStrict(r.createdAt, spec.startDate, spec.endDate));
+  const inquiries = (dataset.inquiries || []).filter((q) => inPeriodStrict(q.createdAt, spec.startDate, spec.endDate));
   const customers = dataset.customers || [];
 
   const noData = (need: string): AnalyticsQueryResult =>

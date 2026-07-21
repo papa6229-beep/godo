@@ -542,6 +542,58 @@ for (const [dim, goldenMap, label] of [['product', GOLDEN.product, '상품'], ['
   ok('T17-e isFirstPurchase=true → firstOrders 1', val(explicitTrue, 'firstPurchaseOrderCount') === 1, `got ${val(explicitTrue, 'firstPurchaseOrderCount')}`);
 }
 
+// ── T19. 기간 계약 조합 (시작만 / 종료만 / 둘 다 / 누락 / 형식오류) ──────────
+// 기존 inPeriod는 end만 지정된 경우 빈 날짜가 통과해 잘못 포함됐다.
+{
+  const inq = [
+    { goodsNo: 'A', status: 'unanswered', createdAt: '2025-03-01' }, // 시작 경계
+    { goodsNo: 'B', status: 'answered', createdAt: '2025-03-31' },   // 종료 경계
+    { goodsNo: 'C', status: 'unanswered', createdAt: '2025-02-15' }, // 이전
+    { goodsNo: 'D', status: 'unanswered', createdAt: '2025-04-10' }, // 이후
+    { goodsNo: 'E', status: 'unanswered' },                          // createdAt 없음
+    { goodsNo: 'F', status: 'unanswered', createdAt: 'not-a-date' }, // 형식 오류
+  ];
+  const ds = { orders: [], reviews: [], inquiries: inq, source: { dataKind: 'synthetic' } };
+  const count = (spec) => {
+    try {
+      const r = analytics.runAnalyticsQuery(ds, { metric: 'inquiryCount', ...spec });
+      return (r.rows ?? []).reduce((s, x) => s + Number(x.value ?? 0), 0);
+    } catch (e) { return `ERR:${e.message}`; }
+  };
+  ok('T19-a 기간 미지정 → 전체 6건 (날짜 없음·형식오류 포함)', count({}) === 6, `got ${count({})}`);
+  ok('T19-b 시작일만 2025-03-01 → 3건 (A,B,D / 누락·오류 제외)',
+    count({ startDate: '2025-03-01' }) === 3, `got ${count({ startDate: '2025-03-01' })}`);
+  ok('T19-c 종료일만 2025-03-31 → 3건 (A,B,C / 누락·오류 제외)',
+    count({ endDate: '2025-03-31' }) === 3, `got ${count({ endDate: '2025-03-31' })}`);
+  ok('T19-d 시작·종료 모두 → 2건 (A,B 경계 포함)',
+    count({ startDate: '2025-03-01', endDate: '2025-03-31' }) === 2,
+    `got ${count({ startDate: '2025-03-01', endDate: '2025-03-31' })}`);
+}
+
+// ── T18. category / product 키 충돌 (axisKind 분리 실증) ─────────────────────
+// categoryCode와 goodsNo가 같은 문자열 'X'인 데이터.
+// scope는 한 실행에서 categoryBreakdown과 productBreakdown을 함께 만들므로,
+// 레지스트리가 축 종류로 분리되지 않으면 두 번째 축의 주문수가 0이 된다.
+{
+  const collideOrders = [{
+    orderNo: 'K1', orderDate: '2025-03-13', paid: true, canceled: false,
+    totalAmount: 20000, productRevenueByLines: 20000,
+    lines: [line('X', '상품X', 'X', 1, 10000), line('X', '상품X', 'X', 1, 10000)],
+  }];
+  try {
+    const r = scope.buildMarketingScopeInsightResponse({
+      message: '카테고리별 매출 알려줘', orders: collideOrders, products: [],
+      reviews: [], inquiries: [], nowMs: Date.parse('2025-04-01T00:00:00Z'),
+    });
+    const cat = (r?.result?.insightPack?.categoryBreakdown ?? []).find((x) => String(x.categoryKey) === 'X');
+    const prod = (r?.result?.insightPack?.productBreakdown ?? []).find((x) => String(x.goodsNo) === 'X');
+    ok('T18-a 충돌: categoryCode "X" 주문수 1', Number(cat?.orderCount) === 1, `got ${cat?.orderCount}`);
+    ok('T18-b 충돌: goodsNo "X" 주문수 1 (레지스트리 미분리면 0)', Number(prod?.orderCount) === 1, `got ${prod?.orderCount}`);
+    ok('T18-c 충돌: 두 축 모두 매출 20,000 (라인 합산 유지)',
+      Number(cat?.revenue) === 20000 && Number(prod?.revenue) === 20000, `cat=${cat?.revenue} prod=${prod?.revenue}`);
+  } catch (e) { ok('T18 category/product 키 충돌', false, `실행 실패: ${e.message}`); }
+}
+
 // ── T9~T11. 카테고리 출처 계약 (라인 우선 → 상품인덱스 보충 → uncategorized) ──
 {
   const nowMs = Date.parse('2025-04-01T00:00:00Z');
