@@ -14,6 +14,7 @@ import { understandCommerceQuery } from './marketingAnalyticsQueryCompilerLlm';
 import type { AnalyticsTeam } from './analyticsQueryTypes';
 import { AXIS_LABEL, METRIC_LABEL, METRIC_SOURCE, type Axis, type Metric, type QueryPlan } from './commerceQueryPlan';
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartType } from './marketingChatChartSpec';
+import { classifyFirstPurchase, FIRST_PURCHASE_LABEL } from './firstPurchaseContract';
 
 // ── 느슨한 데이터 형태(RevenueOrderLite / universeAux 호환) ──────────────────────
 interface OrderLike {
@@ -87,8 +88,10 @@ function passOrderFilters(o: OrderLike, plan: QueryPlan): boolean {
   const f = plan.filters; if (!f) return true;
   if (f.couponUsed === true && !o.discountSummary?.hasCoupon) return false;
   if (f.couponUsed === false && o.discountSummary?.hasCoupon) return false;
-  if (f.customerType === 'first' && o.isFirstPurchase !== true) return false;
-  if (f.customerType === 'repeat' && o.isFirstPurchase === true) return false;
+  // C-8: 정확히 일치하는 상태만 통과. repeat 필터에 미분류(unknown)를 넣지 않는다.
+  //   (구 구현은 `isFirstPurchase === true`만 배제해 undefined 주문이 재구매로 새어 들어갔다)
+  if (f.customerType === 'first' && classifyFirstPurchase(o.isFirstPurchase) !== 'first') return false;
+  if (f.customerType === 'repeat' && classifyFirstPurchase(o.isFirstPurchase) !== 'repeat') return false;
   if (f.memberGroup && String(o.memberGroupName ?? '') !== f.memberGroup) return false;
   if (f.channel && String(o.orderChannel ?? '') !== f.channel) return false;
   if (f.category && !(o.lines ?? []).some((l) => l.categoryCode === f.category)) return false;
@@ -132,7 +135,13 @@ function axisKey(axis: Axis | undefined, ctx: { order?: OrderLike; line?: LineLi
     case 'couponUsed': { if (!ctx.order) return null; const u = !!ctx.order.discountSummary?.hasCoupon; return { key: u ? 'used' : 'unused', label: u ? '쿠폰 사용' : '쿠폰 미사용' }; }
     case 'memberGroup': { if (!ctx.order) return null; const g = String(ctx.order.memberGroupName ?? '미분류'); return { key: g, label: g }; }
     case 'channel': { if (!ctx.order) return null; const g = String(ctx.order.orderChannel ?? '미상'); return { key: g, label: g }; }
-    case 'customerType': { if (!ctx.order) return null; const fp = ctx.order.isFirstPurchase === true; return { key: fp ? 'first' : 'repeat', label: fp ? '신규(첫구매)' : '재구매' }; }
+    // C-8: 3상태. groupBy·seriesBy 어느 위치에서 호출되든 같은 판정을 쓴다.
+    //   미분류는 정상적인 고객 유형이 아니라 '첫구매 여부가 없는 주문'이다.
+    case 'customerType': {
+      if (!ctx.order) return null;
+      const cls = classifyFirstPurchase(ctx.order.isFirstPurchase);
+      return { key: cls, label: cls === 'first' ? '신규(첫구매)' : FIRST_PURCHASE_LABEL[cls] };
+    }
     case 'reviewRating': { const r = ctx.review?.rating; return r != null ? { key: String(r), label: `${r}점` } : null; }
   }
   return null;
@@ -427,7 +436,8 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
       const pool = [...ranked].sort((a, b) => b.value - a.value).slice(0, plan.topN && plan.topN > 0 ? plan.topN : 10);
       ranked = pool.sort((a, b) => (b.secondary ?? 0) - (a.secondary ?? 0));
     } else {
-      ranked.sort((a, b) => (plan.sort === 'asc' ? a.value - b.value : b.value - a.value));
+      // 동률일 때 입력 배열 순서에 좌우되지 않도록 key로 결정적 tie-break를 둔다.
+      ranked.sort((a, b) => (plan.sort === 'asc' ? a.value - b.value : b.value - a.value) || a.key.localeCompare(b.key));
       const topN = plan.topN && plan.topN > 0 ? plan.topN : (plan.groupBy === 'product' ? 5 : ranked.length);
       ranked = ranked.slice(0, Math.max(topN, 1));
     }
@@ -441,7 +451,12 @@ export function executeCommerceQueryPlan(plan: QueryPlan, dataset: CommerceDatas
       return `${base}${extra}${shr}`;
     });
     const head = joinable ? `${scope} ${label} 상위 항목을 ${secLabel} 순으로 정렬했습니다.` : `${scope} ${label} ${plan.sort === 'asc' ? '하위' : '상위'} 순위입니다.`;
-    const reply = [head, ...bullets].join('\n');
+    // C-8: customerType 축에 미분류가 있으면 정상 고객 유형이 아님을 명시한다.
+    //   판단은 표시 라벨이 아니라 key === 'unknown' 존재 여부로 한다.
+    const unknownNote = plan.groupBy === 'customerType' && ranked.some((r) => r.key === 'unknown')
+      ? ['', '※ 미분류는 고객 유형이 아니라 첫구매 여부 정보가 없는 주문이며, 전체 실적에는 포함됩니다.']
+      : [];
+    const reply = [head, ...bullets, ...unknownNote].join('\n');
     // join이면 보조 지표(매출) 막대가 더 유의미 → 보조 지표로 차트.
     // join: 막대는 보조 지표(매출)지만, 1차 지표(문의수)를 데이터라벨로 각 막대에 노출.
     const chartRows: Row[] = joinable

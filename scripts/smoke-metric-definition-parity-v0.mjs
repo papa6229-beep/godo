@@ -864,6 +864,70 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     const reply = String(r?.reply ?? '').replace(/\n/g, ' ');
     ok('T22-5a commerce customerType에 미분류가 별도로 나타남', /미분류/.test(reply), `reply: ${reply.slice(0, 130)}`);
     ok('T22-5b commerce 재구매가 2건으로 부풀지 않음', !/재구매[^0-9]*2건/.test(reply), `reply: ${reply.slice(0, 130)}`);
+    // ── groupBy customerType: 행·reply·chart points·share ──
+    const ds = { orders: FP_ORDERS, reviews: [], inquiries: [] };
+    const run = (plan, orders) => commerce.executeCommerceQueryPlan(
+      { filters: { years: [2025], months: [3] }, sort: 'desc', originalQuestion: 't', ...plan },
+      { orders: orders ?? FP_ORDERS, reviews: [], inquiries: [] }, { nowMs });
+    const gRev = run({ metric: 'revenue', groupBy: 'customerType', operation: 'rank' });
+    const gReply = String(gRev?.reply ?? '').replace(/\n/g, ' ');
+    ok('T22-5c groupBy 행 값: 첫구매 10,000 · 재구매 20,000 · 미분류 30,000',
+      gReply.includes('10,000원') && gReply.includes('20,000원') && gReply.includes('30,000원') && gReply.includes('미분류'),
+      `reply: ${gReply.slice(0, 150)}`);
+    const gPts = (gRev?.artifact?.chartSpec?.series ?? []).flatMap((x) => x.points ?? []);
+    const gv = (k) => Number(gPts.find((x) => String(x.bucketKey) === k)?.value);
+    ok('T22-5d groupBy chart points 세 그룹 값 전달',
+      gv('first') === 10000 && gv('repeat') === 20000 && gv('unknown') === 30000,
+      `points: ${gPts.map((x) => `${x.bucketKey}=${x.value}`).join(', ')}`);
+    const gShare = String(run({ metric: 'revenue', groupBy: 'customerType', operation: 'share' })?.reply ?? '').replace(/\n/g, ' ');
+    ok('T22-5e groupBy share 분모에 미분류 포함 (16.7 / 33.3 / 50)',
+      gShare.includes('16.7%') && gShare.includes('33.3%') && gShare.includes('50.0%'), `reply: ${gShare.slice(0, 150)}`);
+
+    // ── seriesBy customerType (혼합: groupBy=month) ──
+    const sRes = run({ metric: 'revenue', groupBy: 'month', seriesBy: 'customerType', operation: 'trend' });
+    const series = sRes?.artifact?.chartSpec?.series ?? [];
+    const sTotal = (k) => (series.find((x) => String(x.key) === k)?.points ?? []).reduce((a, p) => a + Number(p.value ?? 0), 0);
+    ok('T22-5f seriesBy 세 시리즈 존재 (first/repeat/unknown)',
+      series.some((x) => x.key === 'first') && series.some((x) => x.key === 'repeat') && series.some((x) => x.key === 'unknown'),
+      `series: ${series.map((x) => x.key).join(', ')}`);
+    ok('T22-5g seriesBy unknown 시리즈에 30,000원 전달', sTotal('unknown') === 30000, `unknown 합계 ${sTotal('unknown')}`);
+    ok('T22-5h 혼합 요청 전체 합계 = 60,000원 (시리즈 합 = 전체)',
+      sTotal('first') + sTotal('repeat') + sTotal('unknown') === FP_GOLDEN.total.revenue,
+      `${sTotal('first')} + ${sTotal('repeat')} + ${sTotal('unknown')}`);
+
+    // ── 필터 결과 ──
+    const filt = (ct) => {
+      const r = run({ metric: 'revenue', operation: 'summarize', filters: { years: [2025], months: [3], ...(ct ? { customerType: ct } : {}) } });
+      const m = String(r?.reply ?? '').match(/([0-9,]+)원/);
+      return m ? Number(m[1].replace(/,/g, '')) : -1;
+    };
+    ok('T22-5i first 필터 = 10,000원', filt('first') === 10000, `got ${filt('first')}`);
+    ok('T22-5j repeat 필터 = 20,000원 (미분류 제외)', filt('repeat') === 20000, `got ${filt('repeat')}`);
+    ok('T22-5k 필터 없음 = 60,000원', filt(null) === FP_GOLDEN.total.revenue, `got ${filt(null)}`);
+
+    // ── unknown = 0 음성 ──
+    const only2 = FP_ORDERS.filter((o) => 'isFirstPurchase' in o);
+    const g2 = run({ metric: 'revenue', groupBy: 'customerType', operation: 'rank' }, only2);
+    const g2Pts = (g2?.artifact?.chartSpec?.series ?? []).flatMap((x) => x.points ?? []);
+    ok('T22-5l unknown=0: 행·포인트·문구에 미분류 없음',
+      !String(g2?.reply ?? '').includes('미분류') && !g2Pts.some((x) => String(x.bucketKey) === 'unknown'),
+      `reply: ${String(g2?.reply ?? '').replace(/\n/g, ' ').slice(0, 120)}`);
+    const s2 = run({ metric: 'revenue', groupBy: 'month', seriesBy: 'customerType', operation: 'trend' }, only2);
+    ok('T22-5m unknown=0: 미분류 시리즈 없음',
+      !(s2?.artifact?.chartSpec?.series ?? []).some((x) => String(x.key) === 'unknown'),
+      `series: ${(s2?.artifact?.chartSpec?.series ?? []).map((x) => x.key).join(', ')}`);
+
+    // ── 입력 순서 무관 결정성 ──
+    const reversed = run({ metric: 'orderCount', groupBy: 'customerType', operation: 'rank' }, [...FP_ORDERS].reverse());
+    const normal = run({ metric: 'orderCount', groupBy: 'customerType', operation: 'rank' });
+    // 미분류 안내: 정상 고객 유형이 아님을 명시하고, unknown=0이면 붙지 않는다.
+    ok('T22-5o customerType 결과에 미분류 안내 표시',
+      String(gRev?.reply ?? '').includes('첫구매 여부 정보가 없는 주문'), `reply: ${gReply.slice(0, 200)}`);
+    ok('T22-5p unknown=0이면 미분류 안내 없음',
+      !String(g2?.reply ?? '').includes('첫구매 여부 정보가 없는 주문'), '거짓 안내 표시됨');
+    ok('T22-5n 입력 순서를 바꿔도 동률 정렬이 결정적',
+      String(reversed?.reply ?? '') === String(normal?.reply ?? ''),
+      `정순: ${String(normal?.reply ?? '').replace(/\n/g, ' ').slice(0, 90)} | 역순: ${String(reversed?.reply ?? '').replace(/\n/g, ' ').slice(0, 90)}`);
   } catch (e) { ok('T22-5 commerce customerType 3상태', false, e.message); }
 }
 
