@@ -754,6 +754,29 @@ const FP_GOLDEN = { total: { count: 3, revenue: 60000 }, first: { count: 1, reve
     ok('T22-4d executor 세 그룹 합계 = 60,000원 (전체 불변)',
       rows.reduce((sum, x) => sum + Number(x.value ?? 0), 0) === FP_GOLDEN.total.revenue,
       `합계 ${rows.reduce((sum, x) => sum + Number(x.value ?? 0), 0)} | rows: ${shown}`);
+    // 비교 계산은 first↔repeat만. 미분류는 표시 대상이지 비교 상대가 아니다.
+    const d = res?.diff ?? {};
+    ok('T22-4f executor diff 비교 대상이 첫구매↔재구매',
+      d.fromLabel === '첫구매' && d.toLabel === '재구매', `from ${d.fromLabel} / to ${d.toLabel}`);
+    ok('T22-4g executor diff = +10,000원 · 100% (재구매가 첫구매보다 높음)',
+      d.absolute === 10000 && d.percent === 100 && d.direction === 'up',
+      `absolute ${d.absolute} / percent ${d.percent} / dir ${d.direction}`);
+    // chartSpec points에도 세 그룹이 실제 값으로 전달되어야 한다.
+    const pts = (res?.chartSpec?.series ?? []).flatMap((x) => x.points ?? []);
+    const pv = (lab) => Number(pts.find((x) => String(x.bucketLabel) === lab)?.value);
+    ok('T22-4h executor chartSpec points 세 그룹 값 전달',
+      pv('첫구매') === 10000 && pv('재구매') === 20000 && pv('미분류') === 30000,
+      `points: ${pts.map((x) => `${x.bucketLabel}=${x.value}`).join(', ')}`);
+    // narrative가 미분류를 비교 상대로 삼지 않아야 한다.
+    const nr = executor.buildMarketingAnalysisResponseFromPlan
+      ? executor.buildMarketingAnalysisResponseFromPlan(plan, FP_ORDERS, nowMs)
+      : null;
+    const reply = String(nr?.reply ?? '').replace(/\n/g, ' ');
+    ok('T22-4i executor reply에 미분류 30,000원이 실제로 등장',
+      reply.includes('미분류') && reply.includes('30,000'), `reply: ${reply.slice(0, 160)}`);
+    ok('T22-4j executor 해석 문장이 미분류를 첫구매와 비교하지 않음',
+      !reply.includes('미분류이(가) 첫구매보다') && reply.includes('재구매이(가) 첫구매보다'),
+      `reply: ${reply.slice(0, 200)}`);
     ok('T22-4e executor 제목/차트에서 미분류가 재구매로 표시되지 않음',
       !/미분류[^,]*재구매|재구매[^,]*미분류/.test(String(res?.title ?? '')) && rows.filter((x) => String(x.label) === '재구매').length <= 1,
       `title: ${res?.title}`);
