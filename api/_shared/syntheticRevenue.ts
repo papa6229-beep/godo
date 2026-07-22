@@ -58,8 +58,10 @@ const safetyStockFor = (productId: string): number => {
 
 // C-3 데이터 품질: 재고 위험 분포 비퇴화용 결정적 시나리오.
 //   기존 모델은 projectedStock을 항상 safetyStock과 같게 만들어 전 상품이 low_stock으로 붕괴했다.
-//   실제 위험 예측이 아니라 UI·업무 검증용 합성 시나리오다. safetyStock 생성 해시와 '별도 salt'로 독립.
-//   목표 분포 out_of_stock ~10% / low_stock ~25% / ok ~65% (productId 결정적, Math.random 미사용).
+//   ⚠️ 이 분포는 실제 재고 위험을 예측하거나 실제 쇼핑몰의 정상 비율을 주장하는 모델이 아니라,
+//      UI·업무 흐름·위험 분류 검증을 위한 '결정적 합성 시나리오'다. 실 고도몰 재고 연결 시 대체된다.
+//   safetyStock 생성 해시와 '별도 salt'로 독립. 목표 분포 out_of_stock ~10% / low_stock ~25% / ok ~65%
+//   (productId 결정적, Math.random 미사용).
 type StockScenario = 'out_of_stock' | 'low_stock' | 'ok';
 const saltedHash = (productId: string, salt: string): number => {
   let h = 2166136261;
