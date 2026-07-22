@@ -1,0 +1,27 @@
+{
+  "resource": "inventory",
+  "endpoint": "/api/godomall/inventory",
+  "upstream": "Goods_Search.php (상품별 현재 재고 필드 파생)",
+  "sourceType": "api_proxy_real",
+  "mode": "real",
+  "live": true,
+  "realConfirmed": true,
+  "recordCount": 13,
+  "fields": {
+    "productId": "string<numeric>",
+    "productCode": "string<empty>",
+    "productName": "string",
+    "optionName": "string",
+    "stock": "string<numeric>",
+    "safetyStock": "string<numeric>",
+    "stockEnabled": "string",
+    "soldOut": "string",
+    "displayPc": "string",
+    "displayMobile": "string",
+    "sellPc": "string",
+    "sellMobile": "string",
+    "status": "string"
+  },
+  "correction": "이 표본은 시험몰 상품 13개에 등록된 '현재 재고 필드'를 읽은 것(Goods_Search 파생). 대시보드의 2년치 재고위험 그래프와는 다른 자료 — 후자는 가상 매출에서 파생된 시험자료다.",
+  "scope": "current_stock_field_snapshot (NOT 2-year stock-movement history)"
+}
