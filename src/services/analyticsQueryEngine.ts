@@ -158,8 +158,10 @@ const def = (
 
 export const ANALYTICS_METRIC_REGISTRY: AnalyticsMetricDefinition[] = [
   // sales
-  def('revenue', '매출', 'sales', 'supported', ['orders', 'orderLines'], 'bar_line', 'month'),
-  def('netRevenue', '순매출(라인매출-클레임)', 'sales', 'derived', ['orders', 'claims'], 'bar_line', 'month'),
+  // C-2: 주문 단위 기본 매출 = 유효주문 결제금액(운영매출과 같은 기준). 상품/카테고리/브랜드는 '상품매출' 계열로 구분.
+  def('revenue', '유효주문 결제금액', 'sales', 'supported', ['orders', 'orderLines'], 'bar_line', 'month'),
+  // C-2: 환불 원천 계약 전까지 '순매출'로 부르지 않는다(라인매출-클레임 근사). 신규 UI/AI 기본 응답에서는 노출하지 않는다.
+  def('netRevenue', '라인매출-클레임(근사)', 'sales', 'derived', ['orders', 'claims'], 'bar_line', 'month'),
   def('orderCount', '주문 수', 'sales', 'supported', ['orders'], 'bar', 'month'),
   def('unitCount', '판매 수량', 'sales', 'supported', ['orderLines'], 'bar', 'month'),
   def('averageOrderValue', '평균 객단가', 'sales', 'supported', ['orders'], 'bar_line', 'month'),
@@ -470,7 +472,7 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
         const net = r.value - (claimByKey.get(r.key) || 0);
         return { ...r, value: net, meta: { gross: r.value, claim: claimByKey.get(r.key) || 0 } };
       });
-      return okResult(spec, dataset, reg, rows, { groupBy: gb, total: total(rows), warnings: ['순매출은 claimSummary.claimAmount 차감 기준 — 환불 금액 정합성은 v0 근사값.'] });
+      return okResult(spec, dataset, reg, rows, { groupBy: gb, total: total(rows), warnings: ['라인매출-클레임(근사): claimSummary.claimAmount 차감 기준 — 환불 정합성 미확정(v0). 실제 순매출이 아니며 기본 응답에 노출하지 않는다.'] });
     }
 
     case 'salesGrowthRate': {
