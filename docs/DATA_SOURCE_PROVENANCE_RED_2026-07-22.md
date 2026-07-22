@@ -147,3 +147,26 @@ exit 1 = RED
 ## 9. 브랜치·HEAD·트리
 - 브랜치 `fix/data-source-provenance`, HEAD `f3a6d98`(부모 `a38b96c` 포함), 트리 clean.
 - C-4 `fix/rc-1-c4-inquiry-status-normalization` `347b4ad` 무변경.
+
+---
+
+## 10. 후속 대장 (GREEN 1~3 이후)
+
+### DATA-SOURCE-SERVER-01 (필수 후속)
+서버 `api/_shared/godomallResource.ts` `resolveResource`는 실제 요청(real 모드)에서 라이브 호출이
+실패/미구현이면 여전히 **태그가 붙은 mock fallback**(`source:'api_mock_fallback'` + mock 레코드)을 생성해 반환한다.
+- 현재 앱 클라이언트는 GREEN 3(`resolveFetchOutcome`/`syncProxyResource`)에서 real 모드일 때 이 mock을
+  운영 통계에 주입하지 않고 "연결 안 됨"으로 처리하므로 **이번 Preview 차단요소는 아니다.**
+- 그러나 **향후 다른 클라이언트/프로그램이 이 서버를 직접 소비**하면 mock을 실제로 오인할 수 있다.
+  실제 판매몰 전환 전에 **서버 단계에서도 실제 요청과 시험자료 생성을 분리**해야 한다
+  (real 모드 실패 시 mock을 만들지 않고 명시적 실패/빈 응답 + 사유만 반환).
+- 범위: 서버 API 계약 변경이므로 별도 작업으로 분리. 이번 provenance 계약(표시·집계 신분)과 독립.
+
+### GAP-PROVENANCE-UI-01 (Preview 육안 검증에서 발견 — 잔여 기술문구 노출)
+GREEN 2에서 이관하지 않은 두 지점이 여전히 내부 기술문구를 사용자에게 노출한다:
+1. **상품관리팀 대시보드**(`ProductTeamDashboard.tsx`): 우상단 배지 "실제 N건 + 가상 N건 포함
+   **REAL + SYNTHETIC**" — 사장 지정 금지 문구 `REAL+SYNTHETIC` 노출. → 사용자 표기 '시험 데이터'로 보완 필요.
+2. **API Bridge 마지막 동기화 결과 박스**(`ApiBridgePanel.tsx` `getSourceDisplay`): "REAL (Live)" /
+   "FALLBACK (Mock)" — 기술 라벨. 기술 콘솔 맥락이나, 사용자 3표기(실제/연결 안 됨)로 정합 필요.
+   (단, 건수 판정은 정상: inquiries 동기화 시 **0건**으로 mock 미주입 — GREEN 3 동작 검증됨.)
+→ GREEN 2 범위의 마무리 보완 대상(수정 대기 — Preview 보고 후 지시 대기).
