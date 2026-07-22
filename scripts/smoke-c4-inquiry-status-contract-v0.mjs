@@ -124,7 +124,13 @@ const cu = snap?.csUniverse ?? {};
 console.log(`  · snapshot 미처리(unresolved) = ${cu.unresolvedInquiries} (계약 ${cUnresolved}) · unknown = ${cu.unknownInquiries}`);
 base('B7. snapshot 미처리(unresolved) = 계약 미처리 13 (라벨=미처리이므로 13, 5 아님)', cu.unresolvedInquiries === cUnresolved);
 red('R7. snapshot이 unknown 문의를 별도 분리 노출(unknownInquiries=3) — 미처리 총계와 구분', cu.unknownInquiries === cUnknown, `unknownInquiries=${cu.unknownInquiries}`);
-red('R8. summarize에 unknown 원시값 근거(unknownSamples) 보존', !!IS && Array.isArray(IS.summarizeInquiryStatus?.(inquiries.map((q) => q.status))?.unknownSamples) && IS.summarizeInquiryStatus(inquiries.map((q) => q.status)).unknownSamples.length === cUnknown, IS ? '샘플 없음' : '모듈 없음');
+// unknownSamples는 중복 제거·안전 진단값. fixture unknown 3건('', undefined, 'ZZUNKNOWN') → distinct 2건('(빈 값)', 'ZZUNKNOWN').
+{
+  const smp = IS?.summarizeInquiryStatus?.(inquiries.map((q) => q.status))?.unknownSamples;
+  red('R8. unknown 원시값 근거(unknownSamples) 보존·중복제거(distinct 2: ZZUNKNOWN·빈값)',
+    Array.isArray(smp) && smp.length === 2 && smp.includes('ZZUNKNOWN') && smp.some((s) => /빈 값/.test(s)),
+    IS ? JSON.stringify(smp) : '모듈 없음');
+}
 
 console.log(`\n--- 요약 ---`);
 console.log(`[BASE] ${baseP} pass / ${baseF} fail`);
