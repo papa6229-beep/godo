@@ -60,12 +60,22 @@ export const computeGrossProductRevenue = (orders: MetricOrderLike[]): number =>
   return sum;
 };
 
-/** netOrderRevenue — 유효 주문(결제완료·미취소)의 주문 총액 합. 마케팅 성과/객단가 기본. */
-export const computeNetOrderRevenue = (orders: MetricOrderLike[]): number => {
+/**
+ * 유효주문 결제금액(= 운영매출) — 유효 주문(결제완료·미취소)의 주문 총액 합.
+ * C-2: 환불을 반영하지 않으므로 '순매출'로 부르지 않는다. 배송비 포함·할인 차감 후 결제금액이다.
+ */
+export const computeOperationalRevenue = (orders: MetricOrderLike[]): number => {
   let sum = 0;
   for (const o of orders) if (isValidOrder(o)) sum += num(o.totalAmount);
   return sum;
 };
+/** 의미가 드러나는 별칭(신규 코드 권장). computeOperationalRevenue와 동일. */
+export const computeValidOrderPaymentAmount = computeOperationalRevenue;
+/**
+ * @deprecated C-2: '순매출'을 연상시키는 이름이다. 삭제하지 않고 호환용으로 보존한다.
+ *   신규 코드는 computeOperationalRevenue / computeValidOrderPaymentAmount(유효주문 결제금액)를 쓴다.
+ */
+export const computeNetOrderRevenue = computeOperationalRevenue;
 
 /** orderCountAll — 전체 주문 수(취소·미입금·가상 포함). */
 export const countAllOrders = (orders: MetricOrderLike[]): number => orders.length;
@@ -98,7 +108,7 @@ export const REVENUE_METRIC_LABELS: Record<RevenueMetricKind, RevenueMetricLabel
     excludes: '배송비'
   },
   netOrderRevenue: {
-    label: '총매출',
+    label: '운영매출',
     basis: '취소·반품 제외 유효 주문(결제완료·미취소) 기준',
     description: '결제완료·미취소 유효 주문의 주문 총액 합계. 마케팅 성과/객단가 분석의 기본값 — 상품관리 "상품매출(전체 주문 라인합)"과 기준이 다릅니다.',
     includes: '유효 주문(결제완료·미취소)의 주문 총액',

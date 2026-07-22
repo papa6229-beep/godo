@@ -4,7 +4,7 @@
  * Analytics Query Engine v0 검증 (metric 계산·기간필터·supportLevel·PII격리·deterministic).
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,6 +19,11 @@ try {
     '--outDir', tmp, '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck'
   ], { stdio: 'pipe' });
 } catch (e) { console.error('[smoke] tsc emit failed:\n', e.stdout?.toString() || e.message); process.exit(1); }
+// 상대 import에 .js 확장자 보강(analyticsQueryEngine → ./revenueMetricContract 등 ESM 해석용).
+for (const f of readdirSync(tmp).filter((x) => x.endsWith('.js'))) {
+  const p = path.join(tmp, f);
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, (m, rel) => (rel.endsWith('.js') ? m : `from '${rel}.js'`)));
+}
 const E = await import(pathToFileURL(path.join(tmp, 'analyticsQueryEngine.js')).href);
 const run = E.runAnalyticsQuery;
 
@@ -64,7 +69,7 @@ const ok = (n, c) => { console.log(`  ${c ? 'PASS' : 'FAIL'}  ${n}`); c ? pass++
 console.log('=== Analytics Query Engine v0 smoke ===');
 ok('1. monthly revenue', (() => { const r = q('revenue'); return r.ok && r.rows.length === 12 && r.summary.total > 0; })());
 ok('2. monthly averageOrderValue', (() => { const r = q('averageOrderValue'); return r.ok && r.rows.length === 12 && r.rows[0].value > 0; })());
-ok('3. monthly orderCount', (() => { const r = q('orderCount'); return r.ok && r.rows.every((x) => x.value === 10); })());
+ok('3. monthly orderCount = 유효주문(paid·미취소)만 (C-2)', (() => { const r = q('orderCount'); const expectedValid = orders.filter((o) => o.paid && !o.canceled).length; const sum = r.rows.reduce((s, x) => s + x.value, 0); return r.ok && r.rows.length === 12 && sum === expectedValid && r.rows.every((x) => x.value <= 10 && x.value > 0); })());
 ok('4. product unitCount ranking', (() => { const r = q('productUnitCount'); return r.ok && r.groupBy === 'product' && r.rows.length === 2 && r.rows[0].value >= r.rows[1].value; })());
 ok('5. categoryRevenue (label)', (() => { const r = q('categoryRevenue'); return r.ok && r.rows.some((x) => x.label === '오나홀' || x.label === '개인가전'); })());
 ok('6. brandRevenue (label)', (() => { const r = q('brandRevenue'); return r.ok && r.rows.some((x) => x.label === '스마트홈' || x.label === '리빙홈'); })());
