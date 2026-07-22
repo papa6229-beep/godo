@@ -1,0 +1,13 @@
+{
+  "resource": "sales",
+  "endpoint": "/api/godomall/sales",
+  "upstream": "Order_Search.php → deriveSalesFromOrders (유효 판매 집계 파생)",
+  "sourceType": "api_proxy_real",
+  "mode": "real",
+  "live": true,
+  "realConfirmed": true,
+  "recordCount": 0,
+  "emptyShape": "records: []",
+  "fields": "(빈 응답 — 실제 0건, api_proxy_real)",
+  "correction": "sales 0건은 Order_Search 결과에서 파생된 '유효 판매 집계' 0건. 수기 주문 1건과 동시에 가능 — 그 주문이 유효매출 조건(예: 결제·확정 상태)에 들지 않았을 수 있음. '주문 0건'이 아니라 '유효 판매 집계 0건'."
+}

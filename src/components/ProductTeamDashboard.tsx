@@ -685,8 +685,8 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         </div>
         <div className="ptd-header-right">
           <span className={`ptd-badge ${synthOn ? 'on' : 'off'}`}>
-            🧪 {synthOn ? `실제 ${summary?.realOrderCount ?? 0}건 + 가상 ${summary?.syntheticOrderCount ?? 0}건 포함` : 'REAL ONLY'}
-            <span className="ptd-badge-tag">REAL + SYNTHETIC</span>
+            {/* C-출처: 사용자 표기 3종만. realOrderCount/syntheticOrderCount는 '주문' 수치이므로 문구도 주문으로 정확히. */}
+            🧪 {synthOn ? `시험 데이터 (실제 유효 주문 ${(summary?.realOrderCount ?? 0).toLocaleString()}건 + 시험 주문 ${(summary?.syntheticOrderCount ?? 0).toLocaleString()}건)` : '실제 데이터'}
           </span>
           <button type="button" className="ptd-refresh" onClick={onRefresh} disabled={loading}>{loading ? '새로고침 중…' : '↻ 새로고침'}</button>
         </div>

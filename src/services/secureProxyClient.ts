@@ -1,6 +1,7 @@
 import type { ApiResourceType } from '../types/apiBridge';
 import type { ProxyHealthResponse, ProxySyncResponse } from '../types/proxy';
 import { runMockSync } from './mockGodomallApi';
+import { resolveFetchOutcome, type ProvenanceKind } from './dataSourceProvenanceContract';
 
 // 프록시 API 호출 실패 시 활용할 로컬 폴백 판단용 에러 클래스
 class ProxyConnectionError extends Error {
@@ -59,10 +60,17 @@ export interface SecureProxySyncResult {
   isFallback: boolean;
   sourceType: string;
   errorMessage?: string;
+  /** C-출처(GREEN3): 이 결과의 신분. real 요청 실패 시 unavailable. */
+  provenanceKind?: ProvenanceKind;
+  /** C-출처(GREEN3): mock 자동 대체를 막았는지(real 모드 실패 시 true). */
+  substitutionBlocked?: boolean;
 }
 
 export const syncProxyResource = async (
-  resourceType: ApiResourceType | 'all'
+  resourceType: ApiResourceType | 'all',
+  // C-출처(GREEN3): 실제 자료 요청이 기본. real 모드에서 실패/미구현 시 mock 자동 대체를 차단한다.
+  //   시험 데이터는 사용자가 'test' 모드를 명시적으로 선택했을 때만 사용한다.
+  requestedMode: 'real' | 'test' = 'real'
 ): Promise<SecureProxySyncResult> => {
   try {
     const res = await fetch('/api/godomall/sync', {
@@ -95,51 +103,51 @@ export const syncProxyResource = async (
     // 서버가 real/sandbox 호출에 실패해 mock으로 대체한 경우도 fallback으로 표시
     const serverFellBack = data.sourceType === 'api_mock_fallback';
 
+    // C-출처(GREEN3): real 요청 + 서버 mock 대체 → mock을 통계에 주입하지 않고 연결 안 됨으로 표시.
+    const outcome = resolveFetchOutcome({
+      requestedMode,
+      serverSourceType: data.sourceType,
+      serverRecords: rawItems,
+      errorMessage: data.errorMessage,
+      mockRecords: rawItems
+    });
     return {
-      rawItems,
-      importedCount: data.importedCount,
+      rawItems: outcome.records as Record<string, string>[],
+      importedCount: outcome.substitutionBlocked ? 0 : data.importedCount,
       maskedPiiCount: data.maskedPiiCount,
       warningCount: data.warningCount,
       isFallback: serverFellBack,
       sourceType: data.sourceType || 'api_mock_fallback',
-      errorMessage: data.errorMessage
+      errorMessage: outcome.errorMessage ?? data.errorMessage,
+      provenanceKind: outcome.kind,
+      substitutionBlocked: outcome.substitutionBlocked
     };
   } catch {
-    // 실패 시 기존 로컬 Mock API 어댑터로 안전하게 Fallback 처리
-    if (resourceType === 'all') {
-      const resources: ApiResourceType[] = ['orders', 'inquiries', 'reviews', 'inventory', 'sales'];
-      let totalImported = 0;
-      let totalMasked = 0;
-      let totalWarning = 0;
-      
-      for (const resType of resources) {
-        const localResult = await runMockSync(resType);
-        totalImported += localResult.importedCount;
-        totalMasked += localResult.maskedPiiCount;
-        totalWarning += localResult.warningCount;
-      }
-      
-      return {
-        rawItems: [],
-        importedCount: totalImported,
-        maskedPiiCount: totalMasked,
-        warningCount: totalWarning,
-        isFallback: true,
-        sourceType: 'api_mock_fallback',
-        errorMessage: 'Secure Proxy unreachable. Local mock adapter used.'
-      };
-    } else {
-      const localResult = await runMockSync(resourceType);
-      return {
-        rawItems: localResult.rawItems,
-        importedCount: localResult.importedCount,
-        maskedPiiCount: localResult.maskedPiiCount,
-        warningCount: localResult.warningCount,
-        isFallback: true,
-        sourceType: 'api_mock_fallback', // 로컬 mock 소스 표시
-        errorMessage: 'Secure Proxy unreachable. Local mock adapter used.'
-      };
-    }
+    // C-출처(GREEN3): Secure Proxy 연결 실패.
+    //   - real 모드: mock으로 자동 대체하지 않는다(운영 통계 투입 금지) → 연결 안 됨.
+    //   - test 모드: 사용자가 시험 데이터를 명시 선택한 경우에만 로컬 mock 사용.
+    const mockRecords = requestedMode === 'test'
+      ? (resourceType === 'all' ? [] : (await runMockSync(resourceType)).rawItems)
+      : [];
+    const outcome = resolveFetchOutcome({
+      requestedMode,
+      networkFailed: true,
+      mockRecords,
+      errorMessage: 'Secure Proxy unreachable.'
+    });
+    return {
+      rawItems: outcome.records as Record<string, string>[],
+      importedCount: outcome.records.length,
+      maskedPiiCount: 0,
+      warningCount: 0,
+      isFallback: true,
+      sourceType: outcome.substitutionBlocked ? 'unavailable' : 'api_mock_fallback',
+      errorMessage: outcome.substitutionBlocked
+        ? 'Secure Proxy unreachable. 연결 안 됨(자동 대체 차단).'
+        : 'Secure Proxy unreachable. 시험 모드 mock 사용.',
+      provenanceKind: outcome.kind,
+      substitutionBlocked: outcome.substitutionBlocked
+    };
   }
 };
 
@@ -151,9 +159,10 @@ export const fetchProxyOrders = async (): Promise<Record<string, string>[]> => {
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('orders');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지(조용한 주입 함정 제거). 이 개별 조회는 현재 미사용(死코드).
+    //   사용하려면 resolveFetchOutcome 경로로 신분을 판정해야 한다. 여기서는 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyOrders 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -164,9 +173,9 @@ export const fetchProxyInquiries = async (): Promise<Record<string, string>[]> =
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('inquiries');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyInquiries 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -177,9 +186,9 @@ export const fetchProxyReviews = async (): Promise<Record<string, string>[]> => 
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('reviews');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyReviews 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -190,9 +199,9 @@ export const fetchProxyInventory = async (): Promise<Record<string, string>[]> =
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('inventory');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyInventory 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -203,8 +212,8 @@ export const fetchProxySales = async (): Promise<Record<string, string>[]> => {
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('sales');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxySales 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };

@@ -26,6 +26,7 @@ import { resetApiBridgeState } from './utils/apiBridgeStorage';
 import { composeOperationReport } from './engine/reportComposer';
 import { getScenarioData, type ValidationScenarioType } from './engine/nativeAgentRuntime/validationScenarios';
 import { useTheme } from './hooks/useTheme';
+import { classifyResource, userLabelOf } from './services/dataSourceProvenanceContract';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -617,7 +618,7 @@ function App() {
         date: activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
         timestamp: new Date().toLocaleTimeString(),
         sourceType: activeOperationsData.sourceType,
-        reportTitle: `Native 협업 자동화 운영 보고서 (${activeOperationsData.sourceType.toUpperCase()})`,
+        reportTitle: `Native 협업 자동화 운영 보고서 (${userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind)})`,
         autoCompletedCount: finalReport.autoCompletedCount,
         approvalPendingCount: finalReport.approvalRequiredCount,
         issueHighlights: finalReport.warningSignals,
@@ -732,7 +733,7 @@ function App() {
       addLog(`[System] 실제 고도몰 답변 등록은 아직 미연동 상태입니다.`, 'info', 'SYSTEM');
     } else {
       addLog(`[Approval] "${item.title}" 작업이 운영자 승인을 통과했습니다.`, 'success', 'Approval');
-      addLog(`[System] 승인 처리된 고도몰 액션(쿠폰/발행)을 외부 API 샌드박스로 커밋 완료.`, 'info', 'SYSTEM');
+      addLog(`[System] 승인 처리 완료. 고도몰 외부 액션(쿠폰/발행) 실제 커밋은 아직 미연동 상태입니다.`, 'info', 'SYSTEM');
     }
 
     // approval approved Usage Log 기록

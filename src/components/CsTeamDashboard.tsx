@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './CsTeamDashboard.css';
 import type { RevenueResult } from '../services/departmentDataService';
+import { classifyResource, userLabelOf, type ProvenanceKind } from '../services/dataSourceProvenanceContract';
 import { composeCsDraftFromOrders } from '../services/csDraftComposer';
 import {
   buildCsAdminWorkflow,
@@ -943,8 +944,22 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
   return (
     <div className="cs-dash">
       <div className="cs-dash-head">
-        <h2 className="dept-dashboard-title"><span className="dept-team-emoji">💬</span>CS팀 처리판</h2>
-        <p className="dept-dashboard-desc">관리자 업무 흐름 기준. (Commerce Universe safe data · 고객정보는 CS 처리 화면에서만 표시)</p>
+        <h2 className="dept-dashboard-title"><span className="dept-team-emoji">💬</span>CS팀 처리판
+          {(() => {
+            // C-출처: CS 문의/리뷰는 가상 2년치(universeAux) 기반 → 신분 라벨. 수치 계산은 불변.
+            const hasSynthetic = !!(revenue?.universeAux?.inquiries?.length || revenue?.universeAux?.reviews?.length);
+            const kind: ProvenanceKind = revenue?.source === 'unavailable' ? 'unavailable'
+              : hasSynthetic ? 'simulation'
+              : userLabelOf(classifyResource({ sourceType: revenue?.source }).kind) === '실제 데이터' ? 'actual' : 'simulation';
+            return (
+              <span className={`cs-provenance-badge prov-${kind}`} title={kind === 'simulation' ? '문의·리뷰는 가상 운영자료(시험 데이터)입니다.' : ''}
+                style={{ marginLeft: 8, fontSize: '0.55em', padding: '2px 8px', borderRadius: 10, verticalAlign: 'middle', background: kind === 'actual' ? 'rgba(45,245,162,0.15)' : kind === 'unavailable' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: kind === 'actual' ? '#2df5a2' : kind === 'unavailable' ? '#ef4444' : '#f59e0b' }}>
+                {userLabelOf(kind)}
+              </span>
+            );
+          })()}
+        </h2>
+        <p className="dept-dashboard-desc">관리자 업무 흐름 기준. (문의·리뷰는 시험 데이터 · 고객정보는 CS 처리 화면에서만 표시)</p>
       </div>
 
       <div className="cs-dash-period">
