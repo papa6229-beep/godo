@@ -7,6 +7,7 @@ import type {
 } from '../types/dataConnector';
 import { parseCSVToObjectArray } from '../utils/csvParser';
 import { buildOperationsSnapshot, normalizeRawObject } from '../utils/dataNormalizer';
+import { classifyResource, userLabelOf } from '../services/dataSourceProvenanceContract';
 import {
   defaultOperationsData,
   scenarioDefaultData,
@@ -80,7 +81,8 @@ export const DataPanel: React.FC<DataPanelProps> = ({
     const privacyMaskedCount = activeOperationsData.qualityReport?.privacyMaskedCount ?? 0;
     
     return {
-      sourceType: activeOperationsData.sourceType === 'api_mock' ? 'API MOCK' : activeOperationsData.sourceType.toUpperCase(),
+      // C-출처: 내부 기술문구(API_MOCK_FALLBACK 등) 대신 사용자 3표기(실제/시험/연결 안 됨).
+      sourceType: userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind),
       ordersCount,
       inquiriesCount,
       reviewsCount,
@@ -1096,7 +1098,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                         <td className="mono-cell">{item.timestamp}</td>
                         <td className="bold-cell">{item.fileName}</td>
                         <td>{item.domain.toUpperCase()}</td>
-                        <td>{item.sourceType.toUpperCase()}</td>
+                        <td>{userLabelOf(classifyResource({ sourceType: item.sourceType }).kind)}</td>
                         <td>{item.rowCount}행</td>
                         <td style={{ fontWeight: 700, color: item.qualityScore >= 90 ? '#00ff88' : '#ffb300' }}>
                           {item.qualityScore}점

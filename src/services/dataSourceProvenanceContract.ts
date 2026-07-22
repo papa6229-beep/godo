@@ -105,6 +105,8 @@ export function classifyResource(input: ResourceProvenanceInput): ResourceProven
   if (st === 'api_mock_fallback') return mk('fixture', 'sourceType=api_mock_fallback (시험 모드에서 fixture)');
   if (st === 'synthetic_test' || st === 'synthetic') return mk('simulation', 'sourceType=synthetic');
   if (st === 'api_proxy_real' || st === 'api_proxy_sandbox' || st === 'real_godomall') return mk('actual', `sourceType=${st}`);
+  // 사용자가 직접 올린 실제 자료(CSV/JSON/수기)는 실제 데이터로 본다(시험·가상 아님).
+  if (st === 'csv' || st === 'json' || st === 'manual') return mk('actual', `sourceType=${st} (사용자 업로드)`);
   if (st === 'demo' || st === 'mock' || st === 'api_mock') return mk('fixture', `sourceType=${st}`);
   // datasetKind=live 인데 sourceType 미상 → live 신뢰(경계가 실제라 명시)
   if (dk === 'live') return mk('actual', 'datasetKind=live');

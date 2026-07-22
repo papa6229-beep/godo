@@ -451,12 +451,15 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     };
   }, []);
 
-  // 라이브(실 READ) 상태 판정: 모드가 real/sandbox 이고 키가 모두 로드됨
-  const isLive =
+  // C-출처: isLive = "라이브 연동 가능(능력)" 판정이다 — 키·모드가 준비됨을 뜻할 뿐
+  //   "데이터가 실제"라는 뜻이 아니다. 실제 자료 여부는 리소스별 동기화 결과(sourceType)로만 판정한다.
+  //   (mode/키만 보고 REAL 데이터로 단언하던 오판을 능력 표현으로 분리.)
+  const isLiveCapable =
     !!proxyHealth &&
     (proxyHealth.mode === 'sandbox' || proxyHealth.mode === 'real') &&
     proxyHealth.hasPartnerKey &&
     proxyHealth.hasUserKey;
+  const isLive = isLiveCapable;
 
   return (
     <div className="api-bridge-panel-container">
@@ -552,9 +555,9 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   <span className="alert-icon">{isLive ? '✅' : '⚠️'}</span>
                   {isLive ? (
                     <span className="alert-text">
-                      현재 API Bridge는 <strong>{proxyHealth?.mode === 'real' ? 'REAL' : 'SANDBOX'} Live READ 모드</strong>로 동작 중입니다.
-                      고도몰5 Open API(OpenHub)에서 실제 데이터를 읽어오며, 쓰기(write) 액션은 비활성화되어 있습니다.
-                      API 키는 브라우저에 저장되지 않고 서버 환경변수로만 사용되며, 라이브 호출 실패 시 자동으로 Mock으로 안전하게 폴백합니다.
+                      현재 API Bridge는 <strong>{proxyHealth?.mode === 'real' ? 'REAL' : 'SANDBOX'} Live READ 연동 준비</strong> 상태입니다(키·모드 확인됨).
+                      동기화 시 고도몰5 Open API(OpenHub)에서 실제 데이터 READ를 시도하며, 쓰기(write) 액션은 비활성화되어 있습니다.
+                      실제 자료 여부는 각 리소스의 <strong>동기화 결과</strong>로 확인하세요(라이브 실패 시 실제 데이터가 아니라 연결 안 됨으로 표시됩니다).
                     </span>
                   ) : (
                     <span className="alert-text">
@@ -766,7 +769,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   <p className="resource-desc">Order_Search.php 주문조회 · 결제/배송 현황 ({isLive ? '실연동 READ' : 'Mock'})</p>
                   <div className="resource-meta-info">
                     <span>Endpoint: Order_Search.php</span>
-                    <span>Source: {isLive ? 'REAL (Live)' : 'Mock / Fallback'}</span>
+                    <span>Source: {isLive ? '실연동 준비(동기화 결과로 확인)' : 'Mock / Fallback'}</span>
                   </div>
                   <button
                     className="sync-card-btn"
@@ -834,7 +837,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   <p className="resource-desc">Goods_Search.php 상품 데이터 기반 재고 파생 · 안전재고 체크 ({isLive ? '실연동 READ' : 'Mock'})</p>
                   <div className="resource-meta-info">
                     <span>Endpoint: Goods_Search.php (derived)</span>
-                    <span>Source: {isLive ? 'DERIVED FROM PRODUCTS (REAL)' : 'Mock / Fallback'}</span>
+                    <span>Source: {isLive ? '상품 기반 파생(동기화 결과로 확인)' : 'Mock / Fallback'}</span>
                   </div>
                   <button
                     className="sync-card-btn"
@@ -880,7 +883,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   <p className="resource-desc">Goods_Search.php 상품조회 (개인정보 없음 · 실연동 READ)</p>
                   <div className="resource-meta-info">
                     <span>Endpoint: Goods_Search.php</span>
-                    <span>Source: {isLive ? 'REAL (Live)' : 'Mock / Fallback'}</span>
+                    <span>Source: {isLive ? '실연동 준비(동기화 결과로 확인)' : 'Mock / Fallback'}</span>
                   </div>
                   <button
                     className="sync-card-btn"

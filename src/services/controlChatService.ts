@@ -2,6 +2,7 @@ import { chatWithProvider } from './aiProviderAdapter';
 import { getGlobalBrainSelection, isBrainConnected, providerLabel } from './aiBrainSettings';
 import { getProviderModel } from './aiKeyVault';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
+import { classifyResource, userLabelOf } from './dataSourceProvenanceContract';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import type { 
@@ -158,7 +159,9 @@ function buildSystemPrompt(
   const pendingTasksCount = tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
 
   // 참고용 운영 데이터 — 사용자가 운영 현황을 "직접 물을 때만" 활용한다(평소엔 먼저 꺼내지 않음).
-  const contextText = `참고용 현재 운영 데이터(사용자가 운영 현황을 직접 물을 때만 활용): 오늘 주문 ${ordersCount}건, 미답변 문의 ${pendingInquiriesCount}건, 리뷰 ${reviewsCount}건, 재고 위험 상품 ${lowStockCount}건, 진행 중 작업 ${pendingTasksCount}건, 승인 대기 ${pendingApprovalsCount}건.`;
+  // C-출처: demo/mock 스냅샷을 실운영으로 오인시키지 않도록 신분(실제/시험/연결 안 됨)을 함께 명시. 수치는 불변.
+  const dataLabel = userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind);
+  const contextText = `참고용 현재 운영 데이터[${dataLabel}] (사용자가 운영 현황을 직접 물을 때만 활용): 오늘 주문 ${ordersCount}건, 미답변 문의 ${pendingInquiriesCount}건, 리뷰 ${reviewsCount}건, 재고 위험 상품 ${lowStockCount}건, 진행 중 작업 ${pendingTasksCount}건, 승인 대기 ${pendingApprovalsCount}건. (${dataLabel}: 실제 운영 수치가 아닐 수 있음)`;
 
   return `당신은 GODO AI OS의 HQ 매니저 비서입니다. 사용자(쇼핑몰 운영자)를 돕는 총괄 비서로서 한국어 존댓말로 자연스럽게 대화합니다.
 
