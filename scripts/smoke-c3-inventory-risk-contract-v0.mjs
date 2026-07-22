@@ -92,6 +92,12 @@ base('B3. riskyStockCount(out+low)=5 · unknownStockCount=2 · attentionCount=7'
 base('B4. resolvedSafetyStock: 누락/무효→5(global_default), 유효→product', classify(5, undefined).resolvedSafetyStock === 5 && classify(5, undefined).safetyStockSource === 'global_default' && classify(6, 20).resolvedSafetyStock === 20 && classify(6, 20).safetyStockSource === 'product');
 base('B5. safetyStock=0 유효(주의 밴드 없음): stock1→ok, stock0→out_of_stock', classify(1, 0).level === 'ok' && classify(0, 0).level === 'out_of_stock');
 base('B6. stock NaN·누락 → unknown (ok/low로 뭉개지 않음)', classify(NaN, 5).level === 'unknown' && classify(undefined, 5).level === 'unknown');
+// React 소비자(Dashboard·Calendar): 값은 summarizeStockRisk(R2)로 검증되고, 여기선 그 함수로 라우팅되며
+//   하드코딩 임계값이 제거됐는지 확인(소스 문자열 검사로 끝내지 않고 R2 값 검증과 결합).
+const dashSrc = readFileSync(path.join(REPO, 'src', 'components', 'ProductTeamDashboard.tsx'), 'utf8');
+const calSrc = readFileSync(path.join(REPO, 'src', 'components', 'CalendarPanel.tsx'), 'utf8');
+base('B7. ProductTeamDashboard가 공통 계약 라우팅 + 하드코딩 재고 임계값 제거', /inventoryRiskContract/.test(dashSrc) && /summarizeStockRisk/.test(dashSrc) && !/<= 40/.test(dashSrc) && !/syntheticProjectedStock <= 20/.test(dashSrc));
+base('B8. CalendarPanel이 공통 계약 라우팅 + RISK_THRESHOLD 제거', /inventoryRiskContract/.test(calSrc) && /summarizeStockRisk/.test(calSrc) && !/RISK_THRESHOLD/.test(calSrc));
 
 // ── [RED] 공통 계약 함수(inventoryRiskContract) ──
 red('R1. inventoryRiskContract 모듈 존재(classify/resolve/summarize)', !!IR && typeof IR.classifyStockRisk === 'function' && typeof IR.resolveSafetyStock === 'function' && typeof IR.summarizeStockRisk === 'function', IR ? 'export 일부 없음' : '모듈 없음');

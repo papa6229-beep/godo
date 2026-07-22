@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useState } from 'react';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { CalendarMetricLevel } from '../types/calendar';
 import { fetchRevenue, type RevenueResult } from '../services/departmentDataService';
+import { classifyStockRisk, summarizeStockRisk } from '../services/inventoryRiskContract';
 import './CalendarPanel.css';
 
 // Operation Calendar Revenue Binding v0
@@ -24,7 +25,11 @@ const CAT_NAMES: Record<string, string> = {
   C1: '생활가전', C2: '주방가전', C3: '공기·청정'
 };
 const catName = (c: string): string => CAT_NAMES[c] || (c === 'uncategorized' || !c ? '미분류' : c);
-const RISK_THRESHOLD = 20;
+// C-3: 재고 위험 판정은 공통 계약(inventoryRiskContract, 상품별 safetyStock 기준). 하드코딩 임계값 제거.
+const isRiskyStock = (s: { syntheticProjectedStock: number; safetyStock?: number }): boolean => {
+  const lv = classifyStockRisk(s.syntheticProjectedStock, s.safetyStock).level;
+  return lv === 'out_of_stock' || lv === 'low_stock';
+};
 
 interface DailyRev {
   orderCount: number;
@@ -90,13 +95,13 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
 
   // 2. 날짜별 매출/주문 집계
   const stockRiskCount = useMemo(
-    () => (revenue?.stockImpact ?? []).filter((s) => s.syntheticProjectedStock <= RISK_THRESHOLD).length,
+    () => summarizeStockRisk((revenue?.stockImpact ?? []).map((s) => ({ stock: s.syntheticProjectedStock, safetyStock: s.safetyStock }))).risky,
     [revenue]
   );
   const revByDate = useMemo(() => {
     const map = new Map<string, DailyRev>();
     const riskSet = new Set(
-      (revenue?.stockImpact ?? []).filter((s) => s.syntheticProjectedStock <= RISK_THRESHOLD).map((s) => s.productId)
+      (revenue?.stockImpact ?? []).filter(isRiskyStock).map((s) => s.productId)
     );
     for (const o of revenue?.orders ?? []) {
       const d = o.orderDate.slice(0, 10);

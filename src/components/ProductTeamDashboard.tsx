@@ -17,6 +17,7 @@ import {
 import { categoryDisplayName as catName, formatSharePercent as pctStr } from '../services/productCategoryDisplay';
 import { REVENUE_METRIC_LABELS as RV } from '../services/revenueMetricContract';
 import { OPERATIONAL_METRIC_LABELS as OP } from '../services/departmentMetricContract';
+import { classifyStockRisk, summarizeStockRisk } from '../services/inventoryRiskContract';
 import { buildDepartmentSourceOfTruthSnapshot } from '../services/departmentDataSourceOfTruth';
 
 // 상품관리팀 매출/재고 대시보드 v1.1
@@ -48,9 +49,13 @@ const wonShort = (n: number): string => {
   return `${Math.round(n).toLocaleString('ko-KR')}`;
 };
 
-type StockLevel = 'danger' | 'warn' | 'ok';
-const stockLevel = (p: number): StockLevel => (p <= 20 ? 'danger' : p <= 40 ? 'warn' : 'ok');
-const levelKo = (l: StockLevel): string => (l === 'danger' ? '위험' : l === 'warn' ? '주의' : '정상');
+// C-3: 재고 위험 단계는 공통 계약(inventoryRiskContract)으로 판정. 임계값 하드코딩 금지.
+type StockLevel = 'danger' | 'warn' | 'ok' | 'unknown';
+const stockLevel = (stock: number, safetyStock?: number): StockLevel => {
+  const lv = classifyStockRisk(stock, safetyStock).level;
+  return lv === 'out_of_stock' ? 'danger' : lv === 'low_stock' ? 'warn' : lv === 'unknown' ? 'unknown' : 'ok';
+};
+const levelKo = (l: StockLevel): string => (l === 'danger' ? '위험' : l === 'warn' ? '주의' : l === 'unknown' ? '확인 필요' : '정상');
 
 // 매출추이 단위 (버킷 생성은 productDashboardTrendBuckets.ts로 분리)
 type Period = 'month' | 'week' | 'day';
@@ -367,7 +372,7 @@ const AllProductsModal: React.FC<{
           net: (a?.sold ?? 0) - (a?.restored ?? 0),
           projected: s.syntheticProjectedStock,
           sourceStockEnabled: s.sourceStockEnabled,
-          level: stockLevel(s.syntheticProjectedStock)
+          level: stockLevel(s.syntheticProjectedStock, s.safetyStock)
         };
       })
       .filter((r) => (cat === 'all' || r.categoryCode === cat) && (status === 'all' || r.level === status));
@@ -572,7 +577,8 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         else if (o.paid) sold += l.quantity;
       }
     }
-    // 재고 위험: danger(≤20) / warn(21~40) / 최저재고 상품
+    // C-3: 재고 위험은 공통 계약(상품별 safetyStock 기준). risky=품절+재고부족, unknown=재고 이상.
+    const sr = summarizeStockRisk(filteredStock.map((x) => ({ stock: x.syntheticProjectedStock, safetyStock: x.safetyStock })));
     const lowest = filteredStock.length
       ? [...filteredStock].sort((a, b) => a.syntheticProjectedStock - b.syntheticProjectedStock)[0]
       : null;
@@ -586,8 +592,9 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
       net: sold - restored,
       virtualStock: filteredStock.reduce((s, x) => s + x.syntheticProjectedStock, 0),
       trackedCount: filteredStock.length,
-      riskCount: filteredStock.filter((x) => x.syntheticProjectedStock <= 20).length,
-      warnCount: filteredStock.filter((x) => x.syntheticProjectedStock > 20 && x.syntheticProjectedStock <= 40).length,
+      // C-3: 공통 계약 집계. riskCount = 위험(품절)+주의(재고부족), warnCount = 재고 이상(확인 필요).
+      riskCount: sr.risky,
+      warnCount: sr.unknown,
       lowestName: lowest?.productName ?? '',
       lowestStock: lowest?.syntheticProjectedStock ?? 0
     };
@@ -725,7 +732,7 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
               value={kpi.riskCount}
               unit="개"
               sub={
-                `주의 ${kpi.warnCount}개 · 관리 상품 ${kpi.trackedCount}개` +
+                `재고 이상 ${kpi.warnCount}개 · 관리 상품 ${kpi.trackedCount}개` +
                 (kpi.lowestName ? ` · 최저 ${kpi.lowestName} ${kpi.lowestStock}개` : '')
               }
               accent={KPI_ACCENT[3]}
@@ -836,7 +843,7 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
               ) : (
                 <ul className="ptd-stock-list">
                   {stockRisk.slice(0, 6).map((s) => (
-                    <li key={s.productId} className={`ptd-stock-card lv-${stockLevel(s.syntheticProjectedStock)}`}>
+                    <li key={s.productId} className={`ptd-stock-card lv-${stockLevel(s.syntheticProjectedStock, s.safetyStock)}`}>
                       <div className="ptd-stock-top">
                         <span className="ptd-stock-name" title={s.productName}>{s.productName}</span>
                         <span className="ptd-stock-now">{qty(s.syntheticProjectedStock)}</span>
