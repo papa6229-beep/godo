@@ -108,7 +108,7 @@ export const REVENUE_METRIC_LABELS: Record<RevenueMetricKind, RevenueMetricLabel
     excludes: '배송비'
   },
   netOrderRevenue: {
-    label: '총매출',
+    label: '운영매출',
     basis: '취소·반품 제외 유효 주문(결제완료·미취소) 기준',
     description: '결제완료·미취소 유효 주문의 주문 총액 합계. 마케팅 성과/객단가 분석의 기본값 — 상품관리 "상품매출(전체 주문 라인합)"과 기준이 다릅니다.',
     includes: '유효 주문(결제완료·미취소)의 주문 총액',

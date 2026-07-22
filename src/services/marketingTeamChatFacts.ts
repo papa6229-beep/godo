@@ -241,7 +241,7 @@ export function buildMarketingChatContext(
 
   const summaryBlock =
     `[마케팅 분석 요약 · ${facts.periodLabel}]\n` +
-    `- 총매출 ${won(s.totalRevenue)} · 주문수 ${s.orderCount}건 · 객단가 ${won(s.averageOrderValue)}\n` +
+    `- 운영매출 ${won(s.totalRevenue)} · 주문수 ${s.orderCount}건 · 객단가 ${won(s.averageOrderValue)}\n` +
     `- 첫구매 매출 ${won(s.firstPurchaseRevenue)} · 재구매 매출 ${won(s.repeatPurchaseRevenue)}${s.unknownFirstPurchaseOrderCount > 0 ? ' · 첫구매 여부 미분류 ' + s.unknownFirstPurchaseOrderCount + '건·' + won(s.unknownFirstPurchaseRevenue) : ''}\n` +
     `- 쿠폰 사용 주문 ${s.couponOrderCount}건 · 쿠폰 할인 총액 ${won(s.totalCouponDiscountAmount)} · 리워드 사용액 ${won(s.totalRewardUseAmount)}`;
 

@@ -30,8 +30,8 @@ export const OPERATIONAL_METRIC_LABELS: Record<OperationalMetricKind, RevenueMet
   // 공통 대표 운영 KPI — 모든 부서 상단에서 같은 값(net 유효 주문 기준).
   operationalRevenue: {
     label: '운영매출',
-    basis: '전 부서 공통 · 유효 주문(결제완료·미취소) 순매출',
-    description: '모든 부서가 같은 값으로 보는 대표 운영 매출. 유효 주문(결제완료·미취소)의 주문 총액 합(netOrderRevenue). 부서별로 다르게 계산하지 않는다.',
+    basis: '전 부서 공통 · 유효 주문(결제완료·미취소) 결제금액',
+    description: '모든 부서가 같은 값으로 보는 대표 운영 매출. 유효 주문(결제완료·미취소)의 주문 총액 합(배송비 포함·할인 차감 후 결제금액). 환불은 반영하지 않는다. 부서별로 다르게 계산하지 않는다.',
     includes: '유효 주문(결제완료·미취소)의 주문 총액',
     excludes: '취소·반품·미입금 주문'
   },

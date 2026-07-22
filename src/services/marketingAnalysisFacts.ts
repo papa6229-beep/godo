@@ -512,7 +512,7 @@ export function buildMarketingAnalysisFacts(input: {
 
   // ── evidence ──
   const evidence: MarketingEvidence[] = [
-    { id: 'ev_total_revenue', label: '총매출(결제완료·미취소)', value: totalRevenue, source: 'orders' },
+    { id: 'ev_total_revenue', label: '운영매출(결제완료·미취소)', value: totalRevenue, source: 'orders' },
     { id: 'ev_order_count', label: '분석 주문수', value: orderCount, source: 'orders' },
     { id: 'ev_aov', label: '전체 객단가', value: summary.averageOrderValue, source: 'derived' },
     { id: 'ev_first_aov', label: '첫구매 객단가', value: summary.firstPurchaseAverageOrderValue, source: 'derived' },
