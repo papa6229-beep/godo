@@ -18,6 +18,7 @@ import {
   isValidOrder
 } from './revenueMetricContract';
 import { summarizeStockRisk } from './inventoryRiskContract';
+import { summarizeInquiryStatus, isUnresolved } from './inquiryStatusContract';
 
 export type DepartmentSourceMode = 'real' | 'synthetic' | 'mixed' | 'unavailable';
 
@@ -57,8 +58,9 @@ export interface DepartmentSourceOfTruthSnapshot {
   };
   csUniverse: {
     totalInquiries: number;
-    unresolvedInquiries: number;
+    unresolvedInquiries: number;   // C-4: 미처리(answered 제외 전부, unknown 포함)
     resolvedInquiries: number;
+    unknownInquiries: number;      // C-4: 상태 미확인(정상 오판 방지·미처리에 포함)
     totalReviews: number;
     autoCandidates: number;
   };
@@ -78,9 +80,7 @@ export interface DepartmentSourceOfTruthSnapshot {
 }
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-// CS 미처리/처리완료 판정 — csDashboardStatistics.isAnswered와 동일 기준.
-const isAnswered = (s?: string): boolean =>
-  /^answered$/i.test((s || '').trim()) || /답변\s*완료|처리\s*완료|resolved|closed|done/i.test(s || '');
+// C-4: 문의 미처리/미확인 판정은 공통 계약(inquiryStatusContract)을 재사용한다(원시 문자열 비교 금지).
 
 interface BuildOptions {
   nowMs?: number;
@@ -130,10 +130,13 @@ export function buildDepartmentSourceOfTruthSnapshot(
   const inquiries = aux?.inquiries ?? [];
   const reviews = aux?.reviews ?? [];
   const totalInquiries = inquiries.length;
-  const unresolvedInquiries = inquiries.filter((q) => !isAnswered(q.status)).length;
-  const resolvedInquiries = totalInquiries - unresolvedInquiries;
+  // C-4: 공통 계약으로 미처리(=answered 제외 전부, unknown 포함)·미확인 집계.
+  const inqSummary = summarizeInquiryStatus(inquiries.map((q) => q.status));
+  const unresolvedInquiries = inqSummary.unresolved;
+  const resolvedInquiries = inqSummary.answered;
+  const unknownInquiries = inqSummary.unknown;
   const totalReviews = reviews.length;
-  const autoCandidates = reviews.length + inquiries.filter((q) => !isAnswered(q.status) && /delivery|배송/i.test(q.topic || '')).length;
+  const autoCandidates = reviews.length + inquiries.filter((q) => isUnresolved(q.status) && /delivery|배송/i.test(q.topic || '')).length;
 
   // source mode
   const syntheticOrderCount = summary ? num(summary.syntheticOrderCount) : orders.filter((o) => o.sourceType === 'synthetic_test').length;
@@ -153,7 +156,7 @@ export function buildDepartmentSourceOfTruthSnapshot(
     revenueUniverse: { grossProductRevenue: productLineRevenue, netOrderRevenue: operationalRevenue, shippingRevenue, refundedRevenue, operationalRevenue },
     productUniverse: { totalQuantitySold, productCount, riskyStockCount, outOfStockCount: stockRisk.outOfStock, lowStockCount: stockRisk.lowStock, unknownStockCount: stockRisk.unknown, attentionCount: stockRisk.attention },
     customerUniverse: { totalCustomers, repeatCustomers, highRiskCustomers },
-    csUniverse: { totalInquiries, unresolvedInquiries, resolvedInquiries, totalReviews, autoCandidates },
+    csUniverse: { totalInquiries, unresolvedInquiries, resolvedInquiries, unknownInquiries, totalReviews, autoCandidates },
     metadata: {
       includesSynthetic: syntheticOrderCount > 0,
       realOrderCount,

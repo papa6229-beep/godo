@@ -12,6 +12,8 @@
 // ── 입력 데이터셋 타입(self-contained) ──────────────────────────────────────
 // C-2: 유효주문 판정은 부서 공통 계약(revenueMetricContract.isValidOrder)을 재사용한다(소비자별 복붙 금지).
 import { isValidOrder } from './revenueMetricContract';
+// C-4: 문의 미답변 판정은 공통 계약(inquiryStatusContract)을 재사용한다(원시 문자열 비교 금지).
+import { isUnanswered } from './inquiryStatusContract';
 
 export interface AnalyticsOrderLine {
   goodsNo: string;
@@ -596,7 +598,7 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
     case 'inquiryCount': case 'inquiryTopicBreakdown': case 'unansweredInquiryCount': case 'urgentInquiryCount': case 'csIssueTopProducts': case 'csRiskProducts': {
       if (inquiries.length === 0) return noData('문의(inquiries) 데이터');
       if (spec.metric === 'inquiryCount') return okResult(spec, dataset, reg, [{ key: 'inquiryCount', label: '문의 수', value: inquiries.length }], { total: inquiries.length });
-      if (spec.metric === 'unansweredInquiryCount') { const v = inquiries.filter((q) => q.status === 'unanswered').length; return okResult(spec, dataset, reg, [{ key: 'unanswered', label: '미답변 문의 수', value: v }], { total: v }); }
+      if (spec.metric === 'unansweredInquiryCount') { const v = inquiries.filter((q) => isUnanswered(q.status)).length; return okResult(spec, dataset, reg, [{ key: 'unanswered', label: '미답변 문의 수', value: v }], { total: v }); }
       if (spec.metric === 'urgentInquiryCount') { const v = inquiries.filter((q) => q.urgency === 'high').length; return okResult(spec, dataset, reg, [{ key: 'urgent', label: '긴급 문의 수', value: v }], { total: v }); }
       if (spec.metric === 'inquiryTopicBreakdown') { const m = new Map<string, number>(); for (const q of inquiries) m.set(q.topic, (m.get(q.topic) || 0) + 1); const rows = [...m.entries()].map(([k, v]) => ({ key: k, label: k, value: v })).sort((a, b) => b.value - a.value); return okResult(spec, dataset, reg, rows, { groupBy: 'inquiryTopic', total: inquiries.length }); }
       // csIssueTopProducts / csRiskProducts: 상품별 문의 수
