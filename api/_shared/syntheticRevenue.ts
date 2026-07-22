@@ -41,6 +41,8 @@ export type SyntheticStockImpact = {
   syntheticRestoredQuantity: number;
   syntheticNetSoldQuantity: number;
   syntheticProjectedStock: number;
+  // C-3: 상품별 안전재고 — 위험 판정(inventoryRiskContract)의 상품별 기준. 데이터 경계에서 1회 연결.
+  safetyStock: number;
   warning?: string;
 };
 
@@ -301,6 +303,7 @@ export const computeSyntheticStockImpact = (
       syntheticRestoredQuantity: restoredQ,
       syntheticNetSoldQuantity: netSold,
       syntheticProjectedStock: projectedStock,
+      safetyStock: safety, // C-3: 이미 계산한 상품별 안전재고를 소비자에 전달(버리지 않는다)
       ...(warning ? { warning } : {})
     };
   });
