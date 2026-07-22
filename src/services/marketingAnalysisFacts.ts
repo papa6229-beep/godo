@@ -456,7 +456,9 @@ export function buildMarketingAnalysisFacts(input: {
       }
       // 카테고리
       const catCode = str(l.categoryCode) || str(meta?.categoryCode) || 'uncategorized';
-      const catLabel = str(l.categoryLabel) || catCode;
+      // C-1: 내부 key는 'uncategorized'로 통일하되, 화면 label만 '미분류'로 노출한다(내부 키 노출 금지).
+      //   실제 코드값(uncategorized 아님)인데 label이 없는 경우의 폴백은 이번 범위 밖이라 그대로 둔다.
+      const catLabel = str(l.categoryLabel) || (catCode === 'uncategorized' ? '미분류' : catCode);
       const c = catAgg.get(catCode) || { label: catLabel, revenue: 0, orders: new Set<string>(), quantity: 0 };
       c.revenue += rev;
       if (oNo) c.orders.add(oNo);
