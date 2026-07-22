@@ -33,6 +33,7 @@ const hasContract = existsSync(path.join(REPO, 'src', 'services', 'inquiryStatus
 const entries = [
   path.join(REPO, 'src', 'services', 'analyticsQueryEngine.ts'),
   path.join(REPO, 'src', 'services', 'csTeamDashboardFacts.ts'),
+  path.join(REPO, 'src', 'services', 'departmentDataSourceOfTruth.ts'),
   ...(hasContract ? [path.join(REPO, 'src', 'services', 'inquiryStatusContract.ts')] : [])
 ];
 try {
@@ -46,6 +47,7 @@ for (const f of readdirSync(tmp).filter((x) => x.endsWith('.js'))) {
 }
 const A = await import(pathToFileURL(path.join(tmp, 'analyticsQueryEngine.js')).href);
 const CS = await import(pathToFileURL(path.join(tmp, 'csTeamDashboardFacts.js')).href);
+const DS = await import(pathToFileURL(path.join(tmp, 'departmentDataSourceOfTruth.js')).href);
 let IS = null;
 if (hasContract && existsSync(path.join(tmp, 'inquiryStatusContract.js'))) {
   try { IS = await import(pathToFileURL(path.join(tmp, 'inquiryStatusContract.js')).href); } catch { IS = null; }
@@ -88,6 +90,8 @@ base('B2. 미답변(unanswered)=5 · in_progress=2 · on_hold=2 · needs_human=1
 base('B3. 미처리=13(unanswered+in_progress+on_hold+needs_human+unknown) · unknown 미처리에 포함', cUnresolved === 13);
 base('B4. needs_human은 미답변 아님(별도), unknown은 answered 아님', norm('needs_human').c === 'needs_human' && norm('needs_human').c !== 'unanswered' && norm('ZZUNKNOWN').c === 'unknown');
 base('B5. 대소문자·공백 정리: "  Unanswered  " → unanswered', norm('  Unanswered  ').c === 'unanswered');
+// idempotent: 이미 canonical인 값을 다시 넣어도 같은 canonical (계약 조건)
+base('B6. idempotent: canonical 재입력 시 동일 canonical', ['unanswered', 'in_progress', 'on_hold', 'needs_human', 'answered', 'unknown'].every((c) => norm(c).c === c));
 
 // ── [RED] 공통 계약 모듈 ──
 red('R1. inquiryStatusContract 존재(normalize/summarize/판정)', !!IS && typeof IS.normalizeInquiryStatus === 'function' && typeof IS.summarizeInquiryStatus === 'function', IS ? 'export 일부 없음' : '모듈 없음');
@@ -110,9 +114,17 @@ const csUnanswered = csFacts?.kpis?.unansweredCount ?? -1;
 console.log(`  · analytics 미답변 = ${anUnanswered} (계약 ${cUnanswered}) · CS 대시보드 미답변 = ${csUnanswered} (계약 ${cUnanswered})`);
 
 // ── [RED] 소비자 값이 공통 계약과 일치 ──
-red('R4. analytics unansweredInquiryCount = 계약 미답변 5 (literal 과소집계 해소)', anUnanswered === cUnanswered, anUnanswered);
-red('R5. CS 대시보드 unansweredCount = 계약 미답변 5 (needs_human 제외)', csUnanswered === cUnanswered, csUnanswered);
-red('R6. analytics 미답변 = CS 미답변 (일치)', anUnanswered === csUnanswered && anUnanswered === cUnanswered, `analytics=${anUnanswered}·CS=${csUnanswered}`);
+red('R4. analytics unansweredInquiryCount(라벨 미답변) = 계약 미답변 5 (literal 과소집계 해소)', anUnanswered === cUnanswered, anUnanswered);
+red('R5. CS 대시보드 unansweredCount(라벨 미답변) = 계약 미답변 5 (needs_human 제외)', csUnanswered === cUnanswered, csUnanswered);
+red('R6. analytics 미답변 = CS 미답변 (같은 라벨 = 같은 값)', anUnanswered === csUnanswered && anUnanswered === cUnanswered, `analytics=${anUnanswered}·CS=${csUnanswered}`);
+
+// !isAnswered 스킴 대표: departmentDataSourceOfTruth (라벨 '미처리' → 기대값 13, 5 아님)
+const snap = DS.buildDepartmentSourceOfTruthSnapshot({ orders: [], summary: null, universeAux: { inquiries, customers: [], reviews: [] }, stockImpact: [] }, {});
+const cu = snap?.csUniverse ?? {};
+console.log(`  · snapshot 미처리(unresolved) = ${cu.unresolvedInquiries} (계약 ${cUnresolved}) · unknown = ${cu.unknownInquiries}`);
+base('B7. snapshot 미처리(unresolved) = 계약 미처리 13 (라벨=미처리이므로 13, 5 아님)', cu.unresolvedInquiries === cUnresolved);
+red('R7. snapshot이 unknown 문의를 별도 분리 노출(unknownInquiries=3) — 미처리 총계와 구분', cu.unknownInquiries === cUnknown, `unknownInquiries=${cu.unknownInquiries}`);
+red('R8. summarize에 unknown 원시값 근거(unknownSamples) 보존', !!IS && Array.isArray(IS.summarizeInquiryStatus?.(inquiries.map((q) => q.status))?.unknownSamples) && IS.summarizeInquiryStatus(inquiries.map((q) => q.status)).unknownSamples.length === cUnknown, IS ? '샘플 없음' : '모듈 없음');
 
 console.log(`\n--- 요약 ---`);
 console.log(`[BASE] ${baseP} pass / ${baseF} fail`);
