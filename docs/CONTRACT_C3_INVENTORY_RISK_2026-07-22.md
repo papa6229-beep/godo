@@ -120,10 +120,11 @@ export function summarizeStockRisk(items: { stock: number; safetyStock?: unknown
 - **문제(RED)**: `computeSyntheticStockImpact`가 `initialStock = max(0,netSold) + safety`로 만들어 **projectedStock == safetyStock**(40/40) → 계약 적용 시 **전 상품 low_stock(100%)**. 계약·조인은 정상, **합성 생성식이 퇴화**.
 - **조치(생성기만 수정, C-3 판정 임계값·safetyStock 연결·C-2 데이터 불변)**: productId 기반 **결정적 시나리오**(Math.random 미사용)로 목표 재고 분산.
   - 시나리오 선택 해시 salt `c3-stock-scenario:` (안전재고 생성 해시와 **분리**), 밴드 값 salt `c3-low-band:`/`c3-ok-band:`.
-  - 목표 분포 out_of_stock ~10% / low_stock ~25% / ok ~65% (실측 40종: **out 5 / low 9 / ok 26**).
+  - 목표 분포 out_of_stock ~10% / low_stock ~25% / ok ~65%. **5·9·26은 Production 고정 기대값이 아니라 '40종 분석 fixture에서 관측된 결과'다** — 실제 분포는 카탈로그 크기·productId 구성에 따라 달라지되, 같은 입력에서는 항상 동일하고 단일 상태로 퇴화하지 않는 것이 계약이다.
   - 상태별 projectedStock: out=0 / low=1..safety / ok=safety+1..safety+40. `initialStock = 목표 + netSold` → `initialStock − netSoldQuantity = projectedStock` 유지, 0 이상 정수.
 - **성격(명시)**: 이 재고 분포는 **실제 재고 위험을 예측하거나 실제 쇼핑몰의 정상 비율을 주장하는 모델이 아니라, UI·업무 흐름·위험 분류 검증을 위한 결정적 합성 시나리오**다(문서·`api/_shared/syntheticRevenue.ts` 주석에 명시). 실 고도몰 재고 연결 시 대체.
-- **분포 (동일 데이터 40종)**: PRE-FIX 계약 out0/low40/ok0(riskyStockCount 40) → POST-FIX out5/low9/ok26(riskyStockCount 14). projectedStock == safetyStock: 40→0. projectedStock `min0/max114/median57`, safetyStock `min20/max78/median55.5`.
+- **분포 (40종 분석 fixture, 관측값)**: PRE-FIX 계약 out0/low40/ok0(riskyStockCount 40) → POST-FIX out5/low9/ok26(riskyStockCount 14). projectedStock == safetyStock: 40→0. projectedStock `min0/max114/median57`, safetyStock `min20/max78/median55.5`.
+- **Preview 실 카탈로그(13종) 실측**: 전체 13 · out_of_stock **2** · low_stock **2** · ok **9** · unknown **0** · riskyStockCount **4** · attentionCount **4** · safetyStockSource product 13/global_default 0. 상품팀 대시보드·캘린더 모두 4로 일치(스냅샷·채팅 동일 `summarizeStockRisk` 사용). 대표: 스텐 에어프라이기 stock0→품절 · 스마트 에코 밥솥 14→재고부족 · 대용량 에어 가습기 38→정상. 운영매출 88,116,982원·C-2 표시명 유지, 콘솔 0·제품 API 200.
 
 ## 14. 열린 확인 (후속)
 - `safetyStock=0`이 실 고도몰에서 '미설정'을 뜻하는지 실데이터 확인(현재 원천 없음 → 유효 설정으로 취급).
