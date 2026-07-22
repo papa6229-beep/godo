@@ -176,6 +176,26 @@ if (IS && typeof IS.normalizeInquiryRecords === 'function') {
   base('B11. 입력경계 1회 변환 + 저장→복원 보존', false);
 }
 
+// ── [BASE] 실제 Production 고도몰 관측 형태 재현(답변대기×2·답변완료×1) — '답변대기'=미답변 잠금 ──
+{
+  const realRaw = ['답변대기', '답변대기', '답변완료'];
+  const realInq = realRaw.map((s, i) => ({ inquiryId: `R${i}`, status: s, topic: 'delivery', urgency: 'low', createdAt: `2026-06-1${i}` }));
+  const rs = IS?.summarizeInquiryStatus?.(realRaw);
+  const rec0 = IS?.normalizeInquiryRecord?.({ inquiryId: 'R0', status: '답변대기' });
+  const draftOver = CD.selectCsDraftTargetInquiry({ inquiries: realInq, intent: { isDraftRequest: true, targetHint: 'recent_unanswered', rank: 3 } });
+  const draftPick = CD.selectCsDraftTargetInquiry({ inquiries: realInq, intent: { isDraftRequest: true, targetHint: 'recent_unanswered' } });
+  const roundtrip = IS ? IS.normalizeInquiryRecords(JSON.parse(JSON.stringify(IS.normalizeInquiryRecords(realInq)))) : [];
+  console.log(`  · 실데이터 재현: 미답변 ${rs?.unanswered} · 미처리 ${rs?.unresolved} · unknown ${rs?.unknown} · 답변완료 ${rs?.answered} · 자동초안후보 ${realRaw.filter((x) => IS?.isUnanswered(x)).length}`);
+  base('B12. 실제 고도몰 형태(답변대기2·답변완료1): 미답변2·답변완료1·unknown0·미처리2',
+    !!rs && rs.total === 3 && rs.unanswered === 2 && rs.answered === 1 && rs.unknown === 0 && rs.unresolved === 2);
+  base('B13. 답변대기 record: canonicalStatus=unanswered · rawStatus=답변대기 · reason=known_alias 보존',
+    !!rec0 && rec0.canonicalStatus === 'unanswered' && rec0.rawStatus === '답변대기' && rec0.normalizationReason === 'known_alias');
+  base('B14. 답변대기 자동초안 후보 2건(총 2건) · 선정대상이 답변대기(미답변)',
+    /총\s*2\s*건/.test(draftOver.reason || '') && !!draftPick.inquiry && IS.normalizeInquiryStatus(draftPick.inquiry.status).canonicalStatus === 'unanswered');
+  base('B15. 저장→복원 후에도 답변대기→unanswered·rawStatus 보존',
+    roundtrip.length === 3 && roundtrip[0].canonicalStatus === 'unanswered' && roundtrip[0].rawStatus === '답변대기' && roundtrip[0].normalizationReason === 'known_alias');
+}
+
 console.log(`\n--- 요약 ---`);
 console.log(`[BASE] ${baseP} pass / ${baseF} fail`);
 console.log(`[RED ] ${redMet} met / ${redUnmet} unmet`);

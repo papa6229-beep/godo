@@ -30,7 +30,9 @@ export const isInquiryStatus = (v: unknown): v is InquiryStatus => typeof v === 
 
 // 알려진 원시 별칭만 명시적으로 매핑한다(의미 추측 금지). 영문은 소문자, 한글은 원문 키.
 const ALIAS: Record<string, InquiryStatus> = {
-  unanswered: 'unanswered', pending: 'unanswered', open: 'unanswered', '미답변': 'unanswered',
+  // '답변대기' = 실제 Production 고도몰(secure_proxy, mode:real) 문의에서 관측된 확정 원시값.
+  //   추측이 아니라 실데이터 대조로 확인된 입력값. 그 외 미관측 고도몰 어휘는 추가하지 않는다(후속에서 확정).
+  unanswered: 'unanswered', pending: 'unanswered', open: 'unanswered', '미답변': 'unanswered', '답변대기': 'unanswered',
   in_progress: 'in_progress', processing: 'in_progress', '처리중': 'in_progress',
   hold: 'on_hold', on_hold: 'on_hold', '보류': 'on_hold',
   needs_human: 'needs_human',
