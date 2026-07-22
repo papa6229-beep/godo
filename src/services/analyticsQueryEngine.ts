@@ -10,6 +10,9 @@
 // 데이터셋은 호출자가 주입한다(프론트는 orders만, smoke/서버는 customers/reviews/inquiries 포함 가능).
 
 // ── 입력 데이터셋 타입(self-contained) ──────────────────────────────────────
+// C-2: 유효주문 판정은 부서 공통 계약(revenueMetricContract.isValidOrder)을 재사용한다(소비자별 복붙 금지).
+import { isValidOrder } from './revenueMetricContract';
+
 export interface AnalyticsOrderLine {
   goodsNo: string;
   goodsName?: string;
@@ -266,13 +269,7 @@ const orderInFilters = (o: AnalyticsOrder, f?: AnalyticsQuerySpec['filters']): b
   if (f.orderChannel && o.orderChannel !== f.orderChannel) return false;
   return true;
 };
-// 주문의 매출/수량(카테고리/브랜드/상품 필터 적용 가능)
-const orderRevenue = (o: AnalyticsOrder, f?: AnalyticsQuerySpec['filters']): number => {
-  if (!f || (!f.categoryCode && !f.brandCode && !f.goodsNo && !f.productId)) return o.productRevenueByLines || 0;
-  let s = 0;
-  for (const l of o.lines) if (lineInFilters(l, f)) s += l.lineRevenue || 0;
-  return s;
-};
+// 주문의 수량(카테고리/브랜드/상품 필터 적용 가능). 매출은 orderPaymentAmount(유효주문 결제금액) 참조.
 const orderUnits = (o: AnalyticsOrder, f?: AnalyticsQuerySpec['filters']): number => {
   let s = 0;
   for (const l of o.lines) if (lineInFilters(l, f)) s += l.quantity || 0;
@@ -284,6 +281,13 @@ const lineInFilters = (l: AnalyticsOrderLine, f?: AnalyticsQuerySpec['filters'])
   if (f.brandCode && l.brandCode !== f.brandCode) return false;
   if ((f.goodsNo || f.productId) && l.goodsNo !== (f.goodsNo || f.productId)) return false;
   return true;
+};
+// C-2: 주문 단위 매출 = 유효주문 결제금액(totalAmount). 라인 필터가 있으면 그 라인 귀속합만(배송비·주문할인 임의배분 금지).
+const orderPaymentAmount = (o: AnalyticsOrder, f?: AnalyticsQuerySpec['filters']): number => {
+  if (!f || (!f.categoryCode && !f.brandCode && !f.goodsNo && !f.productId)) return o.totalAmount || 0;
+  let s = 0;
+  for (const l of o.lines) if (lineInFilters(l, f)) s += l.lineRevenue || 0;
+  return s;
 };
 
 type Agg = { revenue: number; orders: Set<string>; units: number; count: number };
@@ -335,7 +339,7 @@ const groupOrders = (
     else if (groupBy === 'customerSegment') key = o.memberKey ? segByMember.get(o.memberKey) || '(미상)' : '(비회원)';
     if (key === undefined) continue;
     const a = m.get(key) || newAgg();
-    a.revenue += orderRevenue(o, f);
+    a.revenue += orderPaymentAmount(o, f);
     a.orders.add(o.orderNo);
     a.units += orderUnits(o, f);
     a.count += 1;
@@ -401,6 +405,8 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
   const reviews = (dataset.reviews || []).filter((r) => inPeriod(r.createdAt, spec.startDate, spec.endDate));
   const inquiries = (dataset.inquiries || []).filter((q) => inPeriod(q.createdAt, spec.startDate, spec.endDate));
   const customers = dataset.customers || [];
+  // C-2: 매출·주문수·객단가·비중·성장률·기간비교는 유효주문(결제완료·미취소)만 집계한다(공통 경로).
+  const validOrders = orders.filter(isValidOrder);
 
   const noData = (need: string): AnalyticsQueryResult =>
     extResult(spec, dataset, reg, `현재 데이터셋에 ${need}이(가) 없어 계산할 수 없습니다.`);
@@ -433,7 +439,8 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
           : spec.metric === 'averageOrderValue' || spec.metric.endsWith('Aov') ? 'aov'
           : 'revenue';
       const lineLevel = gb === 'category' || gb === 'brand' || gb === 'product';
-      const m = lineLevel ? groupLines(orders, gb, spec.filters) : groupOrders(orders, gb, dataset, spec.filters);
+      // C-2 조각 A: 주문 축은 유효주문 결제금액 기준. (라인 축 groupLines는 조각 B에서 유효주문으로 전환)
+      const m = lineLevel ? groupLines(orders, gb, spec.filters) : groupOrders(validOrders, gb, dataset, spec.filters);
       let rows = aggToRows(m, valueKind, dataset, gb);
       if (spec.metric === 'topProducts') rows = rows.slice(0, 10);
       if (spec.metric === 'lowPerformingProducts') rows = [...rows].sort((a, b) => a.value - b.value).slice(0, 10);
@@ -451,9 +458,9 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
     case 'netRevenue': {
       if (orders.length === 0) return noData('주문 데이터');
       const gb = spec.groupBy || 'month';
-      const m = groupOrders(orders, gb, dataset, spec.filters);
+      const m = groupOrders(validOrders, gb, dataset, spec.filters);
       const claimByKey = new Map<string, number>();
-      for (const o of orders) {
+      for (const o of validOrders) {
         const amt = o.claim?.claimAmount || 0;
         if (!amt) continue;
         const k = gb === 'month' ? ymd(o.orderDate).slice(0, 7) : gb === 'day' ? ymd(o.orderDate) : weekKey(o.orderDate);
@@ -468,7 +475,7 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
 
     case 'salesGrowthRate': {
       if (orders.length === 0) return noData('주문 데이터');
-      const m = groupOrders(orders, 'month', dataset, spec.filters);
+      const m = groupOrders(validOrders, 'month', dataset, spec.filters);
       const base = aggToRows(m, 'revenue', dataset, 'month');
       let prev: number | null = null;
       const rows = base.map((r) => {
@@ -482,9 +489,9 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
 
     case 'periodComparison': {
       if (!spec.compareTo) return extResult(spec, dataset, reg, 'periodComparison은 compareTo 기간이 필요합니다.');
-      const cur = orders;
-      const cmp = dataset.orders.filter((o) => inPeriod(o.orderDate, spec.compareTo!.startDate, spec.compareTo!.endDate) && orderInFilters(o, spec.filters));
-      const sum = (arr: AnalyticsOrder[]) => arr.reduce((s, o) => s + orderRevenue(o, spec.filters), 0);
+      const cur = validOrders;
+      const cmp = dataset.orders.filter((o) => inPeriod(o.orderDate, spec.compareTo!.startDate, spec.compareTo!.endDate) && orderInFilters(o, spec.filters)).filter(isValidOrder);
+      const sum = (arr: AnalyticsOrder[]) => arr.reduce((s, o) => s + orderPaymentAmount(o, spec.filters), 0);
       const a = sum(cur); const b = sum(cmp);
       const rows: AnalyticsRow[] = [
         { key: 'current', label: `${spec.startDate || '시작'}~${spec.endDate || '끝'}`, value: a, revenue: a, orderCount: cur.length },
