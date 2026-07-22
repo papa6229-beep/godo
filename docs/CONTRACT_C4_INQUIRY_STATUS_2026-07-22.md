@@ -159,3 +159,16 @@ export function summarizeInquiryStatus(raws: unknown[]):
 ## 16. 완료 범위 명칭 (제한)
 이번 완료 명칭은 **'C-4 문의 상태 입력 정규화'** 로 제한한다. CommerceSnapshot 전체 정규화 완료가 아니다.
 후속(별도): 불리언 광역 정규화 · 실 고도몰 문의 상태 매핑 확정 · CommerceSnapshot 전체 재설계.
+
+## 17. C4-SERVER-01 (서버 경계 미이관 — 의도된 후속)
+`api/_shared/syntheticCommerceFacts.ts:118-119` 의 `q.status === 'unanswered'` / `=== 'needs_human'` 는
+이번 이관 대상에서 **의도적으로 제외**한다. 근거:
+- **경계 제약**: `api/_shared/*` 는 서버 번들이며 `src/services/inquiryStatusContract.ts`(클라이언트 계약)를
+  import 하지 않는다(빌드 경계 분리). client↔server 공유 계약 모듈은 별도 리팩터가 필요.
+- **입력 도메인**: 해당 코드는 **합성 생성기가 방금 만든 영어 리터럴**(`unanswered`/`needs_human`)만 소비한다.
+  한국어·별칭·빈 값·미지값이 유입되지 않는 폐루프이므로 `===` 가 이 지점에서는 과소·과대집계를 일으키지 않는다.
+- **정합성**: 클라이언트 표시 계층(analytics/CS/snapshot)은 전부 공통 계약을 통과하므로 사용자 노출 지표는 일치.
+- **선례**: C-3의 `godomallInventoryDerive` 기본값(C3-SERVER-01)과 동일한 "서버 폐루프는 소비 지점에서만 계약화 유예" 원칙.
+
+→ 실제 고도몰/CSV 문의 어댑터가 붙어 서버가 외부 원시 상태를 받는 시점에 **client↔server 공유 상태 계약**으로 통합.
+현재는 문의 데이터가 합성 전용이라 유입 원시값이 없어 비활성 리스크.
