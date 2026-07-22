@@ -64,3 +64,21 @@
 3. 라벨 교정(순매출 제거·유효주문 결제금액 명시), 기존 export는 deprecated 별칭 보존.
 4. 위 RED 4항목 MET + BASE 불변 + 지표 정합성/전체 스모크/tsc·build/신규 lint 0.
 5. 환불은 이번 범위에서 **미반영 유지**(원천 계약은 별도).
+
+## 5. GREEN 완료 상태 (2026-07-22)
+
+- 구현 3조각: A(주문 단위·기간비교) · B(상품 라인 집계) · C(표시명·deprecated 별칭·순매출 제한). 공통 `isValidOrder`·`validOrders` 단일 경로 재사용, 소비자별 복붙 없음.
+- 명칭 사용자·AI 노출 4지점 폐쇄: 채팅 '총매출'→'운영매출', operationalRevenue basis/description '순매출' 제거, evidence '운영매출(결제완료·미취소)', 라벨 상수 '운영매출'(computeNetOrderRevenue deprecated 별칭 보존).
+- 검증: C-2 BASE 9/9 · GREEN 17/17 · 명칭 회귀 7/7 · C-8 team-chat 32/32(회귀 없음) · 지표 정합성 163/0/0 · 전체 스모크 84/84 · tsc·build 0 · 신규 lint 0.
+
+## 6. Preview 검증 상태 (정직 기록)
+
+- **결정론 확인(키 불필요)**: 배포 커밋 450d131 · 운영매출 KPI 라벨/값(88,116,982원)/basis "결제금액"(순매출 아님) · 화면 총매출·순매출 미노출 · 콘솔 오류 0 · 제품 API `/api/godomall/*` 200.
+- **AI 채팅 E2E**: **키 부재로 미실행**(Preview에 Claude 키 없음 → 채팅 무응답). '채팅 E2E 통과'로 기록하지 않는다. 대신 **실제 `analyticsQueryEngine`·`revenueMetricContract` 회귀검증(17/17)과 명칭 회귀(7/7)로 대체**. Production 반영 후 사장님 환경(연결된 키)에서 매출 질문 1회 확인 = 후속 항목.
+
+### INFRA-PREVIEW-01 (병합 차단 아님 · 앱 코드 수정 금지)
+
+- 증상: 브랜치 Preview에서 `HEAD /` 및 `/.well-known/vercel/jwe` → **503**(재로드 재현).
+- 판정: **Vercel Deployment Protection 계층의 Preview 전용 신호**로 기록. C-2 제품 경로와 무관.
+- 근거: 실제 앱 렌더 정상 · 제품 API 200 · 콘솔 0 · `/.well-known/vercel/jwe`는 앱 기능 경로가 아닌 Vercel 보호 계층 경로 · Production(godo-psi)에는 동일 증상·해당 엔드포인트 없음. Vercel 문서상 보호된 Preview는 모든 요청에 인증 계층이 적용될 수 있어 자동검증에는 보호 우회 토큰/vercel curl 사용을 안내.
+- 후속: **앱 코드 수정 금지.** Production 반영 후 같은 요청이 재현되는지만 확인.
