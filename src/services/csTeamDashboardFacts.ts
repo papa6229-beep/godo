@@ -98,9 +98,12 @@ export const csTopicKo = (t?: string): string => TOPIC_KO[t || ''] || TOPIC_KO[n
 
 const DRAFTABLE_TOPICS = new Set(['product', 'general']);
 
-// 우선순위 점수: 긴급+미답변(0) < 미답변(1) < 긴급(2) < 그 외(3)
+// 우선순위 점수: 긴급+미처리(0) < 미처리(1) < 긴급(2) < 그 외(3)
+// C-4: 우선처리 큐는 "미처리 먼저"이므로 미답변만이 아니라 미처리 전체(unanswered/in_progress/
+//   on_hold/needs_human/unknown)를 상위 티어로 둔다. needs_human('관리자 확인 필요')이 답변완료와
+//   동급(3)으로 침몰하는 것을 방지 — 라벨 '미답변' 집계(unansweredCount)와는 별개 개념.
 const priorityScore = (status?: string, urgency?: string): number => {
-  const un = isUnanswered(status);
+  const un = isUnresolved(status);
   const ur = isUrgent(urgency);
   if (un && ur) return 0;
   if (un) return 1;
