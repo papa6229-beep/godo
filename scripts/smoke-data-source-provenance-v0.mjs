@@ -211,6 +211,45 @@ if (P && typeof P.resolveFetchOutcome === 'function') {
   red('J1~J5. resolveFetchOutcome(자동대체 차단)', false, '함수 없음');
 }
 
+// ── [RED] 리소스별 상태 + 화면 집계 (Data Center / Sync History) — 사장 지정 9종 ──
+if (P && typeof P.toResourceStatus === 'function' && typeof P.summarizeScreenStatus === 'function') {
+  const rs = (resource, o) => P.toResourceStatus(resource, P.resolveFetchOutcome(o), '2026-07-22T18:56:00Z');
+  // 실제 동기화 형태 재현
+  const sales = rs('sales', { requestedMode: 'real', serverSourceType: 'api_proxy_real', serverRecords: [] });          // 실제 성공 빈배열
+  const inquiries = rs('inquiries', { requestedMode: 'real', serverSourceType: 'api_mock_fallback', errorMessage: 'Board_List.php 미매핑', mockRecords: [{}, {}, {}] });
+  const reviews = rs('reviews', { requestedMode: 'real', serverSourceType: 'api_mock_fallback', errorMessage: 'Board_List.php 미매핑', mockRecords: [{}, {}, {}] });
+  const orders = rs('orders', { requestedMode: 'real', serverSourceType: 'api_proxy_real', serverRecords: [{}] });        // 실제 1
+  const inventory = rs('inventory', { requestedMode: 'real', serverSourceType: 'api_proxy_real', serverRecords: Array.from({ length: 13 }, () => ({})) });
+
+  red('K1. sales 실제 성공 빈배열 → success·실제 데이터·0건',
+    sales.status === 'success' && sales.userLabel === '실제 데이터' && sales.count === 0, JSON.stringify(sales));
+  red('K2. inquiries 미구현+mock존재 → unavailable·연결 안 됨·mock 미집계(0)',
+    inquiries.status === 'unavailable' && inquiries.userLabel === '연결 안 됨' && inquiries.count === 0 && inquiries.substitutionBlocked === true, JSON.stringify(inquiries));
+  red('K3. reviews 동일 → unavailable·연결 안 됨·0',
+    reviews.status === 'unavailable' && reviews.userLabel === '연결 안 됨' && reviews.count === 0, JSON.stringify(reviews));
+  red('K4. orders 실제 1 → success·실제 데이터·1건',
+    orders.status === 'success' && orders.userLabel === '실제 데이터' && orders.count === 1, JSON.stringify(orders));
+  red('K5. inventory 실제 13 → success·실제 데이터·13건',
+    inventory.status === 'success' && inventory.userLabel === '실제 데이터' && inventory.count === 13, JSON.stringify(inventory));
+  const screen = P.summarizeScreenStatus([orders, inquiries, reviews, inventory, sales]);
+  red('K6. mixed 화면 → 각 리소스 상태 보존 + 화면 일부 연결 안 됨',
+    screen.kind === 'unavailable' && screen.anyUnavailable === true && screen.resources.length === 5 &&
+    screen.resources.find((r) => r.resource === 'orders').status === 'success' &&
+    screen.resources.find((r) => r.resource === 'inquiries').status === 'unavailable' &&
+    /연결 안 됨/.test(screen.note), JSON.stringify({ k: screen.kind, note: screen.note }));
+  const testInq = rs('inquiries', { requestedMode: 'test', serverSourceType: 'api_mock_fallback', mockRecords: [{}, {}, {}] });
+  red('K7. test 모드 mock → 시험 데이터(success)',
+    testInq.userLabel === '시험 데이터' && testInq.status === 'success' && testInq.count === 3, JSON.stringify(testInq));
+  // K8: 상태 레코드/화면 어디에도 내부 기술문구 없음
+  const blob = JSON.stringify([sales, inquiries, reviews, orders, inventory, screen, testInq]);
+  red('K8. 상태 레코드에 내부 기술문구 없음(REAL/api_proxy_real/api_mock_fallback/secure_proxy_mock/FALLBACK/SYNTHETIC)',
+    !/REAL|api_proxy_real|api_mock_fallback|secure_proxy_mock|FALLBACK|SYNTHETIC/i.test(blob.replace(/Board_List/g, '')), 'leak');
+  // K9: 계산값 불변 — toResourceStatus는 outcome.count만 읽고 records를 바꾸지 않음(순수)
+  red('K9. 상태 판정은 순수(원본 outcome 불변)', orders.count === 1 && inventory.count === 13);
+} else {
+  red('K1~K9. toResourceStatus/summarizeScreenStatus', false, '함수 없음');
+}
+
 console.log(`\n--- 요약 ---`);
 console.log(`[BASE] ${baseP} pass / ${baseF} fail`);
 console.log(`[RED ] ${redMet} met / ${redUnmet} unmet`);

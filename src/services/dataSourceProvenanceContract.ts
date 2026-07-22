@@ -206,3 +206,66 @@ export function resolveFetchOutcome(input: FetchOutcomeInput): FetchOutcome {
     substitutionBlocked: false, sourceType: st || 'unknown', reason: `실제 응답 — ${p.reason}`
   };
 }
+
+// ── 리소스별 상태 레코드 + 화면 집계 (Data Center / Sync History 용) ───────────
+
+export type ResourceStatus = 'success' | 'unavailable';
+
+export interface ResourceStatusRecord {
+  resource: string;
+  status: ResourceStatus;        // success(실제·시험 성공) | unavailable(연결 안 됨)
+  provenance: ProvenanceKind;    // actual | simulation | fixture | unavailable
+  userLabel: ProvenanceUserLabel;// 실제 데이터 | 시험 데이터 | 연결 안 됨
+  count: number;                 // 실제로 적재된 레코드 수(차단 시 0)
+  substitutionBlocked: boolean;
+  errorMessage?: string;
+  syncedAt?: string;
+}
+
+/**
+ * fetch 결과 → 리소스별 상태 레코드. **배열 길이로 상태를 재판정하지 않는다.**
+ *   status: unavailable ↔ 연결 안 됨(실패/미구현/차단). success ↔ 실제/시험 성공(빈 배열이어도 성공).
+ */
+export function toResourceStatus(resource: string, outcome: FetchOutcome, syncedAt?: string): ResourceStatusRecord {
+  const status: ResourceStatus = (outcome.substitutionBlocked || outcome.kind === 'unavailable') ? 'unavailable' : 'success';
+  return {
+    resource,
+    status,
+    provenance: outcome.kind,
+    userLabel: outcome.userLabel,
+    count: outcome.count,
+    substitutionBlocked: outcome.substitutionBlocked,
+    ...(outcome.errorMessage ? { errorMessage: outcome.errorMessage } : {}),
+    ...(syncedAt ? { syncedAt } : {})
+  };
+}
+
+export interface ScreenStatus {
+  kind: ProvenanceKind;
+  userLabel: ProvenanceUserLabel;
+  anyUnavailable: boolean;
+  note: string; // 사용자 안내(예: '일부 리소스 연결 안 됨')
+  resources: ResourceStatusRecord[];
+}
+
+/**
+ * 리소스별 상태 → 화면 전체 상태(리소스별과 분리 보존). [규칙 D·E·G]
+ *   전부 actual → 실제 데이터 · 하나라도 unavailable → 연결 안 됨(일부 안내) · 그 외 혼재 → 시험 데이터.
+ *   개별 리소스의 실제 데이터/연결 안 됨 상태는 records에 그대로 보존한다.
+ */
+export function summarizeScreenStatus(records: ResourceStatusRecord[]): ScreenStatus {
+  if (!records.length) {
+    return { kind: 'unavailable', userLabel: userLabelOf('unavailable'), anyUnavailable: true, note: '연동된 리소스 없음', resources: [] };
+  }
+  const anyUnavailable = records.some((r) => r.status === 'unavailable');
+  const allActual = records.every((r) => r.provenance === 'actual');
+  let kind: ProvenanceKind;
+  let note: string;
+  if (allActual) { kind = 'actual'; note = '모든 리소스 실제 데이터'; }
+  else if (anyUnavailable) {
+    kind = 'unavailable';
+    const bad = records.filter((r) => r.status === 'unavailable').map((r) => r.resource);
+    note = `일부 리소스 연결 안 됨: ${bad.join(', ')}`;
+  } else { kind = 'simulation'; note = '시험 데이터 포함'; }
+  return { kind, userLabel: userLabelOf(kind), anyUnavailable, note, resources: records };
+}

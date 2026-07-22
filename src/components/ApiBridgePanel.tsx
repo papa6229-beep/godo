@@ -12,6 +12,7 @@ import {
 } from '../utils/apiBridgeStorage';
 import { buildOperationsSnapshot } from '../utils/dataNormalizer';
 import { checkProxyHealth, syncProxyResource } from '../services/secureProxyClient';
+import { toResourceStatus, resolveFetchOutcome, userLabelOf, classifyResource, summarizeScreenStatus, type ProvenanceUserLabel } from '../services/dataSourceProvenanceContract';
 import './ApiBridgePanel.css';
 
 interface ApiBridgePanelProps {
@@ -62,24 +63,16 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     maskedCount: number;
     syncedAt: string;
     errorMessage?: string;
+    userLabel?: ProvenanceUserLabel;
+    status?: 'success' | 'unavailable';
   } | null>(null);
 
-  // sourceType -> 화면 표기 (Mock / Sandbox / Real / Fallback)
-  const getSourceDisplay = (sourceType: string): { label: string; className: string } => {
-    switch (sourceType) {
-      case 'api_proxy_real': return { label: 'REAL (Live)', className: 'source-real' };
-      case 'api_proxy_sandbox': return { label: 'SANDBOX (Live)', className: 'source-sandbox' };
-      case 'api_mock_fallback': return { label: 'FALLBACK (Mock)', className: 'source-fallback' };
-      case 'api_proxy_mock': return { label: 'MOCK (Proxy)', className: 'source-mock' };
-      case 'api_mock': return { label: 'MOCK (Local)', className: 'source-mock' };
-      default: return { label: sourceType.toUpperCase(), className: 'source-mock' };
-    }
-  };
-
+  // C-출처: 상단 "연동 모드"는 연동 가능 여부(능력)만 나타낸다 — 실제 자료 여부는 동기화 결과로만 판정.
+  //   내부 기술문구(REAL/SANDBOX/MOCK) 대신 능력 표현을 쓴다.
   const getModeLabel = (mode?: string): string => {
-    if (mode === 'real') return 'REAL (Live READ)';
-    if (mode === 'sandbox') return 'SANDBOX (Live READ)';
-    return 'MOCK (Sandbox)';
+    if (mode === 'real') return '실 연동 준비';
+    if (mode === 'sandbox') return '샌드박스 연동 준비';
+    return '시험 모드';
   };
 
   // 컴포넌트 마운트 시 또는 상태 업데이트 시 동기화
@@ -145,7 +138,6 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     if (syncingResource) return;
     setSyncingResource(resourceType);
 
-    const sourceLabel = syncSource === 'secure_proxy' ? 'secure_proxy_mock' : 'local_mock_adapter';
     const sourceDesc = syncSource === 'secure_proxy' ? 'Secure Proxy Server' : 'Local Mock Adapter';
 
     appendApiBridgeLog(`Starting sync for resource [${resourceType}] via [${sourceDesc}]...`, 'info', resourceType);
@@ -178,46 +170,61 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
         };
       }
 
-      // 마지막 동기화 결과 기록 (출처/건수/마스킹/시각/에러)
+      // C-출처: 리소스별 상태 레코드(실제 데이터/시험 데이터/연결 안 됨). 배열 길이로 재판정하지 않음.
+      const syncedAt = new Date().toISOString();
+      const statusRec = toResourceStatus(resourceType, resolveFetchOutcome({
+        requestedMode: syncSource === 'secure_proxy' ? 'real' : 'test',
+        serverSourceType: result.sourceType,
+        serverRecords: result.rawItems,
+        mockRecords: result.rawItems,
+        errorMessage: result.errorMessage,
+        networkFailed: false
+      }), syncedAt);
+
+      // 마지막 동기화 결과 기록 (신분/건수/마스킹/시각/에러)
       setLastSyncResult({
         resourceType,
         source: result.sourceType,
-        count: result.importedCount,
+        count: statusRec.count,
         maskedCount: result.maskedPiiCount,
-        syncedAt: new Date().toISOString(),
-        errorMessage: result.errorMessage
+        syncedAt,
+        errorMessage: result.errorMessage,
+        userLabel: statusRec.userLabel,
+        status: statusRec.status
       });
 
       // Data Connector의 Snapshot 업데이트 (Products는 이번 MVP에서 데이터 적재 제외 또는 Preview 전용)
       if (resourceType !== 'products') {
         const updatedSnapshot = buildOperationsSnapshot(resourceType, result.rawItems, activeOperationsData);
-        // 소스 타입 설정 (real/sandbox/mock_fallback 상세 출처 그대로 반영)
         updatedSnapshot.sourceType = result.sourceType as typeof updatedSnapshot.sourceType;
+        // 리소스별 신분·상태 보존(화면·이력이 이 레코드로 표시).
+        updatedSnapshot.resourceProvenance = { ...(activeOperationsData.resourceProvenance || {}), [resourceType]: statusRec };
         setActiveOperationsData(updatedSnapshot);
 
-        // Import History에 데이터 추가
+        // Import History에 데이터 추가 (상태·신분 보존)
         const historyItem: ImportHistoryItem = {
           id: `import-api-${Date.now()}-${resourceType}`,
-          timestamp: new Date().toISOString(),
-          fileName: `Godomall API (${(syncSource === 'secure_proxy' && !result.isFallback) ? 'Secure Proxy' : 'Mock Sync'} - ${resourceType.toUpperCase()})`,
+          timestamp: syncedAt,
+          fileName: `고도몰 연동 (${statusRec.userLabel} · ${resourceType.toUpperCase()})`,
           domain: resourceType as DataDomain,
           sourceType: updatedSnapshot.sourceType,
-          rowCount: result.importedCount,
-          status: 'success',
+          rowCount: statusRec.count,
+          status: statusRec.status === 'unavailable' ? 'warning' : 'success',
           qualityScore: updatedSnapshot.qualityReport?.qualityScore || 95
         };
         setImportHistory(prev => [historyItem, ...prev]);
       }
 
-      // Sync Job 기록 저장
+      // Sync Job 기록 저장 (상태·공급처를 사용자 신분으로 — 내부 기술문구 미노출)
       appendApiSyncJob({
         resourceType,
-        status: 'success',
-        completedAt: new Date().toISOString(),
-        source: sourceLabel,
-        importedCount: result.importedCount,
+        status: statusRec.status === 'unavailable' ? 'blocked' : 'success',
+        completedAt: syncedAt,
+        source: statusRec.userLabel,
+        importedCount: statusRec.count,
         maskedPiiCount: result.maskedPiiCount,
-        warningCount: result.warningCount
+        warningCount: result.warningCount,
+        ...(statusRec.errorMessage ? { errorMessage: statusRec.errorMessage } : {})
       });
 
       appendApiBridgeLog(
@@ -281,17 +288,18 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     if (syncingResource) return;
     setSyncingResource('all');
     
-    const sourceLabel = syncSource === 'secure_proxy' ? 'secure_proxy_mock' : 'local_mock_adapter';
+    const requestedMode = syncSource === 'secure_proxy' ? 'real' : 'test';
     const sourceDesc = syncSource === 'secure_proxy' ? 'Secure Proxy Server' : 'Local Mock Adapter';
-    
-    appendApiBridgeLog(`Starting full mock resource sync via [${sourceDesc}]...`, 'info');
-    onAddLog(`[API Bridge] 전역 Mock 리소스 연동이 개시되었습니다. (${sourceDesc})`, 'info');
 
-    const resources: ApiResourceType[] = ['orders', 'inquiries', 'reviews', 'inventory', 'sales'];
+    appendApiBridgeLog(`Starting full resource sync via [${sourceDesc}]...`, 'info');
+    onAddLog(`[API Bridge] 전역 리소스 연동이 개시되었습니다. (${sourceDesc})`, 'info');
+
+    const resources: ApiResourceType[] = ['orders', 'inventory', 'sales', 'inquiries', 'reviews'];
     let totalImported = 0;
     let totalMasked = 0;
     let lastSourceType = 'api_mock_fallback';
     let lastErrorMessage: string | undefined;
+    const provByResource: Record<string, ReturnType<typeof toResourceStatus>> = { ...(activeOperationsData.resourceProvenance || {}) };
 
     try {
       let currentSnapshot = { ...activeOperationsData };
@@ -299,7 +307,8 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
 
       for (const res of resources) {
         appendApiBridgeLog(`Syncing [${res}]...`, 'info', res);
-        
+        const syncedAt = new Date().toISOString();
+
         let result;
         if (syncSource === 'secure_proxy') {
           result = await syncProxyResource(res);
@@ -322,32 +331,40 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
           };
         }
 
+        // C-출처: 리소스별 상태(실제/시험/연결 안 됨). 배열 길이로 재판정하지 않음.
+        const statusRec = toResourceStatus(res, resolveFetchOutcome({
+          requestedMode, serverSourceType: result.sourceType, serverRecords: result.rawItems,
+          mockRecords: result.rawItems, errorMessage: ('errorMessage' in result ? result.errorMessage : undefined), networkFailed: false
+        }), syncedAt);
+        provByResource[res] = statusRec;
+
         currentSnapshot = buildOperationsSnapshot(res, result.rawItems, currentSnapshot);
-        totalImported += result.importedCount;
+        totalImported += statusRec.count;
         totalMasked += result.maskedPiiCount;
         lastSourceType = result.sourceType;
         if ('errorMessage' in result && result.errorMessage) lastErrorMessage = result.errorMessage;
 
-        // 개별 Sync Job 저장
+        // 개별 Sync Job 저장 (상태·공급처 = 사용자 신분)
         appendApiSyncJob({
           resourceType: res,
-          status: 'success',
-          completedAt: new Date().toISOString(),
-          source: sourceLabel,
-          importedCount: result.importedCount,
+          status: statusRec.status === 'unavailable' ? 'blocked' : 'success',
+          completedAt: syncedAt,
+          source: statusRec.userLabel,
+          importedCount: statusRec.count,
           maskedPiiCount: result.maskedPiiCount,
-          warningCount: result.warningCount
+          warningCount: result.warningCount,
+          ...(statusRec.errorMessage ? { errorMessage: statusRec.errorMessage } : {})
         });
 
-        // Import History 데이터 생성
+        // Import History 데이터 생성 (상태·신분 보존)
         newImportHistoryItems.push({
           id: `import-api-${Date.now()}-${res}`,
-          timestamp: new Date().toISOString(),
-          fileName: `Godomall API (${(syncSource === 'secure_proxy' && !result.isFallback) ? 'Secure Proxy' : 'Mock Sync'} - ${res.toUpperCase()})`,
+          timestamp: syncedAt,
+          fileName: `고도몰 연동 (${statusRec.userLabel} · ${res.toUpperCase()})`,
           domain: res as DataDomain,
           sourceType: result.sourceType as ImportHistoryItem['sourceType'],
-          rowCount: result.importedCount,
-          status: 'success',
+          rowCount: statusRec.count,
+          status: statusRec.status === 'unavailable' ? 'warning' : 'success',
           qualityScore: currentSnapshot.qualityReport?.qualityScore || 95
         });
 
@@ -363,19 +380,23 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
         await new Promise(resolve => setTimeout(resolve, 150));
       }
 
-      // Snapshot 적용 및 소스 타입 변경 (마지막 리소스의 상세 출처 반영)
+      // Snapshot 적용 + 리소스별 신분 보존. 화면 전체 신분은 요약에서 별도 계산.
       currentSnapshot.sourceType = lastSourceType as typeof currentSnapshot.sourceType;
+      currentSnapshot.resourceProvenance = provByResource;
       setActiveOperationsData(currentSnapshot);
       setImportHistory(prev => [...newImportHistoryItems, ...prev]);
 
-      // 마지막 동기화 결과 요약
+      // 마지막 동기화 결과 요약 — 화면 전체 신분(일부 연결 안 됨이면 연결 안 됨).
+      const screen = summarizeScreenStatus(resources.map((r) => provByResource[r]).filter(Boolean));
       setLastSyncResult({
         resourceType: 'all',
         source: lastSourceType,
         count: totalImported,
         maskedCount: totalMasked,
         syncedAt: new Date().toISOString(),
-        errorMessage: lastErrorMessage
+        errorMessage: lastErrorMessage,
+        userLabel: screen.userLabel,
+        status: screen.anyUnavailable ? 'unavailable' : 'success'
       });
 
       appendApiBridgeLog(`Full resources sync completed. Total records: ${totalImported}, Masked PII: ${totalMasked}`, 'info');
@@ -466,6 +487,10 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
     proxyHealth.hasPartnerKey &&
     proxyHealth.hasUserKey;
   const isLive = isLiveCapable;
+  // C-출처: 실제 모드(Secure Proxy) vs 시험 모드(Local Mock 명시 선택).
+  const isRealMode = syncSource === 'secure_proxy';
+  // 리소스별 최종 동기화 상태(실제 데이터/시험 데이터/연결 안 됨/대기).
+  const resourceCardStatus = (res: string): string => activeOperationsData.resourceProvenance?.[res]?.userLabel || '대기';
 
   return (
     <div className="api-bridge-panel-container">
@@ -735,11 +760,11 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
 
               {/* 마지막 동기화 결과 (출처 / 건수 / 마스킹 / 시각 / 에러) */}
               {lastSyncResult && (
-                <div className={`last-sync-result-box ${getSourceDisplay(lastSyncResult.source).className}`}>
+                <div className={`last-sync-result-box ${lastSyncResult.status === 'unavailable' ? 'source-fallback' : 'source-real'}`}>
                   <div className="last-sync-row">
-                    <span className="last-sync-lbl">데이터 출처 (Source)</span>
-                    <span className={`source-badge ${getSourceDisplay(lastSyncResult.source).className}`}>
-                      {getSourceDisplay(lastSyncResult.source).label}
+                    <span className="last-sync-lbl">데이터 상태</span>
+                    <span className={`source-badge ${lastSyncResult.status === 'unavailable' ? 'source-fallback' : 'source-real'}`}>
+                      {lastSyncResult.userLabel || userLabelOf(classifyResource({ sourceType: lastSyncResult.source }).kind)}
                     </span>
                   </div>
                   <div className="last-sync-row">
@@ -772,10 +797,10 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       {getPermissionLabel(apiState.providers[0].permissions.orders).text}
                     </span>
                   </div>
-                  <p className="resource-desc">Order_Search.php 주문조회 · 결제/배송 현황 ({isLive ? '실연동 READ' : 'Mock'})</p>
+                  <p className="resource-desc">Order_Search.php 주문조회 · 결제/배송 현황 ({isRealMode ? '실 연동' : '시험 모드'})</p>
                   <div className="resource-meta-info">
                     <span>Endpoint: Order_Search.php</span>
-                    <span>Source: {isLive ? '실연동 준비(동기화 결과로 확인)' : 'Mock / Fallback'}</span>
+                    <span>상태: {resourceCardStatus('orders') === '대기' ? (isRealMode ? '실 연동 준비(동기화로 확인)' : '시험 모드') : resourceCardStatus('orders')}</span>
                   </div>
                   <button
                     className="sync-card-btn"
@@ -784,7 +809,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   >
                     {syncingResource === 'orders'
                       ? '🔄 Syncing...'
-                      : isLive ? 'Sync Orders' : 'Sync Mock Orders'}
+                      : isRealMode ? 'Sync Orders' : 'Sync Orders(시험)'}
                   </button>
                 </div>
 
@@ -798,15 +823,16 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   </div>
                   <p className="resource-desc">1:1 고객 문의 접수 건 및 유형 분류 동기화</p>
                   <div className="resource-meta-info">
-                    <span>최종 동기화: {apiState.providers[0].lastSyncAt ? '완료' : '대기'}</span>
-                    <span>예상 데이터: 3 rows</span>
+                    <span>최종 동기화: {resourceCardStatus('inquiries')}</span>
+                    {!isRealMode && <span>예상 데이터: 3 rows(시험)</span>}
+                    {isRealMode && <span>실 연동 미구현 → 연결 안 됨</span>}
                   </div>
                   <button
                     className="sync-card-btn"
                     onClick={() => handleSyncResource('inquiries')}
                     disabled={syncingResource !== null}
                   >
-                    {syncingResource === 'inquiries' ? '🔄 Syncing...' : 'Sync Mock Inquiries'}
+                    {syncingResource === 'inquiries' ? '🔄 Syncing...' : (isRealMode ? 'Sync Inquiries' : 'Sync Mock Inquiries(시험)')}
                   </button>
                 </div>
 
@@ -820,15 +846,16 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   </div>
                   <p className="resource-desc">구매 만족도 평점, 내용, 감사 답글 여부 매핑</p>
                   <div className="resource-meta-info">
-                    <span>최종 동기화: {apiState.providers[0].lastSyncAt ? '완료' : '대기'}</span>
-                    <span>예상 데이터: 3 rows</span>
+                    <span>최종 동기화: {resourceCardStatus('reviews')}</span>
+                    {!isRealMode && <span>예상 데이터: 3 rows(시험)</span>}
+                    {isRealMode && <span>실 연동 미구현 → 연결 안 됨</span>}
                   </div>
                   <button
                     className="sync-card-btn"
                     onClick={() => handleSyncResource('reviews')}
                     disabled={syncingResource !== null}
                   >
-                    {syncingResource === 'reviews' ? '🔄 Syncing...' : 'Sync Mock Reviews'}
+                    {syncingResource === 'reviews' ? '🔄 Syncing...' : (isRealMode ? 'Sync Reviews' : 'Sync Mock Reviews(시험)')}
                   </button>
                 </div>
 
@@ -840,10 +867,10 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       {getPermissionLabel(apiState.providers[0].permissions.inventory).text}
                     </span>
                   </div>
-                  <p className="resource-desc">Goods_Search.php 상품 데이터 기반 재고 파생 · 안전재고 체크 ({isLive ? '실연동 READ' : 'Mock'})</p>
+                  <p className="resource-desc">Goods_Search.php 상품 데이터 기반 재고 파생 · 안전재고 체크 ({isRealMode ? '실 연동' : '시험 모드'})</p>
                   <div className="resource-meta-info">
                     <span>Endpoint: Goods_Search.php (derived)</span>
-                    <span>Source: {isLive ? '상품 기반 파생(동기화 결과로 확인)' : 'Mock / Fallback'}</span>
+                    <span>상태: {resourceCardStatus('inventory') === '대기' ? (isRealMode ? '상품 기반 파생(동기화로 확인)' : '시험 모드') : resourceCardStatus('inventory')}</span>
                   </div>
                   <button
                     className="sync-card-btn"
@@ -852,7 +879,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   >
                     {syncingResource === 'inventory'
                       ? '🔄 Syncing...'
-                      : isLive ? 'Sync Inventory (Derived)' : 'Sync Mock Inventory'}
+                      : isRealMode ? 'Sync Inventory (Derived)' : 'Sync Inventory(시험)'}
                   </button>
                 </div>
 
@@ -866,15 +893,15 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   </div>
                   <p className="resource-desc">일별 판매 합계, 전환율 및 베스트셀러 요약</p>
                   <div className="resource-meta-info">
-                    <span>최종 동기화: {apiState.providers[0].lastSyncAt ? '완료' : '대기'}</span>
-                    <span>예상 데이터: 3 rows</span>
+                    <span>최종 동기화: {resourceCardStatus('sales')}</span>
+                    {!isRealMode && <span>예상 데이터: 3 rows(시험)</span>}
                   </div>
                   <button
                     className="sync-card-btn"
                     onClick={() => handleSyncResource('sales')}
                     disabled={syncingResource !== null}
                   >
-                    {syncingResource === 'sales' ? '🔄 Syncing...' : 'Sync Mock Sales'}
+                    {syncingResource === 'sales' ? '🔄 Syncing...' : (isRealMode ? 'Sync Sales' : 'Sync Mock Sales(시험)')}
                   </button>
                 </div>
 
@@ -889,7 +916,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                   <p className="resource-desc">Goods_Search.php 상품조회 (개인정보 없음 · 실연동 READ)</p>
                   <div className="resource-meta-info">
                     <span>Endpoint: Goods_Search.php</span>
-                    <span>Source: {isLive ? '실연동 준비(동기화 결과로 확인)' : 'Mock / Fallback'}</span>
+                    <span>상태: {resourceCardStatus('products') === '대기' ? (isRealMode ? '실 연동 준비(동기화로 확인)' : '시험 모드') : resourceCardStatus('products')}</span>
                   </div>
                   <button
                     className="sync-card-btn"
@@ -998,7 +1025,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
           {/* E. Sync History */}
           {subTab === 'history' && (
             <div className="api-tab-pane scrollable-panel">
-              <h3 className="pane-title">📜 API Mock Sync History (동기화 수행 이력)</h3>
+              <h3 className="pane-title">📜 동기화 수행 이력</h3>
               {apiState.syncJobs.length === 0 ? (
                 <div className="empty-history">
                   <p>동기화 이력이 없습니다. 'Resource Sync' 탭에서 데이터를 수집해 주세요.</p>
@@ -1010,7 +1037,7 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
                       <div className="history-row-header">
                         <span className="job-time">🕒 {new Date(job.requestedAt).toLocaleString()}</span>
                         <span className={`job-status-badge ${job.status}`}>
-                          {job.status.toUpperCase()}
+                          {job.status === 'blocked' ? '연결 안 됨' : job.status === 'success' ? '완료' : job.status === 'failed' ? '실패' : job.status.toUpperCase()}
                         </span>
                       </div>
                       <div className="job-detail-grid">
