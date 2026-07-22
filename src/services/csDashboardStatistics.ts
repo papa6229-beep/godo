@@ -5,6 +5,7 @@
 // local state(completed/approvals/caution/blacklist)를 반영. 실제 WRITE 없음.
 
 import { normalizeCsTopic, type CsRiskLevel } from './csDraftComposer';
+import { isAnswered as isAnsweredC, isOnHold } from './inquiryStatusContract';
 import type { GroundingOrder } from './csInquiryOrderGrounding';
 import {
   buildCsAdminWorkflow, summarizeCsIssueProducts,
@@ -31,8 +32,9 @@ export interface CsDashboardStatistics {
   customerRiskSummary: CsCustomerRiskSummary;
 }
 
-const isAnswered = (s?: string): boolean => /^answered$/i.test((s || '').trim()) || /답변\s*완료|처리\s*완료|resolved|closed|done/i.test(s || '');
-const isHold = (s?: string): boolean => /hold|보류/i.test(s || '');
+// C-4: 문의 상태 판정은 공통 계약(inquiryStatusContract)만 사용.
+const isAnswered = (s?: string): boolean => isAnsweredC(s);
+const isHold = (s?: string): boolean => isOnHold(s);
 const TYPE_GROUPS: Array<{ type: string; label: string; match: (t: string) => boolean }> = [
   { type: 'payment', label: '결제/주문', match: (t) => t === 'payment' },
   { type: 'claim', label: '환불/취소', match: (t) => t === 'refund' || t === 'cancel' || t === 'return' || t === 'exchange' },

@@ -58,7 +58,8 @@ const PII_RE = /가상고객|가상수령자|010-0000|@example|샘플로|custome
 console.log('=== CS Team Dashboard Data Layout smoke ===');
 
 ok('1. dashboard facts 생성', !!facts && !!facts.kpis && Array.isArray(facts.priorityInquiries));
-ok('2. unansweredCount 계산(미답변+needs_human = 5)', facts.kpis.unansweredCount === 5);
+// C-4: 미답변(unansweredCount)=unanswered만=4(q1·q2·q3·q6). needs_human(q5)은 미답변 아님(별도).
+ok('2. unansweredCount 계산(미답변=unanswered만 4, needs_human 제외)', facts.kpis.unansweredCount === 4);
 ok('3. urgentCount 계산', facts.kpis.urgentCount === 3);
 ok('4. lowRatingReviewCount 계산', facts.kpis.lowRatingReviewCount === 2);
 ok('5. needsHumanCheckCount 계산(>=2: 중복후보 q1 + refund 미확정 q3)', facts.kpis.needsHumanCheckCount >= 2);
@@ -77,12 +78,13 @@ ok('15. facts에 PII 없음', !PII_RE.test(json));
 ok('16. fake contact 미포함', !/isFakePii|piiType|deliveryMemo|refundBank/i.test(json));
 ok('17. memberKey 노출 없음', !/syn_member_|memberKey/i.test(json));
 
-// 18. priority 정렬 규칙: 긴급+미답변 < 미답변 < 긴급 < 기타 (점수 단조)
+// 18. priority 정렬 규칙(C-4): 긴급+미처리 < 미처리 < 긴급 < 기타 (점수 단조)
+//   미처리 = unanswered/in_progress/on_hold/needs_human/unknown (answered만 제외).
 const rankByStatus = facts.priorityInquiries.map((q) => {
-  const un = /unanswered|미답변|needs_human/i.test(q.status), ur = /high|긴급/i.test(q.urgency);
+  const un = !/^answered$|답변\s*완료|처리\s*완료|resolved|closed|done/i.test((q.status || '').trim()), ur = /high|긴급/i.test(q.urgency);
   return un && ur ? 0 : un ? 1 : ur ? 2 : 3;
 });
-ok('18. priority 점수 단조 비감소', rankByStatus.every((v, i) => i === 0 || v >= rankByStatus[i - 1]));
+ok('18. priority 점수 단조 비감소(미처리 우선)', rankByStatus.every((v, i) => i === 0 || v >= rankByStatus[i - 1]));
 
 // 19. 보조 helper 단독 동작
 const lowRev = D.summarizeLowRatingReviews(reviews, names);

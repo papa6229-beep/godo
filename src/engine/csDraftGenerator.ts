@@ -1,6 +1,7 @@
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { EngineProvider } from '../types/engine';
 import { getChatCompletion } from '../services/lmsConnector';
+import { isUnanswered } from '../services/inquiryStatusContract';
 
 export interface CSDraftResult {
   inquiryId: string;
@@ -81,9 +82,9 @@ export async function generateCSDrafts(
   activeSnapshot: OperationsDataSnapshot,
   engineProviders: EngineProvider[]
 ): Promise<CSDraftResult[]> {
-  // 1. 미답변 문의 최대 3건 추출
+  // 1. 미답변 문의 최대 3건 추출 (C-4: 공통 계약, 한국어/영어 모두 인식·needs_human 제외)
   const targetInquiries = activeSnapshot.inquiries
-    .filter(inq => inq.status === '미답변')
+    .filter(inq => isUnanswered(inq.status))
     .slice(0, 3);
 
   // 2. LM Studio 연결 설정 조회

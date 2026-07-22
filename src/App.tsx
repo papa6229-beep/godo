@@ -1,5 +1,5 @@
 // Godo AI Operating Center Main Entry
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Agent, LogEntry } from './types';
 import type { OperationTask } from './types/task';
 import type { ApprovalItem } from './types/approval';
@@ -19,6 +19,7 @@ import type { EngineMode, EngineProvider, EngineRoutingRule, EngineSafetyRule, E
 import { defaultEngineProviders, defaultEngineRoutingRules, defaultEngineSafetyRules } from './data/defaultEngineData';
 import type { OperationsDataSnapshot, ImportHistoryItem } from './types/dataConnector';
 import { defaultOperationsData } from './data/defaultOperationsData';
+import { normalizeInquiryRecords } from './services/inquiryStatusContract';
 import type { OperationHistoryItem } from './types/calendar';
 import { runNativeAgentOperation } from './engine/nativeAgentRuntime/nativeAgentRuntime';
 import type { NativeAgentRun } from './engine/nativeAgentRuntime/types';
@@ -26,7 +27,7 @@ import { resetApiBridgeState } from './utils/apiBridgeStorage';
 import { composeOperationReport } from './engine/reportComposer';
 import { getScenarioData, type ValidationScenarioType } from './engine/nativeAgentRuntime/validationScenarios';
 import { useTheme } from './hooks/useTheme';
-import { classifyResource, userLabelOf } from './services/dataSourceProvenanceContract';
+import { classifyResource, userLabelOf, migrateResourceProvenance } from './services/dataSourceProvenanceContract';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -37,6 +38,25 @@ const safeSetItem = (key: string, value: string) => {
   } catch (e) {
     console.warn(`[localStorage] "${key}" 저장 실패(용량 초과 등) — 건너뜀:`, e);
   }
+};
+
+// C-4 입력 경계: 스냅샷이 앱 상태로 들어오는 유일 지점에서 문의 상태를 1회 canonical화한다.
+//   (문의만 대상 — 주문/재고/매출 등 다른 필드는 건드리지 않는다.) normalizeInquiryRecords는
+//   idempotent이므로 이미 canonical인 record(저장 복원분 포함)는 최초 rawStatus/근거를 보존한다.
+// 출처 마이그레이션: 구버전 저장 상태(리소스별 근거 없음)를 최신 계약으로 재판정한다(추측 금지·fail-closed).
+//   Sync 버튼을 누르기 전에도 첫 hydration 직후 정직한 상태(실제/시험/연결 안 됨)를 표시한다. idempotent.
+const withCanonicalInquiries = (snapshot: OperationsDataSnapshot): OperationsDataSnapshot => {
+  if (!snapshot) return snapshot;
+  const inquiries = Array.isArray(snapshot.inquiries) ? normalizeInquiryRecords(snapshot.inquiries) : snapshot.inquiries;
+  const counts: Record<string, number> = {
+    orders: snapshot.orders?.length ?? 0,
+    inquiries: snapshot.inquiries?.length ?? 0,
+    reviews: snapshot.reviews?.length ?? 0,
+    inventory: snapshot.inventory?.length ?? 0,
+    sales: snapshot.sales?.length ?? 0
+  };
+  const resourceProvenance = migrateResourceProvenance(snapshot.sourceType, snapshot.resourceProvenance, counts);
+  return { ...snapshot, inquiries, resourceProvenance };
 };
 
 
@@ -166,14 +186,25 @@ function App() {
   const [engineUsageLogs, setEngineUsageLogs] = useState<EngineUsageLog[]>([]);
 
   // GODO DATA CONNECTOR MVP 상태 관리 (localStorage 우선)
-  const [activeOperationsData, setActiveOperationsData] = useState<OperationsDataSnapshot>(() => {
+  // C-4: 문의 상태는 이 스냅샷이 앱 상태로 들어오는 단일 경계(초기 조립/localStorage 복원/API·import setter)
+  //   에서 1회만 canonical화한다. default/mock/API 응답/저장 복원 모든 경로가 여기를 통과.
+  //   idempotent이므로 재설정·재복원 시에도 최초 rawStatus/normalizationReason이 보존된다.
+  const [activeOperationsData, setActiveOperationsDataRaw] = useState<OperationsDataSnapshot>(() => {
     try {
       const saved = localStorage.getItem('godo.data.activeSnapshot');
-      return saved ? JSON.parse(saved) : defaultOperationsData;
+      return withCanonicalInquiries(saved ? JSON.parse(saved) : defaultOperationsData);
     } catch {
-      return defaultOperationsData;
+      return withCanonicalInquiries(defaultOperationsData);
     }
   });
+  const setActiveOperationsData = useCallback<React.Dispatch<React.SetStateAction<OperationsDataSnapshot>>>((update) => {
+    setActiveOperationsDataRaw((prev) => {
+      const next = typeof update === 'function'
+        ? (update as (p: OperationsDataSnapshot) => OperationsDataSnapshot)(prev)
+        : update;
+      return withCanonicalInquiries(next);
+    });
+  }, []);
 
   const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>(() => {
     try {

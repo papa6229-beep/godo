@@ -9,6 +9,7 @@
 import type { GroundingOrder } from './csInquiryOrderGrounding';
 import type { CsRiskLevel } from './csDraftComposer';
 import { csTopicKo, type CsDashInquiry, type CsDashReview, type CsDashContact } from './csTeamDashboardFacts';
+import { isAnswered as isAnsweredC } from './inquiryStatusContract';
 import type { CsCompletedWorkItem } from './csWorkCompletionState';
 
 export interface CsProfileOrder {
@@ -93,7 +94,8 @@ export interface CsCustomerProfileHubItem {
 }
 
 const isLowReview = (r: CsDashReview): boolean => (typeof r.rating === 'number' && r.rating <= 2) || /negative|부정/i.test(r.sentiment || '');
-const isAnswered = (s?: string): boolean => /^answered$/i.test((s || '').trim()) || /답변\s*완료|처리\s*완료|resolved|closed|done/i.test(s || '');
+// C-4: 문의 상태 판정은 공통 계약(inquiryStatusContract)만 사용.
+const isAnswered = (s?: string): boolean => isAnsweredC(s);
 const prod = (goodsNo: string | undefined, names?: Record<string, string>): string => (goodsNo && names?.[goodsNo]) || goodsNo || '상품미상';
 const ageDays = (d: string | undefined, nowMs: number): number => { const t = Date.parse((d || '').replace(' ', 'T')); return Number.isNaN(t) ? Infinity : Math.max(0, (nowMs - t) / 86400000); };
 const CLAIM_KO: Record<string, string> = { refund: '환불', cancel: '취소', return: '반품', exchange: '교환' };

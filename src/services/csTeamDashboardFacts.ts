@@ -10,6 +10,8 @@
 
 import { buildAssociatedOrderFacts, findDuplicatePaymentCandidates, type GroundingOrder } from './csInquiryOrderGrounding';
 import { composeCsDraftFromOrders, normalizeCsTopic, type CsDraftInquiry, type CsRiskLevel } from './csDraftComposer';
+// C-4: 문의 상태 판정은 공통 계약(inquiryStatusContract)만 사용(원시 문자열 비교·정규식 복붙 금지).
+import { isUnanswered, isAnswered, isUnresolved, isOnHold } from './inquiryStatusContract';
 
 // 입력(safe, 연락처 없음). SafeSyntheticInquiry / SafeSyntheticReview 와 구조적 호환.
 export type CsDashInquiry = CsDraftInquiry;
@@ -80,7 +82,6 @@ export interface CsDashboardFacts {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-const isUnanswered = (s?: string): boolean => !!s && /unanswered|pending|open|미답변|needs_human/i.test(s);
 const isUrgent = (u?: string): boolean => !!u && /high|urgent|긴급/i.test(u);
 const isLowReview = (r: CsDashReview): boolean =>
   (typeof r.rating === 'number' && r.rating <= 2) || /negative|부정/i.test(r.sentiment || '');
@@ -97,9 +98,12 @@ export const csTopicKo = (t?: string): string => TOPIC_KO[t || ''] || TOPIC_KO[n
 
 const DRAFTABLE_TOPICS = new Set(['product', 'general']);
 
-// 우선순위 점수: 긴급+미답변(0) < 미답변(1) < 긴급(2) < 그 외(3)
+// 우선순위 점수: 긴급+미처리(0) < 미처리(1) < 긴급(2) < 그 외(3)
+// C-4: 우선처리 큐는 "미처리 먼저"이므로 미답변만이 아니라 미처리 전체(unanswered/in_progress/
+//   on_hold/needs_human/unknown)를 상위 티어로 둔다. needs_human('관리자 확인 필요')이 답변완료와
+//   동급(3)으로 침몰하는 것을 방지 — 라벨 '미답변' 집계(unansweredCount)와는 별개 개념.
 const priorityScore = (status?: string, urgency?: string): number => {
-  const un = isUnanswered(status);
+  const un = isUnresolved(status);
   const ur = isUrgent(urgency);
   if (un && ur) return 0;
   if (un) return 1;
@@ -316,8 +320,6 @@ export interface CsKpiRevisionFacts {
   };
 }
 
-// 답변완료 문의는 미처리에서 제외("answered" 단어경계 — "unanswered" 오탐 방지).
-const isAnsweredInquiry = (s?: string): boolean => /^answered$/i.test((s || '').trim()) || /답변\s*완료|처리\s*완료|resolved|closed|done/i.test(s || '');
 const negativeReview = (r: CsDashReview): boolean => /negative|부정|불만/i.test(r.sentiment || '');
 const DEFECT_REVIEW_TOPICS = new Set(['quality', 'effect', 'refund', 'packaging']);
 
@@ -375,7 +377,7 @@ export function buildCsKpiRevision(params: {
   const names = params.goodsNames;
   const nowMs = params.nowMs ?? (Date.parse(`${(params.inquiries[0]?.createdAt || '2026-06-27').slice(0, 10)}T23:59:59`) || 0);
 
-  const unresolvedQ = (params.inquiries || []).filter((q) => (q.inquiryId || q.createdAt) && !isAnsweredInquiry(q.status));
+  const unresolvedQ = (params.inquiries || []).filter((q) => (q.inquiryId || q.createdAt) && isUnresolved(q.status));
   const unresolvedR = params.reviews || []; // synthetic: 답글 플래그 없음 → 전부 미처리
 
   const inquiryByType: Record<string, number> = {};
@@ -664,7 +666,7 @@ export function buildCsResolvedInquiries(params: {
     if (mk) inqByMember.set(mk, (inqByMember.get(mk) || 0) + 1);
   }
 
-  const answered = (params.inquiries || []).filter((q) => isAnsweredInquiry(q.status));
+  const answered = (params.inquiries || []).filter((q) => isAnswered(q.status));
   let today = 0, last7d = 0, repeat = 0;
   const items: CsResolvedItem[] = answered
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
@@ -845,7 +847,7 @@ export function buildCsAdminWorkflow(params: {
   const byStage = {
     aiDraftable: unresolvedItems.filter((i) => i.aiProcessable).length,
     internalCheck: unresolvedItems.filter((i) => i.needsInternalCheck).length,
-    hold: unresolvedItems.filter((i) => /hold|보류/i.test(i.status || '')).length
+    hold: unresolvedItems.filter((i) => isOnHold(i.status)).length
   };
   // AI 자동처리함: 리뷰 답글 + 배송안내만(상품/결제/일반/환불·취소 제외)
   const reviewItems = rev.items.unresolvedReviews;

@@ -87,23 +87,23 @@
 
 ---
 
-## 5-b. C-4 정정 대상 목록 (코드 미수정 — 목록만)
+## 5-b. C-4 정정 대상 목록 (✅ C-4 재개 병합 `fdaeee3`에서 코드 정정 완료)
 
-`fix/rc-1-c4-inquiry-status-normalization` 브랜치에서 `답변대기`를 "실제 고도몰 관측값"이라 표기한 지점.
+`fix/rc-1-c4-inquiry-status-normalization` 브랜치에서 `답변대기`를 "실제 고도몰 관측값"이라 표기했던 지점.
 실제로는 **MOCK(`api/_shared/mockProxyData.ts`) 출처 + `api_mock_fallback` 경로**이므로
-**"MOCK/spec 기반 호환 표본"**으로 정정해야 한다. (지금은 C-4 코드 동결 — 정정은 C-4 재개 시.)
+**"MOCK/spec 기반 호환 표본"**으로 정정 완료.
 
-| # | 위치 | 현재(오류) 표현 | 정정 방향 |
-|---|---|---|---|
-| 1 | `src/services/inquiryStatusContract.ts:33-34` (주석) | "실제 Production 고도몰(secure_proxy, mode:real) 문의에서 관측된 확정 원시값 / 실데이터 대조로 확인된 입력값" | "MOCK fixture(mockProxyData.ts)가 쓰는 상태값 = spec 기반 호환 표본. 실제 고도몰 문의는 미연동" |
-| 2 | `scripts/smoke-c4-...v0.mjs:179` (주석) | "실제 Production 고도몰 관측 형태 재현" | "MOCK/spec 호환 표본 형태 재현" |
-| 3 | `scripts/smoke-c4-...v0.mjs:188` (로그) | "실데이터 재현" | "MOCK 표본 재현" |
-| 4 | `scripts/smoke-c4-...v0.mjs:189` (B12 라벨) | "실제 고도몰 형태(답변대기2·답변완료1)" | "MOCK/spec 표본 형태(답변대기2·답변완료1)" |
-| 5 | 커밋 `347b4ad` 메시지 | "실제 고도몰 관측값 '답변대기'" | 이미 push됨 — 히스토리 재작성 대신 후속 커밋/문서에 정정 주석 |
-| 6 | (대화 보고) D-7·Preview 전 분포 보고 | "실제 Production 문의 데이터 / 실측 답변대기 / real proxy mode:real" | 철회됨(본 문서). `mode:real`은 proxy 표기일 뿐, 판별자는 `sourceType` |
+| # | 위치 | 현재(오류) 표현 | 정정 | 상태 |
+|---|---|---|---|---|
+| 1 | `src/services/inquiryStatusContract.ts` (주석) | "실제 Production 고도몰… 관측된 확정 원시값 / 실데이터 대조" | "MOCK/spec 호환 표본 상태값. 실제 Board_List 미관측" | ✅ 정정 |
+| 2 | `scripts/smoke-c4-...v0.mjs:179` (주석) | "실제 Production 고도몰 관측 형태 재현" | "MOCK/spec 호환 표본 형태 재현" | ✅ 정정 |
+| 3 | `scripts/smoke-c4-...v0.mjs:188` (로그) | "실데이터 재현" | "MOCK/spec 표본 재현" | ✅ 정정 |
+| 4 | `scripts/smoke-c4-...v0.mjs:189` (B12 라벨) | "실제 고도몰 형태" | "MOCK/spec 표본 형태" | ✅ 정정 |
+| 5 | 커밋 `347b4ad` 메시지 | "실제 고도몰 관측값 '답변대기'" | 히스토리 재작성 금지 — 본 문서·후속 커밋으로 정정 | ✅ 문서 정정 |
+| 6 | (대화 보고) D-7·Preview 전 분포 | "실측 답변대기 / real proxy mode:real" | 철회. 판별자는 `sourceType`(mode:real은 proxy 표기) | ✅ 철회 |
 
-> 별칭 매핑 `답변대기 → unanswered` **자체는 유지 가능**(mock/spec 어휘로 타당). 다만 **근거를 "실측"이 아니라
-> "MOCK/spec 호환"으로 바꿔야** 하며, 실제 고도몰 문의 상태 어휘는 Board_List.php 연동 후 별도 확정한다.
+> 별칭 매핑 `답변대기 → unanswered` **자체는 유지**(mock/spec 어휘로 타당). **근거만 "실측"→"MOCK/spec 호환"으로 정정**.
+> 미관측 고도몰 어휘는 추가하지 않으며, 실제 상태 어휘는 Board_List.php 연동 후 별도 확정한다(C4-SERVER-01 후속).
 
 ## 6. 새 판매용 고도몰 키 발급 후 재검증 항목
 

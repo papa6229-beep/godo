@@ -7,6 +7,7 @@
 //   - fake PII는 CS팀 context에만(가상/fake 표시 필수). 상품/마케팅/총괄 context엔 절대 미포함.
 
 import type { DepartmentFactsBundle, AnalyticsPacket, MarketingRecommendationCandidate } from './departmentFactsRouting';
+import { isUnanswered, inquiryStatusKo } from './inquiryStatusContract';
 import {
   buildAssociatedOrderFacts,
   findDuplicatePaymentCandidates,
@@ -80,10 +81,10 @@ export interface CsChatDetailInput {
 
 const byCreatedDesc = (a: { createdAt?: string }, b: { createdAt?: string }): number =>
   (b.createdAt || '').localeCompare(a.createdAt || '');
-const isUnansweredStatus = (s?: string): boolean => !!s && /unanswered|pending|open|미답변|needs_human/i.test(s);
+// C-4: 공통 문의 계약 사용(원시 문자열 비교·정규식 복붙 금지). 미답변=unanswered만, 라벨은 단일 정의.
+const isUnansweredStatus = (s?: string): boolean => isUnanswered(s);
 const isUrgent = (u?: string): boolean => !!u && /high|urgent|긴급/i.test(u);
-const statusKo = (s?: string): string =>
-  /needs_human/i.test(s || '') ? '담당자 확인 필요' : /unanswered|pending|open|미답변/i.test(s || '') ? '미답변' : /answered/i.test(s || '') ? '답변완료' : (s || '미상');
+const statusKo = (s?: string): string => inquiryStatusKo(s);
 const urgencyKo = (u?: string): string =>
   /high|urgent|긴급/i.test(u || '') ? '높음' : /medium/i.test(u || '') ? '중간' : /low/i.test(u || '') ? '낮음' : (u || '보통');
 const prodName = (goodsNo?: string, productId?: string, names?: Record<string, string>): string =>

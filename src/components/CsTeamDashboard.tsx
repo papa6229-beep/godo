@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './CsTeamDashboard.css';
+import { inquiryStatusKo, isOnHold } from '../services/inquiryStatusContract';
 import type { RevenueResult } from '../services/departmentDataService';
 import { classifyResource, userLabelOf, type ProvenanceKind } from '../services/dataSourceProvenanceContract';
 import { composeCsDraftFromOrders } from '../services/csDraftComposer';
@@ -57,8 +58,8 @@ interface CsTeamDashboardProps {
 }
 
 
-const statusKo = (s: string): string =>
-  /needs_human/i.test(s) ? '담당자 확인' : /unanswered|pending|open|미답변/i.test(s) ? '미답변' : /answered/i.test(s) ? '답변완료' : s;
+// C-4: 문의 상태 라벨은 공통 계약(inquiryStatusContract)의 단일 정의를 사용(내부 영문키 미노출).
+const statusKo = (s: string): string => inquiryStatusKo(s);
 const sentimentKo = (s: string): string => (/positive|만족/i.test(s) ? '만족' : /negative|부정|불만/i.test(s) ? '불만' : '보통');
 const riskKo = (r: string): string => (r === 'high' ? '높음' : r === 'medium' ? '중간' : '낮음');
 const shortDate = (d: string): string => (d || '').slice(0, 10);
@@ -874,7 +875,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
     { key: 'etc', label: '일반', match: (i) => i.kind === 'inquiry' && !['payment', 'refund', 'cancel', 'return', 'exchange', 'delivery', 'product'].includes(i.topic) },
     { key: 'ai', label: 'AI초안가능', match: (i) => i.aiProcessable },
     { key: 'int', label: '내부확인', match: (i) => i.needsInternalCheck },
-    { key: 'hold', label: '보류', match: (i) => /hold|보류/i.test((i as CsKpiInquiryItem).status || '') }
+    { key: 'hold', label: '보류', match: (i) => isOnHold((i as CsKpiInquiryItem).status) }
   ];
   const AI_TABS: PopupTab[] = [
     { key: 'all', label: '전체', match: () => true },

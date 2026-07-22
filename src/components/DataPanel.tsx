@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { isUnanswered } from '../services/inquiryStatusContract';
 import type {
   OperationsDataSnapshot,
   ImportHistoryItem,
@@ -598,8 +599,8 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                   <div className="overview-sub-metric">
                     <span className="ov-lbl">미답변 문의</span>
                     <span className="ov-val danger">
-                      {/* C-출처: 문의가 연결 안 됨이면 0건 대신 '연결 안 됨'. 실제 성공 빈 배열일 때만 0건. */}
-                      {stats.inquiriesLabel === '연결 안 됨' ? '연결 안 됨' : `${activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length}건`}
+                      {/* 출처(main): 연결 안 됨이면 0건 대신 '연결 안 됨'. 집계(C-4): 미답변은 isUnanswered로 정규화 판정. */}
+                      {stats.inquiriesLabel === '연결 안 됨' ? '연결 안 됨' : `${activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length}건`}
                     </span>
                   </div>
                   <div className="overview-sub-metric">

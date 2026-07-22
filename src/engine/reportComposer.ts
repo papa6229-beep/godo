@@ -1,4 +1,5 @@
 import type { OperationTask } from '../types/task';
+import { isUnanswered } from '../services/inquiryStatusContract';
 import type { OperationReport } from '../types/operation';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 
@@ -25,7 +26,7 @@ export const composeOperationReport = (
       recommendedActions.push('물류센터 API 재점검 및 미등록 수동 송장 매칭 확인 필요');
     }
 
-    const unanswered = activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length;
+    const unanswered = activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length;
     if (unanswered > 0) {
       warningSignals.push(`답변이 대기 중인 고객 CS 문의가 ${unanswered}건 존재합니다.`);
       recommendedActions.push('상담 에이전트 자동 템플릿 검토 후 미답변 CS 문의 빠른 순차 피드백 필요');
@@ -75,7 +76,7 @@ export const composeOperationReport = (
     const totalInv = activeOperationsData.inventory.length;
 
     const invoiceMissing = activeOperationsData.orders.filter(o => o.riskFlags.includes('invoice_missing')).length;
-    const unanswered = activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length;
+    const unanswered = activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length;
     const stockDanger = activeOperationsData.inventory.filter(i => i.status !== 'ok').length;
 
     summary = `금일 운영 데이터 스냅샷 기준으로 총 ${totalOrders}건의 주문, ${totalInqs}건의 문의, ${totalReviews}건의 리뷰, ${totalInv}개의 재고 항목을 분석했습니다. ` +

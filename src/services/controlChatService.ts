@@ -1,4 +1,5 @@
 import { chatWithProvider } from './aiProviderAdapter';
+import { isUnanswered } from './inquiryStatusContract';
 import { getGlobalBrainSelection, isBrainConnected, providerLabel } from './aiBrainSettings';
 import { getProviderModel } from './aiKeyVault';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
@@ -152,7 +153,7 @@ function buildSystemPrompt(
   brainModel: string
 ): string {
   const ordersCount = activeOperationsData.orders.length;
-  const pendingInquiriesCount = activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length;
+  const pendingInquiriesCount = activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length;
   const reviewsCount = activeOperationsData.reviews.length;
   const lowStockCount = activeOperationsData.inventory.filter(i => i.status !== 'ok').length;
   const pendingApprovalsCount = approvalQueue.filter(a => a.status === 'waiting').length;
@@ -407,7 +408,7 @@ export async function processControlChat(
   // LEVEL 1: 간단한 조회용 운영 수치 질문 응답 (Gemma 호출 안함)
   if (intent === 'operation_question') {
     const ordersCount = activeOperationsData.orders.length;
-    const pendingInquiries = activeOperationsData.inquiries.filter(i => i.status !== '답변완료');
+    const pendingInquiries = activeOperationsData.inquiries.filter(i => isUnanswered(i.status));
     const pendingApprovalsCount = approvalQueue.filter(a => a.status === 'waiting').length;
     const lowStockCount = activeOperationsData.inventory.filter(i => i.status !== 'ok').length;
 

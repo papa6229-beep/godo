@@ -269,3 +269,61 @@ export function summarizeScreenStatus(records: ResourceStatusRecord[]): ScreenSt
   } else { kind = 'simulation'; note = '시험 데이터 포함'; }
   return { kind, userLabel: userLabelOf(kind), anyUnavailable, note, resources: records };
 }
+
+// ── 구버전 저장 상태 hydration 마이그레이션 ───────────────────────────────────
+// 최초 로드 시 리소스별 출처 근거(resourceProvenance)가 없는 구버전 저장자료를 최신 계약으로 재판정한다.
+//   원칙(추측 금지): 구버전 전역 sourceType만으로 actual을 허용하지 않는다.
+//   - 리소스별 최신 근거(resourceProvenance)가 있으면 그대로 유지(실제/시험/연결 안 됨).
+//   - 근거가 없으면: 전역 근거가 fixture/simulation(demo/mock/synthetic)이면 '시험 데이터',
+//     그 외(api_proxy_real 전역만·csv·미상 등 판정 불가)는 fail-closed로 '연결 안 됨'.
+//   특정 fixture의 건수·문구를 fingerprint로 하드코딩하지 않는다.
+
+const isValidStatusRecord = (r: unknown): r is ResourceStatusRecord =>
+  !!r && typeof r === 'object' &&
+  ((r as ResourceStatusRecord).status === 'success' || (r as ResourceStatusRecord).status === 'unavailable') &&
+  typeof (r as ResourceStatusRecord).provenance === 'string' &&
+  typeof (r as ResourceStatusRecord).userLabel === 'string';
+
+/**
+ * 리소스별 출처 근거를 최신 계약으로 재판정(마이그레이션). idempotent.
+ *   globalSourceType: 구버전 스냅샷의 전역 sourceType.
+ *   existing: 이미 있는 resourceProvenance(있으면 리소스별로 유지).
+ *   resourceCounts: 리소스별 현재 레코드 수(연결 안 됨은 표시 0으로 강등).
+ */
+export function migrateResourceProvenance(
+  globalSourceType: string | undefined,
+  existing: Record<string, ResourceStatusRecord> | undefined,
+  resourceCounts: Record<string, number>
+): Record<string, ResourceStatusRecord> {
+  const out: Record<string, ResourceStatusRecord> = {};
+  const st = (globalSourceType ?? '').trim();
+  const gk = classifyResource({ sourceType: st }).kind; // 전역 근거의 종류
+  const legacyFixture = gk === 'fixture' || gk === 'simulation';
+  // csv/json/manual: 사용자가 직접 올린 단일 출처 자료 → 전역=리소스별 진실(모호하지 않음) → actual 허용.
+  //   반면 api_proxy_real/sandbox 전역은 "마지막 동기화 리소스" 흔적이라 리소스별을 증명 못 함 → 금지.
+  const unambiguousUpload = st === 'csv' || st === 'json' || st === 'manual';
+  for (const res of Object.keys(resourceCounts)) {
+    const prev = existing?.[res];
+    if (isValidStatusRecord(prev)) { out[res] = prev; continue; } // 최신 근거 유지(실제/시험/연결 안 됨)
+    if (unambiguousUpload) {
+      out[res] = {
+        resource: res, status: 'success', provenance: 'actual', userLabel: userLabelOf('actual'),
+        count: resourceCounts[res] ?? 0, substitutionBlocked: false
+      };
+    } else if (legacyFixture) {
+      out[res] = {
+        resource: res, status: 'success', provenance: gk, userLabel: userLabelOf(gk),
+        count: resourceCounts[res] ?? 0, substitutionBlocked: false
+      };
+    } else {
+      // 전역 source만 actual 금지 · 판정 불가 → fail-closed(연결 안 됨). 통계 주입 방지 위해 count 0.
+      out[res] = {
+        resource: res, status: 'unavailable', provenance: 'unavailable', userLabel: userLabelOf('unavailable'),
+        count: 0, substitutionBlocked: true
+      };
+    }
+  }
+  // counts에 없는 기존 근거도 보존(유효한 것만)
+  if (existing) for (const k of Object.keys(existing)) if (!(k in out) && isValidStatusRecord(existing[k])) out[k] = existing[k];
+  return out;
+}

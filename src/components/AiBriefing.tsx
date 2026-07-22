@@ -1,4 +1,5 @@
 import React from 'react';
+import { isUnanswered } from '../services/inquiryStatusContract';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { ApprovalItem } from '../types/approval';
 
@@ -19,7 +20,7 @@ export const AiBriefing: React.FC<AiBriefingProps> = ({
 }) => {
   // 동적 운영 통계 계산
   const unansweredInquiriesCount = activeOperationsData.inquiries.filter(
-    (inq) => inq.status === '미답변'
+    (inq) => isUnanswered(inq.status)
   ).length;
 
   const pendingApprovalsCount = approvalQueue.filter(

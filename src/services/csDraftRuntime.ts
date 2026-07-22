@@ -14,6 +14,7 @@ import {
   type CsDraftComposerResult
 } from './csDraftComposer';
 import type { GroundingOrder } from './csInquiryOrderGrounding';
+import { isUnanswered as isUnansweredStatus } from './inquiryStatusContract';
 
 export type CsDraftTargetHint =
   | 'recent_unanswered'
@@ -88,7 +89,8 @@ export function detectCsDraftRequestIntent(userText: string): CsDraftRequestInte
 // ── 2) 대상 inquiry 선택 ──────────────────────────────────────────────────────
 const byCreatedDesc = (a: { createdAt?: string }, b: { createdAt?: string }): number =>
   (b.createdAt || '').localeCompare(a.createdAt || '');
-const isUnanswered = (s?: string): boolean => !!s && /unanswered|pending|open|미답변|needs_human/i.test(s);
+// C-4: 자동 초안 후보는 미답변(unanswered)만 — needs_human/in_progress/on_hold/unknown/answered 제외.
+const isUnanswered = (s?: string): boolean => isUnansweredStatus(s);
 const isUrgent = (u?: string): boolean => !!u && /high|urgent|긴급/i.test(u);
 
 export interface CsDraftTargetSelection {
