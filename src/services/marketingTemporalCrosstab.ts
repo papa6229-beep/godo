@@ -10,6 +10,8 @@
 //   - 인과관계 단정 금지. 관찰 표현만("높게 나타났습니다", "해석 시 주문수 확인이 필요합니다").
 //   - deterministic(Math.random 미사용). baseline/promotion은 syntheticYearLabel로 구분.
 
+import { classifyFirstPurchase, FIRST_PURCHASE_LABEL } from './firstPurchaseContract';
+
 // ── 타입 ─────────────────────────────────────────────────────────────────────
 export type MarketingTimeBucket = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'scenario';
 
@@ -216,6 +218,13 @@ const BUCKET_LABEL: Record<MarketingTimeBucket, string> = {
 };
 
 // ── dimension key/label ───────────────────────────────────────────────────────
+// C-8: 첫구매/재구매는 3상태다. undefined는 재구매가 아니라 '미분류'로 분리한다.
+//   판정은 firstPurchaseContract 한 곳에서만 한다(소비자별 조건 복붙 금지).
+const firstRepeatDimensionKey = (value: unknown): { key: string; label: string } => {
+  const cls = classifyFirstPurchase(value);
+  return { key: cls, label: FIRST_PURCHASE_LABEL[cls] };
+};
+
 export function getMarketingDimensionKey(orderOrLine: unknown, dimension: MarketingCrossTabDimension): { key: string; label: string } {
   const r = (orderOrLine || {}) as Order & OrderLine;
   switch (dimension) {
@@ -230,7 +239,7 @@ export function getMarketingDimensionKey(orderOrLine: unknown, dimension: Market
       return code ? { key: code, label: CHANNEL_LABEL[code] || code } : { key: 'unknown', label: '채널 미상' };
     }
     case 'firstRepeat':
-      return bool(r.isFirstPurchase) ? { key: 'first', label: '첫구매' } : { key: 'repeat', label: '재구매' };
+      return firstRepeatDimensionKey(r.isFirstPurchase);
     case 'rewardUsage':
       return num(r.useMileageAmount) > 0 || num(r.useDepositAmount) > 0 || num(r.rewardUseAmount) > 0
         ? { key: 'reward', label: '리워드 사용' }
@@ -359,7 +368,7 @@ export function buildMarketingTemporalCrosstab(input: {
 
   const map = new Map<string, Acc>();
   const getAcc = (bucketKey: string, bLabel: string, d1: { key: string; label: string }, d2?: { key: string; label: string }): Acc => {
-    const k = `${bucketKey} ${d1.key} ${d2?.key ?? ''}`;
+    const k = `${bucketKey}\u0000${d1.key}\u0000${d2?.key ?? ''}`;
     let a = map.get(k);
     if (!a) {
       a = { bucketKey, bucketLabel: bLabel, dimKey: d1.key, dimLabel: d1.label, dim2Key: d2?.key, dim2Label: d2?.label, revenue: 0, discount: 0, coupon: 0, reward: 0, quantity: 0, orderSet: new Set<string>(), lineGran };

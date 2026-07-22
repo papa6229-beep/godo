@@ -12,6 +12,8 @@
 import type { MarketingChatChartArtifact, MarketingChartSpec, MarketingChartSeries, MarketingChartNarrative, MarketingChartType } from './marketingChatChartSpec';
 import { parseMarketingChatQuery } from './marketingChatQueryRouting';
 import { buildMarketingAnalysisResponse } from './marketingAnalysisExecutor';
+import { countOrderOnce, seenOrdersFor, resolveOrderKey, cellRegistryKey, resolveFirstPurchase, lineCategoryKey, categoryLabelOf } from './lineAxisAggregation';
+import { classifyFirstPurchase, FIRST_PURCHASE_LABEL, FIRST_PURCHASE_CLASSES, type FirstPurchaseClass } from './firstPurchaseContract';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 export type MarketingAnalysisScope = {
@@ -60,10 +62,10 @@ export type MarketingInsightPack = {
     highestRevenuePoint?: string; lowestRevenuePoint?: string; largestIncreasePoint?: string; largestDecreasePoint?: string;
     trendDirection: 'up' | 'down' | 'mixed' | 'flat'; volatilityNote?: string;
   };
-  categoryBreakdown?: Array<{ category: string; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number; couponUsageRate?: number }>;
+  categoryBreakdown?: Array<{ categoryKey: string; category: string; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number; couponUsageRate?: number }>;
   productBreakdown?: Array<{ goodsNo?: string; productName: string; category?: string; brand?: string; revenue: number; revenueShare: number; orderCount: number; quantity: number; averageOrderValue: number; inquiryCount?: number; reviewCount?: number; averageRating?: number }>;
   customerBreakdown?: {
-    firstRepeat?: Array<{ label: 'first' | 'repeat'; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number }>;
+    firstRepeat?: Array<{ label: FirstPurchaseClass; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number }>;
     memberGroup?: Array<{ memberGroup: string; revenue: number; revenueShare: number; orderCount: number; averageOrderValue: number }>;
   };
   promotionBreakdown?: {
@@ -240,8 +242,9 @@ function buildInsightPack(input: { scope: MarketingAnalysisScope; question: Mark
   const passFilter = (o: Row): boolean => {
     if (!withinRange(o, range)) return false;
     if (scope.customerScope?.memberGroups?.length && !scope.customerScope.memberGroups.includes(strv(o.memberGroupName))) return false;
-    if (scope.customerScope?.firstRepeat === 'first' && !boolv(o.isFirstPurchase)) return false;
-    if (scope.customerScope?.firstRepeat === 'repeat' && boolv(o.isFirstPurchase)) return false;
+    // C-8: 필터는 정확히 일치하는 상태만 통과한다. unknown은 first/repeat 어느 쪽에도 포함되지 않는다.
+    if (scope.customerScope?.firstRepeat === 'first' && classifyFirstPurchase(o.isFirstPurchase) !== 'first') return false;
+    if (scope.customerScope?.firstRepeat === 'repeat' && classifyFirstPurchase(o.isFirstPurchase) !== 'repeat') return false;
     if (scope.promotionScope?.couponUsage === 'used' && !hasCoupon(o)) return false;
     if (scope.promotionScope?.couponUsage === 'not_used' && hasCoupon(o)) return false;
     return true;
@@ -312,20 +315,34 @@ function buildInsightPack(input: { scope: MarketingAnalysisScope; question: Mark
   const catMap = new Map<string, Agg & { label: string }>();
   const prodMap = new Map<string, Agg & { name: string; category: string; brand: string }>();
   let lineTotalRev = 0;
-  for (const o of scoped) {
-    const oCoupon = hasCoupon(o);
+  // C-1/C-5: 카테고리는 라인 categoryCode만 사용(productIndex 재조인 금지),
+  //   매출·수량은 라인 합산, 주문수·쿠폰주문수는 집계칸별 주문 중복 제거.
+  //   category와 product는 cellRegistryKey의 axisKind로 분리한다(같은 문자열 키 충돌 방지).
+  const seenOrdersByCell = new Map<string, Set<string>>();
+  scoped.forEach((o, orderIndex) => {
+    const flags = {
+      coupon: hasCoupon(o),
+      reward: usesReward(o),
+      first: resolveFirstPurchase((o as Row).isFirstPurchase)
+    };
+    const orderKey = resolveOrderKey((o as Row).orderNo, orderIndex);
     for (const l of (o.lines || []) as Row[]) {
       const g = strv(l.goodsNo); const meta = goodsMeta(g); const lr = numv(l.lineRevenue); const q = numv(l.quantity);
       lineTotalRev += lr;
-      const c = catMap.get(meta.category) || { ...newAgg(), label: meta.category === 'uncategorized' ? '미분류' : `카테고리 ${meta.category}` };
-      c.revenue += lr; c.orderCount += 1; c.quantity += q; if (oCoupon) c.couponOrders += 1; catMap.set(meta.category, c);
+      const catKey = lineCategoryKey(l);
+      const c = catMap.get(catKey) || { ...newAgg(), label: categoryLabelOf(catKey) };
+      c.revenue += lr; c.quantity += q;
+      countOrderOnce(c, seenOrdersFor(seenOrdersByCell, cellRegistryKey('category', catKey)), orderKey, flags);
+      catMap.set(catKey, c);
       const pk = g || meta.name;
-      const p = prodMap.get(pk) || { ...newAgg(), name: meta.name, category: meta.category, brand: meta.brand };
-      p.revenue += lr; p.orderCount += 1; p.quantity += q; if (oCoupon) p.couponOrders += 1; prodMap.set(pk, p);
+      const p = prodMap.get(pk) || { ...newAgg(), name: meta.name, category: catKey, brand: meta.brand };
+      p.revenue += lr; p.quantity += q;
+      countOrderOnce(p, seenOrdersFor(seenOrdersByCell, cellRegistryKey('product', pk)), orderKey, flags);
+      prodMap.set(pk, p);
     }
-  }
+  });
   const lineShare = (rev: number): number => (lineTotalRev ? round1(rev / lineTotalRev * 100) : 0);
-  const categoryBreakdown = [...catMap.entries()].map(([, a]) => ({ category: a.label, revenue: Math.round(a.revenue), revenueShare: lineShare(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a), couponUsageRate: a.orderCount ? round1(a.couponOrders / a.orderCount * 100) : 0 })).sort((x, y) => y.revenue - x.revenue);
+  const categoryBreakdown = [...catMap.entries()].map(([key, a]) => ({ categoryKey: key, category: a.label, revenue: Math.round(a.revenue), revenueShare: lineShare(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a), couponUsageRate: a.orderCount ? round1(a.couponOrders / a.orderCount * 100) : 0 })).sort((x, y) => y.revenue - x.revenue);
 
   // 문의/리뷰 by goods (기간 내)
   const inqByGoods = new Map<string, number>();
@@ -342,10 +359,10 @@ function buildInsightPack(input: { scope: MarketingAnalysisScope; question: Mark
   }).sort((x, y) => y.revenue - x.revenue);
 
   // customerBreakdown
-  const frMap = byOrderDim((o) => boolv(o.isFirstPurchase) ? { key: 'first', label: '첫구매' } : { key: 'repeat', label: '재구매' });
+  const frMap = byOrderDim((o) => { const c = classifyFirstPurchase(o.isFirstPurchase); return { key: c, label: FIRST_PURCHASE_LABEL[c] }; });
   const mgMap = byOrderDim((o) => { const l = strv(o.memberGroupName) || '미분류'; return { key: l, label: l }; });
   const customerBreakdown = {
-    firstRepeat: ['first', 'repeat'].filter((k) => frMap.has(k)).map((k) => { const a = frMap.get(k)!; return { label: k as 'first' | 'repeat', revenue: Math.round(a.revenue), revenueShare: shareOf(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a) }; }),
+    firstRepeat: FIRST_PURCHASE_CLASSES.filter((k) => frMap.has(k)).map((k) => { const a = frMap.get(k)!; return { label: k, revenue: Math.round(a.revenue), revenueShare: shareOf(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a) }; }),
     memberGroup: [...mgMap.entries()].map(([, a]) => ({ memberGroup: a.label, revenue: Math.round(a.revenue), revenueShare: shareOf(a.revenue), orderCount: a.orderCount, averageOrderValue: aov(a) })).sort((x, y) => y.revenue - x.revenue)
   };
 
@@ -542,7 +559,17 @@ export function buildMarketingScopeInsightNarrative(result: MarketingScopeInsigh
     const fr = pack.customerBreakdown.firstRepeat || [];
     const mg = pack.customerBreakdown.memberGroup || [];
     add('고객 관찰', [
-      fr.length === 2 ? `첫구매/재구매 매출 비중은 ${fr.map((x) => `${x.label === 'first' ? '첫구매' : '재구매'} ${x.revenueShare}%`).join(', ')}이며 객단가는 ${fr.map((x) => `${x.label === 'first' ? '첫구매' : '재구매'} ${won(x.averageOrderValue)}`).join(', ')}입니다.` : '',
+      // C-8: 라벨은 공용 FIRST_PURCHASE_LABEL을 쓴다. 미분류는 두 그룹에서 제외되므로
+      //   '전체에는 포함되지만 두 그룹에는 포함되지 않는다'는 의미를 값과 함께 전달한다.
+      fr.filter((x) => x.label !== 'unknown').length === 2
+        ? `첫구매/재구매 매출 비중은 ${fr.filter((x) => x.label !== 'unknown').map((x) => `${FIRST_PURCHASE_LABEL[x.label]} ${x.revenueShare}%`).join(', ')}이며 객단가는 ${fr.filter((x) => x.label !== 'unknown').map((x) => `${FIRST_PURCHASE_LABEL[x.label]} ${won(x.averageOrderValue)}`).join(', ')}입니다.`
+        : '',
+      (() => {
+        const u = fr.find((x) => x.label === 'unknown');
+        return u && u.orderCount > 0
+          ? `첫구매 여부 ${FIRST_PURCHASE_LABEL.unknown} ${u.orderCount}건·${won(u.revenue)}은 전체 실적에는 포함되지만 첫구매·재구매 두 그룹에는 포함되지 않습니다.`
+          : '';
+      })(),
       mg.length ? `회원그룹 기준 매출 1위는 ${mg[0].memberGroup}(${mg[0].revenueShare}%)입니다.` : ''
     ]);
   }

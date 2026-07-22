@@ -44,8 +44,11 @@ export function buildMarketingAnalysisNarrative(result: MarketingAnalysisResult)
     const d = result.diff;
     const diffStr = metric === 'orderCount' ? `${Math.abs(d.absolute).toLocaleString()}건` : metric === 'quantity' ? `${Math.abs(d.absolute).toLocaleString()}개` : `${Math.abs(d.absolute).toLocaleString()}원`;
     lines.push('', `- 차이: ${diffStr} (${d.absolute >= 0 ? '+' : '-'}${Math.abs(d.percent)}%)`);
-    const first = result.rows[0]; const last = result.rows[result.rows.length - 1];
-    lines.push(`- 해석: ${last.label}이(가) ${first.label}보다 ${d.direction === 'up' ? '높' : d.direction === 'down' ? '낮' : '비슷하'}게 나타납니다.`);
+    // 비교 대상은 diff가 명시한 두 그룹을 쓴다(배열 첫 행·마지막 행에 의존하지 않는다).
+    //   행 정렬이 바뀌어도 "미분류가 첫구매보다…" 같은 잘못된 설명이 생기지 않는다.
+    const fromLabel = d.fromLabel ?? result.rows[0].label;
+    const toLabel = d.toLabel ?? result.rows[result.rows.length - 1].label;
+    lines.push(`- 해석: ${toLabel} 항목이 ${fromLabel}보다 ${d.direction === 'up' ? '높' : d.direction === 'down' ? '낮' : '비슷하'}게 나타납니다.`);
     if (metric === 'averageOrderValue') lines.push(`- 객단가는 기간 전체 매출 ÷ 주문수 기준입니다(월별 단순 평균 아님).`);
   }
   lines.push('', `- ${CAVEAT}`);

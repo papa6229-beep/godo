@@ -1,0 +1,289 @@
+# RC-1 지표 계약 초안 (DRAFT)
+
+- **상태**: DRAFT — 구현 지시서가 아니다. 승인 후 `revenueMetricContract.ts` 및 CommerceSnapshot 계약에 반영한다.
+- **기준선**: `2d68505` / 실패 재현 근거: `scripts/smoke-metric-definition-parity-v0.mjs` (전용 브랜치 `fix/rc-1-metric-parity`)
+- **원칙**: 이름이 같은 지표는 계산식이 같아야 한다. 관점이 다르면 **이름을 달리 한다.**
+
+---
+
+## C-1. 카테고리 출처 계약
+
+**규칙 (정정 확정)**
+1. 분석 카테고리는 **`RevenueOrderLine.categoryCode` 하나만** 기준으로 한다.
+2. 값이 없으면 **`uncategorized`로 확정**한다.
+3. **하위 분석 엔진은 현재 `productIndex`로 다시 분류하지 않는다.**
+
+> **왜 "보충"을 없앴나 (2026-07-21 재추적)**
+> `line.categoryCode`는 고도몰 원본 라인 필드가 **아니다.** `godomallRevenue.ts:223 mapLine()`이
+> **적재 시점에 상품목록과 조인해서** 만든다: `categoryCode: matched.categoryCode || 'uncategorized'`.
+> 즉 이미 **"적재 시점 상품 카테고리 스냅샷"**이다.
+>
+> 여기에 하위 소비자가 **현재** 상품목록으로 다시 보충하면, 상품 카테고리를 재분류하는 순간
+> **과거 매출까지 새 카테고리로 소급 재분류**된다. 그래서 보충 규칙 자체를 폐기한다.
+>
+> `categorySource`는 실제보다 강한 이름(`order_line` 등)을 쓰지 않는다 →
+> **`'ingestSnapshot' | 'none'`**.
+
+**검증 기대값 (정정)**: `catLINE = 10,000` / `uncategorized = 50,000`(P5 20,000 + P6 30,000) / `catINDEX`·`catFALLBACK`는 결과에 존재하면 실패.
+
+**기록 의무**: 결과에 `categorySource: 'ingestSnapshot' | 'none'`을 남길 수 있도록 **CommerceSnapshot 계약에 필드를 추가**한다. 어떤 기준으로 집계됐는지 사후 추적이 가능해야 한다.
+
+**표기 규칙**: 키는 `uncategorized`로 통일하고, 화면 표시 라벨만 `미분류`로 한다. 현재 `scopeInsight`는 키 자체를 `미분류`로 만들어(`:320`) 다른 엔진과 대조가 불가능하다.
+
+**현재 상태 (실측 — 금액까지 고정한 검증 결과)**
+
+정답: `catLINE=10,000` / `uncategorized=50,000` / `catINDEX`·`catFALLBACK`는 존재 시 실패
+
+| 엔진 | 실제 반환 | 계약 대비 |
+|---|---|---|
+| `marketingIntelligencePlanner` (`:510,:514`) | `catINDEX=10,000 \| catFALLBACK=20,000 \| uncategorized=30,000` | ❌ 현재 productIndex로 재분류 |
+| `marketingScopeInsightEngine` (`:253-255`) | `카테고리 catINDEX=10,000 \| 카테고리 catFALLBACK=20,000 \| 미분류=30,000` | ❌ 동일 + **키 표기 불일치(미분류)** |
+| `analyticsQueryEngine` | `catLINE=10,000 \| uncategorized=50,000` | ✅ **계약 부합 — 소스 수정 불필요** |
+
+→ **`analyticsQueryEngine`은 이미 라인 기준이라 정정된 계약을 그대로 통과한다.** A-3에서 소스를 건드리지 않는다.
+planner·scopeInsight만 **현재 상품목록 재분류를 제거**하면 된다.
+
+---
+
+## C-2. 매출 명명 계약 (확정)
+
+| 이름 | 한글 | 계산식 | 용도 |
+|---|---|---|---|
+| **`validOrderRevenue`** | **유효주문 매출** | 결제완료·미취소 주문의 주문 총액 합 | **기본값.** 화면에서 이름 없이 "매출"이라 하면 이것 |
+| **`placedOrderAmount`** | **주문발생금액** | 취소·미입금 포함 전체 주문의 상품 라인합 | 상품 판매흐름·재고 영향 분석 |
+
+**금지어**: **"순매출"·`netRevenue`를 쓰지 않는다.** 반품·환불·할인·정산까지 반영한 것처럼 오해를 준다. 현재 시스템은 그 단계를 계산하지 않으므로 **"유효주문 매출"이 정직한 이름**이다. 정산 단계가 실제로 구현되면 그때 별도 이름을 추가한다.
+
+**개명 대상 (현재 → 계약)**
+
+| 현재 | 계약 | 위치 |
+|---|---|---|
+| `grossProductRevenue` / "상품매출" | `placedOrderAmount` / "주문발생금액" | `revenueMetricContract.ts:57, 93-99` |
+| `netOrderRevenue` / "총매출" | `validOrderRevenue` / "유효주문 매출" | `revenueMetricContract.ts:64, 100-106` |
+| `RevenueMetricKind`의 `netOrderRevenue`·`grossProductRevenue`·`validOrderRevenue` 3종 중복 | `validOrderRevenue` 1개로 통합 | `revenueMetricContract.ts:15-23` (`validOrderRevenue`가 이미 있고 설명이 `netOrderRevenue와 동일 기준`이라 명시 — 중복) |
+
+**현재 상태**: `analyticsQueryEngine.ts:156`의 metric 라벨이 그냥 `'매출'`인데 계산은 `productRevenueByLines`(취소 포함 라인합)를 쓴다 → **이름은 "매출"인데 값은 주문발생금액.** 개명 1순위.
+
+---
+
+## C-3. 재고위험 단계 계약 — `demo-default-v1`
+
+**하나의 임계값으로 합치지 않는다.** 단계형으로 두되, **영구 규칙이 아니라 초기 기본값**이다.
+
+| 단계 | 조건 | 의미 |
+|---|---|---|
+| `soldOut` | 재고 = 0 | 품절 |
+| `urgent` | 1 ~ 5 | 긴급 |
+| `warning` | 6 ~ 20 | 주의 |
+| `normal` | 21 이상 | 정상 |
+
+**결과에 판정 근거를 반드시 남긴다.**
+
+```
+{ level: 'warning', threshold: { min: 6, max: 20 }, policyVersion: 'demo-default-v1' }
+```
+화면 표기 예: `재고 상태: 주의 · 판정 기준: 6~20개 · 정책 demo-default-v1`
+
+**교체 계획**: 고정 수량 임계는 회전율을 무시한다 — **하루 100개 팔리는 상품과 한 달 1개 팔리는 상품을 같은 20개 기준으로 판단하면 안 된다.** 향후 **판매속도 기반 재고 소진 예상일**(예: 잔여일 ≤3 긴급 / ≤7 주의)로 교체한다. 이를 위해 단계 판정을 **한 함수 안에 격리**하고, 호출부는 단계와 근거만 소비한다.
+
+**현재 상태 (실측)**: 채팅 `productTeamChatFacts.ts:409`는 ≤0 위험 / ≤5 주의, 대시보드 `ProductTeamDashboard.tsx:589-590`은 ≤20 danger / ≤40 warn, 스냅샷 `departmentDataSourceOfTruth.ts:113`은 ≤20, 캘린더 `CalendarPanel.tsx:27`은 20. → **"틀린 것"이 아니라 단계가 정의되지 않은 채 각자 다른 컷을 쓴 것.**
+
+---
+
+## C-4. 정규화 책임 계약
+
+**원시값 정규화는 계산 모듈이 아니라 각 데이터 어댑터의 책임이다.**
+
+```
+고도몰 어댑터 ─┐
+합성 어댑터   ─┼→ [정규화: boolean · canonical status] → CommerceSnapshot → 계산 모듈
+CSV 어댑터    ─┘
+```
+
+| 항목 | 어댑터가 해야 할 일 | 계산 모듈이 받는 것 |
+|---|---|---|
+| 결제 여부 | `'Y'`/`'y'`/`'true'`/`1`/`true` → **boolean** | `paid: boolean` |
+| 취소 여부 | 동일 | `canceled: boolean` |
+| 문의 상태 | 원시 상태 문자열 → **canonical status** | `status: 'open' \| 'in_progress' \| 'answered' \| 'closed' \| 'unknown'` |
+
+**문의 canonical status 5종 (확정)**: `open` / `in_progress` / `answered` / `closed` / `unknown`
+계산 엔진 안에서 `미답변`·`unanswered`·`pending` 등을 정규식으로 해석하는 코드는 **최종적으로 전부 제거**한다(현재 6정의 — `csTeamDashboardFacts.ts:83`, `:320,378`, `csDashboardStatistics.ts:79`, `departmentDataSourceOfTruth.ts:76,125`, `analyticsQueryEngine.ts:572`, `departmentChatFacts.ts:83`).
+
+> **⚠️ 긴급도 정정 (2026-07-21 재추적)**
+> 매출분석 주문은 `godomallRevenue.ts:180 deriveOrderState()`를 거치며, 여기서 `paid`/`canceled`는
+> **원시 `'Y'`를 읽는 것이 아니라 결제일·취소일·주문상태로 판정한 boolean**이다.
+> 그리고 합성 데이터도 `syntheticCommerceUniverse.ts:504`에서 **같은 `mapOrdersToRevenue`를 통과**한다.
+> 따라서 아래 `bool()` 3변종은 **이 경로에서는 이미 boolean을 받으므로 현재 활성 결함이 아니라 잠재 결함**이다.
+> "고도몰이 `'Y'`를 보내면 엔진마다 갈린다"는 이전 서술은 **이 경로에 한해 성립하지 않는다 — 철회한다.**
+> 제거는 모든 진입점이 canonical boolean으로 잠긴 것을 확인한 뒤에 한다.
+
+**금지**: 계산 모듈이 `bool()` 헬퍼를 각자 구현하는 것. **현재 상태 — 실측 3변종(잠재):**
+- `revenueMetricContract.ts:38` / `planner:153` / `scopeInsight:107` / `marketingAnalysisFacts:227` → `'y'`만
+- `marketingAnalysisExecutor.ts:49` → `'Y'`·`1` 포함
+- `departmentDataService.ts:68` → `'1'`·`'true'` 포함, **`'Y'` 없음**
+
+→ 위 3변종은 **현재 경로에서는 잠재 결함**이다(바로 위 정정 참조). 제거는 모든 진입점이 canonical boolean으로 잠긴 것을 확인한 뒤에 하며, 어댑터 하나를 고쳤다는 이유로 소멸했다고 보고하지 않는다.
+
+---
+
+## RC-1 범위 밖 — 별도 등록
+
+**`handled:true` 인데 `result`가 없는 질의 라우팅** — RC-3/RC-5 항목으로 등록. **이번 RC-1 수정에 섞지 않는다.**
+
+- 재현: `buildMarketingScopeInsightResponse({ message: '2025년 3월 카테고리별 주문수 알려줘', ... })`
+  → `handled: true`, 반환 키 `handled, artifact, reply, suppressChart` — **`result` 필드 자체가 없음**
+- 대조: `'카테고리별 매출 알려줘'` → `result` 포함, `insightPack` 정상
+- 의미: **시스템은 질문을 처리했다고 표시하지만 사용자에게 결과물을 주지 않는다.** 숫자 계산 오류가 아니라 "질문 라우팅 후 결과 소실"이며, 화면에는 성공처럼 보인다.
+
+## 미해결 (계약 확정 전 확인 필요)
+
+1. 실제 고도몰 `Order_Search` 응답의 `paid`/취소 필드 원시 표기 — 실데이터 확인 필요
+2. 문의 원시 상태값의 전체 목록 — 어떤 값들이 오는지 확인 후 canonical 매핑표 작성
+3. 재고 단계 경계(5 / 20)가 사업 기준으로 타당한지 — 운영 판단 필요
+
+---
+
+## C-5. 라인 축 집계 규칙 (신설)
+
+라인 반복문이 오염시키는 것은 `orderCount` 하나가 아니다. **`marketingIntelligencePlanner.ts:517-527` 실측**:
+
+```ts
+for (const l of (o.lines || [])) {
+  acc.revenue += lr; acc.lineRevenue += lr; acc.orderCount += 1; acc.quantity += numv(l.quantity);
+  if (oCoupon) acc.couponOrders += 1; if (oReward) acc.rewardOrders += 1;
+  if (oFirst) { acc.firstOrders += 1; ... } else { acc.repeatOrders += 1; ... }
+}
+```
+
+→ `orderCount` / `couponOrders` / `rewardOrders` / `firstOrders` / `repeatOrders`가 **전부 라인마다 증가**한다.
+`marketingScopeInsightEngine.ts:321-324`의 `couponOrders`도 같다.
+
+**규칙**
+
+| 지표 | 집계 방식 |
+|---|---|
+| `revenue`, `lineRevenue`, `quantity` | **라인별 합산** |
+| `orderCount`, `couponOrders`, `rewardOrders`, `firstOrders`, `repeatOrders` | **같은 집계칸 안에서 `orderNo` 기준 중복 제거** |
+
+**부분 수정 금지**: `orderCount`만 주문 기준으로 고치고 `couponOrders`를 라인 기준으로 두면 **쿠폰 사용률이 100%를 초과**한다. 반드시 함께 고친다. 회귀 가드로 `T13`(모든 카테고리의 쿠폰 사용률 ≤ 100%)을 둔다.
+
+## C-6. 기간 필터 계약 (B단계)
+
+- `AnalyticsReview` / `AnalyticsInquiry` 타입에 **현재 `createdAt`이 없다**(`analyticsQueryEngine.ts:42-59`). B단계에서 `createdAt?: string`을 추가한다.
+- **시작일·종료일 포함**(경계 포함).
+- **기간을 지정하면 `createdAt`이 없는 자료는 제외**한다. 기간 미지정 시에는 전체를 포함한다.
+
+## C-7. share 계약 (C단계)
+
+`share` 연산은 분모뿐 아니라 **정렬 기준·본문 값·단위까지 `plan.metric`을 따른다.**
+
+| metric | 분모 | 본문 값 | 단위 |
+|---|---|---|---|
+| `revenue` | 매출 합 | 매출액 | 원 |
+| `quantity` | 수량 합 | 수량 | 개 |
+
+현재는 `commerceDataQueryEngine.ts:394`가 항상 `r.acc.rev`를 써서 **계산·정렬·표시가 전부 매출 기준**이다.
+
+## C-8. 첫구매/재구매 3상태 (신설 — RC-1 후속)
+
+`RevenueOrder.isFirstPurchase`는 **optional**이다(`godomallRevenue.ts` — `firstSaleFl`이 없으면 undefined).
+따라서 판정은 3상태여야 한다.
+
+| 값 | 처리 |
+|---|---|
+| `true` | 첫구매 (`firstOrders`, `firstRevenue`) |
+| `false` | 재구매 (`repeatOrders`, `repeatRevenue`) |
+| `undefined` | **미분류 — 둘 다 증가시키지 않는다.** 단 `orderCount`에는 포함 |
+
+**현재 상태 — 잔존 소비자 전수(RC-1 병합 전 정리 대상)**
+
+| # | 소비자 | 위치 |
+|---|---|---|
+| 1 | `marketingIntelligencePlanner` 일반(주문 축) 집계 | `addOrder` 내 `boolv(o.isFirstPurchase)` |
+| 2 | `marketingScopeInsightEngine` 필터·firstRepeat 분류 | `passFilter` / `byOrderDim` firstRepeat |
+| 3 | `marketingAnalysisFacts` | 첫구매/재구매 분류 |
+| 4 | `marketingAnalysisExecutor` | 첫구매/재구매 분류 |
+| 5 | `commerceDataQueryEngine` 필터·customerType 축 | customerType 분류 |
+
+> **정정(보고 표기 오류)**: 4A 보고에서 "수정 전 재구매 비중 50%"라고 적었으나
+> 올바른 값은 **83.3%**(50,000 ÷ 60,000)다. 수정 후는 33.3%(20,000 ÷ 60,000)로 맞다.
+> 코드·테스트는 33.3%를 검증했으므로 구현 문제가 아니라 보고 표기 오류였다.
+
+**표시 소비자(하위 항목) — 계산을 고쳐도 사용자에게서 미분류가 다시 사라지는 지점**
+
+| # | 표시 소비자 | 문제 |
+|---|---|---|
+| D-1 | `MarketingAnalysisDashboard.tsx` | 첫구매·재구매 매출/주문수만 표시. `firstRevenueShare`/`repeatRevenueShare`만 계산 → 미분류가 화면에서 사라짐 |
+| D-2 | `marketingTeamChatFacts.ts` | facts summary에서 첫구매·재구매 값만 복사. 일반 요약·첫구매/재구매 비교 답변에 미분류 미전달 |
+
+**기존 스모크의 잘못된 2분류 전제(정정 대상)** — `smoke-marketing-analysis-facts-core-v0.mjs:58-59`
+- `firstPurchaseOrderCount + repeatPurchaseOrderCount === orderCount`
+- `firstPurchaseRevenue + repeatPurchaseRevenue === totalRevenue`
+→ **3분류 계약으로 정정**: `first + repeat + unknown = 전체`
+
+**완료된 범위**: 공용 함수 `lineAxisAggregation.resolveFirstPurchase()` + A-1 planner goodsMode + A-2 scope 라인축.
+**남은 5개 소비자는 B에 섞지 않고 RC-1 병합 전 별도 조각으로 테스트 후 정리한다.**
+
+## C-9. 집계 키 충돌 방지 (신설)
+
+- 집계칸 레지스트리 키: 문자열 이어붙이기 금지(`["a b","c"]`와 `["a","b c"]`가 충돌).
+  `cellRegistryKey(axisKind, axisKey, bucketKey)` = `JSON.stringify([...])` 사용.
+- **축 종류(`axisKind`)를 반드시 포함** — A-2처럼 category·product를 한 실행에서 함께 집계할 때 같은 문자열 키가 충돌한다.
+- 주문 키: 실제 주문번호와 대체키에 서로 다른 namespace(`ord:` / `idx:`)를 쓴다.
+
+---
+
+## 병합 조건 (RC-1 → main)
+
+1. 지표 정합성 하네스 **의도된 FAIL 0건**
+2. **C-8 전체 소비자 3상태 정합** (위 5개 포함)
+3. **NUL 가드 통과** (`smoke-no-nul-bytes-v0`)
+4. 기존 위양성 스모크(`smoke-marketing-dashboard-dynamic-smart-chart-render-v0`)를 **수정 또는 공식 격리**하여 필수 검증이 **exit 0**으로 끝날 것
+5. `tsc -b` · `npm run build` · 신규 lint 0
+
+---
+
+## C-10. 작업 절차 (RC-6 검증 신호 개선에 편입)
+
+**소스 편집 규칙 — NUL·백스페이스·실제 개행 손상이 3회 반복되어 확정**
+- **TS/TSX/MJS 소스는 Python read/replace 문자열 편집 금지.** Edit 도구(정확한 줄 지정)만 사용한다.
+- 정규식·이스케이프가 포함된 변경은 **별도 작은 패치**로 분리한다.
+- 편집 직후 순서: **실제 diff 확인 → `git diff --check` → 제어문자 가드 → `tsc -b`**.
+- 위생 가드는 NUL 전용이 아니라 **제어문자 전반**(TAB/LF/CR만 허용)을 막는다.
+
+## RC-1 병합 조건 — 추가
+
+**대시보드(D-1) 전용 검증 미완 — C-8 종료 전 필수**
+4B 구현(`8da78e3`)은 유지하되 검증 상태는 **조건부 완료**다. 기존 대시보드 스모크 30건은
+새 미분류 조건부 렌더링을 검증하지 않는다. 다음을 **실제 결과값**으로 추가해야 한다.
+
+| 조건 | 검증 |
+|---|---|
+| unknown > 0 | firstRepeat 화면에 1건·30,000원 |
+| unknown > 0 | 객단가 화면에 미분류 AOV 30,000원 |
+| unknown > 0 | 하단 카드에 미분류 비중 50% |
+| unknown = 0 | 위 셀·막대·안내가 **모두 없음** |
+
+가능하면 순수 함수 `buildFocusView` 반환값을 직접 검사한다. 정규식·문자열 존재 검사로 끝내지 않는다.
+
+---
+
+## RC-1 되돌리기 계획 (정정)
+
+**중간 커밋 하나만 되돌리는 방식은 금지한다.** 후속 커밋들이 이전 공용 계약(`firstPurchaseContract`,
+`lineAxisAggregation`)과 타입 변경에 의존하므로, 단일 중간 커밋 revert는 컴파일 실패나
+다른 엔진 파손으로 이어질 수 있다.
+
+**프로덕션 기본 복구**
+```
+git revert -m 1 <merge-commit>
+```
+병합 커밋 전체를 한 번에 되돌린다. 안전 복귀 지점은 main의 `716f588`(SEC-03 후속).
+
+**부분 복구가 필요하면**
+1. 별도 복구 브랜치에서 의존관계를 먼저 확인한다.
+2. 관련 논리 묶음 **전체**를 수정하거나 revert한다(조각 하나만 손대지 않는다).
+3. 지표 정합성 하네스 · 필수 스모크 · `tsc -b` · `npm run build`를 전부 통과시킨다.
+4. 통과한 뒤에만 반영한다.
+
+**운영 중 즉흥적인 단일 중간 커밋 revert는 금지한다.**

@@ -19,6 +19,7 @@ import {
 import type { MarketingChatChartArtifact, MarketingChartSpec } from './marketingChatChartSpec';
 import { buildMarketingAnalysisNarrative } from './marketingAnalysisNarrative';
 import { selectMarketingChartType } from './marketingChartGrammar';
+import { classifyFirstPurchase, FIRST_PURCHASE_LABEL, FIRST_PURCHASE_CLASSES } from './firstPurchaseContract';
 
 export interface MarketingAnalysisRow {
   label: string; value: number; revenue: number; orderCount: number; aov: number; quantity: number;
@@ -28,7 +29,9 @@ export interface MarketingAnalysisResult {
   title: string;
   metricLabel: string;
   rows: MarketingAnalysisRow[];
-  diff?: { absolute: number; percent: number; direction: 'up' | 'down' | 'flat' };
+  // fromLabel/toLabel: 비교 대상을 명시한다. narrative가 rows[0]/rows[last]에 의존하면
+  //   행 정렬이 바뀔 때(예: 미분류가 최상단) 엉뚱한 두 그룹을 비교해 설명한다.
+  diff?: { absolute: number; percent: number; direction: 'up' | 'down' | 'flat'; fromLabel?: string; toLabel?: string };
   chartSpec: MarketingChartSpec;
   available: boolean;
   unsupported: boolean;
@@ -116,19 +119,36 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
     const scoped = plan.comparison.period ? rangeFilter(orders, resolvePeriodToRange(plan.comparison.period, nowMs ? new Date(nowMs).getFullYear() : 0, nowMs)) : orders;
     let groups: { key: string; label: string; pred: (o: OrderLike) => boolean }[];
     if (dim === 'coupon') groups = [{ key: 'used', label: '쿠폰 사용', pred: (o) => boolv(o.discountSummary?.hasCoupon) }, { key: 'unused', label: '쿠폰 미사용', pred: (o) => !boolv(o.discountSummary?.hasCoupon) }];
-    else if (dim === 'firstRepeat') groups = [{ key: 'first', label: '첫구매', pred: (o) => boolv(o.isFirstPurchase) }, { key: 'repeat', label: '재구매', pred: (o) => !boolv(o.isFirstPurchase) }];
+    else if (dim === 'firstRepeat') {
+      // C-8: 3상태. 미분류는 세 번째 그룹으로 보여주되 비어 있으면 0원 행을 만들지 않는다.
+      groups = FIRST_PURCHASE_CLASSES
+        .map((cls) => ({ key: cls, label: FIRST_PURCHASE_LABEL[cls], pred: (o: OrderLike) => classifyFirstPurchase(o.isFirstPurchase) === cls }))
+        .filter((g) => g.key !== 'unknown' || scoped.some((o) => isValidOrder(o) && g.pred(o)));
+    }
     else {
       const field = dim === 'memberGroup' ? 'memberGroupName' : 'orderChannel';
       const keys = [...new Set(scoped.filter((o) => isValidOrder(o)).map((o) => String((o as Record<string, unknown>)[field] ?? '미분류')))];
       groups = keys.map((k) => ({ key: k, label: k, pred: (o) => String((o as Record<string, unknown>)[field] ?? '미분류') === k }));
     }
-    const rows = groups.map((g) => aggToRow(g.label, aggregateAllValid(scoped, g.pred), metric)).sort((a, b) => b.value - a.value);
+    // 그룹 키를 유지한다. 비교 대상 선택은 표시 라벨이 아니라 **키**로 한다
+    //   (표시 문자열을 정체성으로 쓰면 라벨이 바뀔 때 조용히 깨진다).
+    const groupRows = groups.map((g) => ({ key: g.key, row: aggToRow(g.label, aggregateAllValid(scoped, g.pred), metric) }));
+    const rows = groupRows.map((x) => x.row).sort((a, b) => b.value - a.value);
     const title = `${plan.comparison.period ? resolvePeriodToRange(plan.comparison.period, nowMs ? new Date(nowMs).getFullYear() : 0, nowMs).label + ' ' : ''}${dim === 'coupon' ? '쿠폰 사용/미사용' : dim === 'firstRepeat' ? '첫구매/재구매' : dim === 'memberGroup' ? '회원그룹별' : '주문채널별'} ${label} 비교`;
     // 객단가/주문수/매출 세그먼트 비교는 막대 비교(2~4개=compact groupedBar, 5+=rankedBar). 도넛 아님.
     const segChartType = selectMarketingChartType({ intent: plan.intent, metric, comparisonType: 'segmentCompare', rowCount: rows.length, suppressed: plan.chart.suppressed });
-    const chartSpec = buildChartSpec({ id: `mkt_segment_${dim}_${metric}`, title, subtitle: `${label}${rows.some((r) => r.orderCount) ? ' · 주문수' : ''}`, metric, chartType: segChartType, compact: rows.length <= 4,
+    // 미분류가 실제로 있을 때만 subtitle에 표시한다(없으면 기존 제목·부제 유지).
+    const hasUnknownGroup = dim === 'firstRepeat' && groupRows.some((x) => x.key === 'unknown');
+    const segSubtitle = `${label}${rows.some((r) => r.orderCount) ? ' · 주문수' : ''}${hasUnknownGroup ? ' · 미분류 포함' : ''}`;
+    const chartSpec = buildChartSpec({ id: `mkt_segment_${dim}_${metric}`, title, subtitle: segSubtitle, metric, chartType: segChartType, compact: rows.length <= 4,
       series: [{ key: metric, label, metric, points: rows.map((r) => ({ bucketKey: r.label, bucketLabel: r.label, value: r.value, orderCount: r.orderCount, revenue: r.revenue, averageOrderValue: r.aov })) }] });
-    return { plan, title, metricLabel: label, rows, available: rows.some((r) => r.value > 0), unsupported: false, chartSpec, diff: diffOf(rows) };
+    // C-8: firstRepeat 비교는 first↔repeat만 의미가 있다. 미분류는 표시 대상이지 비교 상대가 아니다.
+    //   행 정렬(값 내림차순)에 의존하면 미분류가 최상단일 때 엉뚱한 두 그룹을 비교하게 된다.
+    const rowByKey = (k: string): MarketingAnalysisRow | undefined => groupRows.find((x) => x.key === k)?.row;
+    const firstRow = dim === 'firstRepeat' ? rowByKey('first') : undefined;
+    const repeatRow = dim === 'firstRepeat' ? rowByKey('repeat') : undefined;
+    const segDiff = firstRow && repeatRow ? diffBetween(firstRow, repeatRow) : diffOf(rows);
+    return { plan, title, metricLabel: label, rows, available: rows.some((r) => r.value > 0), unsupported: false, chartSpec, diff: segDiff };
   }
 
   // 월별 추이 연도 비교(기본 1~12월, startMonth/endMonth 지정 시 그 범위만 순회 — 사용자 지정 기간 보존)
@@ -179,9 +199,19 @@ export function executeMarketingAnalysisPlan(plan: MarketingAnalysisPlan, orders
 
 function diffOf(rows: MarketingAnalysisRow[]): MarketingAnalysisResult['diff'] | undefined {
   if (rows.length < 2) return undefined;
-  const a = rows[0].value; const b = rows[rows.length - 1].value;
+  const from = rows[0]; const to = rows[rows.length - 1];
+  return diffBetween(from, to);
+}
+
+/** 두 행을 명시적으로 비교한다(배열 순서에 의존하지 않는다). */
+function diffBetween(from: MarketingAnalysisRow, to: MarketingAnalysisRow): MarketingAnalysisResult['diff'] {
+  const a = from.value; const b = to.value;
   const absolute = b - a; const percent = a > 0 ? Math.round((absolute / a) * 1000) / 10 : 0;
-  return { absolute, percent, direction: absolute > 0 ? 'up' : absolute < 0 ? 'down' : 'flat' };
+  return {
+    absolute, percent,
+    direction: absolute > 0 ? 'up' : absolute < 0 ? 'down' : 'flat',
+    fromLabel: from.label, toLabel: to.label
+  };
 }
 
 // ── 오케스트레이터: 질문 → compile → execute → narrative → artifact ──────────────
