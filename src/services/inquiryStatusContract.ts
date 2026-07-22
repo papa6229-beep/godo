@@ -119,3 +119,13 @@ export function normalizeInquiryRecord<T extends { status?: unknown; canonicalSt
   const n = normalizeInquiryStatus(rec.status);
   return { ...rec, canonicalStatus: n.canonicalStatus, rawStatus: n.rawStatus, normalizationReason: n.normalizationReason };
 }
+
+/**
+ * 입력 경계용 배치 정규화: 문의 목록을 1회 canonical화(각 record는 idempotent).
+ * 스냅샷 조립/어댑터/저장 복원 경계에서 한 번만 호출한다. 저장→복원 후 재호출해도 최초 근거를 보존.
+ */
+export function normalizeInquiryRecords<T extends { status?: unknown; canonicalStatus?: InquiryStatus; rawStatus?: string; normalizationReason?: NormalizationReason }>(
+  list: readonly T[] | undefined | null
+): Array<T & InquiryStatusResult> {
+  return (list ?? []).map(normalizeInquiryRecord);
+}

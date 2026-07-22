@@ -1,3 +1,5 @@
+import type { InquiryStatus, NormalizationReason } from '../services/inquiryStatusContract';
+
 export type DataDomain = 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales';
 
 export type DataSourceType =
@@ -40,6 +42,11 @@ export interface StandardInquiry {
   priority: string;
   sentiment: 'positive' | 'neutral' | 'negative';
   riskFlags: string[];
+  // C-4: 입력 경계(App activeOperationsData 조립/복원)에서 1회 부여. 소비자는 canonicalStatus/predicate 사용.
+  //   status(원시)는 표시·하위호환 위해 보존, canonical 판정은 canonicalStatus/is* 로만.
+  canonicalStatus?: InquiryStatus;
+  rawStatus?: string;
+  normalizationReason?: NormalizationReason;
 }
 
 export interface StandardReview {

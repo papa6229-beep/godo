@@ -157,6 +157,25 @@ if (IS && typeof IS.normalizeInquiryRecord === 'function') {
   base('B10. hydration 한/영 호환 + idempotent', false);
 }
 
+// ── [BASE] 입력 경계 1회 정규화 + 저장→복원 회귀 (D-6) ──
+// 경계: normalizeInquiryRecords로 1회 canonical화 → localStorage 직렬화(JSON) → 복원 → 재정규화(재호출)에도
+//   canonicalStatus·rawStatus·normalizationReason이 손상 없이 보존되는지(idempotent hydration).
+if (IS && typeof IS.normalizeInquiryRecords === 'function') {
+  const raw = [{ id: 'A', status: '미답변' }, { id: 'B', status: 'unanswered' }, { id: 'C', status: 'needs_human' }, { id: 'D', status: 'ZZUNKNOWN' }, { id: 'E', status: '' }];
+  const once = IS.normalizeInquiryRecords(raw);                        // 경계 1회 변환
+  const restored = JSON.parse(JSON.stringify(once));                    // 저장→복원(localStorage 왕복)
+  const twice = IS.normalizeInquiryRecords(restored);                  // 복원 후 재정규화(경계 재통과)
+  const fieldsOk = once.every((r) => typeof r.canonicalStatus === 'string' && typeof r.rawStatus === 'string' && typeof r.normalizationReason === 'string');
+  const rawPreserved = twice[0].rawStatus === '미답변' && twice[1].rawStatus === 'unanswered' && twice[3].rawStatus === 'ZZUNKNOWN' && twice[4].rawStatus === '';
+  const canonPreserved = twice[0].canonicalStatus === 'unanswered' && twice[2].canonicalStatus === 'needs_human' && twice[3].canonicalStatus === 'unknown' && twice[4].canonicalStatus === 'unknown';
+  const reasonPreserved = twice[0].normalizationReason === once[0].normalizationReason && twice[3].normalizationReason === 'unrecognized' && twice[4].normalizationReason === 'empty';
+  const idempotent = JSON.stringify(once) === JSON.stringify(twice); // 재정규화가 값을 바꾸지 않음
+  base('B11. 입력경계 1회 변환 + 저장→복원 후 canonical·rawStatus·reason 보존(idempotent)',
+    fieldsOk && rawPreserved && canonPreserved && reasonPreserved && idempotent);
+} else {
+  base('B11. 입력경계 1회 변환 + 저장→복원 보존', false);
+}
+
 console.log(`\n--- 요약 ---`);
 console.log(`[BASE] ${baseP} pass / ${baseF} fail`);
 console.log(`[RED ] ${redMet} met / ${redUnmet} unmet`);
