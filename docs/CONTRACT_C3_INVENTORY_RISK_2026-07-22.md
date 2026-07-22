@@ -115,6 +115,16 @@ export function summarizeStockRisk(items: { stock: number; safetyStock?: unknown
 - 기본값 불일치: 서버 `DEFAULT_SAFETY_STOCK=3` vs 공통 계약 `5` vs `godomallMapper` `'5'`.
 - **조치**: 서버 함수는 api/_shared(서버) 경계라 client `inventoryRiskContract`를 import할 수 없고, 숫자 5를 복사하면 "한 곳 관리" 원칙 위반이라 **임의 변경하지 않는다**. C-3 위험화면 4 소비자는 공통 계약(기본 5)로 통일 완료. 서버 Products-인벤토리 경로의 기본값 3·게이팅 정합은 **별도 후속**(경계 간 공통 상수 공유 설계 필요, 이번 범위 밖)으로 기록.
 
-## 13. 열린 확인 (후속)
+## 13. 합성 재고 분포 비퇴화 (별도 데이터 품질 작업)
+
+- **문제(RED)**: `computeSyntheticStockImpact`가 `initialStock = max(0,netSold) + safety`로 만들어 **projectedStock == safetyStock**(40/40) → 계약 적용 시 **전 상품 low_stock(100%)**. 계약·조인은 정상, **합성 생성식이 퇴화**.
+- **조치(생성기만 수정, C-3 판정 임계값·safetyStock 연결·C-2 데이터 불변)**: productId 기반 **결정적 시나리오**(Math.random 미사용)로 목표 재고 분산.
+  - 시나리오 선택 해시 salt `c3-stock-scenario:` (안전재고 생성 해시와 **분리**), 밴드 값 salt `c3-low-band:`/`c3-ok-band:`.
+  - 목표 분포 out_of_stock ~10% / low_stock ~25% / ok ~65% (실측 40종: **out 5 / low 9 / ok 26**).
+  - 상태별 projectedStock: out=0 / low=1..safety / ok=safety+1..safety+40. `initialStock = 목표 + netSold` → `initialStock − netSoldQuantity = projectedStock` 유지, 0 이상 정수.
+- **성격**: 실제 위험 예측이 아니라 **UI·업무 검증용 합성 시나리오**(문서·`api/_shared/syntheticRevenue.ts` 주석에 명시). 실 고도몰 재고 연결 시 대체.
+- **분포 (동일 데이터 40종)**: PRE-FIX 계약 out0/low40/ok0(riskyStockCount 40) → POST-FIX out5/low9/ok26(riskyStockCount 14). projectedStock == safetyStock: 40→0. projectedStock `min0/max114/median57`, safetyStock `min20/max78/median55.5`.
+
+## 14. 열린 확인 (후속)
 - `safetyStock=0`이 실 고도몰에서 '미설정'을 뜻하는지 실데이터 확인(현재 원천 없음 → 유효 설정으로 취급).
-- 서버 `godomallInventoryDerive` 기본값 3·게이팅과 공통 계약의 경계 간 정합.
+- **C3-SERVER-01**: 서버 `godomallInventoryDerive` 기본값 3·게이팅(별도 경로) — 이번 계약 미포함, 실 고도몰 연결 전 의미 재대조. 현재 공통 계약과 같다고 주장하지 않음.
