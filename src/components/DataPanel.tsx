@@ -446,7 +446,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
             </span>
           </div>
           <div className="data-metric-box quality-score-box">
-            <span className="data-metric-lbl">데이터 품질 점수</span>
+            <span className="data-metric-lbl">수집된 데이터 품질</span>
             <span className={`data-metric-val ${qualityScoreLevel(stats.qualityScore).class}`}>
               {stats.qualityScore}점 ({qualityScoreLevel(stats.qualityScore).label})
             </span>
@@ -598,7 +598,8 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                   <div className="overview-sub-metric">
                     <span className="ov-lbl">미답변 문의</span>
                     <span className="ov-val danger">
-                      {activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length}건
+                      {/* C-출처: 문의가 연결 안 됨이면 0건 대신 '연결 안 됨'. 실제 성공 빈 배열일 때만 0건. */}
+                      {stats.inquiriesLabel === '연결 안 됨' ? '연결 안 됨' : `${activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length}건`}
                     </span>
                   </div>
                   <div className="overview-sub-metric">
@@ -616,11 +617,11 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                   <div className="overview-sub-metric">
                     <span className="ov-lbl">부정 평점 리뷰</span>
                     <span className="ov-val warning">
-                      {activeOperationsData.reviews.filter(r => r.rating <= 2).length}건
+                      {stats.reviewsLabel === '연결 안 됨' ? '연결 안 됨' : `${activeOperationsData.reviews.filter(r => r.rating <= 2).length}건`}
                     </span>
                   </div>
                   <div className="overview-sub-metric">
-                    <span className="ov-lbl">데이터 품질 점수</span>
+                    <span className="ov-lbl">수집된 데이터 품질</span>
                     <span className="ov-val success">{stats.qualityScore}점</span>
                   </div>
                 </div>
