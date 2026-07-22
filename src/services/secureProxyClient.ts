@@ -159,9 +159,10 @@ export const fetchProxyOrders = async (): Promise<Record<string, string>[]> => {
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('orders');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지(조용한 주입 함정 제거). 이 개별 조회는 현재 미사용(死코드).
+    //   사용하려면 resolveFetchOutcome 경로로 신분을 판정해야 한다. 여기서는 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyOrders 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -172,9 +173,9 @@ export const fetchProxyInquiries = async (): Promise<Record<string, string>[]> =
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('inquiries');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyInquiries 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -185,9 +186,9 @@ export const fetchProxyReviews = async (): Promise<Record<string, string>[]> => 
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('reviews');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyReviews 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -198,9 +199,9 @@ export const fetchProxyInventory = async (): Promise<Record<string, string>[]> =
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('inventory');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxyInventory 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };
 
@@ -211,8 +212,8 @@ export const fetchProxySales = async (): Promise<Record<string, string>[]> => {
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
   } catch {
-    // Fallback
-    const res = await runMockSync('sales');
-    return res.rawItems;
+    // C-출처(GREEN3): 실패 시 mock 자동 대체 금지. 미사용(死코드). 빈 배열(연결 안 됨) 반환.
+    console.warn('[secureProxyClient] fetchProxySales 실패 — mock 자동 대체 안 함(연결 안 됨).');
+    return [];
   }
 };

@@ -303,8 +303,10 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
         let result;
         if (syncSource === 'secure_proxy') {
           result = await syncProxyResource(res);
-          if (result.isFallback) {
-            appendApiBridgeLog('[Fallback] Secure Proxy unavailable. Local Mock Adapter used.', 'warning', res);
+          if (result.substitutionBlocked) {
+            appendApiBridgeLog(`[연결 안 됨] [${res}] 실제 연동 실패/미구현 — 자동 대체(mock) 차단.`, 'warning', res);
+          } else if (result.isFallback) {
+            appendApiBridgeLog('[Fallback] 시험 모드 — Local Mock Adapter 사용(시험 데이터).', 'warning', res);
           } else {
             appendApiBridgeLog(`[Secure Proxy] [${res}] sync completed through server boundary.`, 'safety', res);
           }
