@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { isUnanswered } from '../services/inquiryStatusContract';
 import type {
   OperationsDataSnapshot,
   ImportHistoryItem,
@@ -574,7 +575,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                   <div className="overview-sub-metric">
                     <span className="ov-lbl">미답변 문의</span>
                     <span className="ov-val danger">
-                      {activeOperationsData.inquiries.filter(i => i.status !== '답변완료').length}건
+                      {activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length}건
                     </span>
                   </div>
                   <div className="overview-sub-metric">

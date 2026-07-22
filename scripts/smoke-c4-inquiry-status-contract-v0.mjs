@@ -34,6 +34,7 @@ const entries = [
   path.join(REPO, 'src', 'services', 'analyticsQueryEngine.ts'),
   path.join(REPO, 'src', 'services', 'csTeamDashboardFacts.ts'),
   path.join(REPO, 'src', 'services', 'departmentDataSourceOfTruth.ts'),
+  path.join(REPO, 'src', 'services', 'csDraftRuntime.ts'),
   ...(hasContract ? [path.join(REPO, 'src', 'services', 'inquiryStatusContract.ts')] : [])
 ];
 try {
@@ -48,6 +49,7 @@ for (const f of readdirSync(tmp).filter((x) => x.endsWith('.js'))) {
 const A = await import(pathToFileURL(path.join(tmp, 'analyticsQueryEngine.js')).href);
 const CS = await import(pathToFileURL(path.join(tmp, 'csTeamDashboardFacts.js')).href);
 const DS = await import(pathToFileURL(path.join(tmp, 'departmentDataSourceOfTruth.js')).href);
+const CD = await import(pathToFileURL(path.join(tmp, 'csDraftRuntime.js')).href);
 let IS = null;
 if (hasContract && existsSync(path.join(tmp, 'inquiryStatusContract.js'))) {
   try { IS = await import(pathToFileURL(path.join(tmp, 'inquiryStatusContract.js')).href); } catch { IS = null; }
@@ -130,6 +132,29 @@ red('R7. snapshot이 unknown 문의를 별도 분리 노출(unknownInquiries=3) 
   red('R8. unknown 원시값 근거(unknownSamples) 보존·중복제거(distinct 2: ZZUNKNOWN·빈값)',
     Array.isArray(smp) && smp.length === 2 && smp.includes('ZZUNKNOWN') && smp.some((s) => /빈 값/.test(s)),
     IS ? JSON.stringify(smp) : '모듈 없음');
+}
+
+// ── [BASE] csDraftRuntime 자동 초안 후보 = 미답변(unanswered)만 (C14: needs_human/in_progress/on_hold/unknown/answered 제외) ──
+// rank 초과 시 selectCsDraftTargetInquiry가 '총 N건'을 반환 → 후보 정확히 5건 검증.
+const overRank = CD.selectCsDraftTargetInquiry({ inquiries, intent: { isDraftRequest: true, targetHint: 'recent_unanswered', rank: 6 } });
+console.log(`  · csDraftRuntime 초안 후보(recent_unanswered) reason = ${overRank.reason}`);
+base('B8. csDraftRuntime 초안 후보 = 미답변 5건 (needs_human/in_progress/on_hold/unknown/answered 제외)',
+  !overRank.inquiry && /총\s*5\s*건/.test(overRank.reason || ''));
+const pick1 = CD.selectCsDraftTargetInquiry({ inquiries, intent: { isDraftRequest: true, targetHint: 'recent_unanswered' } });
+base('B9. csDraftRuntime 선정 대상은 미답변으로 정규화됨 (needs_human 대상 아님)',
+  !!IS && !!pick1.inquiry && IS.normalizeInquiryStatus(pick1.inquiry.status).canonicalStatus === 'unanswered');
+
+// ── [BASE] 과거 저장값 hydration: 한국어·영어 모두 canonical + 원시 근거 보존 + idempotent ──
+if (IS && typeof IS.normalizeInquiryRecord === 'function') {
+  const ko = IS.normalizeInquiryRecord({ inquiryId: 'K', status: '미답변' });
+  const en = IS.normalizeInquiryRecord({ inquiryId: 'E', status: 'unanswered' });
+  const reNorm = IS.normalizeInquiryRecord(ko); // 이미 hydration된 레코드 재정규화 → 근거 보존
+  base('B10. hydration 한/영 호환 + idempotent (canonical·rawStatus·normalizationReason 보존)',
+    ko.canonicalStatus === 'unanswered' && ko.rawStatus === '미답변' && ko.normalizationReason === 'known_alias' &&
+    en.canonicalStatus === 'unanswered' && en.rawStatus === 'unanswered' &&
+    reNorm.canonicalStatus === 'unanswered' && reNorm.rawStatus === '미답변' && reNorm.normalizationReason === ko.normalizationReason);
+} else {
+  base('B10. hydration 한/영 호환 + idempotent', false);
 }
 
 console.log(`\n--- 요약 ---`);

@@ -1,4 +1,5 @@
 import type { AgentJob, AgentResult, AgentArtifact, AgentResultStatus, DepartmentId } from './types';
+import { isUnanswered } from '../../services/inquiryStatusContract';
 import type { OperationsDataSnapshot } from '../../types/dataConnector';
 import type { EngineProvider } from '../../types/engine';
 import { generateCSDrafts } from '../csDraftGenerator';
@@ -102,7 +103,7 @@ export async function executeAgentJob(
   else if (agentId === 'inquiry_analyst') {
     try {
       const drafts = await generateCSDrafts(activeSnapshot, engineProviders);
-      const unansweredCount = activeSnapshot.inquiries.filter(i => i.status === '미답변').length;
+      const unansweredCount = activeSnapshot.inquiries.filter(i => isUnanswered(i.status)).length;
 
       findings.push(`미답변 1:1 고객 문의 분석 결과: 총 ${unansweredCount}건 발견.`);
       

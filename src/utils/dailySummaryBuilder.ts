@@ -1,4 +1,5 @@
 import type { OperationsDataSnapshot } from '../types/dataConnector';
+import { isUnanswered } from '../services/inquiryStatusContract';
 import type { DailyOperationSummary } from '../types/calendar';
 
 /**
@@ -88,7 +89,7 @@ export const buildDailyOperationSummaries = (
 
     // 문의 집계
     const inquiryCount = targetInquiries.length;
-    const unansweredInquiryCount = targetInquiries.filter(i => i.status !== '답변완료').length;
+    const unansweredInquiryCount = targetInquiries.filter(i => isUnanswered(i.status)).length;
 
     // 리뷰 집계
     const reviewCount = targetReviews.length;
