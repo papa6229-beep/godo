@@ -30,8 +30,9 @@ export const isInquiryStatus = (v: unknown): v is InquiryStatus => typeof v === 
 
 // 알려진 원시 별칭만 명시적으로 매핑한다(의미 추측 금지). 영문은 소문자, 한글은 원문 키.
 const ALIAS: Record<string, InquiryStatus> = {
-  // '답변대기' = 실제 Production 고도몰(secure_proxy, mode:real) 문의에서 관측된 확정 원시값.
-  //   추측이 아니라 실데이터 대조로 확인된 입력값. 그 외 미관측 고도몰 어휘는 추가하지 않는다(후속에서 확정).
+  // '답변대기' = MOCK/spec 호환 표본 상태값(api/_shared/mockProxyData.ts mockInquiries에서 사용).
+  //   실제 고도몰 Board_List 상태를 관측한 값이 아니다(문의/리뷰는 미연동, api_mock_fallback).
+  //   별칭 자체는 mock/spec 어휘로 유지하되, 미관측 고도몰 어휘는 추가하지 않는다(실 연동 후 확정).
   unanswered: 'unanswered', pending: 'unanswered', open: 'unanswered', '미답변': 'unanswered', '답변대기': 'unanswered',
   in_progress: 'in_progress', processing: 'in_progress', '처리중': 'in_progress',
   hold: 'on_hold', on_hold: 'on_hold', '보류': 'on_hold',
@@ -87,7 +88,13 @@ export interface InquiryStatusSummary {
 const MAX_UNKNOWN_SAMPLES = 20;
 const MAX_SAMPLE_LEN = 40;
 
-/** 원시 상태 목록 → 상태별 집계. unknown 원시값 근거(unknownSamples) 보존. */
+// unknownSamples는 상태 문자열 진단용이며 개인정보(이메일·전화)가 들어와선 안 된다.
+//   미지 상태값이 예상 밖으로 PII 형태를 담더라도 방어적으로 마스킹한다(본문/이름은 애초에 status에 없음).
+const scrubPiiFromSample = (s: string): string =>
+  s.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[이메일]')
+    .replace(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/g, '[전화]');
+
+/** 원시 상태 목록 → 상태별 집계. unknown 원시값 근거(unknownSamples) 보존(PII 방어 마스킹). */
 export function summarizeInquiryStatus(raws: unknown[]): InquiryStatusSummary {
   let unanswered = 0, inProgress = 0, onHold = 0, needsHuman = 0, answered = 0, unknown = 0;
   const samples = new Set<string>();
@@ -100,7 +107,7 @@ export function summarizeInquiryStatus(raws: unknown[]): InquiryStatusSummary {
     else if (canonicalStatus === 'answered') answered += 1;
     else {
       unknown += 1;
-      if (samples.size < MAX_UNKNOWN_SAMPLES) samples.add(rawStatus.trim().slice(0, MAX_SAMPLE_LEN) || '(빈 값)');
+      if (samples.size < MAX_UNKNOWN_SAMPLES) samples.add(scrubPiiFromSample(rawStatus.trim()).slice(0, MAX_SAMPLE_LEN) || '(빈 값)');
     }
   }
   const unresolved = unanswered + inProgress + onHold + needsHuman + unknown;

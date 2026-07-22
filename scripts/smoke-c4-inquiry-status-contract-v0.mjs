@@ -30,12 +30,14 @@ const REPO = process.cwd();
 const tscBin = path.join(REPO, 'node_modules', 'typescript', 'bin', 'tsc');
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'c4-'));
 const hasContract = existsSync(path.join(REPO, 'src', 'services', 'inquiryStatusContract.ts'));
+const hasProv = existsSync(path.join(REPO, 'src', 'services', 'dataSourceProvenanceContract.ts'));
 const entries = [
   path.join(REPO, 'src', 'services', 'analyticsQueryEngine.ts'),
   path.join(REPO, 'src', 'services', 'csTeamDashboardFacts.ts'),
   path.join(REPO, 'src', 'services', 'departmentDataSourceOfTruth.ts'),
   path.join(REPO, 'src', 'services', 'csDraftRuntime.ts'),
-  ...(hasContract ? [path.join(REPO, 'src', 'services', 'inquiryStatusContract.ts')] : [])
+  ...(hasContract ? [path.join(REPO, 'src', 'services', 'inquiryStatusContract.ts')] : []),
+  ...(hasProv ? [path.join(REPO, 'src', 'services', 'dataSourceProvenanceContract.ts')] : [])
 ];
 try {
   execFileSync(process.execPath, [tscBin, ...entries,
@@ -53,6 +55,10 @@ const CD = await import(pathToFileURL(path.join(tmp, 'csDraftRuntime.js')).href)
 let IS = null;
 if (hasContract && existsSync(path.join(tmp, 'inquiryStatusContract.js'))) {
   try { IS = await import(pathToFileURL(path.join(tmp, 'inquiryStatusContract.js')).href); } catch { IS = null; }
+}
+let PROV = null;
+if (hasProv && existsSync(path.join(tmp, 'dataSourceProvenanceContract.js'))) {
+  try { PROV = await import(pathToFileURL(path.join(tmp, 'dataSourceProvenanceContract.js')).href); } catch { PROV = null; }
 }
 
 let baseP = 0, baseF = 0, redMet = 0, redUnmet = 0;
@@ -176,17 +182,18 @@ if (IS && typeof IS.normalizeInquiryRecords === 'function') {
   base('B11. 입력경계 1회 변환 + 저장→복원 보존', false);
 }
 
-// ── [BASE] 실제 Production 고도몰 관측 형태 재현(답변대기×2·답변완료×1) — '답변대기'=미답변 잠금 ──
+// ── [BASE] MOCK/spec 호환 표본 형태 재현(답변대기×2·답변완료×1) — '답변대기'=미답변 잠금 ──
+//   ('답변대기'는 mockProxyData의 표본 상태값이며 실제 고도몰 Board_List 관측값이 아니다.)
 {
-  const realRaw = ['답변대기', '답변대기', '답변완료'];
-  const realInq = realRaw.map((s, i) => ({ inquiryId: `R${i}`, status: s, topic: 'delivery', urgency: 'low', createdAt: `2026-06-1${i}` }));
-  const rs = IS?.summarizeInquiryStatus?.(realRaw);
+  const mockRaw = ['답변대기', '답변대기', '답변완료'];
+  const mockInq = mockRaw.map((s, i) => ({ inquiryId: `R${i}`, status: s, topic: 'delivery', urgency: 'low', createdAt: `2026-06-1${i}` }));
+  const rs = IS?.summarizeInquiryStatus?.(mockRaw);
   const rec0 = IS?.normalizeInquiryRecord?.({ inquiryId: 'R0', status: '답변대기' });
-  const draftOver = CD.selectCsDraftTargetInquiry({ inquiries: realInq, intent: { isDraftRequest: true, targetHint: 'recent_unanswered', rank: 3 } });
-  const draftPick = CD.selectCsDraftTargetInquiry({ inquiries: realInq, intent: { isDraftRequest: true, targetHint: 'recent_unanswered' } });
-  const roundtrip = IS ? IS.normalizeInquiryRecords(JSON.parse(JSON.stringify(IS.normalizeInquiryRecords(realInq)))) : [];
-  console.log(`  · 실데이터 재현: 미답변 ${rs?.unanswered} · 미처리 ${rs?.unresolved} · unknown ${rs?.unknown} · 답변완료 ${rs?.answered} · 자동초안후보 ${realRaw.filter((x) => IS?.isUnanswered(x)).length}`);
-  base('B12. 실제 고도몰 형태(답변대기2·답변완료1): 미답변2·답변완료1·unknown0·미처리2',
+  const draftOver = CD.selectCsDraftTargetInquiry({ inquiries: mockInq, intent: { isDraftRequest: true, targetHint: 'recent_unanswered', rank: 3 } });
+  const draftPick = CD.selectCsDraftTargetInquiry({ inquiries: mockInq, intent: { isDraftRequest: true, targetHint: 'recent_unanswered' } });
+  const roundtrip = IS ? IS.normalizeInquiryRecords(JSON.parse(JSON.stringify(IS.normalizeInquiryRecords(mockInq)))) : [];
+  console.log(`  · MOCK/spec 표본 재현: 미답변 ${rs?.unanswered} · 미처리 ${rs?.unresolved} · unknown ${rs?.unknown} · 답변완료 ${rs?.answered} · 자동초안후보 ${mockRaw.filter((x) => IS?.isUnanswered(x)).length}`);
+  base('B12. MOCK/spec 표본 형태(답변대기2·답변완료1): 미답변2·답변완료1·unknown0·미처리2',
     !!rs && rs.total === 3 && rs.unanswered === 2 && rs.answered === 1 && rs.unknown === 0 && rs.unresolved === 2);
   base('B13. 답변대기 record: canonicalStatus=unanswered · rawStatus=답변대기 · reason=known_alias 보존',
     !!rec0 && rec0.canonicalStatus === 'unanswered' && rec0.rawStatus === '답변대기' && rec0.normalizationReason === 'known_alias');
@@ -194,6 +201,38 @@ if (IS && typeof IS.normalizeInquiryRecords === 'function') {
     /총\s*2\s*건/.test(draftOver.reason || '') && !!draftPick.inquiry && IS.normalizeInquiryStatus(draftPick.inquiry.status).canonicalStatus === 'unanswered');
   base('B15. 저장→복원 후에도 답변대기→unanswered·rawStatus 보존',
     roundtrip.length === 3 && roundtrip[0].canonicalStatus === 'unanswered' && roundtrip[0].rawStatus === '답변대기' && roundtrip[0].normalizationReason === 'known_alias');
+}
+
+// ── [BASE] 출처 계약 × 문의 상태 계약 교차검증 (C-4 재개, A~D) ──
+if (PROV && IS) {
+  const rec = (arr) => IS.normalizeInquiryRecords(arr.map((s, i) => ({ inquiryId: `X${i}`, status: s })));
+  // A. 실제 모드 inquiries 연동 실패 → 연결 안 됨 · mock 3건 미주입 · 미답변 0건/자동초안 0건으로 단언 금지
+  const outA = PROV.resolveFetchOutcome({ requestedMode: 'real', serverSourceType: 'api_mock_fallback', errorMessage: 'Board_List 미매핑', mockRecords: [{ status: '답변대기' }, { status: '답변대기' }, { status: '답변대기' }] });
+  const statA = PROV.toResourceStatus('inquiries', outA);
+  base('XA. real 실패 → 연결 안 됨·mock 미주입(0)·상태정규화가 연결실패를 빈데이터로 안 바꿈',
+    statA.status === 'unavailable' && statA.userLabel === '연결 안 됨' && statA.count === 0 && outA.records.length === 0);
+  // B. 실제 성공 빈배열 → 실제 데이터 · 문의 실제 0건 · 실패문구 없음 · mock 대체 없음
+  const outB = PROV.resolveFetchOutcome({ requestedMode: 'real', serverSourceType: 'api_proxy_real', serverRecords: [] });
+  const sumB = IS.summarizeInquiryStatus([]);
+  base('XB. real 성공 빈배열 → 실제 데이터·실제 0건·실패문구 없음·mock 없음',
+    outB.kind === 'actual' && outB.count === 0 && !outB.errorMessage && sumB.total === 0 && sumB.unanswered === 0);
+  // C. 명시적 시험 모드 MOCK fixture(답변대기2·답변완료1) → 미답변2·미처리2·unknown0·답변완료1·자동초안2·시험 데이터
+  const outC = PROV.resolveFetchOutcome({ requestedMode: 'test', serverSourceType: 'api_mock_fallback', mockRecords: [{ status: '답변대기' }, { status: '답변대기' }, { status: '답변완료' }] });
+  const rawC = outC.records.map((r) => r.status);
+  const sumC = IS.summarizeInquiryStatus(rawC);
+  const draftC = rawC.filter((s) => IS.isUnanswered(s)).length;
+  base('XC. test 모드 mock(답변대기2·답변완료1) → 미답변2·미처리2·unknown0·답변완료1·자동초안2·시험 데이터',
+    outC.userLabel === '시험 데이터' && sumC.unanswered === 2 && sumC.unresolved === 2 && sumC.unknown === 0 && sumC.answered === 1 && draftC === 2);
+  // D. 알 수 없는 미래 상태 → unknown·answered로 안 셈·unresolved 포함·rawStatus/reason 보존·PII 미유입
+  const rD = IS.normalizeInquiryStatus('FUTURE_STATE_xyz');
+  const sumD = IS.summarizeInquiryStatus(['FUTURE_STATE_xyz', 'user@secret.com 010-1234-5678']);
+  base('XD. 미래 미지상태 → unknown·answered 아님·unresolved 포함·raw/reason 보존',
+    rD.canonicalStatus === 'unknown' && rD.rawStatus === 'FUTURE_STATE_xyz' && rD.normalizationReason === 'unrecognized' &&
+    sumD.unknown === 2 && sumD.answered === 0 && sumD.unresolved === 2);
+  base('XD-PII. unknownSamples에 PII(이메일·전화) 미유입',
+    !sumD.unknownSamples.some((s) => /@|01[016789]-?\d{3,4}/.test(s)));
+} else {
+  base('XA~XD. 출처×상태 교차검증(계약 로드)', false);
 }
 
 console.log(`\n--- 요약 ---`);
