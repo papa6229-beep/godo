@@ -63,6 +63,12 @@ export const isUnknown = (raw: unknown): boolean => canon(raw) === 'unknown';
 /** 미처리 = answered가 아닌 전부(unanswered+in_progress+on_hold+needs_human+unknown). */
 export const isUnresolved = (raw: unknown): boolean => canon(raw) !== 'answered';
 
+// canonical → 사용자 표시 한국어 라벨(단일 정의). 내부 영문 키를 화면에 노출하지 않는다.
+export const INQUIRY_STATUS_LABEL_KO: Record<InquiryStatus, string> = {
+  unanswered: '미답변', in_progress: '처리 중', on_hold: '보류', needs_human: '관리자 확인 필요', answered: '답변완료', unknown: '상태 미확인'
+};
+export const inquiryStatusKo = (raw: unknown): string => INQUIRY_STATUS_LABEL_KO[normalizeInquiryStatus(raw).canonicalStatus];
+
 export interface InquiryStatusSummary {
   unanswered: number;
   inProgress: number;
