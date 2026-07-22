@@ -457,8 +457,13 @@ export function buildMarketingAnalysisFacts(input: {
       // 카테고리
       const catCode = str(l.categoryCode) || str(meta?.categoryCode) || 'uncategorized';
       // C-1: 내부 key는 'uncategorized'로 통일하되, 화면 label만 '미분류'로 노출한다(내부 키 노출 금지).
-      //   실제 코드값(uncategorized 아님)인데 label이 없는 경우의 폴백은 이번 범위 밖이라 그대로 둔다.
-      const catLabel = str(l.categoryLabel) || (catCode === 'uncategorized' ? '미분류' : catCode);
+      //   어댑터(departmentDataService)가 categoryLabel도 'uncategorized'로 정규화하므로
+      //   'label이 비었을 때만' 규칙으로는 부족하다 — key가 'uncategorized'이면 label 값과
+      //   무관하게 '미분류'로 확정한다(key 우선). 실제 코드값의 폴백은 범위 밖이라 그대로 둔다.
+      const catLabel =
+        catCode === 'uncategorized'
+          ? '미분류'
+          : str(l.categoryLabel) || catCode;
       const c = catAgg.get(catCode) || { label: catLabel, revenue: 0, orders: new Set<string>(), quantity: 0 };
       c.revenue += rev;
       if (oNo) c.orders.add(oNo);
