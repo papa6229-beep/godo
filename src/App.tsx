@@ -27,7 +27,7 @@ import { resetApiBridgeState } from './utils/apiBridgeStorage';
 import { composeOperationReport } from './engine/reportComposer';
 import { getScenarioData, type ValidationScenarioType } from './engine/nativeAgentRuntime/validationScenarios';
 import { useTheme } from './hooks/useTheme';
-import { classifyResource, userLabelOf } from './services/dataSourceProvenanceContract';
+import { classifyResource, userLabelOf, migrateResourceProvenance } from './services/dataSourceProvenanceContract';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -43,10 +43,21 @@ const safeSetItem = (key: string, value: string) => {
 // C-4 입력 경계: 스냅샷이 앱 상태로 들어오는 유일 지점에서 문의 상태를 1회 canonical화한다.
 //   (문의만 대상 — 주문/재고/매출 등 다른 필드는 건드리지 않는다.) normalizeInquiryRecords는
 //   idempotent이므로 이미 canonical인 record(저장 복원분 포함)는 최초 rawStatus/근거를 보존한다.
-const withCanonicalInquiries = (snapshot: OperationsDataSnapshot): OperationsDataSnapshot =>
-  (snapshot && Array.isArray(snapshot.inquiries))
-    ? { ...snapshot, inquiries: normalizeInquiryRecords(snapshot.inquiries) }
-    : snapshot;
+// 출처 마이그레이션: 구버전 저장 상태(리소스별 근거 없음)를 최신 계약으로 재판정한다(추측 금지·fail-closed).
+//   Sync 버튼을 누르기 전에도 첫 hydration 직후 정직한 상태(실제/시험/연결 안 됨)를 표시한다. idempotent.
+const withCanonicalInquiries = (snapshot: OperationsDataSnapshot): OperationsDataSnapshot => {
+  if (!snapshot) return snapshot;
+  const inquiries = Array.isArray(snapshot.inquiries) ? normalizeInquiryRecords(snapshot.inquiries) : snapshot.inquiries;
+  const counts: Record<string, number> = {
+    orders: snapshot.orders?.length ?? 0,
+    inquiries: snapshot.inquiries?.length ?? 0,
+    reviews: snapshot.reviews?.length ?? 0,
+    inventory: snapshot.inventory?.length ?? 0,
+    sales: snapshot.sales?.length ?? 0
+  };
+  const resourceProvenance = migrateResourceProvenance(snapshot.sourceType, snapshot.resourceProvenance, counts);
+  return { ...snapshot, inquiries, resourceProvenance };
+};
 
 
 function App() {

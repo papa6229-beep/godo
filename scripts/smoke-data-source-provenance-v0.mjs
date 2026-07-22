@@ -250,6 +250,55 @@ if (P && typeof P.toResourceStatus === 'function' && typeof P.summarizeScreenSta
   red('K1~K9. toResourceStatus/summarizeScreenStatus', false, '함수 없음');
 }
 
+// ── [RED] 구버전 저장 상태 hydration 마이그레이션 (LEGACY-1~9) ──
+if (P && typeof P.migrateResourceProvenance === 'function') {
+  const mig = (global, existing, counts) => P.migrateResourceProvenance(global, existing, counts);
+  const counts5 = { orders: 1, inquiries: 3, reviews: 3, inventory: 13, sales: 0 };
+  // LEGACY-1: 과거 fixture 형태(전역 api_proxy_real, 리소스별 근거 없음) → 문의3·리뷰3 actual 아님
+  const l1 = mig('api_proxy_real', undefined, counts5);
+  red('LEGACY-1. 과거 저장 fixture hydration → inquiries/reviews actual 아님',
+    l1.inquiries.provenance !== 'actual' && l1.reviews.provenance !== 'actual' && l1.inquiries.userLabel === '연결 안 됨', JSON.stringify({ inq: l1.inquiries.provenance }));
+  // LEGACY-2: real 모드 출처 미확인 문의·리뷰 → 연결 안 됨·count 0(집계·일일요약 미주입)
+  red('LEGACY-2. real 미확인 문의·리뷰 → 연결 안 됨·count 0',
+    l1.inquiries.status === 'unavailable' && l1.inquiries.count === 0 && l1.reviews.status === 'unavailable' && l1.reviews.count === 0, JSON.stringify({ c: l1.inquiries.count }));
+  // LEGACY-3: 명시적 mock/fixture 저장자료(demo) → 시험 데이터
+  const l3 = mig('demo', undefined, counts5);
+  red('LEGACY-3. 명시적 demo/fixture 저장자료 → 시험 데이터',
+    l3.inquiries.userLabel === '시험 데이터' && l3.orders.userLabel === '시험 데이터', JSON.stringify({ l: l3.inquiries.userLabel }));
+  // LEGACY-4: 실제 orders1·inventory13 명시된 actual 근거 유지
+  const explicit = {
+    orders: { resource: 'orders', status: 'success', provenance: 'actual', userLabel: '실제 데이터', count: 1, substitutionBlocked: false },
+    inventory: { resource: 'inventory', status: 'success', provenance: 'actual', userLabel: '실제 데이터', count: 13, substitutionBlocked: false }
+  };
+  const l4 = mig('api_proxy_real', explicit, counts5);
+  red('LEGACY-4. 명시된 actual(orders1·inventory13) 유지 · 문의/리뷰는 연결 안 됨',
+    l4.orders.userLabel === '실제 데이터' && l4.orders.count === 1 && l4.inventory.userLabel === '실제 데이터' && l4.inventory.count === 13 && l4.inquiries.userLabel === '연결 안 됨', JSON.stringify({ o: l4.orders.userLabel, i: l4.inquiries.userLabel }));
+  // LEGACY-5: 실제 성공 빈배열 sales0 명시 → 실제 데이터 0건 유지
+  const l5 = mig('api_proxy_real', { ...explicit, sales: { resource: 'sales', status: 'success', provenance: 'actual', userLabel: '실제 데이터', count: 0, substitutionBlocked: false } }, counts5);
+  red('LEGACY-5. 실제 성공 빈배열 sales0 → 실제 데이터·0건 유지',
+    l5.sales.userLabel === '실제 데이터' && l5.sales.status === 'success' && l5.sales.count === 0, JSON.stringify(l5.sales));
+  // LEGACY-6: 최신 정상 실제 상태 저장→재로드 불변
+  const realState = { orders: explicit.orders, inventory: explicit.inventory, sales: { resource: 'sales', status: 'success', provenance: 'actual', userLabel: '실제 데이터', count: 0, substitutionBlocked: false }, inquiries: { resource: 'inquiries', status: 'unavailable', provenance: 'unavailable', userLabel: '연결 안 됨', count: 0, substitutionBlocked: true }, reviews: { resource: 'reviews', status: 'unavailable', provenance: 'unavailable', userLabel: '연결 안 됨', count: 0, substitutionBlocked: true } };
+  const l6 = mig('api_proxy_real', realState, counts5);
+  const sameRecords = (a, b) => Object.keys(b).every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k])) && Object.keys(a).length === Object.keys(b).length;
+  red('LEGACY-6. 최신 실제 상태 저장→재로드 불변(값 동등)', sameRecords(l6, realState), JSON.stringify(Object.keys(l6)));
+  // LEGACY-7: 최신 정상 시험 상태 저장→재로드 시험 데이터 유지
+  const testState = Object.fromEntries(Object.keys(counts5).map((r) => [r, { resource: r, status: 'success', provenance: 'fixture', userLabel: '시험 데이터', count: counts5[r], substitutionBlocked: false }]));
+  const l7 = mig('demo', testState, counts5);
+  red('LEGACY-7. 최신 시험 상태 저장→재로드 시험 데이터 유지', Object.values(l7).every((r) => r.userLabel === '시험 데이터'));
+  // LEGACY-8: 마이그레이션 2회 idempotent
+  const once = mig('api_proxy_real', undefined, counts5);
+  const twice = mig('api_proxy_real', once, counts5);
+  const eq8 = Object.keys(once).length === Object.keys(twice).length && Object.keys(once).every((k) => JSON.stringify(once[k]) === JSON.stringify(twice[k]));
+  red('LEGACY-8. 마이그레이션 2회 idempotent', eq8);
+  // LEGACY-9: Sync 전에도 첫 hydration 직후 정직(문의/리뷰 연결 안 됨, 화면 일부 연결 안 됨)
+  const scr9 = P.summarizeScreenStatus(Object.values(l1));
+  red('LEGACY-9. 첫 hydration 직후 정직 — 화면 일부 연결 안 됨(문의·리뷰 포함)',
+    scr9.anyUnavailable === true && /inquiries/.test(scr9.note) && /reviews/.test(scr9.note), scr9.note);
+} else {
+  red('LEGACY-1~9. migrateResourceProvenance', false, '함수 없음');
+}
+
 console.log(`\n--- 요약 ---`);
 console.log(`[BASE] ${baseP} pass / ${baseF} fail`);
 console.log(`[RED ] ${redMet} met / ${redUnmet} unmet`);
