@@ -41,6 +41,8 @@ export type SyntheticStockImpact = {
   syntheticRestoredQuantity: number;
   syntheticNetSoldQuantity: number;
   syntheticProjectedStock: number;
+  // C-3: 상품별 안전재고 — 위험 판정(inventoryRiskContract)의 상품별 기준. 데이터 경계에서 1회 연결.
+  safetyStock: number;
   warning?: string;
 };
 
@@ -52,6 +54,31 @@ const safetyStockFor = (productId: string): number => {
     h = Math.imul(h, 16777619);
   }
   return 20 + (Math.abs(h | 0) % 61); // 20..80
+};
+
+// C-3 데이터 품질: 재고 위험 분포 비퇴화용 결정적 시나리오.
+//   기존 모델은 projectedStock을 항상 safetyStock과 같게 만들어 전 상품이 low_stock으로 붕괴했다.
+//   ⚠️ 이 분포는 실제 재고 위험을 예측하거나 실제 쇼핑몰의 정상 비율을 주장하는 모델이 아니라,
+//      UI·업무 흐름·위험 분류 검증을 위한 '결정적 합성 시나리오'다. 실 고도몰 재고 연결 시 대체된다.
+//   safetyStock 생성 해시와 '별도 salt'로 독립. 목표 분포 out_of_stock ~10% / low_stock ~25% / ok ~65%
+//   (productId 결정적, Math.random 미사용).
+type StockScenario = 'out_of_stock' | 'low_stock' | 'ok';
+const saltedHash = (productId: string, salt: string): number => {
+  let h = 2166136261;
+  const s = salt + productId;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return Math.abs(h | 0);
+};
+const stockScenarioFor = (productId: string): StockScenario => {
+  const b = saltedHash(productId, 'c3-stock-scenario:') % 100;
+  return b < 10 ? 'out_of_stock' : b < 35 ? 'low_stock' : 'ok';
+};
+// 시나리오별 목표 projectedStock. out=0 / low=1..safety / ok=safety+1..safety+40 (safety=0이면 low 구간 없음→ok).
+const targetProjectedFor = (productId: string, safety: number): number => {
+  const scenario = stockScenarioFor(productId);
+  if (scenario === 'out_of_stock') return 0;
+  if (scenario === 'low_stock') return safety <= 0 ? safety + 1 : 1 + (saltedHash(productId, 'c3-low-band:') % safety);
+  return safety + 1 + (saltedHash(productId, 'c3-ok-band:') % 40);
 };
 
 export type SyntheticRevenueOptions = {
@@ -281,9 +308,12 @@ export const computeSyntheticStockImpact = (
     const restoredQ = restored.get(p.productId) || 0;
     const netSold = soldQ - restoredQ;
     const safety = safetyStockFor(p.productId);
-    // 초기재고: 음의 netSold가 초기재고를 깎지 않도록 0으로 클램프 후 안전재고 가산
-    const initialStock = Math.max(0, netSold) + safety;
-    const projectedStock = initialStock - soldQ + restoredQ; // 항상 ≥ safety(>0)
+    // C-3 데이터 품질: 목표 재고 시나리오로 projectedStock을 분산(안전재고선 붕괴 방지).
+    //   initialStock = 목표재고 + netSold 로 두면 projectedStock = 목표재고(netSold≥0)이며
+    //   initialStock − netSoldQuantity = projectedStock 관계를 유지한다. 음수 방지 위해 0으로 클램프.
+    const targetProjected = targetProjectedFor(p.productId, safety);
+    const initialStock = Math.max(0, targetProjected + netSold);
+    const projectedStock = initialStock - soldQ + restoredQ; // = targetProjected (netSold≥0)
     const warning =
       netSold < 0 ? '복구수량 > 판매수량 (synthetic 변동상 정상 — 재고 상향)' : undefined;
 
@@ -301,6 +331,7 @@ export const computeSyntheticStockImpact = (
       syntheticRestoredQuantity: restoredQ,
       syntheticNetSoldQuantity: netSold,
       syntheticProjectedStock: projectedStock,
+      safetyStock: safety, // C-3: 이미 계산한 상품별 안전재고를 소비자에 전달(버리지 않는다)
       ...(warning ? { warning } : {})
     };
   });

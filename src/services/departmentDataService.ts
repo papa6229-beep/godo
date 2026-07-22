@@ -237,6 +237,8 @@ export interface StockImpactItem {
   syntheticRestoredQuantity: number;
   syntheticNetSoldQuantity: number;
   syntheticProjectedStock: number;
+  // C-3: 상품별 안전재고(데이터 경계에서 1회 연결). 누락이면 undefined → inventoryRiskContract가 기본값 적용.
+  safetyStock?: number;
 }
 
 // 대시보드 집계용 경량 주문/라인 (필터·차트 파생용)
@@ -418,7 +420,9 @@ export const fetchRevenue = async (
       syntheticSoldQuantity: num(r.syntheticSoldQuantity),
       syntheticRestoredQuantity: num(r.syntheticRestoredQuantity),
       syntheticNetSoldQuantity: num(r.syntheticNetSoldQuantity),
-      syntheticProjectedStock: num(r.syntheticProjectedStock)
+      syntheticProjectedStock: num(r.syntheticProjectedStock),
+      // 누락(undefined/null)이면 undefined로 보존 → 소비자 계약이 기본값 5로 폴백. 0은 유효값으로 통과.
+      safetyStock: (r.safetyStock === undefined || r.safetyStock === null) ? undefined : num(r.safetyStock)
     }));
     const ordersRaw = (data.orders || []) as Record<string, unknown>[];
     const orders: RevenueOrderLite[] = ordersRaw.map((o) => {

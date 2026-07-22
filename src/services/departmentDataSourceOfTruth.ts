@@ -17,6 +17,7 @@ import {
   computeAverageOrderValue,
   isValidOrder
 } from './revenueMetricContract';
+import { summarizeStockRisk } from './inventoryRiskContract';
 
 export type DepartmentSourceMode = 'real' | 'synthetic' | 'mixed' | 'unavailable';
 
@@ -42,7 +43,12 @@ export interface DepartmentSourceOfTruthSnapshot {
   productUniverse: {
     totalQuantitySold: number;
     productCount: number;
+    // C-3: 재고 위험 상태별 분리. riskyStockCount = out_of_stock + low_stock.
     riskyStockCount: number;
+    outOfStockCount: number;
+    lowStockCount: number;
+    unknownStockCount: number;   // 재고 데이터 이상(정상 오판 방지)
+    attentionCount: number;      // risky + unknown (관리자 확인 대상 전체)
   };
   customerUniverse: {
     totalCustomers: number;
@@ -110,7 +116,9 @@ export function buildDepartmentSourceOfTruthSnapshot(
   // 상품 universe
   const totalQuantitySold = summary ? num(summary.syntheticTotalNetSoldQuantity) : 0;
   const productCount = opts.productCount ?? revenue.stockImpact.length;
-  const riskyStockCount = revenue.stockImpact.filter((s) => num(s.syntheticProjectedStock) <= 20).length;
+  // C-3: 재고 위험 단계는 공통 계약(inventoryRiskContract)으로 판정. 상품별 safetyStock 우선, 재고 이상은 unknown 분리.
+  const stockRisk = summarizeStockRisk(revenue.stockImpact.map((s) => ({ stock: s.syntheticProjectedStock, safetyStock: s.safetyStock })));
+  const riskyStockCount = stockRisk.risky;
 
   // 고객 universe (safe, PII 없음)
   const customers = aux?.customers ?? [];
@@ -143,7 +151,7 @@ export function buildDepartmentSourceOfTruthSnapshot(
     periodLabel: opts.periodLabel ?? '전체 기간',
     orderUniverse: { totalOrders, validOrders: operationalOrderCount, cancelledOrders, unpaidOrders, returnedOrders },
     revenueUniverse: { grossProductRevenue: productLineRevenue, netOrderRevenue: operationalRevenue, shippingRevenue, refundedRevenue, operationalRevenue },
-    productUniverse: { totalQuantitySold, productCount, riskyStockCount },
+    productUniverse: { totalQuantitySold, productCount, riskyStockCount, outOfStockCount: stockRisk.outOfStock, lowStockCount: stockRisk.lowStock, unknownStockCount: stockRisk.unknown, attentionCount: stockRisk.attention },
     customerUniverse: { totalCustomers, repeatCustomers, highRiskCustomers },
     csUniverse: { totalInquiries, unresolvedInquiries, resolvedInquiries, totalReviews, autoCandidates },
     metadata: {
