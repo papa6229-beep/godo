@@ -155,9 +155,13 @@ export const ApiBridgePanel: React.FC<ApiBridgePanelProps> = ({
       let result;
       if (syncSource === 'secure_proxy') {
         result = await syncProxyResource(resourceType);
-        if (result.isFallback) {
-          appendApiBridgeLog('[Fallback] Secure Proxy unavailable. Local Mock Adapter used.', 'warning', resourceType);
-          onAddLog(`[API Bridge] [${resourceType.toUpperCase()}] Secure Proxy 서버 연동 실패로 Local Mock 데이터로 자동 대체되었습니다.`, 'warning');
+        if (result.substitutionBlocked) {
+          // C-출처(GREEN3): 실제 요청인데 실패/미구현 — mock 자동 대체를 차단하고 연결 안 됨으로 표시.
+          appendApiBridgeLog('[연결 안 됨] Secure Proxy 실패/미구현. 자동 대체(mock) 차단 — 운영 통계에 미투입.', 'warning', resourceType);
+          onAddLog(`[API Bridge] [${resourceType.toUpperCase()}] 실제 연동 실패/미구현으로 "연결 안 됨" 처리했습니다. (시험 데이터로 자동 대체하지 않음 — 시험 데이터가 필요하면 시험 모드를 선택하세요.)`, 'warning');
+        } else if (result.isFallback) {
+          appendApiBridgeLog('[Fallback] 시험 모드 — Local Mock Adapter 사용(시험 데이터).', 'warning', resourceType);
+          onAddLog(`[API Bridge] [${resourceType.toUpperCase()}] 시험 모드로 Local Mock 데이터(시험 데이터)를 사용했습니다.`, 'warning');
         } else {
           appendApiBridgeLog(`[Secure Proxy] [${resourceType}] sync completed through server boundary.`, 'safety', resourceType);
         }

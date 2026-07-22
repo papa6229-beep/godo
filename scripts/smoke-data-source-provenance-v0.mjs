@@ -185,6 +185,32 @@ if (P && typeof P.classifyResource === 'function') {
   }
 }
 
+// ── [RED] GREEN3 자동 바꿔치기 차단 (resolveFetchOutcome) ──
+if (P && typeof P.resolveFetchOutcome === 'function') {
+  // 실제 요청 + 문의 API 미구현(mock 3건 보유) → 연결 안 됨, mock 미주입(records 0, 차단)
+  const o1 = P.resolveFetchOutcome({ requestedMode: 'real', serverSourceType: 'api_mock_fallback', errorMessage: 'Board_List.php 미매핑', mockRecords: [{}, {}, {}] });
+  red('J1. real 요청 + 미구현(mock3 보유) → 연결 안 됨·mock 미주입(records0·차단)',
+    o1.kind === 'unavailable' && o1.count === 0 && o1.records.length === 0 && o1.substitutionBlocked === true && o1.userLabel === '연결 안 됨',
+    JSON.stringify({ k: o1.kind, c: o1.count, b: o1.substitutionBlocked }));
+  // 실제 요청 + 네트워크 실패(mock 보유) → 연결 안 됨, mock 미주입
+  const o2 = P.resolveFetchOutcome({ requestedMode: 'real', networkFailed: true, mockRecords: [{}, {}] });
+  red('J2. real 요청 + 네트워크 실패 → 연결 안 됨·mock 미주입',
+    o2.kind === 'unavailable' && o2.records.length === 0 && o2.substitutionBlocked === true, JSON.stringify({ k: o2.kind, c: o2.count }));
+  // 실제 요청 + 성공 빈 배열 → 실제 0건(actual, 차단 아님)
+  const o3 = P.resolveFetchOutcome({ requestedMode: 'real', serverSourceType: 'api_proxy_real', serverRecords: [] });
+  red('J3. real 요청 + 성공 빈배열 → 실제 데이터 0건(actual, 미차단)',
+    o3.kind === 'actual' && o3.count === 0 && o3.substitutionBlocked === false && o3.userLabel === '실제 데이터', JSON.stringify({ k: o3.kind, c: o3.count }));
+  // 실제 요청 + 성공 실데이터 → actual 그대로
+  const o4 = P.resolveFetchOutcome({ requestedMode: 'real', serverSourceType: 'api_proxy_real', serverRecords: [{}, {}, {}] });
+  red('J4. real 요청 + 성공 실데이터 → actual, records 보존', o4.kind === 'actual' && o4.count === 3 && o4.records.length === 3, JSON.stringify({ k: o4.kind, c: o4.count }));
+  // 시험 모드 + mock → 시험 데이터(fixture 사용)
+  const o5 = P.resolveFetchOutcome({ requestedMode: 'test', serverSourceType: 'api_mock_fallback', mockRecords: [{}, {}, {}] });
+  red('J5. test 모드 + mock → 시험 데이터(fixture 사용, 차단 아님)',
+    o5.kind === 'fixture' && o5.userLabel === '시험 데이터' && o5.count === 3 && o5.substitutionBlocked === false, JSON.stringify({ k: o5.kind, c: o5.count }));
+} else {
+  red('J1~J5. resolveFetchOutcome(자동대체 차단)', false, '함수 없음');
+}
+
 console.log(`\n--- 요약 ---`);
 console.log(`[BASE] ${baseP} pass / ${baseF} fail`);
 console.log(`[RED ] ${redMet} met / ${redUnmet} unmet`);

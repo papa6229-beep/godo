@@ -140,3 +140,69 @@ export const isActualEmpty = (input: ResourceProvenanceInput): boolean => {
   const p = classifyResource(input);
   return p.kind === 'actual' && p.count === 0;
 };
+
+// ── GREEN3: 자동 바꿔치기 차단 ────────────────────────────────────────────────
+
+export interface FetchOutcomeInput {
+  /** 사용자가 무엇을 요청했나. 'real'(실제 자료) | 'test'(시험 모드). 미지정은 real처럼 보수적. */
+  requestedMode?: 'real' | 'test';
+  /** 서버/네트워크가 반환한 sourceType(정본). api_proxy_real / api_mock_fallback 등. */
+  serverSourceType?: string;
+  /** 서버가 반환한 실제 레코드(성공 시). */
+  serverRecords?: unknown[];
+  /** 연결 실패·미구현 사유. */
+  errorMessage?: string;
+  /** 네트워크 자체 실패(fetch throw) 여부. */
+  networkFailed?: boolean;
+  /** 로컬 mock 레코드(자동 대체 후보). real 모드에서는 주입 금지. */
+  mockRecords?: unknown[];
+}
+
+export interface FetchOutcome {
+  /** 실제로 소비자·통계에 넣을 레코드. real 모드 실패 시 [](주입 차단). */
+  records: unknown[];
+  count: number;
+  kind: ProvenanceKind;
+  userLabel: ProvenanceUserLabel;
+  /** 자동 대체(mock 주입)를 막았는지. */
+  substitutionBlocked: boolean;
+  sourceType: string;
+  errorMessage?: string;
+  reason: string;
+}
+
+/**
+ * 실제/시험 요청에 따라 fetch 결과의 신분과 "무엇을 실제로 넣을지"를 결정한다. [GREEN3]
+ *   - test 모드: mock/서버 레코드를 fixture로 표시하고 사용(시험 데이터). fixture 승격 없음.
+ *   - real 모드 + 실패/미구현/자동대체(api_mock_fallback): mock을 주입하지 않고(records=[])
+ *     unavailable('연결 안 됨')로 표시. 운영 통계에 mock 건수 미투입. [규칙 A·C]
+ *   - real 모드 + 성공(빈 배열 포함): 그대로 actual. 빈 배열=실제 0건. [규칙 B]
+ */
+export function resolveFetchOutcome(input: FetchOutcomeInput): FetchOutcome {
+  const req = input.requestedMode ?? 'real';
+  const st = (input.serverSourceType ?? '').trim();
+  const failedOrFellBack = hasError(input.errorMessage) || input.networkFailed === true || st === 'api_mock_fallback' || st === 'unavailable';
+
+  if (req === 'test') {
+    const records = (input.mockRecords ?? input.serverRecords ?? []) as unknown[];
+    return {
+      records, count: records.length, kind: 'fixture', userLabel: userLabelOf('fixture'),
+      substitutionBlocked: false, sourceType: st || 'fixture', reason: '시험 모드 — fixture 사용(시험 데이터)'
+    };
+  }
+  // real 모드
+  if (failedOrFellBack) {
+    return {
+      records: [], count: 0, kind: 'unavailable', userLabel: userLabelOf('unavailable'),
+      substitutionBlocked: true, sourceType: st || 'unavailable',
+      errorMessage: input.errorMessage ?? 'connection unavailable',
+      reason: '실제 요청 실패/미구현 — mock 자동 대체 차단(연결 안 됨)'
+    };
+  }
+  const records = (input.serverRecords ?? []) as unknown[];
+  const p = classifyResource({ sourceType: st, count: records.length, requested: 'real' });
+  return {
+    records, count: records.length, kind: p.kind, userLabel: p.userLabel,
+    substitutionBlocked: false, sourceType: st || 'unknown', reason: `실제 응답 — ${p.reason}`
+  };
+}
