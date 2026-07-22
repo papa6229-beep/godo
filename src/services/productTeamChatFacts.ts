@@ -6,6 +6,7 @@
 // 내부 state) 데이터셋 기준으로 답하되 그 사실을 guidance로 안내한다.
 
 import type { RevenueResult } from './departmentDataService';
+import { classifyStockRisk } from './inventoryRiskContract';
 import { parseAnalyticsQuery } from './analyticsQueryParser';
 import { executeAnalyticsQuery } from './analyticsQueryExecutor';
 import type { AnalyticsQueryResult } from './analyticsQueryTypes';
@@ -400,26 +401,27 @@ export function buildProductTeamChatFacts(
 
   // 5) 재고 위험
   if (t.includes('재고') || t.includes('품절') || t.includes('위험')) {
-    const risks = revenue.stockImpact
-      .map(s => ({
-        name: s.productName,
-        stock: s.syntheticProjectedStock,
-        sold: s.syntheticSoldQuantity,
-        restored: s.syntheticRestoredQuantity,
-        level: s.syntheticProjectedStock <= 0 ? 'danger' : s.syntheticProjectedStock <= 5 ? 'warning' : 'ok'
-      }))
-      .filter(r => r.level !== 'ok')
+    // C-3: 재고 위험 단계는 공통 계약(inventoryRiskContract)으로 판정한다(임계값 하드코딩 금지).
+    //   상품별 safetyStock 우선(누락 시 기본값), 재고 누락/NaN은 unknown으로 분리(정상 오판 방지).
+    const judged = revenue.stockImpact.map(s => {
+      const r = classifyStockRisk(s.syntheticProjectedStock, s.safetyStock);
+      return { name: s.productName, stock: s.syntheticProjectedStock, sold: s.syntheticSoldQuantity, restored: s.syntheticRestoredQuantity, level: r.level, safety: r.resolvedSafetyStock };
+    });
+    const risks = judged
+      .filter(r => r.level === 'out_of_stock' || r.level === 'low_stock')
       .sort((a, b) => a.stock - b.stock);
-    const lines = risks.slice(0, 12).map(r => `${r.name}: 가상 재고 ${r.stock}개 (${r.level === 'danger' ? '위험' : '주의'}, 판매 ${r.sold}/복구 ${r.restored})`);
+    const unknowns = judged.filter(r => r.level === 'unknown');
+    const lines = risks.slice(0, 12).map(r => `${r.name}: 가상 재고 ${r.stock}개 (${r.level === 'out_of_stock' ? '품절·위험' : '재고 부족·주의'}, 안전재고 ${r.safety}, 판매 ${r.sold}/복구 ${r.restored})`);
     return {
       intent: 'stock_risk',
       facts: [
         '사용자는 재고 위험 상품을 질문했다.',
         risks.length === 0 ? '현재 가상 재고 기준 위험/주의 상품이 없다.' : `위험/주의 상품 ${risks.length}종.`,
         ...lines,
+        ...(unknowns.length > 0 ? [`재고 데이터 이상(확인 필요) ${unknowns.length}종 — 정상으로 처리하지 않는다.`] : []),
         baseFact
       ],
-      answerGuidance: '가상 재고(stockImpact) 기준으로 위험/주의 상품을 정리하라. 실제 고도몰 재고가 아니라 synthetic 가상 재고 기준임을 한 번 밝혀라. 제공된 값만 사용하라.'
+      answerGuidance: '가상 재고(stockImpact) 기준으로 위험/주의 상품을 정리하라. 위험=품절(재고 0 이하), 주의=안전재고 이하이며 상품별 안전재고 기준이다. 재고 데이터 이상(unknown)은 정상이 아니라 확인 필요로 분리하라. 실제 고도몰 재고가 아니라 synthetic 가상 재고 기준임을 한 번 밝혀라. 제공된 값만 사용하라.'
     };
   }
 
