@@ -96,3 +96,25 @@ export function summarizeStockRisk(items: { stock: number; safetyStock?: unknown
 - 제품 계산 소스 변경 **0**(test + 문서만).
 - 기존 기준선 통과와 의도된 C-3 실패 **분리**([BASE]/[RED]).
 - main 미변경 · Production 재배포 없음.
+
+## 11. GREEN 완료 상태 (2026-07-22)
+
+구현 4조각(공통 계약 재사용, 소비자별 임계값 복붙 제거):
+- **A** `src/services/inventoryRiskContract.ts` 신설(`classifyStockRisk`·`resolveSafetyStock`·`summarizeStockRisk`, `DEFAULT_SAFETY_STOCK=5` 단일 상수, level=out_of_stock/low_stock/ok/**unknown**, 근거 level·stock·resolvedSafetyStock·safetyStockSource) + **상품별 safetyStock 데이터 경계 1회 연결**(`computeSyntheticStockImpact`가 이미 계산하던 상품별 safetyStock을 방출 → `StockImpactItem.safetyStock`, 누락 undefined 보존).
+- **B** `productTeamChatFacts`·`departmentDataSourceOfTruth` 이관(공통 계약 사용, snapshot에 out_of_stock/low_stock/unknown/attention 분리, chat이 unknown을 '확인 필요'로 분리).
+- **C** `ProductTeamDashboard`·`CalendarPanel` 이관(하드코딩 ≤20/≤40/RISK_THRESHOLD 제거, `summarizeStockRisk` 호출).
+- **D** 서버 `godomallInventoryDerive` 판정 — 아래 §12.
+
+**검증**: C-3 [BASE]8/0 · [RED]10/10(MET) · safetyStock 파이프라인 5/0 · 소비자별 임계값 복붙 없음.
+
+## 12. 조각 D — 서버 `computeInventoryStatus` 판단 (item 3)
+
+**확인 결과: 동일 함수 아님 → 임의 변경하지 않고 차이·근거를 기록.**
+- `api/_shared/godomallInventoryDerive.computeInventoryStatus`는 **별도 데이터 경로**(Products/Goods_Search 재고 스냅샷 → `deriveInventoryFromProducts` → 운영 인벤토리 스냅샷)로, **C-3 위험화면 4 소비자(`stockImpact`/`syntheticProjectedStock`)와 다른 파이프라인**이다.
+- 코어(안전재고 기반: `stock<=safety→warning`)는 같은 계열이나, **추가 게이팅**(`soldOut→danger`, `stockEnabled===false`면 무제한 재고로 품절 아님)이 있어 순수 stock/safety 계약과 **동일하지 않다**.
+- 기본값 불일치: 서버 `DEFAULT_SAFETY_STOCK=3` vs 공통 계약 `5` vs `godomallMapper` `'5'`.
+- **조치**: 서버 함수는 api/_shared(서버) 경계라 client `inventoryRiskContract`를 import할 수 없고, 숫자 5를 복사하면 "한 곳 관리" 원칙 위반이라 **임의 변경하지 않는다**. C-3 위험화면 4 소비자는 공통 계약(기본 5)로 통일 완료. 서버 Products-인벤토리 경로의 기본값 3·게이팅 정합은 **별도 후속**(경계 간 공통 상수 공유 설계 필요, 이번 범위 밖)으로 기록.
+
+## 13. 열린 확인 (후속)
+- `safetyStock=0`이 실 고도몰에서 '미설정'을 뜻하는지 실데이터 확인(현재 원천 없음 → 유효 설정으로 취급).
+- 서버 `godomallInventoryDerive` 기본값 3·게이팅과 공통 계약의 경계 간 정합.
