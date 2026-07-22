@@ -439,8 +439,8 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
           : spec.metric === 'averageOrderValue' || spec.metric.endsWith('Aov') ? 'aov'
           : 'revenue';
       const lineLevel = gb === 'category' || gb === 'brand' || gb === 'product';
-      // C-2 조각 A: 주문 축은 유효주문 결제금액 기준. (라인 축 groupLines는 조각 B에서 유효주문으로 전환)
-      const m = lineLevel ? groupLines(orders, gb, spec.filters) : groupOrders(validOrders, gb, dataset, spec.filters);
+      // C-2: 주문 축=유효주문 결제금액 / 라인 축=유효주문의 상품 라인 매출(부모 주문을 유효 필터한 뒤 라인 펼침).
+      const m = lineLevel ? groupLines(validOrders, gb, spec.filters) : groupOrders(validOrders, gb, dataset, spec.filters);
       let rows = aggToRows(m, valueKind, dataset, gb);
       if (spec.metric === 'topProducts') rows = rows.slice(0, 10);
       if (spec.metric === 'lowPerformingProducts') rows = [...rows].sort((a, b) => a.value - b.value).slice(0, 10);
