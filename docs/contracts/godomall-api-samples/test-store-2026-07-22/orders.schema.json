@@ -1,0 +1,36 @@
+{
+  "resource": "orders",
+  "endpoint": "/api/godomall/orders",
+  "upstream": "Order_Search.php",
+  "sourceType": "api_proxy_real",
+  "mode": "real",
+  "live": true,
+  "realConfirmed": true,
+  "recordCount": 1,
+  "maskedPiiCount": 4,
+  "note": "수기 주문 1건(주문읽기 시험용). customerNameMasked 등 PII는 서버 maskRecordsList가 마스킹 후 반환. 이 주문 1건과 sales(유효판매) 0건은 양립 가능 — 유효매출 조건 미충족 가능성.",
+  "fields": {
+    "orderNo": "string<empty>",
+    "orderDate": "string<empty>",
+    "productName": "string<empty>",
+    "optionName": "string",
+    "quantity": "string<numeric>",
+    "paymentStatus": "string<enum-ko>",
+    "deliveryStatus": "string<enum-ko>",
+    "invoiceNo": "string<empty>",
+    "amount": "string<numeric>",
+    "customerNameMasked": "string<empty>"
+  },
+  "anonymizedExample": {
+    "orderNo": "ORD-XXXXXXXX",
+    "orderDate": "2026-06-XX",
+    "productName": "(상품명)",
+    "optionName": "",
+    "quantity": "1",
+    "paymentStatus": "결제완료",
+    "deliveryStatus": "배송대기",
+    "invoiceNo": "",
+    "amount": "XXXXX",
+    "customerNameMasked": ""
+  }
+}

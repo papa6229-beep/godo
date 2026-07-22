@@ -1,0 +1,124 @@
+{
+  "resource": "products",
+  "endpoint": "/api/godomall/products",
+  "upstream": "Goods_Search.php",
+  "sourceType": "api_proxy_real",
+  "mode": "real",
+  "live": true,
+  "realConfirmed": true,
+  "recordCount": 13,
+  "optionsPresent": false,
+  "fields": {
+    "productId": {
+      "type": "string<numeric>",
+      "upstreamGodomallField": "goodsNo"
+    },
+    "productCode": {
+      "type": "string<empty>",
+      "upstreamGodomallField": "goodsCd"
+    },
+    "productName": {
+      "type": "string",
+      "upstreamGodomallField": "goodsNm"
+    },
+    "price": {
+      "type": "number",
+      "upstreamGodomallField": "goodsPrice"
+    },
+    "fixedPrice": {
+      "type": "number",
+      "upstreamGodomallField": "fixedPrice"
+    },
+    "stock": {
+      "type": "number",
+      "upstreamGodomallField": "totalStock"
+    },
+    "stockEnabled": {
+      "type": "boolean",
+      "upstreamGodomallField": "stockFl"
+    },
+    "soldOut": {
+      "type": "boolean",
+      "upstreamGodomallField": "soldOutFl"
+    },
+    "displayPc": {
+      "type": "boolean",
+      "upstreamGodomallField": "goodsDisplayFl"
+    },
+    "displayMobile": {
+      "type": "boolean",
+      "upstreamGodomallField": "goodsDisplayMobileFl"
+    },
+    "sellPc": {
+      "type": "boolean",
+      "upstreamGodomallField": "goodsSellFl"
+    },
+    "sellMobile": {
+      "type": "boolean",
+      "upstreamGodomallField": "goodsSellMobileFl"
+    },
+    "categoryCode": {
+      "type": "string<empty>",
+      "upstreamGodomallField": "cateCd"
+    },
+    "allCategoryCode": {
+      "type": "string<empty>",
+      "upstreamGodomallField": "allCateCd"
+    },
+    "brandCode": {
+      "type": "string<empty>",
+      "upstreamGodomallField": "brandCd"
+    },
+    "registeredAt": {
+      "type": "string<datetime YYYY-MM-DD HH:mm:ss>",
+      "upstreamGodomallField": "regDt"
+    },
+    "modifiedAt": {
+      "type": "string<datetime YYYY-MM-DD HH:mm:ss>",
+      "upstreamGodomallField": "modDt"
+    },
+    "makerName": {
+      "type": "string<empty>",
+      "upstreamGodomallField": "makerNm"
+    },
+    "originName": {
+      "type": "string<empty>",
+      "upstreamGodomallField": "originNm"
+    },
+    "optionName": {
+      "type": "string<empty>",
+      "upstreamGodomallField": "optionName"
+    }
+  },
+  "fillRate": {
+    "productId": "13/13",
+    "productCode": "0/13",
+    "productName": "13/13",
+    "price": "13/13",
+    "fixedPrice": "13/13",
+    "stock": "13/13",
+    "stockEnabled": "13/13",
+    "soldOut": "13/13",
+    "displayPc": "13/13",
+    "displayMobile": "13/13",
+    "sellPc": "13/13",
+    "sellMobile": "13/13",
+    "categoryCode": "12/13",
+    "allCategoryCode": "12/13",
+    "brandCode": "12/13",
+    "registeredAt": "13/13",
+    "modifiedAt": "13/13",
+    "makerName": "0/13",
+    "originName": "0/13",
+    "optionName": "0/13"
+  },
+  "thumbnailNote": "썸네일/이미지 필드는 현재 adapter(mapGoodsToProducts)가 매핑하지 않아 응답에 없음. 상류 Goods_Search.php의 이미지 필드명·URL 형태는 서버 키 필요로 미확인 → 새 판매몰에서 재검증 대상.",
+  "pagination": "정규화 응답에 page/total/size 키 없음(상류 요청은 page/size 사용 추정, 클라 노출 안 됨)",
+  "saleStatusNote": "판매상태는 soldOutFl(품절) 단독이 아니라 다음을 함께 봐야 정확: soldOut(soldOutFl 품절여부) + sellPc/sellMobile(goodsSellFl/…판매여부) + displayPc/displayMobile(goodsDisplayFl/…전시·노출여부).",
+  "unverified": [
+    "썸네일 필드명/값",
+    "카테고리명(코드→라벨 조인, Category_Search 실응답)",
+    "옵션 상품 구조(현재 옵션 상품 0)",
+    "대량 페이지네이션(total/page 실필드)"
+  ]
+}

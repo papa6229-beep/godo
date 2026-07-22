@@ -1,4 +1,5 @@
 import type { InquiryStatus, NormalizationReason } from '../services/inquiryStatusContract';
+import type { ResourceStatusRecord } from '../services/dataSourceProvenanceContract';
 
 export type DataDomain = 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales';
 
@@ -102,6 +103,8 @@ export interface OperationsDataSnapshot {
   inventory: StandardInventoryItem[];
   sales: StandardSalesSummary[];
   qualityReport?: DataQualityReport;
+  // C-출처: 리소스별 신분·상태(실제 데이터/시험 데이터/연결 안 됨). 배열 길이로 재판정하지 않고 이 레코드로 표시.
+  resourceProvenance?: Record<string, ResourceStatusRecord>;
 }
 
 export interface ImportHistoryItem {

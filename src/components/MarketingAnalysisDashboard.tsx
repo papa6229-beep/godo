@@ -8,6 +8,7 @@ import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { RevenueResult, AdminProductsResult } from '../services/departmentDataService';
 import { OPERATIONAL_METRIC_LABELS as OP } from '../services/departmentMetricContract';
 import { buildDepartmentSourceOfTruthSnapshot } from '../services/departmentDataSourceOfTruth';
+import { userLabelOf, type ProvenanceKind } from '../services/dataSourceProvenanceContract';
 import {
   buildFirstRepeatBars, buildFirstRepeatComparisonText,
   buildFirstRepeatAovBars, buildFirstRepeatAovComparisonText,
@@ -747,6 +748,10 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
   // 신규/재구매 고객 비교(하단 카드용) — facts가 이미 계산한 값만 사용, 신규 집계 없음.
   // 전 부서 공통 운영 snapshot — 같은 revenue universe로 동일 builder 호출(상품/CS와 동일 값).
   const snap = useMemo(() => buildDepartmentSourceOfTruthSnapshot(revenue), [revenue]);
+  // C-출처: 화면 전체 신분 라벨(실제/시험/연결 안 됨). 실제 상품 + 가상 매출 결합(mixed/synthetic)은 전체 '시험 데이터'.
+  const provenanceKind: ProvenanceKind =
+    snap?.sourceMode === 'real' ? 'actual' : snap?.sourceMode === 'unavailable' ? 'unavailable' : 'simulation';
+  const provenanceLabel = userLabelOf(provenanceKind);
   // C-8/D-1: 카드 표시 모델도 순수 모듈이 만든다(분모는 전체 매출).
   const frCard = buildFirstRepeatCardModel(s);
   const view = useMemo(() => buildFocusView(focus, facts, PERIOD_LABEL[preset]), [focus, facts, preset]);
@@ -762,8 +767,14 @@ export const MarketingAnalysisDashboard: React.FC<Props> = ({ revenue, products,
       {/* ── 헤더 ── */}
       <div className="mkt-head">
         <div>
-          <h2 className="mkt-title">📊 마케팅 분석팀</h2>
-          <p className="mkt-subtitle">고도몰 주문/상품/CS 데이터 기반 분석</p>
+          <h2 className="mkt-title">📊 마케팅 분석팀
+            <span
+              className={`mkt-provenance-badge prov-${provenanceKind}`}
+              title={provenanceKind === 'simulation' ? '실제 상품에 가상 운영자료(주문/매출/재고)가 결합된 화면입니다.' : ''}
+              style={{ marginLeft: 8, fontSize: '0.6em', padding: '2px 8px', borderRadius: 10, verticalAlign: 'middle', background: provenanceKind === 'actual' ? 'rgba(45,245,162,0.15)' : provenanceKind === 'unavailable' ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: provenanceKind === 'actual' ? '#2df5a2' : provenanceKind === 'unavailable' ? '#ef4444' : '#f59e0b' }}
+            >{provenanceLabel}</span>
+          </h2>
+          <p className="mkt-subtitle">고도몰 주문/상품/CS 데이터 기반 분석{provenanceKind === 'simulation' ? ' · 시험 데이터(가상 운영자료 포함)' : ''}</p>
         </div>
         <button type="button" className="mkt-refresh" onClick={onRefresh} disabled={loading}>
           {loading ? '불러오는 중…' : '새로고침'}

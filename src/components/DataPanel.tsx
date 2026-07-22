@@ -8,6 +8,7 @@ import type {
 } from '../types/dataConnector';
 import { parseCSVToObjectArray } from '../utils/csvParser';
 import { buildOperationsSnapshot, normalizeRawObject } from '../utils/dataNormalizer';
+import { classifyResource, userLabelOf, summarizeScreenStatus } from '../services/dataSourceProvenanceContract';
 import {
   defaultOperationsData,
   scenarioDefaultData,
@@ -79,9 +80,27 @@ export const DataPanel: React.FC<DataPanelProps> = ({
     
     const qualityScore = activeOperationsData.qualityReport?.qualityScore ?? 100;
     const privacyMaskedCount = activeOperationsData.qualityReport?.privacyMaskedCount ?? 0;
-    
+
+    // C-출처: 리소스별 신분(실제 데이터/시험 데이터/연결 안 됨). 동기화 기록(resourceProvenance)이 있으면 그걸,
+    //   없으면 스냅샷 sourceType으로 판정. 화면 전체 신분은 리소스별을 집계(일부 연결 안 됨 안내).
+    const rp = activeOperationsData.resourceProvenance;
+    const labelFor = (res: string): string => {
+      const rec = rp?.[res];
+      if (rec) return rec.userLabel;
+      return userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind);
+    };
+    const records = rp ? Object.values(rp) : [];
+    const screen = records.length ? summarizeScreenStatus(records) : null;
+
     return {
-      sourceType: activeOperationsData.sourceType === 'api_mock' ? 'API MOCK' : activeOperationsData.sourceType.toUpperCase(),
+      // C-출처: 내부 기술문구 대신 사용자 3표기. 화면 전체 신분 + 일부 연결 안 됨 안내.
+      sourceType: screen ? screen.userLabel : userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind),
+      screenNote: screen && screen.anyUnavailable ? screen.note : '',
+      ordersLabel: labelFor('orders'),
+      inquiriesLabel: labelFor('inquiries'),
+      reviewsLabel: labelFor('reviews'),
+      inventoryLabel: labelFor('inventory'),
+      salesLabel: labelFor('sales'),
       ordersCount,
       inquiriesCount,
       reviewsCount,
@@ -395,26 +414,31 @@ export const DataPanel: React.FC<DataPanelProps> = ({
           </span>
         </div>
 
+        {stats.screenNote && (
+          <div className="data-source-note" style={{ margin: '0 0 0.6rem', padding: '0.5rem 0.8rem', borderRadius: 8, background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: '0.85rem' }}>
+            ⚠️ {stats.screenNote} — 실제로 연결된 리소스는 실제 데이터로, 연결 안 된 리소스는 “연결 안 됨”으로 각각 표시됩니다.
+          </div>
+        )}
         <div className="data-metrics-row">
           <div className="data-metric-box active-source">
             <span className="data-metric-lbl">데이터 소스</span>
             <span className="data-metric-val">{stats.sourceType}</span>
           </div>
           <div className="data-metric-box">
-            <span className="data-metric-lbl">주문 건수</span>
-            <span className="data-metric-val">{stats.ordersCount}건</span>
+            <span className="data-metric-lbl">주문 건수 · {stats.ordersLabel}</span>
+            <span className="data-metric-val">{stats.ordersLabel === '연결 안 됨' ? '연결 안 됨' : `${stats.ordersCount}건`}</span>
           </div>
           <div className="data-metric-box">
-            <span className="data-metric-lbl">CS 문의</span>
-            <span className="data-metric-val">{stats.inquiriesCount}건</span>
+            <span className="data-metric-lbl">CS 문의 · {stats.inquiriesLabel}</span>
+            <span className="data-metric-val">{stats.inquiriesLabel === '연결 안 됨' ? '연결 안 됨' : `${stats.inquiriesCount}건`}</span>
           </div>
           <div className="data-metric-box">
-            <span className="data-metric-lbl">리뷰 건수</span>
-            <span className="data-metric-val">{stats.reviewsCount}건</span>
+            <span className="data-metric-lbl">리뷰 건수 · {stats.reviewsLabel}</span>
+            <span className="data-metric-val">{stats.reviewsLabel === '연결 안 됨' ? '연결 안 됨' : `${stats.reviewsCount}건`}</span>
           </div>
           <div className="data-metric-box">
-            <span className="data-metric-lbl">재고 항목</span>
-            <span className="data-metric-val">{stats.inventoryCount}개</span>
+            <span className="data-metric-lbl">재고 항목 · {stats.inventoryLabel}</span>
+            <span className="data-metric-val">{stats.inventoryLabel === '연결 안 됨' ? '연결 안 됨' : `${stats.inventoryCount}개`}</span>
           </div>
           <div className="data-metric-box">
             <span className="data-metric-lbl">매출 기간</span>
@@ -423,7 +447,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
             </span>
           </div>
           <div className="data-metric-box quality-score-box">
-            <span className="data-metric-lbl">데이터 품질 점수</span>
+            <span className="data-metric-lbl">수집된 데이터 품질</span>
             <span className={`data-metric-val ${qualityScoreLevel(stats.qualityScore).class}`}>
               {stats.qualityScore}점 ({qualityScoreLevel(stats.qualityScore).label})
             </span>
@@ -481,7 +505,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                 <div className="security-alert-box api-mock-info" style={{ marginTop: '0.8rem', marginBottom: '0.8rem' }}>
                   <span className="alert-icon">🔌</span>
                   <span className="alert-text">
-                    API Bridge Mock Sync 데이터가 현재 Data Connector에 연결되어 있습니다. API 탭에서 Mock Godomall 데이터를 동기화할 수 있습니다.
+                    현재 데이터 상태는 <strong>{stats.sourceType}</strong>입니다. 리소스별 실제/시험/연결 안 됨 상태는 위 항목과 ‘쇼핑몰 연동’ 탭의 동기화 이력에서 확인할 수 있습니다.
                   </span>
                 </div>
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
@@ -575,7 +599,8 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                   <div className="overview-sub-metric">
                     <span className="ov-lbl">미답변 문의</span>
                     <span className="ov-val danger">
-                      {activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length}건
+                      {/* 출처(main): 연결 안 됨이면 0건 대신 '연결 안 됨'. 집계(C-4): 미답변은 isUnanswered로 정규화 판정. */}
+                      {stats.inquiriesLabel === '연결 안 됨' ? '연결 안 됨' : `${activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length}건`}
                     </span>
                   </div>
                   <div className="overview-sub-metric">
@@ -593,11 +618,11 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                   <div className="overview-sub-metric">
                     <span className="ov-lbl">부정 평점 리뷰</span>
                     <span className="ov-val warning">
-                      {activeOperationsData.reviews.filter(r => r.rating <= 2).length}건
+                      {stats.reviewsLabel === '연결 안 됨' ? '연결 안 됨' : `${activeOperationsData.reviews.filter(r => r.rating <= 2).length}건`}
                     </span>
                   </div>
                   <div className="overview-sub-metric">
-                    <span className="ov-lbl">데이터 품질 점수</span>
+                    <span className="ov-lbl">수집된 데이터 품질</span>
                     <span className="ov-val success">{stats.qualityScore}점</span>
                   </div>
                 </div>
@@ -1097,7 +1122,7 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                         <td className="mono-cell">{item.timestamp}</td>
                         <td className="bold-cell">{item.fileName}</td>
                         <td>{item.domain.toUpperCase()}</td>
-                        <td>{item.sourceType.toUpperCase()}</td>
+                        <td>{userLabelOf(classifyResource({ sourceType: item.sourceType }).kind)}</td>
                         <td>{item.rowCount}행</td>
                         <td style={{ fontWeight: 700, color: item.qualityScore >= 90 ? '#00ff88' : '#ffb300' }}>
                           {item.qualityScore}점
