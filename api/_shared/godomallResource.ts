@@ -42,7 +42,12 @@ import {
 } from './mockProxyData.js';
 
 export type ResourceType = 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales' | 'products';
-export type ResourceSource = 'api_proxy_real' | 'api_proxy_sandbox' | 'api_mock_fallback';
+// DATA-SOURCE-SERVER-01: 'unavailable' = 실제/샌드박스 요청이 실패·미구현·설정 부재로 **자료를 못 가져온 상태**.
+//   'api_mock_fallback' 은 이제 **사용자가 명시적으로 시험(mock) 모드를 선택한 경우에만** 쓴다.
+export type ResourceSource = 'api_proxy_real' | 'api_proxy_sandbox' | 'api_mock_fallback' | 'unavailable';
+
+// 실패 사유 문구(비밀값 없음 — 키·URL 파라미터·raw XML·PII 를 절대 담지 않는다).
+export const NOT_CONFIGURED_MESSAGE = 'Godomall live mode is not configured (mode/keys missing).';
 
 export interface ResolvedResource {
   records: Record<string, unknown>[]; // PII 마스킹 완료
@@ -134,39 +139,111 @@ const getMockRecords = (resourceType: ResourceType): Record<string, unknown>[] =
   }
 };
 
+// 실패·미구현·설정 부재의 표준 반환 — 자료를 만들어내지 않는다(records 0건).
+const unavailableResource = (
+  mode: 'real' | 'sandbox' | 'mock',
+  errorMessage: string
+): ResolvedResource => ({
+  records: [],
+  count: 0,
+  maskedCount: 0,
+  source: 'unavailable',
+  mode,
+  live: false,
+  errorMessage
+});
+
+// DATA-SOURCE-SERVER-01:
+//   - 명시적 시험(mock) 모드 → fixture 반환 (사용자가 선택한 경우에만 허용)
+//   - real/sandbox 성공 → 실제 자료. **빈배열이어도 실제 데이터 0건**(live:true 유지)
+//   - real/sandbox 실패·미구현·키 부재 → **연결 안 됨(0건)**. mock 자동 주입 금지.
 export const resolveResource = async (resourceType: ResourceType): Promise<ResolvedResource> => {
   const config = getGodomallConfig();
-  let errorMessage: string | undefined;
 
-  if (isLiveMode(config)) {
-    try {
-      const liveRecords = await fetchLiveRecords(resourceType, config);
-      const { maskedRecords, maskedCount } = maskRecordsList(liveRecords);
-      return {
-        records: maskedRecords,
-        count: maskedRecords.length,
-        maskedCount,
-        source: config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox',
-        mode: config.mode,
-        live: true
-      };
-    } catch (err: unknown) {
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
+  // 1) 명시적 시험 모드 — 여기서만 fixture 를 데이터로 제시한다.
+  if (config.mode === 'mock') {
+    const { maskedRecords, maskedCount } = maskRecordsList(getMockRecords(resourceType));
+    return {
+      records: maskedRecords,
+      count: maskedRecords.length,
+      maskedCount,
+      source: 'api_mock_fallback',
+      mode: 'mock',
+      live: false
+    };
   }
 
-  // mock fallback (mock 모드이거나, 라이브 호출 실패/미지원)
-  const raw = getMockRecords(resourceType);
-  const { maskedRecords, maskedCount } = maskRecordsList(raw);
-  return {
-    records: maskedRecords,
-    count: maskedRecords.length,
-    maskedCount,
-    source: 'api_mock_fallback',
-    mode: config.mode,
-    live: false,
-    errorMessage
-  };
+  // 2) 실제/샌드박스 요청인데 설정이 갖춰지지 않음 → 사유를 남기고 0건.
+  if (!isLiveMode(config)) return unavailableResource(config.mode, NOT_CONFIGURED_MESSAGE);
+
+  // 3) 실제 호출
+  try {
+    const liveRecords = await fetchLiveRecords(resourceType, config);
+    const { maskedRecords, maskedCount } = maskRecordsList(liveRecords);
+    return {
+      records: maskedRecords,
+      count: maskedRecords.length,
+      maskedCount,
+      source: config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox',
+      mode: config.mode,
+      live: true
+    };
+  } catch (err: unknown) {
+    return unavailableResource(config.mode, err instanceof Error ? err.message : String(err));
+  }
+};
+
+// ── Sync All 집계 (DATA-SOURCE-SERVER-01) ───────────────────────────────────
+// 라우트(sync.ts)가 인라인으로 들고 있으면 검사가 복사본을 검증하게 되므로 여기로 올린다.
+//   리소스별 sources 가 권위. 전역 sourceType 은 표시용이며 실제 데이터라고 단언하지 않는다.
+export type SyncStatus = 'success' | 'partial' | 'unavailable' | 'fixture';
+
+export interface SyncAllSummary {
+  sources: Record<string, ResourceSource>;
+  resourceErrors: Record<string, string>;
+  syncStatus: SyncStatus;
+  sourceType: ResourceSource;
+  mode: 'real' | 'sandbox' | 'mock';
+  importedCount: number;
+  maskedPiiCount: number;
+  liveResourceCount: number;
+  unavailableResourceCount: number;
+}
+
+export const summarizeSyncAll = (
+  resources: readonly ResourceType[],
+  resolved: readonly ResolvedResource[]
+): SyncAllSummary => {
+  const sources: Record<string, ResourceSource> = {};
+  const resourceErrors: Record<string, string> = {};
+  let importedCount = 0, maskedPiiCount = 0, liveResourceCount = 0, unavailableResourceCount = 0;
+
+  resources.forEach((r, i) => {
+    const res0 = resolved[i];
+    if (!res0) return;
+    // 허용된 레코드만 합산 — unavailable 리소스는 0건이다.
+    importedCount += res0.count;
+    maskedPiiCount += res0.maskedCount;
+    sources[r] = res0.source;
+    if (res0.live) liveResourceCount++;
+    if (res0.source === 'unavailable') unavailableResourceCount++;
+    if (res0.errorMessage) resourceErrors[r] = res0.errorMessage;
+  });
+
+  const mode = resolved[0]?.mode ?? 'mock';
+  const total = resources.length;
+  const syncStatus: SyncStatus =
+    mode === 'mock' ? 'fixture'
+      : unavailableResourceCount === 0 ? 'success'
+        : unavailableResourceCount === total ? 'unavailable'
+          : 'partial';
+  // 부분 실패면 전역은 unavailable — 성공 리소스는 sources 로 보존된다.
+  const sourceType: ResourceSource =
+    syncStatus === 'fixture' ? 'api_mock_fallback'
+      : syncStatus === 'success' ? (mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox')
+        : 'unavailable';
+
+  return { sources, resourceErrors, syncStatus, sourceType, mode, importedCount, maskedPiiCount, liveResourceCount, unavailableResourceCount };
 };
 
 // ── 관리자 주문 조회 (Orders READ v0) ──────────────────────────────────────
@@ -192,11 +269,40 @@ const summarizeAdminOrders = (
   undeliveredCount: records.filter((o) => o.undelivered).length
 });
 
+// 실패·미구현·설정 부재 → 주문 0건. 미결제/미배송 집계도 0(없는 주문을 세지 않는다).
+const unavailableAdminOrders = (
+  mode: 'real' | 'sandbox' | 'mock',
+  errorMessage: string
+): ResolvedAdminOrders => ({
+  records: [],
+  count: 0,
+  source: 'unavailable',
+  mode,
+  live: false,
+  unpaidCount: 0,
+  undeliveredCount: 0,
+  errorMessage
+});
+
 export const resolveOrdersAdmin = async (): Promise<ResolvedAdminOrders> => {
   const config = getGodomallConfig();
-  let errorMessage: string | undefined;
 
-  if (isLiveMode(config)) {
+  // 명시적 시험 모드에서만 fixture 주문을 제시한다.
+  if (config.mode === 'mock') {
+    const records = mapOrdersToAdmin(getProxyMockOrders());
+    return {
+      records,
+      count: records.length,
+      source: 'api_mock_fallback',
+      mode: 'mock',
+      live: false,
+      ...summarizeAdminOrders(records)
+    };
+  }
+
+  if (!isLiveMode(config)) return unavailableAdminOrders(config.mode, NOT_CONFIGURED_MESSAGE);
+
+  {
     try {
       const { startDate, endDate } = defaultOrderRange();
       const res = await postGodomall(
@@ -219,21 +325,9 @@ export const resolveOrdersAdmin = async (): Promise<ResolvedAdminOrders> => {
         ...summarizeAdminOrders(records)
       };
     } catch (err: unknown) {
-      errorMessage = err instanceof Error ? err.message : String(err);
+      return unavailableAdminOrders(config.mode, err instanceof Error ? err.message : String(err));
     }
   }
-
-  // mock fallback (mock 데이터는 가상 고객정보 → 마스킹 불필요)
-  const records = mapOrdersToAdmin(getProxyMockOrders());
-  return {
-    records,
-    count: records.length,
-    source: 'api_mock_fallback',
-    mode: config.mode,
-    live: false,
-    errorMessage,
-    ...summarizeAdminOrders(records)
-  };
 };
 
 // ── 매출 분석용 주문 조회 (RevenueOrder v0) ──────────────────────────────────
@@ -243,28 +337,65 @@ export const resolveOrdersAdmin = async (): Promise<ResolvedAdminOrders> => {
 export interface ResolvedRevenue {
   orders: RevenueOrder[];
   count: number;
-  summary: RevenueSummary;
+  // DATA-SOURCE-SERVER-01: 실제 주문 연결이 안 됐고 시뮬레이션도 없으면 null.
+  //   소비자는 null 을 "계산 불가(미확인)"로 다루고 0원으로 환산하지 않는다.
+  summary: RevenueSummary | null;
   stockImpact: SyntheticStockImpact[];
   source: ResourceSource;
   mode: 'real' | 'sandbox' | 'mock';
   live: boolean;
   errorMessage?: string;
+  /** 실제 주문 slice 의 연결 상태(시뮬레이션과 분리해 보존). */
+  realOrdersStatus: 'success' | 'unavailable' | 'fixture';
+  /** 시뮬레이션 slice 의 상태. 상품 조회까지 실패하면 unavailable. */
+  syntheticStatus: 'not_requested' | 'success' | 'unavailable';
+  /** 실제 주문 연결 실패 사유(시뮬레이션 성공과 무관하게 보존). */
+  realOrdersErrorMessage?: string;
+  /** 시뮬레이션 불가 사유(상품 카탈로그 조회 실패 등). */
+  syntheticErrorMessage?: string;
   // commerce_universe_v1 + includeUniverseAux일 때만. 기본 응답엔 없음(PII 미포함).
   universeAux?: UniverseAux;
 }
 
-// Products 조인용 상품 목록 조회 (실패해도 매출조회는 진행 → uncategorized 처리)
+// Products 조인용 상품 목록 조회.
+// DATA-SOURCE-SERVER-01: 주문 조회와 **독립적으로** 수행한다. 주문이 실패해도 상품이 성공하면
+//   2년치 시뮬레이션은 그대로 생성돼야 하기 때문이다(시뮬레이션은 fallback 이 아니라 독립 시험자료).
+//   실패는 빈 배열이 아니라 ok:false 로 구별한다 — 조용히 작은 mock 상품으로 대체하지 않는다.
 const fetchProductsForJoin = async (
   config: ReturnType<typeof getGodomallConfig>
-): Promise<StandardProduct[]> => {
+): Promise<{ ok: boolean; products: StandardProduct[]; errorMessage?: string }> => {
+  if (!isLiveMode(config)) return { ok: false, products: [], errorMessage: NOT_CONFIGURED_MESSAGE };
   try {
     const res = await postGodomall(GOODS_SEARCH_PATH, { page: 1, size: 100 }, config);
-    if (!res.ok || !res.xml) return [];
+    if (!res.ok || !res.xml) return { ok: false, products: [], errorMessage: res.error || 'Goods_Search failed' };
     const parsed = parseGodomallXml(res.xml);
-    if (!parsed.ok) return [];
-    return mapGoodsToProducts(extractList(parsed.root, GOODS_LIST_KEYS));
-  } catch {
-    return [];
+    if (!parsed.ok) return { ok: false, products: [], errorMessage: `Goods_Search error code ${parsed.code}: ${parsed.msg}` };
+    return { ok: true, products: mapGoodsToProducts(extractList(parsed.root, GOODS_LIST_KEYS)) };
+  } catch (err: unknown) {
+    return { ok: false, products: [], errorMessage: err instanceof Error ? err.message : String(err) };
+  }
+};
+
+// 실제 주문 slice 만 조회 (시뮬레이션과 독립).
+const fetchRealRevenueOrders = async (
+  config: ReturnType<typeof getGodomallConfig>,
+  index: ReturnType<typeof buildProductIndex>
+): Promise<{ ok: boolean; orders: RevenueOrder[]; errorMessage?: string }> => {
+  try {
+    const { startDate, endDate } = defaultOrderRange();
+    const res = await postGodomall(
+      ORDER_SEARCH_PATH,
+      { dateType: 'order', startDate, endDate, page: 1, size: 50 },
+      config
+    );
+    if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
+    const parsed = parseGodomallXml(res.xml);
+    if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
+    // 0건 응답 phantom 가드: 의미 있는 주문만 남긴다(빈 래퍼/{} 제거).
+    const rawOrders = normalizeOrderData(extractList(parsed.root, ADMIN_ORDER_LIST_KEYS));
+    return { ok: true, orders: mapOrdersToRevenue(rawOrders, index, 'real_godomall') };
+  } catch (err: unknown) {
+    return { ok: false, orders: [], errorMessage: err instanceof Error ? err.message : String(err) };
   }
 };
 
@@ -283,43 +414,57 @@ export const resolveOrdersRevenue = async (
   opts: { includeSynthetic?: boolean; syntheticSource?: SyntheticSource; includeUniverseAux?: boolean; includeCsFakeContacts?: boolean } = {}
 ): Promise<ResolvedRevenue> => {
   const config = getGodomallConfig();
-  let errorMessage: string | undefined;
   let realOrders: RevenueOrder[] = [];
   let products: StandardProduct[] = [];
-  let source: ResourceSource = 'api_mock_fallback';
+  let source: ResourceSource = 'unavailable';
   let live = false;
+  let realOrdersStatus: 'success' | 'unavailable' | 'fixture' = 'unavailable';
+  let realOrdersErrorMessage: string | undefined;
+  let syntheticStatus: 'not_requested' | 'success' | 'unavailable' = 'not_requested';
+  let syntheticErrorMessage: string | undefined;
+  // 상품 카탈로그 조회 성공 여부 — 시뮬레이션 가능 여부의 근거(주문 성패와 독립).
+  let productsOk = false;
 
-  if (isLiveMode(config)) {
-    try {
-      const { startDate, endDate } = defaultOrderRange();
-      const res = await postGodomall(
-        ORDER_SEARCH_PATH,
-        { dateType: 'order', startDate, endDate, page: 1, size: 50 },
-        config
-      );
-      if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
-      const parsed = parseGodomallXml(res.xml);
-      if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
-      // 0건 응답 phantom 가드: 의미 있는 주문만 남긴다(빈 래퍼/{} 제거).
-      const rawOrders = normalizeOrderData(extractList(parsed.root, ADMIN_ORDER_LIST_KEYS));
-      products = await fetchProductsForJoin(config);
-      realOrders = mapOrdersToRevenue(rawOrders, buildProductIndex(products), 'real_godomall');
+  if (config.mode === 'mock') {
+    // 명시적 시험 모드에서만 fixture 주문을 제시한다. **real_godomall/dataKind:'real' 로 표시하지 않는다.**
+    realOrders = mapOrdersToRevenue(normalizeOrderData(getProxyMockOrders()), buildProductIndex([]), 'fixture_mock');
+    source = 'api_mock_fallback';
+    realOrdersStatus = 'fixture';
+  } else if (!isLiveMode(config)) {
+    realOrdersErrorMessage = NOT_CONFIGURED_MESSAGE;
+    syntheticErrorMessage = NOT_CONFIGURED_MESSAGE;
+  } else {
+    // 주문 조회와 상품 조회를 **독립적으로** 수행한다(한 try 블록에 묶지 않는다).
+    const productRes = await fetchProductsForJoin(config);
+    productsOk = productRes.ok;
+    products = productRes.products;
+    if (!productRes.ok) syntheticErrorMessage = productRes.errorMessage;
+
+    const orderRes = await fetchRealRevenueOrders(config, buildProductIndex(products));
+    if (orderRes.ok) {
+      realOrders = orderRes.orders;
       source = config.mode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox';
       live = true;
-    } catch (err: unknown) {
-      errorMessage = err instanceof Error ? err.message : String(err);
+      realOrdersStatus = 'success';
+    } else {
+      // 실제 주문 실패 → mock 을 실제 자리에 넣지 않는다. 0건 + 사유 보존.
+      realOrdersErrorMessage = orderRes.errorMessage;
     }
   }
 
-  if (!live) {
-    // mock fallback (Products 미조인 → uncategorized). mock 주문도 동일 가드 적용(모두 orderNo 보유 → 유지).
-    realOrders = mapOrdersToRevenue(normalizeOrderData(getProxyMockOrders()), buildProductIndex([]), 'real_godomall');
-  }
-
   // 가상 매출 데이터 (옵션). 기본 commerce_universe_v1, 명시 godoRaw/legacy만 그 경로.
+  // 시뮬레이션은 실제 주문 실패의 대체물이 아니라 **독립 시험자료**다 — 상품 조회만 성공하면 생성한다.
   const chosen = pickSyntheticSource(opts.syntheticSource);
+  const canSynthesize = opts.includeSynthetic === true && (config.mode === 'mock' || productsOk);
+  if (opts.includeSynthetic === true) {
+    syntheticStatus = canSynthesize ? 'success' : 'unavailable';
+    if (!canSynthesize && !syntheticErrorMessage) {
+      // 상품 카탈로그 없이 새 baseline 을 임의 생성하지 않는다 → 후속 SIMULATION-CATALOG-BASELINE-01.
+      syntheticErrorMessage = 'Simulation requires the product catalog, which is unavailable.';
+    }
+  }
   let universe: SyntheticCommerceUniverse | undefined; // aux 공급용으로 전체 세계 보관(commerce_universe_v1만)
-  const syntheticOrders = opts.includeSynthetic
+  const syntheticOrders = canSynthesize
     ? chosen === 'legacy'
       ? generateSyntheticRevenueOrders(products)
       : chosen === 'godoRaw'
@@ -334,15 +479,17 @@ export const resolveOrdersRevenue = async (
   const orders = [...realOrders, ...syntheticOrders];
 
   // 가상 재고 영향 (옵션) — 실 Products 현재 재고 기준으로 역산 (고도몰 재고 미변경)
-  const stockImpact = opts.includeSynthetic ? computeSyntheticStockImpact(products, syntheticOrders) : [];
-  const summary: RevenueSummary = {
-    ...summarizeRevenue(orders),
-    ...(opts.includeSynthetic ? summarizeStockImpact(stockImpact) : {})
-  };
+  const stockImpact = canSynthesize ? computeSyntheticStockImpact(products, syntheticOrders) : [];
+  // 실제 주문도 연결 안 됐고 시뮬레이션도 없으면 요약은 **null(계산 불가)** — 0원으로 환산하지 않는다.
+  // 실제 성공 빈배열(realOrdersStatus==='success')은 유효한 0값 요약을 그대로 낸다.
+  const hasAnyBasis = realOrdersStatus !== 'unavailable' || syntheticOrders.length > 0;
+  const summary: RevenueSummary | null = hasAnyBasis
+    ? { ...summarizeRevenue(orders), ...(canSynthesize ? summarizeStockImpact(stockImpact) : {}) }
+    : null;
 
   // Auxiliary data 공급: commerce_universe_v1 + includeUniverseAux일 때만(기본 응답엔 PII/aux 없음).
   // csOnlyFakeContacts는 includeCsFakeContacts 명시 시에만(synthetic universe라 fake 보장).
-  const universeAux = opts.includeUniverseAux && opts.includeSynthetic && chosen === 'commerce_universe_v1' && universe
+  const universeAux = opts.includeUniverseAux && canSynthesize && chosen === 'commerce_universe_v1' && universe
     ? buildUniverseAux(universe, { includeCsFakeContacts: !!opts.includeCsFakeContacts })
     : undefined;
 
@@ -354,7 +501,12 @@ export const resolveOrdersRevenue = async (
     source,
     mode: config.mode,
     live,
-    errorMessage,
+    // 응답 전체의 대표 사유(하위호환) — 실제 주문 사유를 우선 노출한다.
+    errorMessage: realOrdersErrorMessage ?? syntheticErrorMessage,
+    realOrdersStatus,
+    syntheticStatus,
+    ...(realOrdersErrorMessage ? { realOrdersErrorMessage } : {}),
+    ...(syntheticErrorMessage ? { syntheticErrorMessage } : {}),
     ...(universeAux ? { universeAux } : {})
   };
 };
