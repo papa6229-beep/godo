@@ -142,7 +142,7 @@ red('W1. HQ 지시 업무가 팀장 화면의 할 일 목록에 실제로 표시
     const inScope = A.visibleTasksFor(LEAD_PRODUCT).some((x) => x.id === t.ref.taskId);
     // 규칙만으로는 부족하다 — 팀장 화면(부서 워크스페이스)이 실제로 그 목록을 그려야 한다.
     // 규칙만으로는 부족하다 — 팀장 화면이 실제로 그 목록을 그려야 한다.
-    const rendered = deptRendersLeadScreen && /할 일/.test(leadScreen) && /tasks\.filter|teamTasks/.test(leadScreen);
+    const rendered = deptRendersLeadScreen && /할 일/.test(leadScreen) && /teamFlows|teamTasks|tasks\.filter/.test(leadScreen);
     return inScope && rendered;
   })(), '규칙상 범위에는 들어오지만 팀장 화면(DepartmentWorkspacePanel)이 할 일 목록을 그리지 않음',
   '규칙 범위 + 팀장 화면 렌더');
@@ -426,24 +426,40 @@ red('W23. 결과 전 업무에는 확인 완료·수정 요청·미채택이 거
     }));
   })(), '결과 없이도 승인·수정요청·미채택이 통과함', 'open/in_progress × 3행동 모두 거부 · 불변');
 
-red('W24. 결과 전에도 책임자·요청자는 사유와 함께 작업을 중단할 수 있다',
+red('W24R. 결과 전 중단은 담당 팀장만 하고, 요청자는 중단 요청만 보낸다',
   (() => {
-    const allowed = ['open', 'in_progress'].every((st) => [LEAD_PRODUCT, HQ].every((actor) => {
+    // RC-2 D-1.3.1 로 정정된 규칙. (구 W24 는 '요청자도 직접 중단 가능'을 전제했으나
+    //  확정 정책에서 총괄은 담당 팀의 실무 상태를 직접 바꾸지 않는다 → 폐기·교체)
+    if (typeof A.requestTaskStop !== 'function') return false;
+    return ['open', 'in_progress'].every((st) => {
       reset();
       const t = mkOpen('product', HQ);   // HQ 가 만든 상품팀 업무 → 요청자=HQ, 책임자=상품팀장
       if (st === 'in_progress') A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
-      const r = A.applyDecision(t.ref.taskId, { kind: 'stop', actor, reason: '우선순위 변경' }, { nowIso: AT });
-      const after = readTask(t.ref.taskId);
-      return r.ok === true && after.status === 'stopped'
-        && JSON.stringify(after).includes('우선순위 변경');
-    }));
-    // 무관한 타 팀장은 중단할 수 없다.
-    reset();
-    const t2 = mkOpen('product', HQ);
-    const blocked = A.applyDecision(t2.ref.taskId, { kind: 'stop', actor: LEAD_CS, reason: 'x' }, { nowIso: AT }).ok === false;
-    return allowed && blocked;
-  })(), '결과 전 중단이 승인 단계 권한 판정에 걸려 거부되거나 사유가 남지 않음',
-  '요청자·책임 팀장 중단 O · 무관한 팀장 X');
+
+      // 담당 팀장: 사유와 함께 실제 중단 가능
+      const byLead = A.applyDecision(t.ref.taskId, { kind: 'stop', actor: LEAD_PRODUCT, reason: '우선순위 변경' }, { nowIso: AT });
+      const afterLead = readTask(t.ref.taskId);
+      if (!(byLead.ok === true && afterLead.status === 'stopped' && JSON.stringify(afterLead).includes('우선순위 변경'))) return false;
+
+      // 요청자(HQ): 직접 중단은 불가, 중단 요청은 가능하고 상태는 그대로
+      reset();
+      const t2 = mkOpen('product', HQ);
+      if (st === 'in_progress') A.assignExecutor(t2.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+      const byHq = A.applyDecision(t2.ref.taskId, { kind: 'stop', actor: HQ, reason: '그만' }, { nowIso: AT });
+      const req = A.requestTaskStop(t2.ref.taskId, { reason: '방향 변경', actor: HQ }, { nowIso: AT });
+      const after2 = readTask(t2.ref.taskId);
+      const stateKept = after2.status === (st === 'open' ? 'open' : 'in_progress');
+
+      // 무관한 팀장은 중단도 요청도 불가
+      reset();
+      const t3 = mkOpen('product', HQ);
+      const byOther = A.applyDecision(t3.ref.taskId, { kind: 'stop', actor: LEAD_CS, reason: 'x' }, { nowIso: AT });
+
+      return byHq.ok === false && req.ok === true && stateKept
+        && (after2.stopRequests ?? []).length === 1 && byOther.ok === false;
+    });
+  })(), 'requestTaskStop 없음 · 또는 총괄이 담당 팀 업무를 직접 중단함',
+  '팀장 중단 O · 총괄은 요청만 · 무관한 팀 차단');
 
 red('W25. 지시·협업을 받은 수행 팀장은 결과 전에도 요청자에게 반송할 수 있다',
   (() => {
