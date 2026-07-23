@@ -74,6 +74,8 @@ export function toOperationTask(t: LifecycleTask): OperationTask {
     permission: 'approval_required',
     routeType: 'local',
     resultSummary: summaryParts.join(' · '),
+    // RC-2 D-1.3.3.1: 화면이 정본과 같은 근거로 판정하도록 표식을 그대로 전달한다.
+    ...(t.reviewOnly ? { reviewOnly: true } : {}),
     createdAt: t.createdAt,
     ...(t.status === 'completed' ? { completedAt: t.decisions[t.decisions.length - 1]?.at ?? t.createdAt } : {})
   };
@@ -98,6 +100,7 @@ export function toApprovalItem(t: LifecycleTask): ApprovalItem {
     reason: `${userStatusLabel(t.status)}${currentStageLabel(t) ? ` · 다음 확인: ${currentStageLabel(t)}` : ''}`,
     proposedAction: t.title,
     status,
+    ...(t.reviewOnly ? { reviewOnly: true } : {}),
     ...(last?.reason ? { decisionReason: last.reason } : {}),
     metadata: { taskType: 'lifecycle', approvalRequired: true }
   };
@@ -393,6 +396,9 @@ export function assignExecutor(
   if (task.trackingOnly) {
     return failResult('이 카드는 진행 상황을 보는 용도입니다. 실제 수행은 담당 팀에서 합니다.');
   }
+  if (task.reviewOnly) {
+    return failResult('확인 요청은 이미 나온 내용을 결정하는 카드입니다. 수행자를 정하거나 결과를 낼 일이 없습니다.');
+  }
 
   // 수행자를 정하는 것은 아직 아무도 손대지 않은 업무(수정본 포함)에서만.
   if (task.status !== 'open') {
@@ -491,6 +497,9 @@ export function requestTaskStop(
   }
   if (isTerminalStatus(task.status)) {
     return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 중단 요청을 보낼 수 없습니다.`);
+  }
+  if (task.reviewOnly) {
+    return failResult('확인 요청은 중단할 작업이 없습니다. 이번에는 사용 안 함으로 정해 주세요.');
   }
   const reason = (input.reason ?? '').trim();
   if (!reason) return failResult('중단 사유를 입력해 주세요. 담당 팀장이 판단할 근거가 됩니다.');
@@ -736,6 +745,7 @@ export function createHqReviewRequest(
     status: 'awaiting_approval',
     resultSummary: `${body || title}${attachmentNote}`,
     inputRefs: [ref],
+    reviewOnly: true,                            // 결정만 하는 카드(실행 대상 아님)
     createdBy: input.actor,
     approvalRoute: APPROVAL_ROUTES.escalation,   // 기존 총괄 결정 경로 재사용
     dependencyMode: 'independent'

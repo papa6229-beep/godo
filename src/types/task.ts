@@ -25,6 +25,8 @@ export interface OperationTask {
   routeType: RouteType;
   relatedDataType?: 'orders' | 'inquiries' | 'reviews' | 'inventory' | 'sales';
   resultSummary?: string;
+  /** 이미 나온 내용을 결정만 하는 카드(실행·중단 대상 아님). 정본에서 그대로 온다. */
+  reviewOnly?: boolean;
   logs?: string[];
   requiredSkills?: string[];
   createdAt: string;

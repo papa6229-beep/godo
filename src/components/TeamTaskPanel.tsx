@@ -99,6 +99,9 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
     //   추적 카드에 요청을 쌓으면 수행팀 화면에 영영 도착하지 않는다.
     const workTask = tracked ?? t;
     const stopReq = pendingStopRequest(flow.tracking ?? t);
+    // RC-2 D-1.3.3.1: 확인 요청 카드는 이미 나온 내용을 결정만 하는 자리다.
+    //   수행할 작업도 수행자도 없으므로 실행·중단 관련 표시를 아예 만들지 않는다.
+    const isReviewOnly = t.reviewOnly === true;
     // 화면에 보이는 행동 = 서비스가 허용하는 행동. 추적 카드에는 애초에 계산하지 않는다.
     const decisions = canAct ? availableDecisions(t, actor) : [];
     const revisionReason = t.ref.revisionOfTaskId ? lastReasonOf(t) : undefined;
@@ -116,7 +119,14 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
           {t.requestingTeamId && t.requestingTeamId !== t.ownerTeamId && (
             <span>요청팀: {DEPT_TEAM_META[t.requestingTeamId]?.name ?? t.requestingTeamId}</span>
           )}
-          <span>수행자: {t.executorKind === 'unassigned' ? '미정' : executorDisplayName(t.executorId)}</span>
+          {isReviewOnly ? (
+            <>
+              <span>제출팀: {DEPT_TEAM_META[t.ownerTeamId]?.name ?? t.ownerTeamId}</span>
+              {t.submittedBy && <span>제출: {t.submittedBy.label}</span>}
+            </>
+          ) : (
+            <span>수행자: {t.executorKind === 'unassigned' ? '미정' : executorDisplayName(t.executorId)}</span>
+          )}
           {startedAt && t.status === 'in_progress' && <span>시작: {startedAt.slice(0, 16).replace('T', ' ')}</span>}
         </div>
 
@@ -247,7 +257,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
           </div>
         )}
 
-        {(!isOwningLead || !canAct) && !['stopped', 'completed', 'not_adopted', 'returned', 'superseded', 'failed'].includes(workTask.status) && (
+        {!isReviewOnly && (!isOwningLead || !canAct) && !['stopped', 'completed', 'not_adopted', 'returned', 'superseded', 'failed'].includes(workTask.status) && (
           <div className="ttask-actions">
             <button
               type="button"

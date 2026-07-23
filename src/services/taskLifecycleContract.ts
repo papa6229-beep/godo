@@ -183,6 +183,12 @@ export interface LifecycleTask {
    * 실제 수행은 수행팀 자식 카드에서 한다 — 같은 일이 두 번 실행되지 않게 한다.
    */
   trackingOnly?: boolean;
+  /**
+   * 이미 만들어진 내용을 **결정만** 하는 카드(팀→총괄 확인요청).
+   * 수행할 작업도 수행자도 없다 — 배정·인수·제출·중단·반송 대상이 아니다.
+   * 사용자에게 새 카드 종류나 기술 용어로 노출하지 않는다(표시는 기존 업무 화면 그대로).
+   */
+  reviewOnly?: boolean;
 }
 
 /** 총괄·요청자가 담당 팀장에게 보낸 중단 요청. 덮어쓰지 않고 쌓인다. */
@@ -231,6 +237,8 @@ export interface CreateTaskInput {
   resultSummary?: string;
   /** 협업 요청팀 카드처럼 진행만 지켜보는 카드. 실행 행동을 받지 않는다. */
   trackingOnly?: boolean;
+  /** 이미 만들어진 내용을 결정만 하는 카드. 실행 행동을 받지 않는다. */
+  reviewOnly?: boolean;
 }
 
 /** 업무 생성 — taskId 는 **여기서 한 번만** 만든다. */
@@ -257,7 +265,8 @@ export function createLifecycleTask(input: CreateTaskInput, ids: IdContext): Lif
     ...(input.artifactRefs ? { artifactRefs: input.artifactRefs } : {}),
     ...(input.inputRefs ? { inputRefs: input.inputRefs } : {}),
     ...(input.resultSummary ? { resultSummary: input.resultSummary } : {}),
-    ...(input.trackingOnly ? { trackingOnly: true } : {})
+    ...(input.trackingOnly ? { trackingOnly: true } : {}),
+    ...(input.reviewOnly ? { reviewOnly: true } : {})
   };
 }
 
@@ -286,6 +295,8 @@ export function createRevisionTask(
   // RC-2 D-1.2: 수정본은 새 버전이다.
   //   승인 경로를 **처음부터** 다시 밟고(stageIndex 0), 수행자는 **미정**으로 되돌린다.
   //   직전 수행자는 화면 추천값으로만 남기고 자동 재배정하지 않는다.
+  // RC-2 D-1.3.3.1: 수정본은 원 팀이 실제로 고칠 **일반 업무**다.
+  //   확인 전용 표식(reviewOnly)이나 추적 표식(trackingOnly)을 물려받지 않는다.
   const revision = createLifecycleTask({
     title: input.title ?? `${original.title} (수정본)`,
     ownerTeamId: original.ownerTeamId,
@@ -392,6 +403,11 @@ export function canDecide(
   if (task.trackingOnly) {
     return { ok: false, reason: '이 카드는 진행 상황을 보는 용도입니다. 결정은 담당 팀에서 합니다.' };
   }
+  // RC-2 D-1.3.3.1: 확인 카드는 **이미 나온 내용을 결정만** 한다.
+  //   멈출 작업도 돌려보낼 수행팀도 없으므로 업무 통제 계열은 아예 열지 않는다.
+  if (task.reviewOnly && (kind === 'stop' || kind === 'return')) {
+    return { ok: false, reason: '확인 요청은 결정만 할 수 있습니다. 확인 완료 · 수정 요청 · 이번에는 사용 안 함 중에서 골라 주세요.' };
+  }
   // AI 는 자신의 결과물을 최종 승인할 수 없다.
   if (actor.kind === 'agent') return { ok: false, reason: 'AI(에이전트)는 자기 결과물을 승인할 수 없습니다 (self-approval 금지).' };
 
@@ -449,6 +465,12 @@ export function decideApproval(
   // 업무를 끝내거나 돌려보내는 결정에는 이유가 남아야 한다(나중에 왜 멈췄는지 알 수 있게).
   if ((input.kind === 'stop' || input.kind === 'return') && !(input.reason ?? '').trim()) {
     return { ok: false, task, events: [], reason: '사유를 입력해 주세요. 왜 멈추는지 기록으로 남습니다.' };
+  }
+  // RC-2 D-1.3.3.1: 확인 요청을 되돌리거나 쓰지 않기로 할 때도 이유를 남긴다.
+  //   (보낸 팀이 무엇을 고쳐야 하는지 알아야 한다. '확인 완료' 는 이유가 필요 없다.)
+  if (task.reviewOnly && (input.kind === 'request_revision' || input.kind === 'not_adopted')
+    && !(input.reason ?? '').trim()) {
+    return { ok: false, task, events: [], reason: '이유를 적어 주세요. 보낸 팀이 무엇을 고쳐야 할지 알 수 있습니다.' };
   }
 
   const stage = task.approvalRoute.stages[task.approvalRoute.currentStageIndex];

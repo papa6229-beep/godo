@@ -755,6 +755,12 @@ function App() {
   };
 
   /**
+   * RC-2 D-1.3.3.1: 확인 요청 카드에는 '작업 중단' 을 주지 않는다.
+   *   멈출 수행 작업이 없기 때문이다. 일반 업무의 중단 버튼은 그대로 둔다.
+   */
+  const cancelHandlerFor = (reviewOnly?: boolean) => (reviewOnly ? undefined : handleCancel);
+
+  /**
    * 팀이 총괄에게 보낸 '확인 요청' — 총괄이 결정할 카드 1건을 만든다.
    *   총괄에게 일을 시키는 게 아니므로 수행자를 배정하지 않고 협업도 만들지 않는다.
    */
@@ -1105,7 +1111,7 @@ function App() {
           approvalQueue={approvalHistory}
           onApprove={handleApprove}
           onReject={handleReject}
-          onCancel={handleCancel}
+          onCancel={cancelHandlerFor(selectedTaskForResult.reviewOnly)}
         />
       )}
 
@@ -1117,7 +1123,7 @@ function App() {
           onClose={() => setSelectedApprovalDetail(null)}
           onApprove={handleApprove}
           onReject={handleReject}
-          onCancel={handleCancel}
+          onCancel={cancelHandlerFor(selectedApprovalDetail.reviewOnly)}
         />
       )}
     </>

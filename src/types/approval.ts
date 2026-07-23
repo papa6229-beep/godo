@@ -14,6 +14,8 @@ export interface ApprovalItem {
   status: 'waiting' | 'approved' | 'rejected' | 'not_adopted' | 'cancelled';
   /** 결정 사유(반려·미채택·중단). 기록은 삭제하지 않는다. */
   decisionReason?: string;
+  /** 이미 나온 내용을 결정만 하는 카드(중단 버튼 없음). 정본에서 그대로 온다. */
+  reviewOnly?: boolean;
 
   originalIssue?: string;
   maskedInput?: string;
