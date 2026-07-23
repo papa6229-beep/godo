@@ -450,10 +450,66 @@ red('A27R. 상품팀장 확인만으로 완료되지 않고 HQ 최종 확인 후
     return r2.ok && S.loadLifecycleTasks()[0].status === 'completed';
   })(), noFn('createDirectiveTask'), '팀장 후 대기 · HQ 후 완료');
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// 협업 · 수정 · 표시 (P37~P41)
+//   각 팀은 자기 업무만, HQ 는 전 팀 업무를 하나의 연결된 흐름으로 본다.
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- 협업·수정·표시 ---');
+
+red('P37. 팀장 화면에는 다른 팀 업무가 섞이지 않는다',
+  (() => { if (!hasFn('visibleTasksFor')) return false; reset();
+    A.createDirectiveTask({ title: '상품 업무', targetTeamId: 'product', instructedBy: HQ }, ids);
+    A.createDirectiveTask({ title: 'CS 업무', targetTeamId: 'cs', instructedBy: HQ }, ids);
+    const p = A.visibleTasksFor(LEAD_PRODUCT), c = A.visibleTasksFor(LEAD_CS), h = A.visibleTasksFor(HQ);
+    return p.length === 1 && p[0].title === '상품 업무'
+      && c.length === 1 && c[0].title === 'CS 업무'
+      && h.length === 2;   // HQ 는 전 팀 열람
+  })(), noFn('visibleTasksFor'), '팀장 각 1건 · HQ 2건');
+
+red('P38. 협업은 요청팀 카드와 수행팀 카드가 하나의 흐름으로 이어진다',
+  (() => { if (!hasFn('createCollaborationRequest')) return false; reset();
+    const { parent, child } = A.createCollaborationRequest(
+      { title: '상세페이지 문구', requestingTeamId: 'cs', targetTeamId: 'design', instructedBy: LEAD_CS }, ids);
+    const cs = A.visibleTasksFor(LEAD_CS), design = A.visibleTasksFor(A.actorForRole('design'));
+    const hq = A.visibleTasksFor(HQ);
+    // 각 팀에는 자기 카드가 보이고, HQ 에는 부모·자식이 같은 흐름(correlationId)으로 이어져 보인다.
+    return cs.some((t) => t.id === parent.ref.taskId)
+      && design.some((t) => t.id === child.ref.taskId)
+      && hq.length === 2
+      && hq.every((t) => t.correlationId === parent.ref.correlationId)
+      && hq.some((t) => t.parentTaskId === parent.ref.taskId);
+  })(), noFn('createCollaborationRequest'), '요청팀·수행팀 각자 카드 · HQ 는 하나의 흐름');
+
+red('P39. 요청팀은 자기가 요청한 협업의 진행도 볼 수 있다',
+  (() => { if (!hasFn('createCollaborationRequest')) return false;
+    const cs = A.visibleTasksFor(LEAD_CS);
+    return cs.length === 2;   // 자기 카드(부모) + 자기가 요청한 수행팀 카드(자식)
+  })(), noFn('createCollaborationRequest'), '요청팀에 부모·자식 모두 노출');
+
+red('P40. App 이 역할별 업무 목록을 visibleTasksFor 로 만든다(전체 목록 노출 아님)',
+  /visibleTasksFor/.test(appSource),
+  'App 이 hydrateAppState().tasks 전체를 역할 구분 없이 그대로 보여줌');
+
+red('P41. 수정본은 담당 팀장에게 돌아가고 직전 수행자는 추천값으로만 남는다',
+  (() => { if (!hasFn('createDirectiveTask') || !hasFn('assignExecutor')) return false; reset();
+    const t = A.createDirectiveTask({ title: '재고 점검', targetTeamId: 'product', instructedBy: HQ }, ids);
+    A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.applyDecision(t.ref.taskId, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.applyDecision(t.ref.taskId, { kind: 'request_revision', actor: HQ, reason: '수치 재확인' }, { nowIso: AT, newId: ids.newId });
+    const rev = S.loadLifecycleTasks().find((x) => x.ref.revisionOfTaskId === t.ref.taskId);
+    const leadSees = A.visibleTasksFor(LEAD_PRODUCT).some((x) => x.id === rev.ref.taskId);
+    const hqCanDecide = A.pendingForActor(HQ).some((x) => x.id === rev.ref.taskId);
+    return rev.executorKind === 'unassigned' && rev.suggestedExecutorId === 'inventory_monitor'
+      && rev.approvalRoute.currentStageIndex === 0 && leadSees && !hqCanDecide;
+  })(), noFn('createDirectiveTask'), '수행자 미정 · 추천값 보존 · 팀장에게 반환');
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (진단 전제 — fail>0이면 진단 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (확정 권한 정책 P1~P36 + A26R/A27R)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (확정 권한 정책 P1~P41 + A26R/A27R)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0) { console.log('\n✗ 진단 전제 불일치'); process.exit(1); }
 if (redUnmet > 0) {

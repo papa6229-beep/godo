@@ -32,7 +32,7 @@ import { classifyResource, userLabelOf, migrateResourceProvenance } from './serv
 import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigration';
 import { isSameAgent } from './services/agentIdRegistry';
 import {
-  hydrateAppState, applyDecision, createDirectiveTask, acceptRuntimeProposals, teamOfAgent,
+  hydrateAppState, applyDecision, createDirectiveTask, acceptRuntimeProposals, teamOfAgent, visibleTasksFor,
   actorForRole, pendingForActor
 } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
@@ -101,7 +101,7 @@ function App() {
 
   // RC-2 D-1: 업무·승인 상태의 정본은 저장된 lifecycle task 다. 화면 상태는 거기서 파생한다.
   //   (App 이 localStorage 를 직접 만지지 않고 어댑터/저장 서비스만 사용한다.)
-  const [tasks, setTasks] = useState<OperationTask[]>(() => hydrateAppState().tasks);
+  const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForRole(loadRole())));
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department'>('office');
@@ -111,7 +111,12 @@ function App() {
   const [approvalHistory, setApprovalHistory] = useState<ApprovalItem[]>(() => hydrateAppState().history);
   // 역할 전환기와 동기화 — 전환 직후 결정 버튼도 새 역할을 사용한다.
   const [viewerRole, setViewerRole] = useState<ViewerRole>(() => loadRole());
-  useEffect(() => subscribeRole(() => setViewerRole(loadRole())), []);
+  // 역할이 바뀌면 열람 범위도 함께 바뀐다(팀장 ↔ 총괄 전환 시 이전 역할의 목록이 남지 않게).
+  useEffect(() => subscribeRole(() => {
+    const next = loadRole();
+    setViewerRole(next);
+    setTasks(visibleTasksFor(actorForRole(next)));
+  }), []);
   // 지금 이 역할이 결정할 수 있는 대기 업무(= '내 확인 대기').
   const myPendingTasks = pendingForActor(actorForRole(viewerRole));
   // '내 확인 대기' 목록(기존 승인 모달 재사용 — 새 화면을 만들지 않는다).
@@ -649,9 +654,11 @@ function App() {
   const sessionActor = () => actorForRole(viewerRole);
 
   // 저장소 정본에서 화면 상태를 다시 파생한다(단일 갱신 지점).
+  //   RC-2 D-1.2: 업무 목록은 **역할별 열람 범위**로 거른다.
+  //   총괄은 전 팀을 하나의 흐름으로 보고, 팀장은 자기 팀 업무와 자기가 요청한 협업만 본다.
   const refreshLifecycleState = (next?: ReturnType<typeof hydrateAppState>) => {
     const st = next ?? hydrateAppState();
-    setTasks(st.tasks);
+    setTasks(visibleTasksFor(sessionActor()));
     setApprovalQueue(st.approvalQueue);
     setApprovalHistory(st.history);
   };
