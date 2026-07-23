@@ -457,6 +457,48 @@ export function takeOverByLead(
   return okResult(next);
 }
 
+/**
+ * 중단 요청 — 총괄(또는 요청자)이 담당 팀장에게 "이 업무 그만두자" 고 전달한다.
+ *
+ * RC-2 D-1.3.1: **요청은 중단이 아니다.**
+ *   상태·수행자·결과물·이력을 하나도 건드리지 않고 요청 기록만 쌓는다.
+ *   실제 중단은 담당 팀장이 같은 카드에서 처리한다(새 결재함을 만들지 않는다).
+ */
+export function requestTaskStop(
+  taskId: string,
+  input: { reason: string; actor: ActorRef },
+  ctx: { nowIso: string }
+) {
+  const all = loadLifecycleTasks();
+  const task = findTask(all, taskId);
+  if (!task) return failResult('업무를 찾을 수 없습니다.');
+  if (isTerminalStatus(task.status)) {
+    return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 중단 요청을 보낼 수 없습니다.`);
+  }
+  const reason = (input.reason ?? '').trim();
+  if (!reason) return failResult('중단 사유를 입력해 주세요. 담당 팀장이 판단할 근거가 됩니다.');
+
+  // 이 업무를 시킨 쪽이거나 담당 팀 사람만 요청할 수 있다(남의 팀 일에 끼어들지 않는다).
+  const requesterTeam = task.requestingTeamId ?? (task.createdBy.teamId !== task.ownerTeamId ? task.createdBy.teamId : undefined);
+  const allowed = input.actor.teamId === task.ownerTeamId || (!!requesterTeam && input.actor.teamId === requesterTeam);
+  if (!allowed) return failResult('이 업무를 요청한 쪽이나 담당 팀만 중단을 요청할 수 있습니다.');
+
+  const next: LifecycleTask = {
+    ...task,
+    stopRequests: [...(task.stopRequests ?? []), { requestedBy: input.actor, reason, requestedAt: ctx.nowIso }]
+  };
+  saveLifecycleTask(next);
+  return okResult(next);
+}
+
+/** 아직 담당 팀장이 처리하지 않은 중단 요청(화면 표시용). */
+export const pendingStopRequest = (t: LifecycleTask) => {
+  const reqs = t.stopRequests ?? [];
+  if (reqs.length === 0) return null;
+  if (t.status === 'stopped') return null;   // 이미 처리됨
+  return reqs[reqs.length - 1];
+};
+
 /** 수행자가 결과를 제출한다. **결과물 참조가 없으면 거부**한다. 이때부터 팀장 확인 대상이 된다. */
 export function submitResult(
   taskId: string,

@@ -173,6 +173,23 @@ export interface LifecycleTask {
    * 여기에 파일/이미지 내용을 넣지 않는다(참조는 artifactRefs).
    */
   resultSummary?: string;
+  /**
+   * 중단 요청 기록(append-only). **요청일 뿐 상태를 바꾸지 않는다.**
+   * 실제 중단은 담당 팀장이 이 카드에서 처리하고, 그 결정은 decisions 에 남는다.
+   */
+  stopRequests?: StopRequestRecord[];
+  /**
+   * 협업 요청팀에 남는 **추적용** 카드 표시.
+   * 실제 수행은 수행팀 자식 카드에서 한다 — 같은 일이 두 번 실행되지 않게 한다.
+   */
+  trackingOnly?: boolean;
+}
+
+/** 총괄·요청자가 담당 팀장에게 보낸 중단 요청. 덮어쓰지 않고 쌓인다. */
+export interface StopRequestRecord {
+  requestedBy: ActorRef;
+  reason: string;
+  requestedAt: string;
 }
 
 /** 더 이상 일반 함수로 되살릴 수 없는 상태. */
@@ -371,15 +388,14 @@ export function canDecide(
   const requester = requesterTeamOf(task);
 
   if (kind === 'stop') {
-    if (task.status === 'awaiting_approval') {
-      // 제출된 결과를 앞에 두고는 지금 확인 차례인 사람이 판단한다.
-      return isCurrentStageApprover(task, actor);
+    // RC-2 D-1.3.1: 실제 중단은 **담당 팀장(또는 지정된 임시 책임자)만** 한다.
+    //   총괄은 자기가 시킨 일이라도 그 팀의 실무 상태를 직접 바꾸지 않는다.
+    //   그만두고 싶으면 requestTaskStop 으로 담당 팀장에게 요청을 보낸다.
+    const isActingLead = !!task.actingLeadUserId && actor.userId === task.actingLeadUserId;
+    if (actor.teamId !== task.ownerTeamId && !isActingLead) {
+      return { ok: false, reason: '담당 팀장만 업무를 중단할 수 있습니다. 중단 요청을 보내 주세요.' };
     }
-    const isOwnerLead = actor.teamId === task.ownerTeamId;
-    const isRequester = !!requester && actor.teamId === requester;
-    return isOwnerLead || isRequester
-      ? { ok: true }
-      : { ok: false, reason: '이 업무를 요청한 쪽이나 담당 팀장만 중단할 수 있습니다.' };
+    return { ok: true };
   }
 
   if (kind === 'return') {
@@ -416,6 +432,11 @@ export function decideApproval(
 ): DecisionResult {
   const permission = canDecide(task, input.actor, input.kind);
   if (!permission.ok) return { ok: false, task, events: [], reason: permission.reason };
+
+  // 업무를 끝내거나 돌려보내는 결정에는 이유가 남아야 한다(나중에 왜 멈췄는지 알 수 있게).
+  if ((input.kind === 'stop' || input.kind === 'return') && !(input.reason ?? '').trim()) {
+    return { ok: false, task, events: [], reason: '사유를 입력해 주세요. 왜 멈추는지 기록으로 남습니다.' };
+  }
 
   const stage = task.approvalRoute.stages[task.approvalRoute.currentStageIndex];
   const decision: DecisionRecord = {
