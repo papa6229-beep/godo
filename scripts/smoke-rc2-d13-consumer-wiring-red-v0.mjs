@@ -385,10 +385,171 @@ red('W22. 자동 스케줄 진입점이 standing gate 를 반드시 통과한다
   })(), '자동 진입점이 없고 runAgentTask 가 공개되어 스케줄러가 게이트를 건너뛸 수 있음',
   '자동 전용 진입점 + 내부 게이트');
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// 정정된 전이 규칙 (W23~W30)
+//   결과물이 있어야 하는 것 : 확인 완료 · 수정 요청 · 이번 결과 사용 안 함
+//   결과 전에도 가능한 통제 : 작업 중단 · 수행 불가 반송
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- 정정된 전이 규칙 ---');
+
+/** 저장된 업무를 그대로 읽는다(검사용 관찰). */
+const readTask = (id) => S.loadLifecycleTasks().find((x) => x.ref.taskId === id);
+
+red('W23. 결과 전 업무에는 확인 완료·수정 요청·미채택이 거부되고 상태·이력이 그대로다',
+  (() => {
+    const kinds = ['approve', 'request_revision', 'not_adopted'];
+    return ['open', 'in_progress'].every((st) => kinds.every((kind) => {
+      reset();
+      const t = mkOpen('product');
+      if (st === 'in_progress') A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+      const before = readTask(t.ref.taskId);
+      const r = A.applyDecision(t.ref.taskId, { kind, actor: LEAD_PRODUCT, reason: 'x' }, { nowIso: AT, newId: ids.newId });
+      const after = readTask(t.ref.taskId);
+      return r.ok === false && after.status === before.status
+        && after.decisions.length === before.decisions.length
+        && S.loadLifecycleTasks().length === 1;   // revision 도 생기면 안 된다
+    }));
+  })(), '결과 없이도 승인·수정요청·미채택이 통과함', 'open/in_progress × 3행동 모두 거부 · 불변');
+
+red('W24. 결과 전에도 책임자·요청자는 사유와 함께 작업을 중단할 수 있다',
+  (() => {
+    const allowed = ['open', 'in_progress'].every((st) => [LEAD_PRODUCT, HQ].every((actor) => {
+      reset();
+      const t = mkOpen('product', HQ);   // HQ 가 만든 상품팀 업무 → 요청자=HQ, 책임자=상품팀장
+      if (st === 'in_progress') A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+      const r = A.applyDecision(t.ref.taskId, { kind: 'stop', actor, reason: '우선순위 변경' }, { nowIso: AT });
+      const after = readTask(t.ref.taskId);
+      return r.ok === true && after.status === 'stopped'
+        && JSON.stringify(after).includes('우선순위 변경');
+    }));
+    // 무관한 타 팀장은 중단할 수 없다.
+    reset();
+    const t2 = mkOpen('product', HQ);
+    const blocked = A.applyDecision(t2.ref.taskId, { kind: 'stop', actor: LEAD_CS, reason: 'x' }, { nowIso: AT }).ok === false;
+    return allowed && blocked;
+  })(), '결과 전 중단이 승인 단계 권한 판정에 걸려 거부되거나 사유가 남지 않음',
+  '요청자·책임 팀장 중단 O · 무관한 팀장 X');
+
+red('W25. 지시·협업을 받은 수행 팀장은 결과 전에도 요청자에게 반송할 수 있다',
+  (() => {
+    // (a) HQ 지시 업무 — 수행 팀장이 반송
+    reset();
+    const t = mkOpen('product', HQ);
+    const r1 = A.applyDecision(t.ref.taskId, { kind: 'return', actor: LEAD_PRODUCT, reason: '자료 부족' }, { nowIso: AT });
+    const a1 = readTask(t.ref.taskId);
+    // (b) 협업 자식 — 수행 팀장이 반송하면 요청팀(부모)에도 반송이 보인다
+    if (!hasFn('createCollaborationRequest')) return false;
+    reset();
+    const pair = A.createCollaborationRequest(
+      { title: '문구 요청', requestingTeamId: 'cs', targetTeamId: 'design', instructedBy: LEAD_CS }, ids);
+    const r2 = A.applyDecision(pair.child.ref.taskId, { kind: 'return', actor: A.actorForRole('design'), reason: '규격 미정' }, { nowIso: AT });
+    const savedParent = readTask(pair.parent.ref.taskId);
+    return r1.ok === true && a1.status === 'returned' && JSON.stringify(a1).includes('자료 부족')
+      && r2.ok === true && savedParent.status === 'returned' && JSON.stringify(savedParent).includes('규격 미정');
+  })(), '결과 전 반송이 거부되거나 요청팀 부모에 반영되지 않음', '지시·협업 모두 반송 O · 요청자에게 보임');
+
+red('W26. 종료 상태 업무는 배정·제출·일반 결정 어느 것으로도 되살아나지 않는다',
+  (() => {
+    const terminals = ['completed', 'superseded', 'stopped', 'returned', 'not_adopted'];
+    return terminals.every((st) => {
+      reset();
+      const t = mkOpen('product');
+      S.saveLifecycleTasks(S.loadLifecycleTasks().map((x) =>
+        (x.ref.taskId === t.ref.taskId ? { ...x, status: st, executorKind: 'human', executorId: 'u-product' } : x)));
+      const a = A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+      const b = A.submitResult(t.ref.taskId, { artifactRefs: ['a'], actor: LEAD_PRODUCT }, { nowIso: AT });
+      const c = A.applyDecision(t.ref.taskId, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+      const after = readTask(t.ref.taskId);
+      return a.ok === false && b.ok === false && c.ok === false && after.status === st;
+    });
+  })(), '종료 상태에서도 배정·제출·결정이 통과함', '5개 종료 상태 모두 불변');
+
+red('W27. 결과 제출자는 현재 수행자 본인이어야 한다',
+  (() => { reset();
+    const t = mkOpen('product');
+    A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const AGENT_SELF = { kind: 'agent', teamId: 'product', label: '재고 AI', agentId: 'inventory_monitor' };
+    const OTHER_AGENT = { kind: 'agent', teamId: 'cs', label: '문의 AI', agentId: 'inquiry_analyst' };
+    const byLeadWithoutTakeover = A.submitResult(t.ref.taskId, { artifactRefs: ['a'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    const byOtherAgent = A.submitResult(t.ref.taskId, { artifactRefs: ['a'], actor: OTHER_AGENT }, { nowIso: AT });
+    const byHq = A.submitResult(t.ref.taskId, { artifactRefs: ['a'], actor: HQ }, { nowIso: AT });
+    const bySelf = A.submitResult(t.ref.taskId, { artifactRefs: ['a'], actor: AGENT_SELF }, { nowIso: AT });
+    if (!(byLeadWithoutTakeover.ok === false && byOtherAgent.ok === false && byHq.ok === false && bySelf.ok === true)) return false;
+    // 팀장이 제출하려면 먼저 인수해야 한다.
+    reset();
+    const t2 = mkOpen('product');
+    A.assignExecutor(t2.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.takeOverByLead(t2.ref.taskId, { actor: LEAD_PRODUCT }, { nowIso: AT });
+    const afterTakeover = A.submitResult(t2.ref.taskId, { artifactRefs: ['a'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    return afterTakeover.ok === true;
+  })(), '제출자 신원을 확인하지 않아 팀장·타 AI·HQ 제출이 모두 통과', '수행자 본인만 · 인수 후 팀장 가능');
+
+red('W28. submitResult 는 in_progress 에서만 가능하다(open·재제출 금지)',
+  (() => { reset();
+    const t = mkOpen('product');
+    const onOpen = A.submitResult(t.ref.taskId, { artifactRefs: ['a'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.submitResult(t.ref.taskId, { artifactRefs: ['a'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    const again = A.submitResult(t.ref.taskId, { artifactRefs: ['b'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    return onOpen.ok === false && again.ok === false;
+  })(), 'open 제출 또는 재제출이 통과함', 'in_progress 1회만');
+
+red('W29. 빈 제출은 결과로 인정하지 않고, 텍스트 업무보고는 인정한다',
+  (() => { reset();
+    const t = mkOpen('product');
+    A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const empties = [
+      { artifactRefs: [] },
+      { artifactRefs: [''] },
+      { artifactRefs: ['   '] },
+      { resultSummary: '' },
+      { resultSummary: '   ' },
+      {}
+    ].every((payload) => A.submitResult(t.ref.taskId, Object.assign({}, payload, { actor: LEAD_PRODUCT }), { nowIso: AT }).ok === false);
+    // 텍스트 업무보고만으로도 제출 성립 — 그리고 그 내용이 보존돼야 한다.
+    const text = A.submitResult(t.ref.taskId, { resultSummary: '재고 3건 보충 완료', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const after = readTask(t.ref.taskId);
+    return empties && text.ok === true && after.status === 'awaiting_approval'
+      && after.resultSummary === '재고 3건 보충 완료'
+      && !!after.submittedBy && !!after.submittedAt;
+  })(), '빈 배열·빈 문자열도 제출로 인정되고 텍스트 보고를 보존할 자리가 없음',
+  '빈 제출 6종 거부 · 텍스트 보고 보존');
+
+red('W30. 화면에 보이는 행동과 서비스가 허용하는 행동이 일치한다',
+  (() => { if (!hasFn('availableDecisions')) return false;
+    const ALL = ['approve', 'request_revision', 'not_adopted', 'stop', 'return'];
+    // (상태, 행위자) 조합마다 제시된 행동은 반드시 성공하고, 제시되지 않은 행동은 반드시 거부돼야 한다.
+    const cases = [
+      { st: 'open', actor: LEAD_PRODUCT }, { st: 'open', actor: HQ }, { st: 'open', actor: LEAD_CS },
+      { st: 'in_progress', actor: LEAD_PRODUCT }, { st: 'in_progress', actor: HQ },
+      { st: 'awaiting_approval', actor: LEAD_PRODUCT }, { st: 'awaiting_approval', actor: HQ }, { st: 'awaiting_approval', actor: LEAD_CS }
+    ];
+    const prepare = (st) => {
+      reset();
+      const t = mkOpen('product', HQ);
+      if (st !== 'open') A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+      if (st === 'awaiting_approval') A.submitResult(t.ref.taskId, { resultSummary: '보고', actor: LEAD_PRODUCT }, { nowIso: AT });
+      return t;
+    };
+    return cases.every((c) => {
+      const probe = prepare(c.st);
+      let offered;
+      try { offered = A.availableDecisions(readTask(probe.ref.taskId), c.actor).map((d) => d.kind); } catch { return false; }
+      return ALL.every((kind) => {
+        const t = prepare(c.st);
+        const r = A.applyDecision(t.ref.taskId, { kind, actor: c.actor, reason: '사유' }, { nowIso: AT, newId: ids.newId });
+        return offered.includes(kind) === (r.ok === true);
+      });
+    });
+  })(), 'availableDecisions 가 상태·행위자를 반영하지 않아 서비스가 거부할 행동을 버튼으로 제시함',
+  '8개 (상태×행위자) 조합에서 표시=허용 일치');
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (진단 전제 — fail>0이면 진단 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (소비자 실배선·전이 안전장치 W1~W22)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (소비자 실배선·전이 안전장치 W1~W30)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0) { console.log('\n✗ 진단 전제 불일치'); process.exit(1); }
 if (redUnmet > 0) {
