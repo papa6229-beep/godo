@@ -300,9 +300,11 @@ export function decideApproval(
   const withDecision = { ...task, decisions: [...task.decisions, decision] };
 
   // 수정 요청 — 기존은 superseded, 새 revision 생성
+  //   createRevisionTask 가 수정 사유를 decisions 에 남기므로 **원본 task** 를 넘긴다.
+  //   (withDecision 을 넘기면 같은 사유가 두 번 기록된다.)
   if (input.kind === 'request_revision') {
     if (!ctx.newId) return { ok: false, task, events: [], reason: 'revision 생성에 id 생성기가 필요합니다.' };
-    const { revision, superseded } = createRevisionTask(withDecision, { reason: input.reason ?? '수정 요청', createdBy: input.actor }, { newId: ctx.newId, nowIso: ctx.nowIso });
+    const { revision, superseded } = createRevisionTask(task, { reason: input.reason ?? '수정 요청', createdBy: input.actor }, { newId: ctx.newId, nowIso: ctx.nowIso });
     return {
       ok: true, task: superseded, revisionTask: revision,
       events: [{ taskId: superseded.ref.taskId, correlationId: superseded.ref.correlationId, status: 'superseded', kind: input.kind, at: ctx.nowIso, actorLabel: input.actor.label, reason: input.reason }]

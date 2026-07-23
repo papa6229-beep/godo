@@ -12,6 +12,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import {
+  canDecide,
   createLifecycleTask,
   decideApproval,
   isPendingForApproval,
@@ -24,6 +25,9 @@ import type {
 } from './taskLifecycleContract';
 import { loadLifecycleTasks, saveLifecycleTask, saveLifecycleTasks, findTask } from './taskLifecycleStore';
 import { toCanonicalAgentId } from './agentIdRegistry';
+import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
+import { roleMeta } from './sessionRole';
+import type { ViewerRole } from './sessionRole';
 import type { OperationTask, TaskStatus } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 
@@ -103,6 +107,50 @@ export function toActorRef(session: { role?: string; teamId?: string; label?: st
   return { kind: 'human', teamId, label: session.label ?? '운영자', userId: session.userId ?? `u-${teamId}` };
 }
 
+/**
+ * RC-2 D-1.1: 역할 전환기(sessionRole)의 ViewerRole → ActorRef.
+ * 데모 역할 전환기가 **권한 실증의 정본**이다(실제 로그인·백엔드 권한은 범위 밖).
+ */
+export function actorForRole(role: ViewerRole): ActorRef {
+  const meta = roleMeta(role);
+  return { kind: 'human', teamId: role as ActorRef['teamId'], label: meta.label, userId: `u-${role}` };
+}
+
+// ── 에이전트 소속 팀(단일 근거) ──────────────────────────────────────────────
+// RC-2 D-1.1: 제목·표시문구로 팀을 추측하거나 App 에 별칭표를 복붙하지 않는다.
+//   런타임 정의(defaultNativeAgents.departmentId)를 유일한 근거로 쓴다.
+const DEPARTMENT_TO_TEAM: Record<string, ActorRef['teamId']> = {
+  manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing', design: 'design'
+};
+
+/** canonical agentId → 소속 팀. 알 수 없으면 hq(총괄)로 둔다(추측 금지). */
+export function teamOfAgent(agentId: string): ActorRef['teamId'] {
+  const canonical = toCanonicalAgentId(agentId);
+  const def = defaultNativeAgents.find((a) => a.id === canonical);
+  return def ? (DEPARTMENT_TO_TEAM[def.departmentId] ?? 'hq') : 'hq';
+}
+
+/**
+ * 승인 경로 선택 규칙(사장 확정 정책). 팀/직급을 화면에 하드코딩하지 않는다.
+ *   HQ → 다른 팀 지시      : 담당 팀장 확인 → HQ 최종 확인
+ *   팀장 → 자기 팀 업무     : 담당 팀장 확인으로 종료
+ *   팀 → 다른 팀 협업 요청  : 수행 팀장 확인 → 요청 팀 확인
+ *   팀 → HQ 제안           : HQ 확인
+ */
+export function routeFor(creator: ActorRef, ownerTeamId: ActorRef['teamId']) {
+  if (ownerTeamId === 'hq') return APPROVAL_ROUTES.escalation;          // HQ 가 수행 주체
+  if (creator.teamId === 'hq') return APPROVAL_ROUTES.hq_directive;      // HQ 지시
+  if (creator.teamId === ownerTeamId) return APPROVAL_ROUTES.team_internal; // 팀 자체
+  return APPROVAL_ROUTES.collaboration;                                  // 팀 간 협업 요청
+}
+
+/** 지금 이 사용자가 **결정할 수 있는** 대기 업무만. 다른 팀 업무는 나오지 않는다. */
+export function pendingForActor(actor: ActorRef): OperationTask[] {
+  return loadLifecycleTasks()
+    .filter((t) => isPendingForApproval(t) && canDecide(t, actor).ok)
+    .map(toOperationTask);
+}
+
 // ── App 상태 ─────────────────────────────────────────────────────────────────
 export interface AppLifecycleState {
   /** 저장된 정본에서 파생한 화면용 업무 전체(이력 포함). */
@@ -158,9 +206,26 @@ export function applyDecision(
 }
 
 // ── 업무 수용/생성 ───────────────────────────────────────────────────────────
-/** 수동 업무도 공통 생성기를 통과한다(임의 id 금지). 생성 즉시 저장한다. */
-export function createManualTask(input: CreateTaskInput, ids: IdContext): LifecycleTask {
-  const task = createLifecycleTask({ ...input, approvalRoute: input.approvalRoute ?? APPROVAL_ROUTES.team_internal }, ids);
+/**
+ * 수동 업무도 공통 생성기를 통과한다(임의 id 금지). 생성 즉시 저장한다.
+ * RC-2 D-1.1: 담당 팀은 **선택한 에이전트의 소속**, 승인 경로는 **생성자·수행팀 관계**로 정한다.
+ */
+export function createManualTask(
+  input: Omit<CreateTaskInput, 'ownerTeamId' | 'ownerHumanId'> & { ownerTeamId?: ActorRef['teamId']; ownerHumanId?: string },
+  ids: IdContext
+): LifecycleTask {
+  const ownerTeamId = input.ownerTeamId ?? teamOfAgent(input.assignedAgentId);
+  const route = input.approvalRoute ?? routeFor(input.createdBy, ownerTeamId);
+  const task = createLifecycleTask({
+    ...input,
+    ownerTeamId,
+    ownerHumanId: input.ownerHumanId ?? `u-${ownerTeamId}`,
+    approvalRoute: route,
+    // 협업 요청이면 요청팀을 남겨 요청팀 확인 단계가 성립하게 한다.
+    ...(route === APPROVAL_ROUTES.collaboration || input.createdBy.teamId !== ownerTeamId
+      ? { requestingTeamId: input.requestingTeamId ?? input.createdBy.teamId }
+      : {})
+  }, ids);
   saveLifecycleTask(task);
   return task;
 }
@@ -190,13 +255,15 @@ export function acceptRuntimeProposals(
     accepted.push({
       ref: { taskId: p.id, correlationId: p.correlationId, runId: undefined },
       title: p.title,
-      ownerTeamId: opts.ownerTeamId ?? 'hq',
-      ownerHumanId: opts.createdBy.userId ?? 'u-hq',
+      // RC-2 D-1.1: 담당 팀은 에이전트 소속(런타임 정의)에서 온다. 'hq' 고정 금지.
+      ownerTeamId: teamOfAgent(p.agentId),
+      ownerHumanId: `u-${teamOfAgent(p.agentId)}`,
       assignedAgentId: toCanonicalAgentId(p.agentId),
+      requestingTeamId: opts.createdBy.teamId,
       // 승인 필요 제안은 대기 상태로 둔다(완료로 고정 금지).
       status: needsApproval ? 'awaiting_approval' : 'in_progress',
       dependencyMode: 'independent',
-      approvalRoute: APPROVAL_ROUTES.hq_directive,
+      approvalRoute: routeFor(opts.createdBy, teamOfAgent(p.agentId)),
       createdBy: opts.createdBy,
       createdAt: opts.nowIso,
       decisions: []

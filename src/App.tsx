@@ -9,6 +9,7 @@ import { TaskResultModal } from './components/TaskResultModal';
 import { ApprovalDetailModal } from './components/ApprovalDetailModal';
 import { OpeningScreen } from './components/OpeningScreen';
 import { MainLayout } from './components/MainLayout';
+import { ApprovalListModal } from './components/ApprovalListModal';
 import { AgentDetailModal } from './components/AgentDetailModal';
 import { ReportModal } from './components/ReportModal';
 import { initialBrainKnowledgeItems } from './data/brainKnowledge';
@@ -31,8 +32,11 @@ import { classifyResource, userLabelOf, migrateResourceProvenance } from './serv
 import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigration';
 import { isSameAgent } from './services/agentIdRegistry';
 import {
-  hydrateAppState, applyDecision, createManualTask, acceptRuntimeProposals, toActorRef
+  hydrateAppState, applyDecision, createManualTask, acceptRuntimeProposals,
+  actorForRole, pendingForActor
 } from './services/taskLifecycleAppAdapter';
+import { loadRole, subscribeRole, roleMeta } from './services/sessionRole';
+import type { ViewerRole } from './services/sessionRole';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -105,6 +109,14 @@ function App() {
   const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>(() => hydrateAppState().approvalQueue);
   // 결정이 끝난 항목도 이력에서 계속 조회 가능해야 한다(승인 대기열에서만 빠진다).
   const [approvalHistory, setApprovalHistory] = useState<ApprovalItem[]>(() => hydrateAppState().history);
+  // 역할 전환기와 동기화 — 전환 직후 결정 버튼도 새 역할을 사용한다.
+  const [viewerRole, setViewerRole] = useState<ViewerRole>(() => loadRole());
+  useEffect(() => subscribeRole(() => setViewerRole(loadRole())), []);
+  // 지금 이 역할이 결정할 수 있는 대기 업무(= '내 확인 대기').
+  const myPendingTasks = pendingForActor(actorForRole(viewerRole));
+  // '내 확인 대기' 목록(기존 승인 모달 재사용 — 새 화면을 만들지 않는다).
+  const myPendingApprovals = approvalQueue.filter(q => myPendingTasks.some(t => t.id === q.taskId));
+  const [showMyApprovals, setShowMyApprovals] = useState(false);
   const [report, setReport] = useState<OperationReport | null>(null);
   const [selectedTaskForResult, setSelectedTaskForResult] = useState<OperationTask | null>(null);
   const [selectedApprovalDetail, setSelectedApprovalDetail] = useState<ApprovalItem | null>(null);
@@ -484,7 +496,8 @@ function App() {
 
     setIsSimulating(true);
     setReport(null);
-    setApprovalQueue([]);
+    // RC-2 D-1.1: 실행 중 기존 승인 목록을 비우지 않는다.
+    //   (비우면 실행 실패 시 새로고침 전까지 대기 건이 사라져 보인다. 정본은 저장 원장이다.)
     
     // 시나리오 데이터 적용
     const scenarioData = getScenarioData(validationScenario);
@@ -578,7 +591,7 @@ function App() {
           proposedTasks: runtimeResult.orchestration.proposedTasks,
           proposedApprovalItems: runtimeResult.orchestration.proposedApprovalItems
         },
-        { createdBy: sessionActor(), nowIso: new Date().toISOString(), ownerTeamId: 'hq' }
+        { createdBy: sessionActor(), nowIso: new Date().toISOString() }
       );
       refreshLifecycleState();
 
@@ -631,8 +644,9 @@ function App() {
     }
   };
 
-  // RC-2 D-1: 현재 세션 역할 → 계약 ActorRef. 권한 규칙을 App 에서 재구현하지 않는다.
-  const sessionActor = () => toActorRef({ teamId: 'hq', label: '총괄 관리자', userId: 'u-hq' });
+  // RC-2 D-1.1: 현재 세션 역할(역할 전환기) → 계약 ActorRef.
+  //   역할 전환기를 권한 실증의 정본으로 쓴다(실제 로그인·백엔드 권한은 범위 밖).
+  const sessionActor = () => actorForRole(viewerRole);
 
   // 저장소 정본에서 화면 상태를 다시 파생한다(단일 갱신 지점).
   const refreshLifecycleState = (next?: ReturnType<typeof hydrateAppState>) => {
@@ -645,7 +659,8 @@ function App() {
   // 수동 태스크 추가 — 공통 createLifecycleTask 를 통과해 taskId 를 한 번만 발급한다.
   const handleAddTask = (title: string, agentId: string) => {
     createManualTask(
-      { title, ownerTeamId: 'hq', ownerHumanId: 'u-hq', assignedAgentId: agentId, createdBy: sessionActor() },
+      // 담당 팀은 선택한 에이전트 소속에서, 승인 경로는 생성자·수행팀 관계에서 결정된다.
+      { title, assignedAgentId: agentId, createdBy: sessionActor() },
       { newId: () => `task-manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, nowIso: new Date().toISOString() }
     );
     refreshLifecycleState();
@@ -812,6 +827,33 @@ function App() {
       {showOpening ? (
         <OpeningScreen onFinished={() => setShowOpening(false)} />
       ) : (
+        <>
+        {/* RC-2 D-1.1: 역할별 '내 확인 대기' 진입로. 팀장은 본인이 결정할 수 있는 업무만 본다. */}
+        {myPendingApprovals.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowMyApprovals(true)}
+            style={{
+              position: 'fixed', right: 18, bottom: 18, zIndex: 60, padding: '10px 16px', borderRadius: 999,
+              border: '1px solid var(--border, #444)', background: 'var(--accent, #2df5a2)', color: '#04241a',
+              fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.25)'
+            }}
+            title={`${roleMeta(viewerRole).label}이 지금 확인할 수 있는 업무`}
+          >
+            ✅ 내 확인 대기 {myPendingApprovals.length}건
+          </button>
+        )}
+
+        <ApprovalListModal
+          isOpen={showMyApprovals}
+          onClose={() => setShowMyApprovals(false)}
+          items={myPendingApprovals}
+          agents={agents}
+          statuses={['waiting']}
+          title={`내 확인 대기 · ${roleMeta(viewerRole).label}`}
+          onSelectApproval={(item) => { setShowMyApprovals(false); setSelectedApprovalDetail(item); }}
+        />
+
         <MainLayout
           agents={agents}
           tasks={tasks}
@@ -884,6 +926,7 @@ function App() {
           manualCommands={manualCommands}
           onAddManualCommand={handleAddManualCommand}
         />
+        </>
       )}
 
       {currentSelectedAgent && (
