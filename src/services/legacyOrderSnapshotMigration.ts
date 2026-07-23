@@ -23,6 +23,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import type { OperationsDataSnapshot, StandardOrder } from '../types/dataConnector';
+import type { ResourceStatusRecord } from './dataSourceProvenanceContract';
 
 /** 과거 코드가 옵션 근거 없이 채우던 기본값(서버 '단품' / 클라이언트 정규화 '기본옵션'). */
 const LEGACY_DEFAULT_OPTION_NAMES = ['단품', '기본옵션'];
@@ -30,12 +31,29 @@ const LEGACY_DEFAULT_OPTION_NAMES = ['단품', '기본옵션'];
 const LEGACY_DEFAULT_PAYMENT_STATUS = '결제완료';
 const LEGACY_DEFAULT_DELIVERY_STATUS = '배송대기';
 
+// ── 청소 입구 조건(게이트) — D-3 ────────────────────────────────────────────
+// 전역 sourceType **하나만으로** 판정하지 않는다.
+//   dataSourceProvenanceContract 가 명시하듯 전역 sourceType 은 "마지막 동기화 리소스 흔적"이라
+//   orders 리소스가 실제였는지를 증명하지 못한다. 실제로 Production 저장자료는
+//   전역 api_mock_fallback + orders actual/success 인 **혼합 자료**였고,
+//   전역만 보던 D-2 게이트가 이를 걸러내 유령이 그대로 남았다.
+// 그래서 두 조건을 **함께** 만족할 때만 청소한다.
+
+/** ① 전역 출처가 API 계보인가. (demo/mock/synthetic·csv/json/manual 저장자료는 대상 아님) */
+const API_LINEAGE_SOURCE_TYPES = ['api_proxy_real', 'api_proxy_sandbox', 'api_mock_fallback'];
+const isApiLineageSnapshot = (sourceType: string | undefined): boolean =>
+  API_LINEAGE_SOURCE_TYPES.includes(String(sourceType ?? '').trim());
+
 /**
- * 청소 대상 스냅샷인가. 실제 API 응답에서 유래한 저장 자료만 대상으로 한다.
- * (demo/mock/synthetic = 시험 데이터, csv/json/manual = 사용자 업로드 → 건드리지 않는다.)
+ * ② orders 리소스에 **실제 성공 근거**가 있는가 (리소스별 권위 판정).
+ * count·userLabel 은 낡거나 표시용일 수 있어 권위 판정에 쓰지 않는다.
+ * 근거 레코드가 아예 없으면 fail-closed(청소하지 않는다).
  */
-const isApiRealSnapshot = (sourceType: string | undefined): boolean =>
-  sourceType === 'api_proxy_real' || sourceType === 'api_proxy_sandbox';
+const hasActualOrdersBasis = (record: ResourceStatusRecord | undefined): record is ResourceStatusRecord =>
+  !!record &&
+  record.provenance === 'actual' &&
+  record.status === 'success' &&
+  record.substitutionBlocked !== true;
 
 const isBlank = (v: unknown): boolean => String(v ?? '').trim() === '';
 
@@ -87,8 +105,11 @@ export function migrateLegacyGhostOrders(
   if (!snapshot || !Array.isArray(snapshot.orders) || snapshot.orders.length === 0) {
     return { snapshot: snapshot as OperationsDataSnapshot, removed: 0 };
   }
-  if (!isApiRealSnapshot(snapshot.sourceType)) {
-    return { snapshot, removed: 0 }; // 시험 데이터·CSV·수기 자료는 대상 아님
+  // 게이트: 전역 API 계보 **그리고** orders 리소스의 실제 성공 근거. 둘 다 아니면 손대지 않는다.
+  //   (시험 데이터·CSV·수기 자료 보호 + 근거 없으면 fail-closed)
+  const ordersProvenance = snapshot.resourceProvenance?.orders;
+  if (!isApiLineageSnapshot(snapshot.sourceType) || !hasActualOrdersBasis(ordersProvenance)) {
+    return { snapshot, removed: 0 };
   }
 
   const kept = snapshot.orders.filter((o) => !isLegacyGhostOrder(o));
@@ -97,14 +118,12 @@ export function migrateLegacyGhostOrders(
 
   const next: OperationsDataSnapshot = { ...snapshot, orders: kept };
 
-  const prevOrdersProvenance = snapshot.resourceProvenance?.orders;
-  if (prevOrdersProvenance) {
-    // 신분(provenance/userLabel/status)은 그대로, 건수만 실제 남은 수로 정정.
-    next.resourceProvenance = {
-      ...snapshot.resourceProvenance,
-      orders: { ...prevOrdersProvenance, count: kept.length }
-    };
-  }
+  // 신분(provenance/userLabel/status)은 그대로, 건수만 실제 남은 수로 정정.
+  // (게이트를 통과했으므로 ordersProvenance 는 반드시 존재한다.)
+  next.resourceProvenance = {
+    ...snapshot.resourceProvenance,
+    orders: { ...ordersProvenance, count: kept.length }
+  };
 
   // qualityReport 는 의도적으로 건드리지 않는다(위 주석 — 도메인 근거 없음).
   return { snapshot: next, removed: removedOrders.length };
