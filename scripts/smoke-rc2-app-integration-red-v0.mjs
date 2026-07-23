@@ -282,10 +282,192 @@ red('A22. 실제 미구현 외부 실행을 성공으로 단언하지 않는다'
   !/샌드박스로 임포트|쿠폰 발급 완료|외부 커밋 성공/.test(appSource + apprModal),
   '미연동 동작을 성공으로 단언하는 문구 잔존');
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// D-1.1 — 역할·소유팀·승인함 실배선 (A23~A32)
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- D-1.1 역할·소유팀·승인함 실배선 ---');
+
+// 아직 없는 어댑터 함수를 호출해도 throw 하지 않고 RED 로 떨어지게 한다.
+const has = (fn) => !!A && typeof A[fn] === 'function';
+const ROLES = ['hq', 'product', 'cs', 'marketing', 'design'];
+const LEADS = {
+  hq: { kind: 'human', teamId: 'hq', label: '총괄 관리자', userId: 'u-hq' },
+  product: { kind: 'human', teamId: 'product', label: '상품관리팀장', userId: 'u-product' },
+  cs: { kind: 'human', teamId: 'cs', label: 'CS팀장', userId: 'u-cs' },
+  marketing: { kind: 'human', teamId: 'marketing', label: '마케팅팀장', userId: 'u-marketing' },
+  design: { kind: 'human', teamId: 'design', label: '디자인팀장', userId: 'u-design' }
+};
+
+// A23 — 실행 시작/실패 중에도 승인 목록 유지 (소스 가드 + 상태 보존)
+red('A23. 작업 시작·실패 시 기존 승인 목록이 화면에서 사라지지 않는다',
+  !/setApprovalQueue\(\[\]\)/.test(appSource) &&
+  (appSource.match(/setApprovalQueue\(/g) || []).length <= 1,
+  `setApprovalQueue([]) 잔존 또는 refreshLifecycleState 밖 직접 호출 (${(appSource.match(/setApprovalQueue\(/g) || []).length}회)`,
+  'setApprovalQueue 는 refreshLifecycleState 단일 지점에서만');
+
+// A24 — 역할 전환 → ActorRef
+red('A24. 역할 전환(hq/product/cs/marketing/design)이 ActorRef 로 그대로 이어진다',
+  (() => { if (!has('actorForRole')) return false;
+    return ROLES.every((r) => {
+      const actor = A.actorForRole(r);
+      return actor && actor.kind === 'human' && actor.teamId === r && typeof actor.label === 'string' && actor.label.length > 0;
+    });
+  })(), noAdapter, ROLES.join('/') + ' 각각 일치');
+
+// A25 — runtime 제안의 담당 팀 = 에이전트 소속
+red('A25. runtime 제안 업무의 담당 팀이 에이전트 소속과 일치한다(제목 추측 아님)',
+  (() => { if (!has('acceptRuntimeProposals')) return false;
+    store.clear(); resetIds();
+    const props = {
+      proposedTasks: [
+        { id: 'T-inv', correlationId: 'C1', title: '재고', agentId: 'inventory_monitor', description: 'd' },
+        { id: 'T-cs', correlationId: 'C1', title: '문의', agentId: 'inquiry_analyst', description: 'd' },
+        { id: 'T-mkt', correlationId: 'C1', title: '캠페인', agentId: 'campaign_planner', description: 'd' },
+        { id: 'T-dsn', correlationId: 'C1', title: '디자인', agentId: 'design_lead', description: 'd' },
+        { id: 'T-mgr', correlationId: 'C1', title: '총괄', agentId: 'manager_agent', description: 'd' }
+      ],
+      proposedApprovalItems: []
+    };
+    A.acceptRuntimeProposals(props, { createdBy: LEADS.hq, nowIso: AT });
+    const all = S.loadLifecycleTasks();
+    const owner = (id) => all.find((t) => t.ref.taskId === id)?.ownerTeamId;
+    return owner('T-inv') === 'product' && owner('T-cs') === 'cs'
+      && owner('T-mkt') === 'marketing' && owner('T-dsn') === 'design' && owner('T-mgr') === 'hq';
+  })(), noAdapter, 'product/cs/marketing/design/hq 각각 일치');
+
+// A26 — 수동 업무의 담당 팀·승인 경로가 생성자·수행팀 관계로 결정
+red('A26. 수동 업무의 담당 팀·승인 경로가 생성자와 수행팀 관계로 결정된다',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    store.clear(); resetIds();
+    // HQ 가 상품팀 에이전트에게 지시 → 담당팀 product · 2단계(팀장→HQ)
+    const byHq = A.createManualTask({ title: 'HQ 지시', assignedAgentId: 'inventory_monitor', createdBy: LEADS.hq }, ids);
+    // 상품팀장이 자기 팀 업무 생성 → 담당팀 product · 1단계(팀장 종료)
+    const byLead = A.createManualTask({ title: '팀 자체', assignedAgentId: 'inventory_monitor', createdBy: LEADS.product }, ids);
+    // CS팀장이 상품팀에 협업 요청 → 담당팀 product · 2단계(수행팀장 → 요청팀)
+    const collab = A.createManualTask({ title: '협업 요청', assignedAgentId: 'inventory_monitor', createdBy: LEADS.cs }, ids);
+    return byHq.ownerTeamId === 'product' && byHq.approvalRoute.stages.length === 2
+      && byHq.approvalRoute.stages[1].approverKind === 'hq'
+      && byLead.ownerTeamId === 'product' && byLead.approvalRoute.stages.length === 1
+      && collab.ownerTeamId === 'product' && collab.approvalRoute.stages.length === 2
+      && collab.approvalRoute.stages[1].approverKind === 'requesting_team'
+      && collab.requestingTeamId === 'cs';
+  })(), noAdapter, 'HQ지시 2단계 · 팀자체 1단계 · 협업 요청팀확인');
+
+// A27~A29 — 실제 단계 권한
+red('A27. 상품팀 업무는 상품팀장 1차 확인만으로 completed 가 아니고 HQ 확인 후에만 completed',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    store.clear(); resetIds();
+    const t = A.createManualTask({ title: 'HQ 지시', assignedAgentId: 'inventory_monitor', createdBy: LEADS.hq }, ids);
+    const r1 = A.applyDecision(t.ref.taskId, { kind: 'approve', actor: A.actorForRole('product') }, { nowIso: AT });
+    if (!r1.ok) return false;
+    const mid = S.loadLifecycleTasks().find((x) => x.ref.taskId === t.ref.taskId);
+    if (mid.status === 'completed') return false;
+    const r2 = A.applyDecision(t.ref.taskId, { kind: 'approve', actor: A.actorForRole('hq') }, { nowIso: AT });
+    const end = S.loadLifecycleTasks().find((x) => x.ref.taskId === t.ref.taskId);
+    return r2.ok && end.status === 'completed';
+  })(), noAdapter, '1차 후 대기 · HQ 후 완료');
+
+red('A28. HQ 가 담당 팀장 단계를 건너뛰어 먼저 승인할 수 없다(상태 불변)',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    store.clear(); resetIds();
+    const t = A.createManualTask({ title: 'HQ 지시', assignedAgentId: 'inventory_monitor', createdBy: LEADS.hq }, ids);
+    const before = S.loadLifecycleTasks().find((x) => x.ref.taskId === t.ref.taskId).status;
+    const r = A.applyDecision(t.ref.taskId, { kind: 'approve', actor: A.actorForRole('hq') }, { nowIso: AT });
+    const after = S.loadLifecycleTasks().find((x) => x.ref.taskId === t.ref.taskId);
+    return r.ok === false && after.status === before && after.decisions.length === 0;
+  })(), noAdapter, '차단 · 상태·이력 불변');
+
+red('A29. 상품팀장은 CS·마케팅팀 업무 단계를 처리할 수 없다',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    store.clear(); resetIds();
+    const csTask = A.createManualTask({ title: 'CS 업무', assignedAgentId: 'inquiry_analyst', createdBy: LEADS.cs }, ids);
+    const mktTask = A.createManualTask({ title: '마케팅 업무', assignedAgentId: 'campaign_planner', createdBy: LEADS.marketing }, ids);
+    const r1 = A.applyDecision(csTask.ref.taskId, { kind: 'approve', actor: A.actorForRole('product') }, { nowIso: AT });
+    const r2 = A.applyDecision(mktTask.ref.taskId, { kind: 'approve', actor: A.actorForRole('product') }, { nowIso: AT });
+    return r1.ok === false && r2.ok === false;
+  })(), noAdapter, '타 팀 단계 차단');
+
+// A30 — 팀장 '내 확인 대기'
+red('A30. 팀장 역할에서 본인이 결정 가능한 업무만 "내 확인 대기" 에 보인다',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    store.clear(); resetIds();
+    A.createManualTask({ title: '상품 업무', assignedAgentId: 'inventory_monitor', createdBy: LEADS.hq }, ids);
+    A.createManualTask({ title: 'CS 업무', assignedAgentId: 'inquiry_analyst', createdBy: LEADS.hq }, ids);
+    const forProduct = A.pendingForActor(A.actorForRole('product'));
+    const forCs = A.pendingForActor(A.actorForRole('cs'));
+    const forHq = A.pendingForActor(A.actorForRole('hq'));
+    return forProduct.length === 1 && forProduct[0].title === '상품 업무'
+      && forCs.length === 1 && forCs[0].title === 'CS 업무'
+      && forHq.length === 0;   // 아직 팀장 단계라 HQ 는 결정할 수 없다
+  })(), noAdapter, '팀장 각 1건 · HQ 0건(팀장 단계 선행)');
+
+red('A30b. HQ 는 전체 업무를 열람할 수 있다(결정 가능 여부와 분리)',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    const all = A.hydrateAppState();
+    return all.tasks.length === 2 && A.pendingForActor(A.actorForRole('hq')).length === 0;
+  })(), noAdapter, '열람 2건 · 결정 가능 0건');
+
+// A31 — 결정 후 새로고침 보존
+red('A31. 각 결정 후 새로고침해도 단계·이력·원본·수정본이 보존된다',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    store.clear(); resetIds();
+    const t = A.createManualTask({ title: 'HQ 지시', assignedAgentId: 'inventory_monitor', createdBy: LEADS.hq }, ids);
+    A.applyDecision(t.ref.taskId, { kind: 'approve', actor: A.actorForRole('product') }, { nowIso: AT });
+    const afterStage1 = reload();
+    const stillPending = afterStage1.approvalQueue.some((q) => q.taskId === t.ref.taskId);
+    const rev = A.applyDecision(t.ref.taskId, { kind: 'request_revision', actor: A.actorForRole('hq'), reason: '재확인' },
+      { nowIso: AT, newId: ids.newId });
+    const after = reload();
+    const all = S.loadLifecycleTasks();
+    const orig = all.find((x) => x.ref.taskId === t.ref.taskId);
+    const revision = all.find((x) => x.ref.revisionOfTaskId === t.ref.taskId);
+    return stillPending && rev.ok && orig.status === 'superseded' && !!revision
+      && orig.decisions.length === 2 && after.history.length === all.length;
+  })(), noAdapter, '단계·이력·원본·수정본 보존');
+
+// A32 — 기존 N건 + 신규 합침
+red('A32. 기존 승인 N건에 새 runtime 결과가 더해질 때 소실·중복이 없다',
+  (() => { if (!has('actorForRole') || !has('createManualTask') || !has('pendingForActor')) return false;
+    store.clear(); resetIds();
+    A.createManualTask({ title: '기존1', assignedAgentId: 'inventory_monitor', createdBy: LEADS.hq }, ids);
+    A.createManualTask({ title: '기존2', assignedAgentId: 'inquiry_analyst', createdBy: LEADS.hq }, ids);
+    const before = reload().approvalQueue.length;
+    A.acceptRuntimeProposals({
+      proposedTasks: [{ id: 'T-new', correlationId: 'C-new', title: '신규', agentId: 'campaign_planner', description: 'd' }],
+      proposedApprovalItems: [{ taskId: 'T-new', correlationId: 'C-new', title: '신규', agentId: 'campaign_planner' }]
+    }, { createdBy: LEADS.hq, nowIso: AT });
+    const after = reload();
+    const ids2 = after.approvalQueue.map((q) => q.taskId);
+    return before === 2 && after.approvalQueue.length === 3
+      && new Set(ids2).size === ids2.length
+      && after.tasks.some((t) => t.title === '기존1') && after.tasks.some((t) => t.title === '기존2');
+  })(), noAdapter, '2 → 3건 · 중복 0 · 기존 보존');
+
+// ── 소스 가드 ────────────────────────────────────────────────────────────────
+red('A33. sessionActor 가 teamId:\'hq\' 로 하드코딩돼 있지 않다',
+  !/toActorRef\(\{\s*teamId:\s*'hq'/.test(appSource),
+  "sessionActor 가 'hq' 고정");
+
+red('A34. runtime/manual 생성부에 무조건 ownerTeamId:\'hq\' 가 없다',
+  !/ownerTeamId:\s*'hq'/.test(appSource),
+  "App 에 ownerTeamId:'hq' 고정 잔존");
+
+red('A35. App 이 역할 전환기(sessionRole)를 결정 권한에 연결한다',
+  /actorForRole/.test(appSource) && /viewerRole|sessionRole|loadRole/.test(appSource),
+  'App 이 역할을 ActorRef 로 쓰지 않음');
+
+red('A36. 팀장용 "내 확인 대기" 진입로가 기존 승인 모달을 재사용해 존재한다',
+  /내 확인 대기/.test(appSource + apprModal + readFileSync(path.join(REPO, 'src', 'components', 'ApprovalListModal.tsx'), 'utf8')) &&
+  /pendingForActor/.test(appSource),
+  "'내 확인 대기' 진입로 없음");
+
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (전제 — fail>0이면 검사 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (App 실배선 통합 계약)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (App 실배선 통합 계약 A1~A36)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0 || redUnmet > 0) {
   console.log(`\n✗ 미충족 — BASE fail ${baseF} · RED unmet ${redUnmet}`);
