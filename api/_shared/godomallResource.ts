@@ -1,8 +1,11 @@
 // 리소스 단위 로딩 오케스트레이터
-// real/sandbox Open API 호출 -> 실패 시 mock fallback.
-// source 표기: api_proxy_real / api_proxy_sandbox / api_mock_fallback
+// DATA-SOURCE-SERVER-01 계약:
+//   real/sandbox 성공          -> 실제 자료 (빈배열이어도 **실제 데이터 0건**, live:true)
+//   real/sandbox 실패·미구현·키 부재 -> **연결 안 됨(0건)**. mock 을 자동으로 만들어 넣지 않는다.
+//   명시적 mock 모드           -> fixture (사용자가 시험 모드를 선택한 경우에만)
+// source 표기: api_proxy_real / api_proxy_sandbox / api_mock_fallback / unavailable
 //
-// 이 모듈만 사용하면 각 라우트(sync.ts, orders.ts 등)는 동일한 동작/표기를 보장한다.
+// 이 모듈만 사용하면 각 라우트(sync.ts, [resource].ts 등)는 동일한 동작/표기를 보장한다.
 
 import { getGodomallConfig, isLiveMode, postGodomall } from './godomallOpenApiClient.js';
 import { parseGodomallXml, extractList } from './godomallXmlParser.js';
@@ -116,7 +119,7 @@ const fetchLiveRecords = async (
   }
 
   // inquiries / reviews: 공식 게시판 endpoint(Board_List.php) 확인 전까지 라이브 미지원.
-  // 임의 endpoint를 만들지 않고 명시적으로 미지원 처리 -> mock fallback으로 전환된다.
+  // 임의 endpoint를 만들지 않고 명시적으로 미지원 처리 -> 호출부가 '연결 안 됨(0건)'으로 반환한다.
   throw new Error(`Live fetch for [${resourceType}] is not configured yet (requires Board_List.php mapping).`);
 };
 

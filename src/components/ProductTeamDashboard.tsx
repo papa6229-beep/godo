@@ -6,6 +6,7 @@ import type {
   RevenueOrderLite,
   StockImpactItem
 } from '../services/departmentDataService';
+import { resolveRevenueScreenState } from '../services/revenueScreenState';
 import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
 import {
   aggregateProductRanking as aggregateProducts,
@@ -673,7 +674,18 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   );
 
   const synthOn = (summary?.syntheticOrderCount ?? 0) > 0;
-  const unavailable = !revenue || revenue.source === 'unavailable' || !summary;
+  // DATA-SOURCE-SERVER-01(GREEN F): 최상위 source 하나로 숨기지 않는다.
+  //   실제 주문만 실패하고 2년치 시뮬레이션이 살아 있으면 시험 데이터로 계속 사용한다.
+  const screenState = resolveRevenueScreenState(revenue ? {
+    loaded: true,
+    realOrdersStatus: revenue.realOrdersStatus,
+    syntheticStatus: revenue.syntheticStatus,
+    syntheticOrderCount: summary?.syntheticOrderCount ?? 0,
+    hasSummary: !!summary,
+    realOrdersErrorMessage: revenue.realOrdersErrorMessage,
+    syntheticErrorMessage: revenue.syntheticErrorMessage
+  } : null);
+  const unavailable = !screenState.usable;
   const topCat = categoryData.items[0];
 
   return (
@@ -696,6 +708,12 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         <div className="ptd-empty">데이터를 불러오지 못했습니다. (로컬 dev에서는 서버 라우트가 없을 수 있습니다 — 배포 환경에서 확인하세요.)</div>
       ) : (
         <>
+          {/* 실제 주문 연결만 실패한 경우: 시험 통계는 그대로 두고 안내만 함께 표시한다. */}
+          {screenState.realOrdersNotice && (
+            <div className="ptd-notice" style={{ padding: '8px 12px', marginBottom: 10, borderRadius: 8, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontSize: '0.85em' }}>
+              ※ {screenState.realOrdersNotice}
+            </div>
+          )}
           <div className="ptd-filterbar">
             {/* 1차 조건 = 기간 (CS팀과 통일). KPI·추이·구성·순위가 모두 이 기준을 공유 */}
             <div className="ptd-filter-group ptd-filter-group-period">

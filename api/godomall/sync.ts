@@ -15,7 +15,8 @@ const VALID_RESOURCES: ResourceType[] = ['orders', 'inquiries', 'reviews', 'inve
 
 // POST /api/godomall/sync
 // 모드(real/sandbox/mock)는 서버 환경변수(GODOMALL_API_MODE)가 권위를 가진다.
-// real/sandbox 실패 시 자동으로 mock fallback. source로 출처를 명시한다.
+// DATA-SOURCE-SERVER-01: real/sandbox 실패·미구현·키 부재는 **mock 자동 대체 없이** 연결 안 됨(0건)이다.
+//   리소스별 sources 가 권위이고, 전역 sourceType/syncStatus 는 표시용이다(부분 실패면 partial).
 export default async function handler(req: ExtendedRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only POST is accepted.', 405);

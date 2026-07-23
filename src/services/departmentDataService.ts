@@ -4,6 +4,8 @@
 // 서버 라우트에서 읽어온다. 프론트는 고도몰 API를 직접 호출하지 않으며, 키도 다루지 않는다.
 // 라우트 실패 시(로컬 dev 등) UI가 깨지지 않도록 안전하게 빈 결과로 폴백한다.
 
+import type { RealOrdersStatus, SyntheticStatus } from './revenueScreenState';
+
 export type DataSourceTag = 'real' | 'sandbox' | 'mock' | 'unavailable';
 
 export interface AdminProduct {
@@ -356,6 +358,13 @@ export interface RevenueResult {
   count: number;
   source: DataSourceTag;
   live: boolean;
+  // DATA-SOURCE-SERVER-01(GREEN F): 실제 주문 slice 와 시뮬레이션 slice 의 상태를 **유실 없이** 보존한다.
+  //   최상위 source 는 실제 주문 slice 기준이라, 이것만 보면 멀쩡한 시뮬레이션까지 가려진다.
+  //   화면 판정은 resolveRevenueScreenState(두 slice 를 함께 봄)로 한다.
+  realOrdersStatus?: RealOrdersStatus;
+  syntheticStatus?: SyntheticStatus;
+  realOrdersErrorMessage?: string;
+  syntheticErrorMessage?: string;
   summary: RevenueSummary | null;
   stockImpact: StockImpactItem[];
   orders: RevenueOrderLite[];
@@ -495,6 +504,11 @@ export const fetchRevenue = async (
       //   (구버전 응답 호환을 위해 없을 때만 mode/live 추정으로 물러선다.)
       source: typeof data.sourceType === 'string' ? toSourceTag(data.sourceType) : tagFromModeLive(data.mode, data.live),
       live: data.live === true,
+      // slice 상태 보존(구버전 응답이면 undefined → 판정 함수가 fail-closed 처리).
+      realOrdersStatus: data.realOrdersStatus as RealOrdersStatus | undefined,
+      syntheticStatus: data.syntheticStatus as SyntheticStatus | undefined,
+      realOrdersErrorMessage: data.realOrdersErrorMessage as string | undefined,
+      syntheticErrorMessage: data.syntheticErrorMessage as string | undefined,
       summary: parseSummary(data.summary as Record<string, unknown> | undefined),
       stockImpact,
       orders,

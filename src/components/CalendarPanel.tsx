@@ -3,6 +3,7 @@ import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { CalendarMetricLevel } from '../types/calendar';
 import { fetchRevenue, type RevenueResult } from '../services/departmentDataService';
 import { classifyStockRisk, summarizeStockRisk } from '../services/inventoryRiskContract';
+import { resolveRevenueScreenState } from '../services/revenueScreenState';
 import './CalendarPanel.css';
 
 // Operation Calendar Revenue Binding v0
@@ -80,6 +81,17 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
   // 1. revenue 데이터 fetch (운영일지 진입 시 1회)
   const [revenue, setRevenue] = useState<RevenueResult | null>(null);
   const [loaded, setLoaded] = useState(false);
+
+  // DATA-SOURCE-SERVER-01(GREEN F): 화면 데이터 상태는 두 slice 를 함께 보는 공통 판정으로 결정한다.
+  const calendarDataState = resolveRevenueScreenState(revenue ? {
+    loaded: true,
+    realOrdersStatus: revenue.realOrdersStatus,
+    syntheticStatus: revenue.syntheticStatus,
+    syntheticOrderCount: revenue.summary?.syntheticOrderCount ?? 0,
+    hasSummary: !!revenue.summary,
+    realOrdersErrorMessage: revenue.realOrdersErrorMessage,
+    syntheticErrorMessage: revenue.syntheticErrorMessage
+  } : null);
   useEffect(() => {
     let active = true;
     void fetchRevenue(true).then((r) => {
@@ -334,9 +346,16 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
       </div>
 
       {!loaded && <div className="empty-data-message" style={{ padding: '10px 0', color: 'var(--text-muted)' }}>매출 데이터를 불러오는 중…</div>}
-      {loaded && revenue?.source === 'unavailable' && (
+      {/* DATA-SOURCE-SERVER-01(GREEN F): 실제 주문만 실패하고 시뮬레이션이 살아 있으면
+          시험 데이터를 계속 보여주고 안내만 덧붙인다(달력·그래프를 숨기지 않는다). */}
+      {loaded && !calendarDataState.usable && (
         <div className="empty-data-message" style={{ padding: '10px 0', color: 'var(--warning, #ffb300)' }}>
           ※ 매출 데이터를 불러오지 못했습니다. (로컬 dev에서는 서버 라우트가 없을 수 있습니다 — 배포 환경에서 확인하세요.)
+        </div>
+      )}
+      {loaded && calendarDataState.usable && calendarDataState.realOrdersNotice && (
+        <div className="empty-data-message" style={{ padding: '10px 0', color: 'var(--warning, #ffb300)' }}>
+          ※ {calendarDataState.realOrdersNotice}
         </div>
       )}
 
