@@ -610,7 +610,8 @@ function App() {
 
       // OperationHistoryItem 축적 저장 (캘린더 연동)
       const newHistoryItem: OperationHistoryItem = {
-        id: `op-hist-${Date.now()}`,
+        // RC-2: 임의 시각 기반 id 대신 이 실행의 run id 로 고정한다(역추적 가능·순수).
+        id: `op-hist-${runtimeResult.run.id}`,
         date: activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
         timestamp: new Date().toLocaleTimeString(),
         sourceType: activeOperationsData.sourceType,
