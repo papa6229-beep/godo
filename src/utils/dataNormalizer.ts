@@ -126,11 +126,14 @@ export const normalizeOrder = (
   //   (과거: 옵션 없으면 '기본옵션', 상태 없으면 '결제완료'/'배송대기'로 단정 → 거짓 표시)
   //   미확인은 빈 문자열로 보존하고, 표시 계층이 '미확인'으로 노출한다.
   const optionName = norm.optionName || '';
-  const quantity = parseInt(norm.quantity || '1', 10);
+  // 존재 근거로 판단한다(값의 truthy/falsy 아님). 상류에 필드 자체가 없으면 '미확인'.
+  const quantityKnown = String(norm.quantity ?? '').trim().length > 0;
+  const quantity = quantityKnown ? parseInt(norm.quantity, 10) || 0 : 0;
   const paymentStatus = norm.paymentStatus || '';
   const deliveryStatus = norm.deliveryStatus || '';
   const invoiceNo = norm.invoiceNo || '';
-  const amount = parseFloat((norm.amount || '0').replace(/[^0-9.]/g, ''));
+  const amountKnown = String(norm.amount ?? '').trim().length > 0;
+  const amount = amountKnown ? (parseFloat(norm.amount.replace(/[^0-9.]/g, '')) || 0) : 0;
   
   // 필수값 검사
   if (!orderNo || !orderDate || !productName) {
@@ -192,9 +195,21 @@ export const normalizeOrder = (
     deliveryStatus,
     invoiceNo,
     amount,
-    riskFlags
+    riskFlags,
+    quantityKnown,
+    amountKnown
   };
 };
+
+// ── GODO-ORDER-MAPPING-01(D-1): 주문 수량·금액 표시 규칙 (순수 함수) ─────────
+// 화면(DataPanel 등)이 직접 문자열을 조립하지 않고 이 규칙만 쓴다 → 회귀검증 가능.
+//   근거 없음(known === false) → '미확인'
+//   근거 있음 → 실제 값 그대로 (수량 1도, 금액 0원도 그대로)
+export const displayOrderQuantity = (order: Pick<StandardOrder, 'quantity' | 'quantityKnown'>): string =>
+  order.quantityKnown === false ? '미확인' : String(order.quantity);
+
+export const displayOrderAmount = (order: Pick<StandardOrder, 'amount' | 'amountKnown'>): string =>
+  order.amountKnown === false ? '미확인' : `${order.amount.toLocaleString()}원`;
 
 /**
  * CS 문의 데이터 정규화

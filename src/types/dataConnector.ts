@@ -30,6 +30,14 @@ export interface StandardOrder {
   invoiceNo: string;
   amount: number;
   riskFlags: string[];
+  /**
+   * GODO-ORDER-MAPPING-01(D-1): 값의 "존재 근거" 표식.
+   * 상류에 수량/금액 필드 자체가 없었으면 false → 화면은 '미확인'으로 표시한다.
+   * 값이 0/1인지와 근거가 없는지를 **값으로 추측하지 않기 위한** 필드다.
+   * (optional — 기존 자료·mock은 undefined = 근거 있음으로 취급, 하위호환)
+   */
+  quantityKnown?: boolean;
+  amountKnown?: boolean;
 }
 
 export interface StandardInquiry {

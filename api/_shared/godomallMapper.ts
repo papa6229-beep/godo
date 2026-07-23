@@ -337,7 +337,10 @@ export const interpretOrderRecord = (o: Raw): OrderRecordView => {
     invoiceNo: pick(o, ['invoiceNo', 'deliveryNo', 'invoice'], ''),
     productAmount,
     deliveryFee,
-    totalAmount: settle || productAmount + deliveryFee,
+    // GODO-ORDER-MAPPING-01(D-1): settlePrice 필드가 **존재하면** 값이 0이어도 그 값을 우선한다.
+    // (truthy/falsy 로 판단하면 명시된 0원이 상품금액+배송비로 뒤바뀐다.)
+    // settlePrice 자체가 없을 때만 상품금액+배송비를 fallback 으로 쓴다.
+    totalAmount: settleRaw !== '' ? settle : productAmount + deliveryFee,
     hasAmountBasis: settleRaw !== '' || productAmountRaw !== '' || deliveryFeeRaw !== '',
     hasStatusBasis: orderStatus !== '' || paymentDt !== '' || payTextHint !== '',
     hasDeliveryBasis: orderStatus !== '' || delivTextHint !== '',
