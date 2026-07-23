@@ -358,7 +358,7 @@ export const TaskResultModal: React.FC<TaskResultModalProps> = ({
                           </button>
                         )}
                         <button onClick={() => onReject(appr.id)} style={modalRejectBtnStyle}>
-                          거절 (Reject)
+                          이번 결과 사용 안 함
                         </button>
                         <button onClick={() => onApprove(appr.id)} style={modalApproveBtnStyle}>
                           승인 (Approve)

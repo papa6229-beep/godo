@@ -7,7 +7,11 @@ interface ApprovalDetailModalProps {
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   /** RC-2: 작업 중단. 기록은 삭제하지 않고 대기열에서만 내린다. */
-  onCancel?: (id: string) => void;
+  onCancel?: (id: string, reason?: string) => void;
+  /** RC-2 D-1: 수정 요청 — 기존 결과를 보존하고 새 revision 업무를 만든다(사유 필수). */
+  onRequestRevision?: (id: string, reason: string) => void;
+  /** 협업 자식 업무에서만 노출. */
+  onReturn?: (id: string, reason?: string) => void;
 }
 
 export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
@@ -15,9 +19,14 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
   onClose,
   onApprove,
   onReject,
-  onCancel
+  onCancel,
+  onRequestRevision,
+  onReturn
 }) => {
   const [showTechDetails, setShowTechDetails] = useState(false);
+  // RC-2 D-1: 수정 요청은 사유가 필요하다(빈 사유 금지).
+  const [revisionReason, setRevisionReason] = useState('');
+  const [showRevisionInput, setShowRevisionInput] = useState(false);
 
   // ESC 키로 닫기
   React.useEffect(() => {
@@ -39,7 +48,19 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
   };
 
   const handleCancelAction = () => {
-    onCancel?.(item.id);
+    onCancel?.(item.id, '운영자 작업 중단');
+    onClose();
+  };
+
+  const handleRevisionAction = () => {
+    const reason = revisionReason.trim();
+    if (!reason) return;              // 빈 사유 금지
+    onRequestRevision?.(item.id, reason);
+    onClose();
+  };
+
+  const handleReturnAction = () => {
+    onReturn?.(item.id, '수행 불가로 반송');
     onClose();
   };
 
@@ -232,18 +253,47 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
         <div style={modalFooterStyle}>
           <button onClick={onClose} style={cancelBtnStyle}>닫기</button>
           {item.status === 'waiting' && (
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={handleRejectAction} style={rejectActionBtnStyle}>
-                거절 (Reject)
-              </button>
-              {onCancel && (
-                <button onClick={handleCancelAction} style={{ ...rejectActionBtnStyle, background: 'transparent', border: '1px solid var(--border, #444)', color: 'var(--text-muted, #999)' }}>
-                  작업 중단
-                </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+              {showRevisionInput && (
+                <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+                  <input
+                    autoFocus
+                    value={revisionReason}
+                    onChange={(e) => setRevisionReason(e.target.value)}
+                    placeholder="수정이 필요한 이유를 적어주세요 (필수)"
+                    style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border, #444)', background: 'transparent', color: 'inherit', fontSize: '0.85em' }}
+                  />
+                  <button onClick={handleRevisionAction} disabled={!revisionReason.trim()} style={{ ...approveActionBtnStyle, opacity: revisionReason.trim() ? 1 : 0.5 }}>
+                    수정 요청 보내기
+                  </button>
+                </div>
               )}
-              <button onClick={handleApproveAction} style={approveActionBtnStyle}>
-                승인 및 조치 실행 (Approve)
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {onReturn && (
+                  <button onClick={handleReturnAction} style={{ ...rejectActionBtnStyle, background: 'transparent', border: '1px solid var(--border, #444)', color: 'var(--text-muted, #999)' }}>
+                    협업 요청 반송
+                  </button>
+                )}
+                {onCancel && (
+                  <button onClick={handleCancelAction} style={{ ...rejectActionBtnStyle, background: 'transparent', border: '1px solid var(--border, #444)', color: 'var(--text-muted, #999)' }}>
+                    작업 중단
+                  </button>
+                )}
+                <button onClick={handleRejectAction} style={rejectActionBtnStyle}>
+                  이번 결과 사용 안 함
+                </button>
+                {onRequestRevision && (
+                  <button onClick={() => setShowRevisionInput((v) => !v)} style={{ ...rejectActionBtnStyle, background: 'transparent', border: '1px solid var(--border, #444)', color: 'inherit' }}>
+                    수정 요청
+                  </button>
+                )}
+                <button onClick={handleApproveAction} style={approveActionBtnStyle}>
+                  확인 완료
+                </button>
+              </div>
+              <span style={{ fontSize: '0.72em', color: 'var(--text-muted, #888)' }}>
+                ※ 확인 기록만 남습니다. 고도몰 외부 실제 실행은 아직 연동되지 않았습니다.
+              </span>
             </div>
           )}
         </div>

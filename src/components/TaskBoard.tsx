@@ -420,7 +420,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
                             onReject(item.id);
                           }}
                         >
-                          거절 (Reject)
+                          이번 결과 사용 안 함
                         </button>
                       </>
                     ) : (
