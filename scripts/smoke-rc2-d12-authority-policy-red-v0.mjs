@@ -37,10 +37,11 @@ globalThis.window = {
   addEventListener() {}, removeEventListener() {}
 };
 
-let A, L, S;
+let A, L, S, D;
 try {
   execFileSync(process.execPath, [tscBin,
     path.join(REPO, 'src', 'services', 'taskLifecycleAppAdapter.ts'),
+    path.join(REPO, 'src', 'services', 'standingDirectiveContract.ts'),
     '--ignoreConfig', '--rootDir', path.join(REPO, 'src'), '--outDir', tmp,
     '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck'], { stdio: 'pipe' });
   for (const sub of ['services', 'types', 'data']) {
@@ -56,6 +57,7 @@ try {
   A = await imp('taskLifecycleAppAdapter.js');
   L = await imp('taskLifecycleContract.js');
   S = await imp('taskLifecycleStore.js');
+  try { D = await imp('standingDirectiveContract.js'); } catch { D = null; }
 } catch (e) {
   console.error('[smoke] tsc emit 실패:\n', e.stdout?.toString() || e.message);
   rmSync(tmp, { recursive: true, force: true });
@@ -69,6 +71,8 @@ const taskBoard = src('src/components/TaskBoard.tsx');
 const agentModal = src('src/components/AgentDetailModal.tsx');
 const apprDetail = src('src/components/ApprovalDetailModal.tsx');
 const apprList = src('src/components/ApprovalListModal.tsx');
+const agentTaskPanel = src('src/components/AgentTaskPanel.tsx');
+const agentTaskRunner = src('src/services/agentTaskRunner.ts');
 
 let baseP = 0, baseF = 0, redMet = 0, redUnmet = 0;
 const base = (n, c, cur) => { console.log(`  ${c ? 'PASS' : 'FAIL'} [BASE] ${n}${cur ? `  — ${cur}` : ''}`); c ? baseP++ : baseF++; };
@@ -506,10 +510,90 @@ red('P41. 수정본은 담당 팀장에게 돌아가고 직전 수행자는 추�
       && rev.approvalRoute.currentStageIndex === 0 && leadSees && !hqCanDecide;
   })(), noFn('createDirectiveTask'), '수행자 미정 · 추천값 보존 · 팀장에게 반환');
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// 상시 지시(자동 스케줄) P42~P48
+//   팀장이 미리 승인한 것만 자동으로 돈다. 고위험은 상시 승인이 있어도 확인 생략 불가.
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- 상시 지시(자동 스케줄) ---');
+
+const noD = '상시 지시 계약(standingDirectiveContract) 없음';
+const LEAD_ACTOR = { userId: 'u-product', teamId: 'product', label: '상품관리팀장' };
+const mkStanding = (over) => ({
+  ownerTeamId: 'product', ownerLeadUserId: 'u-product', scope: '재고 부족 알림만',
+  schedule: { kind: 'daily', at: '09:00' }, active: true,
+  riskLevel: 'normal', source: 'real', history: [], ...over
+});
+
+red('P42. 팀장 승인이 없는 자동 업무는 스스로 돌지 않는다',
+  (() => { if (!D) return false;
+    const v = D.canRunStandingDirective(mkStanding({ approvedByLeadAt: undefined }));
+    const none = D.canRunStandingDirective(undefined);
+    return v.allowed === false && v.reason.includes('팀장')
+      && none.allowed === false && none.reason.includes('팀장');
+  })(), noD, '미승인·미등록 모두 자동 실행 차단');
+
+red('P43. 중지된 상시 지시는 실행되지 않는다',
+  (() => { if (!D) return false;
+    const v = D.canRunStandingDirective(mkStanding({ active: false, approvedByLeadAt: AT }));
+    return v.allowed === false && v.reason.includes('중지');
+  })(), noD, '중지 시 실행 차단');
+
+red('P44. 상시 지시는 소유 팀장·범위·주기·활성·최근 승인 시각을 보존한다',
+  (() => { if (!D) return false;
+    const r = D.approveStanding(mkStanding({ approvedByLeadAt: undefined }), { actor: LEAD_ACTOR, nowIso: AT });
+    if (!r.ok) return false;
+    const d = r.directive;
+    return d.ownerLeadUserId === 'u-product' && d.scope === '재고 부족 알림만'
+      && d.schedule.kind === 'daily' && d.active === true && d.approvedByLeadAt === AT
+      && D.canRunStandingDirective(d).allowed === true;
+  })(), noD, '소유·범위·주기·활성·승인시각 보존');
+
+red('P45. 중지·재개·범위변경 이력이 덮어써지지 않고 쌓인다',
+  (() => { if (!D) return false;
+    let d = mkStanding({ approvedByLeadAt: undefined });
+    const a = D.approveStanding(d, { actor: LEAD_ACTOR, nowIso: AT }); if (!a.ok) return false;
+    const b = D.pauseStanding(a.directive, { actor: LEAD_ACTOR, nowIso: AT, note: '점검' }); if (!b.ok) return false;
+    const c = D.resumeStanding(b.directive, { actor: LEAD_ACTOR, nowIso: AT }); if (!c.ok) return false;
+    const e = D.changeStandingScope(c.directive, { scope: '재고+가격', actor: LEAD_ACTOR, nowIso: AT }); if (!e.ok) return false;
+    const kinds = e.directive.history.map((h) => h.kind);
+    // 재개·범위변경 후에는 다시 승인해야 돈다(이전 승인을 승계하지 않는다).
+    return kinds.join(',') === 'approved,paused,resumed,scope_changed'
+      && e.directive.history.some((h) => h.note === '점검')
+      && D.canRunStandingDirective(e.directive).allowed === false;
+  })(), noD, '4건 누적 · 사유 보존 · 재승인 필요');
+
+red('P46. 고위험 자동 업무는 상시 승인이 있어도 팀장 확인을 생략하지 않는다',
+  (() => { if (!D) return false;
+    const v = D.canRunStandingDirective(mkStanding({ approvedByLeadAt: AT, riskLevel: 'high' }));
+    const n = D.canRunStandingDirective(mkStanding({ approvedByLeadAt: AT }));
+    return v.allowed === true && v.requiresLeadConfirmation === true && n.requiresLeadConfirmation === false;
+  })(), noD, '고위험은 결과 확인 필수');
+
+red('P47. 시험 출처 스케줄 결과는 실제 자료로 표시되지 않는다',
+  (() => { if (!D) return false;
+    const sim = D.canRunStandingDirective(mkStanding({ approvedByLeadAt: AT, source: 'simulation' }));
+    const real = D.canRunStandingDirective(mkStanding({ approvedByLeadAt: AT }));
+    return sim.dataKind === 'fixture' && real.dataKind === 'real';
+  })(), noD, '시험=fixture · 실제=real');
+
+red('P48. 소유 팀장이 아니면 상시 지시를 승인·중지할 수 없다',
+  (() => { if (!D) return false;
+    const hqActor = { userId: 'u-hq', teamId: 'hq', label: '총괄 관리자' };
+    const a = D.approveStanding(mkStanding({ approvedByLeadAt: undefined }), { actor: hqActor, nowIso: AT });
+    const b = D.pauseStanding(mkStanding({ approvedByLeadAt: AT }), { actor: hqActor, nowIso: AT });
+    return a.ok === false && b.ok === false;
+  })(), noD, '소유 팀장 외 차단');
+
+red('P49. 자동 실행 경로가 상시 지시 승인 여부를 확인한 뒤 실행한다',
+  /canRunStandingDirective/.test(agentTaskPanel) || /canRunStandingDirective/.test(agentTaskRunner),
+  '자동 업무 실행부가 승인 여부를 확인하지 않고 바로 실행');
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (진단 전제 — fail>0이면 진단 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (확정 권한 정책 P1~P41 + A26R/A27R)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (확정 권한 정책 P1~P49 + A26R/A27R)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0) { console.log('\n✗ 진단 전제 불일치'); process.exit(1); }
 if (redUnmet > 0) {

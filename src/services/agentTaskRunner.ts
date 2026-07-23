@@ -11,6 +11,8 @@ import type { RevenueResult } from './departmentDataService';
 import type { DepartmentSourceOfTruthSnapshot } from './departmentDataSourceOfTruth';
 import type { AgentTaskSpec } from '../types/agentTask';
 import type { TeamMessage, TeamMessageActor } from '../types/teamMessage';
+import { canRunStandingDirective } from './standingDirectiveContract';
+import type { StandingRunVerdict } from './standingDirectiveContract';
 
 const won = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
 const cnt = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}`;
@@ -73,6 +75,15 @@ export function postAgentReport(spec: AgentTaskSpec, report: { title: string; bo
       taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec) }, ctx.nowIso);
   }
   return { posted };
+}
+
+/**
+ * RC-2 D-1.2 — 이 자동 업무가 **스스로** 돌아도 되는지.
+ *   사람이 화면에서 직접 누른 실행은 여기 해당하지 않는다(그건 사람의 결정이다).
+ *   상시 지시가 없거나 승인이 없으면 자동 실행하지 않고 팀장 확인 대기로 남긴다.
+ */
+export function canAutoRunAgentTask(spec: AgentTaskSpec): StandingRunVerdict {
+  return canRunStandingDirective(spec.standing);
 }
 
 // 자동 완료 경로(approvalMode='auto' 또는 스케줄러): 계산 → 발신 → 원장(done).

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { runAgentTask, stageApprovalTask, approveAgentTask } from '../services/agentTaskRunner';
+import { runAgentTask, stageApprovalTask, approveAgentTask, canAutoRunAgentTask } from '../services/agentTaskRunner';
 import { scheduleLabel, APPROVAL_MODE_META, FOCUS_META, type AgentTaskSpec } from '../types/agentTask';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
 import type { RevenueResult } from '../services/departmentDataService';
@@ -19,15 +19,29 @@ interface Pending { body: string; editable: boolean }
 export const AgentTaskPanel: React.FC<Props> = ({ tasks, revenue, onRan }) => {
   const [done, setDone] = useState<Record<string, string>>({});   // 완료 결과 본문
   const [pending, setPending] = useState<Record<string, Pending>>({}); // 승인 대기 본문
+  // 자동 완료가 막힌 이유(상시 지시 미승인 · 중지 · 고위험)를 그대로 보여 준다.
+  const [gateNote, setGateNote] = useState<Record<string, string>>({});
 
   const run = (spec: AgentTaskSpec) => {
-    if (spec.approvalMode === 'auto') {
+    // RC-2 D-1.2: 자동 완료는 '팀장이 승인해 둔 상시 지시' + '고위험 아님' 일 때만.
+    //   고위험이거나 상시 승인이 없으면 결과를 바로 내보내지 않고 팀장 확인 대기로 둔다.
+    const verdict = canAutoRunAgentTask(spec);
+    const mayAutoComplete = spec.approvalMode === 'auto' && verdict.allowed && !verdict.requiresLeadConfirmation;
+    if (mayAutoComplete) {
       const { body } = runAgentTask(spec, { revenue });
       setDone((p) => ({ ...p, [spec.id]: body }));
       setPending((p) => { const n = { ...p }; delete n[spec.id]; return n; });
     } else {
       const { body } = stageApprovalTask(spec, { revenue });
       setPending((p) => ({ ...p, [spec.id]: { body, editable: spec.approvalMode === 'draft' } }));
+      if (spec.approvalMode === 'auto') {
+        setGateNote((p) => ({
+          ...p,
+          [spec.id]: verdict.requiresLeadConfirmation && verdict.allowed
+            ? '고위험 업무라 상시 지시가 있어도 팀장 확인 후 보고합니다.'
+            : (verdict.reason ?? '담당 팀장 확인이 필요합니다.')
+        }));
+      }
     }
     onRan();
   };
@@ -68,6 +82,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ tasks, revenue, onRan }) => {
                 {pend ? (
                   <div className="atask-pending">
                     <div className="atask-pending-label">🕒 {t.approvalMode === 'draft' ? '초안 검토 후 등록' : '승인 대기'}</div>
+                    {gateNote[t.id] && <div className="atask-gate-note">⚠ {gateNote[t.id]}</div>}
                     {pend.editable ? (
                       <textarea className="atask-pending-edit" rows={3} value={pend.body}
                         onChange={(e) => setPending((p) => ({ ...p, [t.id]: { ...p[t.id], body: e.target.value } }))} />

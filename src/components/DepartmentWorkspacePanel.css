@@ -692,5 +692,6 @@
 .atask-agent { font-weight: 600; color: var(--text-secondary); }
 .atask-result { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent-primary, #31D6C4) 30%, transparent); font-size: 11px; color: var(--accent-primary, #31D6C4); font-weight: 600; }
 .atask-result-body { margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--text-secondary); line-height: 1.45; word-break: keep-all; }
+.atask-gate-note { margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--warn, #E0A800); line-height: 1.45; word-break: keep-all; }
 .atask-run { margin-top: 10px; width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--accent-primary, #31D6C4); background: transparent; color: var(--accent-primary, #31D6C4); font-weight: 600; font-size: 12px; cursor: pointer; transition: all 0.14s ease; }
 .atask-run:hover { background: var(--accent-soft); }
