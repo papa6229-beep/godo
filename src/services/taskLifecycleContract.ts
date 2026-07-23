@@ -372,11 +372,12 @@ function isCurrentStageApprover(task: LifecycleTask, actor: ActorRef): { ok: boo
  *     → status=awaiting_approval + **실제 제출된 결과**가 있어야 하고, 현재 확인 단계 담당자만.
  *   업무 통제 계열(작업 중단 · 수행 불가 반송)
  *     → 결과가 나오기 전에도 가능하다. 대신 누가 할 수 있는지가 다르다.
- *        중단: 아직 팀 손에 있는 동안(open/in_progress)은 요청자 또는 책임 팀장.
- *              결과가 제출된 뒤에는 지금 확인 단계를 맡은 사람만(그 사이 요청자는 기다린다).
+ *        중단: **담당 팀장(또는 지정된 임시 책임자)만** 실제로 멈춘다.
+ *              총괄·요청팀은 직접 멈추지 못하고 requestTaskStop 으로 요청만 보낸다.
  *        반송: 지시·협업을 **받은** 수행 팀장이 결과 전(open/in_progress)에 요청자에게 돌려보낸다.
  *
  * 종료된 업무는 어떤 결정으로도 되살아나지 않는다.
+ * 협업 요청팀의 **추적 카드(trackingOnly)** 는 지켜보는 용도라 어떤 결정도 받지 않는다.
  */
 export function canDecide(
   task: LifecycleTask,
@@ -385,6 +386,11 @@ export function canDecide(
 ): { ok: boolean; reason?: string } {
   if (isTerminalStatus(task.status)) {
     return { ok: false, reason: `이미 끝난 업무입니다(${userStatusLabel(task.status)}). 새 업무로 진행해 주세요.` };
+  }
+  // RC-2 D-1.3.2: 추적 카드는 진행을 지켜보는 자리다. 여기서 결정하면 실제 수행 업무와 어긋난다.
+  //   (부모만 중단되고 수행팀 자식은 계속 살아 있는 유령 상태가 된다.)
+  if (task.trackingOnly) {
+    return { ok: false, reason: '이 카드는 진행 상황을 보는 용도입니다. 결정은 담당 팀에서 합니다.' };
   }
   // AI 는 자신의 결과물을 최종 승인할 수 없다.
   if (actor.kind === 'agent') return { ok: false, reason: 'AI(에이전트)는 자기 결과물을 승인할 수 없습니다 (self-approval 금지).' };

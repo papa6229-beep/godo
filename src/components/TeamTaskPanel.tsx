@@ -95,9 +95,12 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
     // 협업 요청팀 카드는 수행팀 진행 상황을 함께 보여 준다(별도 카드를 만들지 않는다).
     const tracked = flow.tracking;
     const canAct = flow.actionable;
-    const stopReq = pendingStopRequest(t);
-    // 화면에 보이는 행동 = 서비스가 허용하는 행동. 눌러 본 뒤 막지 않는다.
-    const decisions = availableDecisions(t, actor);
+    // RC-2 D-1.3.2: 중단 요청·표시는 **실제 수행 업무** 기준이다.
+    //   추적 카드에 요청을 쌓으면 수행팀 화면에 영영 도착하지 않는다.
+    const workTask = tracked ?? t;
+    const stopReq = pendingStopRequest(flow.tracking ?? t);
+    // 화면에 보이는 행동 = 서비스가 허용하는 행동. 추적 카드에는 애초에 계산하지 않는다.
+    const decisions = canAct ? availableDecisions(t, actor) : [];
     const revisionReason = t.ref.revisionOfTaskId ? lastReasonOf(t) : undefined;
     const iAmExecutor = t.executorKind === 'human' && actor.kind === 'human' && actor.userId === t.executorId;
     const startedAt = t.executorHistory[t.executorHistory.length - 1]?.at;
@@ -124,7 +127,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
         {stopReq && (
           <p className="ttask-stopreq">
             ⏸ 중단 요청 도착 — {stopReq.requestedBy.label}: {stopReq.reason}
-            {isOwningLead ? ' (아래 작업 중단으로 처리해 주세요)' : ''}
+            {isOwningLead && canAct ? ' (아래 작업 중단으로 처리해 주세요)' : ' (담당 팀이 처리합니다)'}
           </p>
         )}
 
@@ -244,7 +247,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
           </div>
         )}
 
-        {!isOwningLead && !['stopped', 'completed', 'not_adopted', 'returned', 'superseded'].includes(t.status) && (
+        {(!isOwningLead || !canAct) && !['stopped', 'completed', 'not_adopted', 'returned', 'superseded', 'failed'].includes(workTask.status) && (
           <div className="ttask-actions">
             <button
               type="button"
@@ -269,7 +272,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
                 type="button"
                 className="ttask-btn primary"
                 disabled={!stopReqText.trim()}
-                onClick={() => { onRequestStop(t.ref.taskId, stopReqText.trim()); setStopReqFor(null); setStopReqText(''); }}
+                onClick={() => { onRequestStop((flow.tracking ?? t).ref.taskId, stopReqText.trim()); setStopReqFor(null); setStopReqText(''); }}
               >
                 중단 요청 보내기
               </button>

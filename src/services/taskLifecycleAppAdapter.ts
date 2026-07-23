@@ -480,8 +480,15 @@ export function requestTaskStop(
   ctx: { nowIso: string }
 ) {
   const all = loadLifecycleTasks();
-  const task = findTask(all, taskId);
-  if (!task) return failResult('업무를 찾을 수 없습니다.');
+  const found = findTask(all, taskId);
+  if (!found) return failResult('업무를 찾을 수 없습니다.');
+  // RC-2 D-1.3.2: 추적 카드로 요청이 들어오면 **실제 수행 업무**에 기록한다.
+  //   부모에 조용히 쌓으면 수행팀 화면에는 영영 도착하지 않는다.
+  //   수행 업무를 하나로 특정할 수 없으면(0건·2건 이상) 기록하지 않고 막는다(fail-closed).
+  const task = found.trackingOnly ? resolveExecutionTask(all, found) : found;
+  if (!task) {
+    return failResult('중단을 요청할 수행 업무를 특정할 수 없습니다. 담당 팀에 직접 확인해 주세요.');
+  }
   if (isTerminalStatus(task.status)) {
     return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 중단 요청을 보낼 수 없습니다.`);
   }
@@ -489,8 +496,11 @@ export function requestTaskStop(
   if (!reason) return failResult('중단 사유를 입력해 주세요. 담당 팀장이 판단할 근거가 됩니다.');
 
   // 이 업무를 시킨 쪽이거나 담당 팀 사람만 요청할 수 있다(남의 팀 일에 끼어들지 않는다).
+  //   총괄은 전 팀 업무를 지시·중단 요청할 수 있다.
   const requesterTeam = task.requestingTeamId ?? (task.createdBy.teamId !== task.ownerTeamId ? task.createdBy.teamId : undefined);
-  const allowed = input.actor.teamId === task.ownerTeamId || (!!requesterTeam && input.actor.teamId === requesterTeam);
+  const allowed = input.actor.teamId === 'hq'
+    || input.actor.teamId === task.ownerTeamId
+    || (!!requesterTeam && input.actor.teamId === requesterTeam);
   if (!allowed) return failResult('이 업무를 요청한 쪽이나 담당 팀만 중단을 요청할 수 있습니다.');
 
   const next: LifecycleTask = {
@@ -501,13 +511,26 @@ export function requestTaskStop(
   return okResult(next);
 }
 
-/** 아직 담당 팀장이 처리하지 않은 중단 요청(화면 표시용). */
+/**
+ * 아직 담당 팀장이 처리하지 않은 중단 요청(화면 표시용).
+ * RC-2 D-1.3.2: 어떤 이유로든 업무가 끝났으면 '대기' 표시를 끝낸다.
+ *   기록(stopRequests) 자체는 지우지 않는다 — 왜 멈췄는지 계속 남는다.
+ */
 export const pendingStopRequest = (t: LifecycleTask) => {
   const reqs = t.stopRequests ?? [];
   if (reqs.length === 0) return null;
-  if (t.status === 'stopped') return null;   // 이미 처리됨
+  if (isTerminalStatus(t.status)) return null;
   return reqs[reqs.length - 1];
 };
+
+/**
+ * 추적 카드가 지켜보는 **실제 수행 업무**를 찾는다.
+ * 정확히 하나일 때만 돌려주고, 없거나 여럿이면 null(fail-closed).
+ */
+function resolveExecutionTask(all: LifecycleTask[], parent: LifecycleTask): LifecycleTask | null {
+  const children = all.filter((t) => t.ref.parentTaskId === parent.ref.taskId && !t.trackingOnly);
+  return children.length === 1 ? children[0] : null;
+}
 
 /** 수행자가 결과를 제출한다. **결과물 참조가 없으면 거부**한다. 이때부터 팀장 확인 대상이 된다. */
 export function submitResult(
@@ -640,10 +663,32 @@ export function taskFlowsFor(actor: ActorRef): TaskFlow[] {
 }
 
 /** 협업 요청 — 요청팀 부모 + 수행팀 자식 2건으로 기록한다. */
+/** 협업 요청이 성립하지 않을 때. 조용히 만들지 않고 명시적으로 막는다. */
+export class CollaborationRequestError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'CollaborationRequestError';
+  }
+}
+
 export function createCollaborationRequest(
   input: { title: string; requestingTeamId: ActorRef['teamId']; targetTeamId: ActorRef['teamId']; instructedBy: ActorRef },
   ids: IdContext
 ): { parent: LifecycleTask; child: LifecycleTask } {
+  // RC-2 D-1.3.2: 협업은 **인간 팀장이 자기 팀 명의로 다른 팀에** 요청하는 것이다.
+  //   총괄 지시는 협업이 아니라 지시이고(업무 탭의 팀 지시 경로), 자기 팀 일은 협업이 아니다.
+  if (input.instructedBy.kind !== 'human') {
+    throw new CollaborationRequestError('협업 요청은 사람만 보낼 수 있습니다.');
+  }
+  if (input.instructedBy.teamId === 'hq' || input.requestingTeamId === 'hq') {
+    throw new CollaborationRequestError('총괄은 협업 요청이 아니라 담당 팀에 업무를 지시합니다.');
+  }
+  if (input.instructedBy.teamId !== input.requestingTeamId) {
+    throw new CollaborationRequestError('다른 팀 이름으로 협업을 요청할 수 없습니다.');
+  }
+  if (input.requestingTeamId === input.targetTeamId) {
+    throw new CollaborationRequestError('같은 팀에는 협업을 요청하지 않습니다. 팀 안에서 업무로 처리해 주세요.');
+  }
   // RC-2 D-1.3.1: 요청팀 카드는 **추적용**이다. 실제 수행은 수행팀 자식 카드에서 한다.
   //   (같은 일이 두 팀에서 두 번 실행되지 않게 한다.)
   const parent = createLifecycleTask({

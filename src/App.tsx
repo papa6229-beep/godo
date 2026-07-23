@@ -756,10 +756,17 @@ function App() {
   /** 팀 간 협업 요청 — 요청팀 카드와 수행팀 카드를 함께 남긴다. */
   const handleCollaborationRequest = (title: string, targetTeamId: string) => {
     const team = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
-    createCollaborationRequest(
-      { title, requestingTeamId: viewerRole, targetTeamId: team, instructedBy: sessionActor() },
-      { newId: newTaskId, nowIso: nowIso() }
-    );
+    // RC-2 D-1.3.2: 협업이 성립하지 않는 경우(총괄 발신·다른 팀 사칭·같은 팀)는 계약이 막는다.
+    //   화면은 그 이유를 그대로 보여 주고 아무것도 만들지 않는다.
+    try {
+      createCollaborationRequest(
+        { title, requestingTeamId: viewerRole, targetTeamId: team, instructedBy: sessionActor() },
+        { newId: newTaskId, nowIso: nowIso() }
+      );
+    } catch (e) {
+      addLog(e instanceof Error ? e.message : '협업 요청을 만들 수 없습니다.', 'warning', 'SYSTEM');
+      return;
+    }
     refreshLifecycleState();
     addLog(`${roleMeta(team).label}에게 협업을 요청했습니다. 요청팀·수행팀 카드가 함께 생성됩니다.`, 'info', 'SYSTEM');
   };
