@@ -145,14 +145,22 @@ export function buildDepartmentSourceOfTruthSnapshot(
   // DATA-SOURCE-SERVER-01(GREEN F.1): 출처는 summary 숫자로 추측하지 않는다.
   //   명시적 시험 fixture 는 realOrderCount 에 잡히고 syntheticOrderCount=0 이라
   //   숫자만 보면 'real' 이 된다. 공통 화면 판정(kind)을 권위로 쓴다.
+  //   판정 권위는 공통 화면 상태(kind)다. 주문 건수(totalOrders>0)를 전제로 두면
+  //   **실제 성공 0건**(계약상 '실제 데이터 0건')이 unavailable 로 잘못 남는다.
   const screenState = screenStateFromRevenue(revenue);
-  let sourceMode: DepartmentSourceMode = 'unavailable';
-  if (screenState.kind === 'fixture') {
-    sourceMode = 'synthetic'; // 시험 데이터 계열 — 실데이터로 표현하지 않는다(계약 확장 없이 기존 4종 유지)
-  } else if (totalOrders > 0 && screenState.kind !== 'unavailable') {
-    if (syntheticOrderCount > 0 && realOrderCount > 0) sourceMode = 'mixed';
-    else if (syntheticOrderCount > 0) sourceMode = 'synthetic';
-    else sourceMode = 'real';
+  let sourceMode: DepartmentSourceMode;
+  switch (screenState.kind) {
+    case 'actual':
+      sourceMode = 'real'; // 주문이 0건이어도 실제 데이터 0건이다
+      break;
+    case 'fixture':
+      sourceMode = 'synthetic'; // 시험 데이터 계열 — 실데이터로 표현하지 않는다(기존 4종 유지)
+      break;
+    case 'simulation':
+      sourceMode = realOrderCount > 0 ? 'mixed' : 'synthetic';
+      break;
+    default:
+      sourceMode = 'unavailable';
   }
 
   return {
