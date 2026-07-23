@@ -122,10 +122,13 @@ export const normalizeOrder = (
   const orderNo = norm.orderNo || '';
   const orderDate = normalizeDate(norm.orderDate || '');
   const productName = norm.productName || '';
-  const optionName = norm.optionName || '기본옵션';
+  // GODO-ORDER-MAPPING-01: 상류에 근거가 없는 값을 하류에서 만들어내지 않는다.
+  //   (과거: 옵션 없으면 '기본옵션', 상태 없으면 '결제완료'/'배송대기'로 단정 → 거짓 표시)
+  //   미확인은 빈 문자열로 보존하고, 표시 계층이 '미확인'으로 노출한다.
+  const optionName = norm.optionName || '';
   const quantity = parseInt(norm.quantity || '1', 10);
-  const paymentStatus = norm.paymentStatus || '결제완료';
-  const deliveryStatus = norm.deliveryStatus || '배송대기';
+  const paymentStatus = norm.paymentStatus || '';
+  const deliveryStatus = norm.deliveryStatus || '';
   const invoiceNo = norm.invoiceNo || '';
   const amount = parseFloat((norm.amount || '0').replace(/[^0-9.]/g, ''));
   

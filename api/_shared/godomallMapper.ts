@@ -8,6 +8,8 @@
 // 첫 실제 응답(샌드박스/리얼)을 확인한 뒤 candidate 배열만 보정하면 된다.
 // 임의 endpoint는 만들지 않으며, 매핑 후보만 점진 보정하는 것이 안전하다.
 
+import { normalizeOrderData } from './godomallOrderNormalize.js';
+
 type Raw = Record<string, unknown>;
 
 // 여러 후보 키 중 처음 비어있지 않은 값을 문자열로 반환
@@ -144,23 +146,38 @@ export interface OrderIntermediate extends Record<string, string> {
   amount: string;
 }
 
+// GODO-ORDER-MAPPING-01 (GREEN):
+//   - 별도 평면 별칭표를 복붙하지 않고, 검증된 중첩 해석(interpretOrderRecord)을 재사용한다.
+//   - **상류 근거가 없으면 값을 만들어내지 않는다**: 결제완료·배송대기·단품·수량1·금액0을
+//     기본값으로 단정하지 않고 빈 문자열(미확인)로 보존한다.
+//   - PII(customerName/Phone/Email/address)는 기존과 동일하게 원문을 담고,
+//     응답 직전 maskRecordsList가 삭제/마스킹한다(마스킹 경계 불변 — 신규 노출 없음).
+//   - 호출 측(resolveResource)은 매핑 **전에** normalizeOrderData로 유효 주문만 남긴다
+//     → 유효 주문이 아니면 애초에 행 자체가 만들어지지 않는다.
 export const mapOrderList = (orders: Raw[]): OrderIntermediate[] => {
-  return orders.map((o) => ({
-    orderNo: pick(o, ['orderNo', 'orderId', 'orderCd', 'order_no']),
-    orderDate: pick(o, ['orderDate', 'orderYmd', 'regDt', 'orderDt', 'order_date']),
-    // PII (마스킹 전 원문) — 응답 직후 maskRecordsList에서 제거/마스킹됨
-    customerName: pick(o, ['orderName', 'ordererName', 'memNm', 'memName', 'buyerName'], ''),
-    customerPhone: pick(o, ['orderHp', 'orderCellPhone', 'ordererHp', 'hp', 'cellPhone'], ''),
-    customerEmail: pick(o, ['orderEmail', 'ordererEmail', 'email'], ''),
-    address: pick(o, ['orderAddress', 'orderAddr', 'receiverAddress', 'addr'], ''),
-    productName: pick(o, ['goodsNm', 'goodsName', 'productName', 'goods_name']),
-    optionName: pick(o, ['optionName', 'optionInfo', 'goodsOption'], '단품'),
-    quantity: pick(o, ['goodsCnt', 'ea', 'quantity', 'orderCnt'], '1'),
-    paymentStatus: pick(o, ['settleKindText', 'orderStatusText', 'orderStatus', 'paymentStatus', 'settleKind'], '결제완료'),
-    deliveryStatus: pick(o, ['deliveryStatusText', 'deliveryStatus', 'delivStatus', 'orderStepText'], '배송대기'),
-    invoiceNo: pick(o, ['invoiceNo', 'deliveryNo', 'invoice'], ''),
-    amount: pick(o, ['settlePrice', 'totalPrice', 'goodsPrice', 'orderPrice', 'amount'], '0')
-  }));
+  // 유효 주문이 아닌 것(빈 응답·메타 래퍼·{})은 **행 자체를 만들지 않는다**.
+  // 호출부(resolveResource)도 같은 가드를 적용하지만, 매퍼 단독 호출에서도
+  // 유령 행이 생기지 않도록 여기서도 닫는다(멱등 필터).
+  return normalizeOrderData(orders).map((o) => {
+    const v = interpretOrderRecord(o);
+    return {
+      orderNo: v.orderNo,
+      orderDate: v.orderDate,
+      // PII (마스킹 전 원문) — 응답 직후 maskRecordsList에서 제거/마스킹됨
+      customerName: v.ordererName,
+      customerPhone: v.phone,
+      customerEmail: v.email,
+      address: v.address,
+      productName: v.productName,
+      optionName: v.optionName,                                     // 근거 없으면 '' (단품 단정 금지)
+      quantity: v.quantityRaw,                                      // 근거 없으면 '' (1 단정 금지)
+      paymentStatus: v.hasStatusBasis ? (v.paid ? '결제완료' : '미결제') : '',
+      deliveryStatus: v.hasDeliveryBasis ? v.deliveryStatus : '',
+      invoiceNo: v.invoiceNo,
+      // 상류에 금액 근거가 있으면 그대로(0원도 보존), 근거 자체가 없으면 '' (0 단정 금지)
+      amount: v.hasAmountBasis ? String(v.totalAmount) : ''
+    };
+  });
 };
 
 // ---- 주문 관리자 화면용 매퍼 (Orders READ v0) ----
@@ -235,60 +252,128 @@ const interpretDelivery = (s: string, paid: boolean): { deliveryStatus: string; 
   return { deliveryStatus: paid ? '배송 준비' : '배송 전', undelivered: true };
 };
 
+// ---- 주문 단건 공통 해석 (Order_Search 실응답 중첩 구조) ----
+// GODO-ORDER-MAPPING-01: 관리자 매퍼(mapOrdersToAdmin)와 표시/AI용 매퍼(mapOrderList)가
+// **같은 해석**을 쓰도록 공용화한다. 별칭표·상태 판정을 두 곳에 복붙하지 않는다.
+// `has*Basis` 는 "상류에 그 값의 근거가 있었는가"이며, 근거 없는 값을 만들어내지 않기 위한 표식이다.
+export interface OrderRecordView {
+  orderId: string;
+  orderNo: string;
+  orderDate: string;
+  productName: string;
+  optionName: string;
+  quantityRaw: string;
+  quantity: number;
+  invoiceNo: string;
+  productAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  hasAmountBasis: boolean;
+  hasStatusBasis: boolean;
+  hasDeliveryBasis: boolean;
+  paid: boolean;
+  deliveryStatus: string;
+  undelivered: boolean;
+  paymentMethod: string;
+  // PII 원문 — 관리자 경로만 그대로 사용. 표시/AI 경로는 maskRecordsList를 반드시 통과한다.
+  ordererName: string;
+  receiverName: string;
+  phone: string;
+  email: string;
+  address: string;
+}
+
+export const interpretOrderRecord = (o: Raw): OrderRecordView => {
+  // 중첩: 주문자/수령자 정보 + 상품 상세 (Order_Search 실응답 구조)
+  const info = asRecord(o['orderInfoData']) ?? {};
+  const goods = firstRecordOf(o['orderGoodsData']) ?? {};
+
+  const orderNo = pick(o, ['orderNo', 'orderId', 'orderCd', 'order_no'], '');
+  const orderDate = pick(o, ['orderDate', 'orderYmd', 'regDt', 'orderDt', 'order_date'], '');
+  const paymentDt = pick(o, ['paymentDt', 'paymentDate', 'settleDt'], '');
+  const orderStatus = pick(o, ['orderStatus', 'orderStatusText', 'orderStep'], '') || pick(goods, ['orderStatus'], '');
+  // 실응답(코드) 우선, 없으면 mock의 평문 상태 텍스트를 보조로 사용
+  const payTextHint = pick(o, ['paymentStatus', 'settleStateText'], '');
+  const delivTextHint = pick(o, ['deliveryStatus', 'deliveryStatusText'], '');
+  const payHint = orderStatus || payTextHint;
+  const delivHint = orderStatus || delivTextHint;
+
+  const productAmountRaw = pick(o, ['totalGoodsPrice', 'orderGoodsPrice', 'goodsPrice'], '');
+  const deliveryFeeRaw = pick(o, ['totalDeliveryCharge', 'deliveryCharge', 'sumDeliveryCharge'], '');
+  const settleRaw = pick(o, ['settlePrice', 'totalSettlePrice', 'totalPrice', 'orderPrice', 'amount'], '');
+  const productAmount = toNumber(productAmountRaw || '0');
+  const deliveryFee = toNumber(deliveryFeeRaw || '0');
+  const settle = toNumber(settleRaw || '0');
+
+  // 상품 상세는 중첩 orderGoodsData.goodsNm 우선, 없으면 상위/평문 fallback
+  const productName = pick(goods, ['goodsNm', 'goodsName']) || pick(o, ['orderGoodsNm', 'goodsNm', 'productName', 'goods_name'], '');
+  const optionName =
+    pick(goods, ['optionName', 'optionInfo', 'goodsOptionName', 'goodsOption']) ||
+    pick(o, ['optionName', 'optionInfo', 'goodsOption'], '');
+  const quantityRaw = pick(goods, ['goodsCnt']) || pick(o, ['orderGoodsCnt', 'goodsCnt', 'quantity', 'ea'], '');
+
+  // 주문자/수령자 (orderInfoData) — 원문. mock(평문 customerName 등)도 처리되도록 상위 o 도 fallback.
+  const ordererName = pick(info, ['orderName', 'ordererName']) || pick(o, ['orderName', 'ordererName', 'customerName', 'memNm', 'memName', 'buyerName'], '');
+  const receiverName = pick(info, ['receiverName']) || pick(o, ['receiverName'], '');
+  const phone =
+    pick(info, ['orderCellPhone', 'orderPhone', 'orderHp']) ||
+    pick(o, ['orderCellPhone', 'orderHp', 'ordererHp', 'customerPhone', 'phone', 'hp', 'cellPhone'], '');
+  const email = pick(info, ['orderEmail', 'ordererEmail']) || pick(o, ['orderEmail', 'ordererEmail', 'customerEmail', 'email'], '');
+  const addrMain = pick(info, ['receiverAddress', 'orderAddress']) || pick(o, ['receiverAddress', 'orderAddress', 'orderAddr', 'address', 'addr'], '');
+  const addrSub = pick(info, ['receiverAddressSub', 'orderAddressSub'], '');
+  const address = [addrMain, addrSub].filter((x) => x.length > 0).join(' ').trim();
+
+  const paid = hasPaymentDate(paymentDt) || isPaidStatus(payHint);
+  const { deliveryStatus, undelivered } = interpretDelivery(delivHint, paid);
+
+  return {
+    orderId: pick(o, ['orderId', 'orderNo'], orderNo),
+    orderNo,
+    orderDate,
+    productName,
+    optionName,
+    quantityRaw,
+    quantity: toInt(quantityRaw || '1'),
+    invoiceNo: pick(o, ['invoiceNo', 'deliveryNo', 'invoice'], ''),
+    productAmount,
+    deliveryFee,
+    totalAmount: settle || productAmount + deliveryFee,
+    hasAmountBasis: settleRaw !== '' || productAmountRaw !== '' || deliveryFeeRaw !== '',
+    hasStatusBasis: orderStatus !== '' || paymentDt !== '' || payTextHint !== '',
+    hasDeliveryBasis: orderStatus !== '' || delivTextHint !== '',
+    paid,
+    deliveryStatus,
+    undelivered,
+    paymentMethod: pick(o, ['settleKind', 'settleKindText', 'settleMethodText'], ''),
+    ordererName,
+    receiverName,
+    phone,
+    email,
+    address
+  };
+};
+
 export const mapOrdersToAdmin = (orders: Raw[]): StandardOrderAdmin[] => {
   return orders.map((o) => {
-    // 중첩: 주문자/수령자 정보 + 상품 상세 (Order_Search 실응답 구조)
-    const info = asRecord(o['orderInfoData']) ?? {};
-    const goods = firstRecordOf(o['orderGoodsData']) ?? {};
-
-    const orderNo = pick(o, ['orderNo', 'orderId'], '');
-    const orderDate = pick(o, ['orderDate', 'orderYmd', 'regDt', 'order_date'], '');
-    const paymentDt = pick(o, ['paymentDt', 'paymentDate', 'settleDt'], '');
-    const orderStatus = pick(o, ['orderStatus', 'orderStatusText', 'orderStep'], '') || pick(goods, ['orderStatus'], '');
-    // 실응답(코드) 우선, 없으면 mock의 평문 상태 텍스트를 보조로 사용
-    const payHint = orderStatus || pick(o, ['paymentStatus', 'settleStateText'], '');
-    const delivHint = orderStatus || pick(o, ['deliveryStatus', 'deliveryStatusText'], '');
-
-    const productAmount = toNumber(pick(o, ['totalGoodsPrice', 'orderGoodsPrice', 'goodsPrice'], '0'));
-    const deliveryFee = toNumber(pick(o, ['totalDeliveryCharge', 'deliveryCharge', 'sumDeliveryCharge'], '0'));
-    const settle = toNumber(pick(o, ['settlePrice', 'totalSettlePrice', 'totalPrice', 'orderPrice', 'amount'], '0'));
-
-    // 상품 상세는 중첩 orderGoodsData.goodsNm 우선, 없으면 상위/평문 fallback
-    const productName = pick(goods, ['goodsNm', 'goodsName']) || pick(o, ['orderGoodsNm', 'goodsNm', 'productName', 'goods_name'], '');
-    const quantity = toInt(pick(goods, ['goodsCnt']) || pick(o, ['orderGoodsCnt', 'goodsCnt', 'quantity', 'ea'], '1'));
-
-    // 주문자/수령자 (orderInfoData) — 관리자 화면 전용, 마스킹하지 않은 원본.
-    // mock(평문 customerName 등)도 처리되도록 상위 o 도 fallback.
-    const ordererName = pick(info, ['orderName', 'ordererName']) || pick(o, ['orderName', 'ordererName', 'customerName', 'buyerName'], '');
-    const receiverName = pick(info, ['receiverName']) || pick(o, ['receiverName'], '');
-    const phone =
-      pick(info, ['orderCellPhone', 'orderPhone', 'orderHp']) ||
-      pick(o, ['orderCellPhone', 'orderHp', 'customerPhone', 'phone', 'hp'], '');
-    const addrMain = pick(info, ['receiverAddress', 'orderAddress']) || pick(o, ['receiverAddress', 'orderAddress', 'address', 'addr'], '');
-    const addrSub = pick(info, ['receiverAddressSub', 'orderAddressSub'], '');
-    const address = [addrMain, addrSub].filter((x) => x.length > 0).join(' ').trim();
-
-    const paid = hasPaymentDate(paymentDt) || isPaidStatus(payHint);
-    const { deliveryStatus, undelivered } = interpretDelivery(delivHint, paid);
-
+    const v = interpretOrderRecord(o);
     return {
-      orderId: pick(o, ['orderId', 'orderNo'], orderNo),
-      orderNo,
-      orderDate,
-      ordererName,
-      receiverName,
-      phone,
-      address,
-      productName,
-      quantity,
-      productAmount,
-      deliveryFee,
-      totalAmount: settle || productAmount + deliveryFee,
-      paymentMethod: pick(o, ['settleKind', 'settleKindText', 'settleMethodText'], ''),
-      paymentStatus: paid ? '결제완료' : '미결제',
-      deliveryStatus,
-      unpaid: !paid,
-      undelivered
+      orderId: v.orderId,
+      orderNo: v.orderNo,
+      orderDate: v.orderDate,
+      ordererName: v.ordererName,
+      receiverName: v.receiverName,
+      phone: v.phone,
+      address: v.address,
+      productName: v.productName,
+      quantity: v.quantity,
+      productAmount: v.productAmount,
+      deliveryFee: v.deliveryFee,
+      totalAmount: v.totalAmount,
+      paymentMethod: v.paymentMethod,
+      paymentStatus: v.paid ? '결제완료' : '미결제',
+      deliveryStatus: v.deliveryStatus,
+      unpaid: !v.paid,
+      undelivered: v.undelivered
     };
   });
 };
