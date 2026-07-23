@@ -241,10 +241,219 @@ red('P19. App 이 역할과 무관하게 AI 를 수행자로 확정하지 않는
   !/assignedAgentId: agentId, createdBy: sessionActor\(\)/.test(appSource),
   'handleAddTask 가 역할 확인 없이 AI 를 수행자로 확정');
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// 업무 "수신" 과 "결과 승인" 분리 (P20~P36)
+//   생성 즉시 awaiting_approval 이 되면 안 된다.
+//   open → (팀장이 수행자 선택) in_progress → (결과 제출) awaiting_approval → 팀장 확인 → HQ
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- 업무 수신 / 결과 승인 분리 (P20~P36) ---');
+
+const hasFn = (fn) => typeof A[fn] === 'function';
+const noFn = (fn) => `${fn}() 없음`;
+
+// HQ 가 팀장에게 지시(수행자 미정) — 새 정책의 정상 진입점
+const directive = (over = {}) => A.createDirectiveTask({
+  title: 'HQ 지시', targetTeamId: 'product', instructedBy: HQ, ...over
+}, ids);
+
+red('P20. HQ 지시 생성 직후 status=open · executorKind=unassigned',
+  (() => { if (!hasFn('createDirectiveTask')) return false;
+    reset();
+    const t = directive();
+    return t.status === 'open' && t.executorKind === 'unassigned' && !t.executorId;
+  })(), noFn('createDirectiveTask'), 'open · unassigned');
+
+red('P21. 결과가 없으면 승인 대기열에 나오지 않는다',
+  (() => { if (!hasFn('createDirectiveTask')) return false;
+    reset(); directive();
+    return A.pendingForActor(LEAD_PRODUCT).length === 0 && A.pendingForActor(HQ).length === 0;
+  })(), noFn('createDirectiveTask'), '대기열 0건');
+
+red('P22. 수행자 선택은 담당 팀장만 할 수 있다',
+  (() => { if (!hasFn('assignExecutor')) return false;
+    reset();
+    const t = directive();
+    const byOther = A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_CS }, { nowIso: AT });
+    const byHq = A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: HQ }, { nowIso: AT });
+    const byOwner = A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    return byOther.ok === false && byHq.ok === false && byOwner.ok === true;
+  })(), noFn('assignExecutor'), '타 팀장·HQ 차단 · 담당 팀장만 허용');
+
+red('P23. 타 팀 AI · 미상 AI · HQ 의 AI 직접 선택을 차단한다',
+  (() => { if (!hasFn('assignExecutor')) return false;
+    reset();
+    const t = directive();
+    const otherTeamAi = A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inquiry_analyst', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const unknownAi = A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: '존재하지_않는_AI', actor: LEAD_PRODUCT }, { nowIso: AT });
+    return otherTeamAi.ok === false && unknownAi.ok === false;
+  })(), noFn('assignExecutor'), '타 팀 AI·미상 AI 거부');
+
+red('P24. 수행자 선택 후 status=in_progress (AI/인간 모두)',
+  (() => { if (!hasFn('assignExecutor')) return false;
+    reset();
+    const t1 = directive();
+    A.assignExecutor(t1.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const a = S.loadLifecycleTasks().find((x) => x.ref.taskId === t1.ref.taskId);
+    reset();
+    const t2 = directive();
+    A.assignExecutor(t2.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const h = S.loadLifecycleTasks().find((x) => x.ref.taskId === t2.ref.taskId);
+    return a.status === 'in_progress' && a.executorKind === 'agent' && a.executorId === 'inventory_monitor'
+      && h.status === 'in_progress' && h.executorKind === 'human' && h.executorId === LEAD_PRODUCT.userId;
+  })(), noFn('assignExecutor'), 'AI/인간 모두 in_progress');
+
+red('P25. 결과물 없이 제출·승인 진입이 불가하다',
+  (() => { if (!hasFn('submitResult')) return false;
+    reset();
+    const t = directive();
+    A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const empty = A.submitResult(t.ref.taskId, { artifactRefs: [], actor: LEAD_PRODUCT }, { nowIso: AT });
+    const withRef = A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    return empty.ok === false && withRef.ok === true;
+  })(), noFn('submitResult'), '결과물 없으면 거부');
+
+red('P26. 결과 제출 후에만 담당 팀장 확인 대기에 표시된다',
+  (() => { if (!hasFn('submitResult')) return false;
+    reset();
+    const t = directive();
+    A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const before = A.pendingForActor(LEAD_PRODUCT).length;
+    A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    const after = A.pendingForActor(LEAD_PRODUCT).length;
+    const saved = S.loadLifecycleTasks()[0];
+    return before === 0 && after === 1 && saved.status === 'awaiting_approval' && !!saved.submittedBy;
+  })(), noFn('submitResult'), '제출 전 0 → 제출 후 1 · submittedBy 기록');
+
+red('P27. 팀장 확인 후에만 HQ 확인 대기에 표시된다',
+  (() => { if (!hasFn('submitResult')) return false;
+    reset();
+    const t = directive();
+    A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    const hqBefore = A.pendingForActor(HQ).length;
+    A.applyDecision(t.ref.taskId, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const hqAfter = A.pendingForActor(HQ).length;
+    return hqBefore === 0 && hqAfter === 1;
+  })(), noFn('submitResult'), '팀장 확인 전 0 → 후 1');
+
+red('P28. HQ 는 제출 전 업무를 열람할 수 있으나 결정 행동은 없다',
+  (() => { if (!hasFn('createDirectiveTask') || !hasFn('visibleTasksFor')) return false;
+    reset();
+    const t = directive();
+    const view = A.visibleTasksFor(HQ);
+    const canAct = A.pendingForActor(HQ).some((x) => x.id === t.ref.taskId);
+    const decided = A.applyDecision(t.ref.taskId, { kind: 'approve', actor: HQ }, { nowIso: AT });
+    return view.some((x) => x.id === t.ref.taskId) && canAct === false && decided.ok === false;
+  })(), noFn('visibleTasksFor'), '열람 가능 · 행동 불가');
+
+red('P29. HQ 수정 요청 후 revision 은 open · unassigned · stageIndex=0',
+  (() => { if (!hasFn('submitResult')) return false;
+    reset();
+    const t = directive();
+    A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.applyDecision(t.ref.taskId, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.applyDecision(t.ref.taskId, { kind: 'request_revision', actor: HQ, reason: '재확인' }, { nowIso: AT, newId: ids.newId });
+    const rev = S.loadLifecycleTasks().find((x) => x.ref.revisionOfTaskId === t.ref.taskId);
+    return !!rev && rev.status === 'open' && rev.executorKind === 'unassigned'
+      && rev.approvalRoute.currentStageIndex === 0;
+  })(), noFn('submitResult'), 'open · unassigned · stage 0');
+
+red('P30. 수정본은 직전 수행자를 자동 승계하지 않는다(추천값만 가능)',
+  (() => { if (!hasFn('submitResult')) return false;
+    const rev = S.loadLifecycleTasks().find((x) => !!x.ref.revisionOfTaskId);
+    return !!rev && !rev.executorId && rev.executorKind === 'unassigned'
+      && (rev.suggestedExecutorId === undefined || rev.suggestedExecutorId === 'inventory_monitor');
+  })(), noFn('submitResult'), '자동 재배정 없음 · 추천값만');
+
+red('P31. 인간 인수 시 기존 AI 시도·결과·인수 사유가 보존된다',
+  (() => { if (!hasFn('assignExecutor')) return false;
+    reset();
+    const t = directive();
+    A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.submitResult(t.ref.taskId, { artifactRefs: ['art-ai-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_PRODUCT, reason: 'AI 결과 미흡해 직접 처리' }, { nowIso: AT });
+    const saved = S.loadLifecycleTasks()[0];
+    const hist = saved.executorHistory ?? [];
+    return hist.length >= 2 && hist[0].kind === 'agent' && hist[0].id === 'inventory_monitor'
+      && hist.some((h) => h.reason && h.reason.includes('직접 처리'))
+      && (saved.artifactRefs ?? []).includes('art-ai-1');
+  })(), noFn('assignExecutor'), 'AI 시도·결과·사유 보존');
+
+red('P32. 팀장 부재 시 자동 대행 없이 대기하고, 임시 책임자 지정 후에만 진행',
+  (() => { if (!hasFn('designateActingLead')) return false;
+    reset();
+    const t = directive({ targetTeamId: 'design' });   // 디자인팀장 부재 가정
+    const byHq = A.assignExecutor(t.ref.taskId, { kind: 'human', actor: HQ }, { nowIso: AT });
+    if (byHq.ok !== false) return false;               // HQ 자동 대행 금지
+    const desig = A.designateActingLead(t.ref.taskId, { actingUserId: 'u-acting-1', actor: HQ, reason: '팀장 부재' }, { nowIso: AT });
+    const after = A.assignExecutor(t.ref.taskId, { kind: 'human', actor: { kind: 'human', teamId: 'design', label: '임시 책임자', userId: 'u-acting-1' } }, { nowIso: AT });
+    return desig.ok === true && after.ok === true;
+  })(), noFn('designateActingLead'), 'HQ 대행 차단 · 임시 책임자 지정 후 진행');
+
+red('P33. 팀장이 사전 승인하지 않은 실제 자동 스케줄은 실행되지 않는다',
+  (() => { if (!hasFn('canRunStandingDirective')) return false;
+    const unapproved = A.canRunStandingDirective({ id: 's1', ownerTeamId: 'product', active: true, approvedByLeadAt: undefined, mode: 'real' });
+    const approved = A.canRunStandingDirective({ id: 's2', ownerTeamId: 'product', active: true, approvedByLeadAt: AT, mode: 'real' });
+    return unapproved.allowed === false && /팀장 확인/.test(unapproved.reason ?? '') && approved.allowed === true;
+  })(), noFn('canRunStandingDirective'), '미승인 차단 · 승인분만 실행');
+
+red('P34. 시험 모드 시뮬레이션 스케줄은 시험자료로만 실행된다',
+  (() => { if (!hasFn('canRunStandingDirective')) return false;
+    const sim = A.canRunStandingDirective({ id: 's3', ownerTeamId: 'product', active: true, approvedByLeadAt: undefined, mode: 'simulation' });
+    return sim.allowed === true && sim.dataKind === 'fixture';
+  })(), noFn('canRunStandingDirective'), '시험자료로만 실행');
+
+red('P35. 협업은 요청팀 부모 + 수행팀 자식으로 기록되고 수행팀이 반송할 수 있다',
+  (() => { if (!hasFn('createCollaborationRequest')) return false;
+    reset();
+    const { parent, child } = A.createCollaborationRequest({
+      title: '재고 확인 요청', requestingTeamId: 'cs', targetTeamId: 'product', instructedBy: LEAD_CS
+    }, ids);
+    const returned = A.applyDecision(child.ref.taskId, { kind: 'return', actor: LEAD_PRODUCT, reason: '자료 부족' }, { nowIso: AT });
+    const saved = S.loadLifecycleTasks();
+    const savedChild = saved.find((x) => x.ref.taskId === child.ref.taskId);
+    const savedParent = saved.find((x) => x.ref.taskId === parent.ref.taskId);
+    return child.ref.parentTaskId === parent.ref.taskId
+      && child.ref.correlationId === parent.ref.correlationId
+      && returned.ok === true && savedChild.status === 'returned'
+      && JSON.stringify(savedChild).includes('자료 부족')
+      && savedParent.status !== 'completed';
+  })(), noFn('createCollaborationRequest'), '부모·자식 연결 · 반송·사유 보존');
+
+red('P36. 내부 AI ID·"알 수 없음" 이 사용자 화면에 노출되지 않는다',
+  !/requestedByAgentId\.toUpperCase\(\)/.test(apprDetail) && !/알 수 없음/.test(apprList + taskBoard),
+  '내부 ID / "알 수 없음" 노출 잔존');
+
+// ── A26·A27 교체(잘못된 HQ→AI fixture 폐기) ─────────────────────────────────
+console.log('');
+console.log('  --- A26/A27 교체: HQ→팀장 지시 정상 흐름 ---');
+red('A26R. HQ→상품팀장 지시 → 팀장이 수행자 선택 → 결과 제출 (담당팀/경로 정상)',
+  (() => { if (!hasFn('createDirectiveTask')) return false;
+    reset();
+    const t = directive();
+    if (t.ownerTeamId !== 'product' || t.approvalRoute.stages.length !== 2) return false;
+    const asg = A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const sub = A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    return asg.ok && sub.ok;
+  })(), noFn('createDirectiveTask'), '담당팀 product · 2단계 · 배정·제출 성공');
+
+red('A27R. 상품팀장 확인만으로 완료되지 않고 HQ 최종 확인 후 완료',
+  (() => { if (!hasFn('createDirectiveTask')) return false;
+    const t = S.loadLifecycleTasks()[0];
+    const r1 = A.applyDecision(t.ref.taskId, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const mid = S.loadLifecycleTasks()[0];
+    if (!r1.ok || mid.status === 'completed') return false;
+    const r2 = A.applyDecision(t.ref.taskId, { kind: 'approve', actor: HQ }, { nowIso: AT });
+    return r2.ok && S.loadLifecycleTasks()[0].status === 'completed';
+  })(), noFn('createDirectiveTask'), '팀장 후 대기 · HQ 후 완료');
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (진단 전제 — fail>0이면 진단 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (확정 권한 정책 P1~P19)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (확정 권한 정책 P1~P36 + A26R/A27R)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0) { console.log('\n✗ 진단 전제 불일치'); process.exit(1); }
 console.log(`\n✗ RC-2 D-1.2 RED — 권한 정책 ${redUnmet}건 미충족(의도된 실패 · GREEN 미승인)`);
