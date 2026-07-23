@@ -8,6 +8,8 @@ interface TaskResultModalProps {
   approvalQueue: ApprovalItem[];
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
+  /** RC-2: 작업 중단(선택). 기록은 삭제하지 않고 대기열에서만 내린다. */
+  onCancel?: (id: string) => void;
 }
 
 export const TaskResultModal: React.FC<TaskResultModalProps> = ({
@@ -15,7 +17,8 @@ export const TaskResultModal: React.FC<TaskResultModalProps> = ({
   onClose,
   approvalQueue,
   onApprove,
-  onReject
+  onReject,
+  onCancel
 }) => {
   const [showTechDetails, setShowTechDetails] = useState(false);
 
@@ -349,6 +352,11 @@ export const TaskResultModal: React.FC<TaskResultModalProps> = ({
                     </div>
                     {appr.status === 'waiting' && onApprove && onReject && (
                       <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                        {onCancel && (
+                          <button onClick={() => onCancel(appr.id)} style={{ ...modalRejectBtnStyle, background: 'transparent' }}>
+                            작업 중단
+                          </button>
+                        )}
                         <button onClick={() => onReject(appr.id)} style={modalRejectBtnStyle}>
                           거절 (Reject)
                         </button>

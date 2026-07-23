@@ -19,6 +19,9 @@ const STATUS_LABEL: Record<ApprovalItem['status'], string> = {
   waiting: '승인 대기',
   approved: '승인 완료',
   rejected: '거절 처리',
+  // RC-2: 사용자 문구(내부 상태명 노출 금지)
+  not_adopted: '이번 결과 사용 안 함',
+  cancelled: '작업 중단',
 };
 
 export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({

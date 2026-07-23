@@ -6,13 +6,16 @@ interface ApprovalDetailModalProps {
   onClose: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  /** RC-2: 작업 중단. 기록은 삭제하지 않고 대기열에서만 내린다. */
+  onCancel?: (id: string) => void;
 }
 
 export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
   item,
   onClose,
   onApprove,
-  onReject
+  onReject,
+  onCancel
 }) => {
   const [showTechDetails, setShowTechDetails] = useState(false);
 
@@ -32,6 +35,11 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
 
   const handleRejectAction = () => {
     onReject(item.id);
+    onClose();
+  };
+
+  const handleCancelAction = () => {
+    onCancel?.(item.id);
     onClose();
   };
 
@@ -105,7 +113,11 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
             <div style={summaryItemStyle}>
               <span style={summaryLabelStyle}>상태</span>
               <span style={summaryValueStyle}>
-                {item.status === 'waiting' ? '⏳ 승인 대기' : item.status === 'approved' ? '✓ 승인 완료' : '✗ 거절됨'}
+                {item.status === 'waiting' ? '⏳ 확인 필요'
+                  : item.status === 'approved' ? '✓ 승인 완료'
+                  : item.status === 'not_adopted' ? '이번 결과 사용 안 함'
+                  : item.status === 'cancelled' ? '작업 중단'
+                  : '✗ 거절됨'}
               </span>
             </div>
           </div>
@@ -224,6 +236,11 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
               <button onClick={handleRejectAction} style={rejectActionBtnStyle}>
                 거절 (Reject)
               </button>
+              {onCancel && (
+                <button onClick={handleCancelAction} style={{ ...rejectActionBtnStyle, background: 'transparent', border: '1px solid var(--border, #444)', color: 'var(--text-muted, #999)' }}>
+                  작업 중단
+                </button>
+              )}
               <button onClick={handleApproveAction} style={approveActionBtnStyle}>
                 승인 및 조치 실행 (Approve)
               </button>

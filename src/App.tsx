@@ -29,6 +29,8 @@ import { getScenarioData, type ValidationScenarioType } from './engine/nativeAge
 import { useTheme } from './hooks/useTheme';
 import { classifyResource, userLabelOf, migrateResourceProvenance } from './services/dataSourceProvenanceContract';
 import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigration';
+import { toCanonicalAgentId, isSameAgent } from './services/agentIdRegistry';
+import { userStatusLabel } from './services/taskLifecycleContract';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -522,27 +524,10 @@ function App() {
       }
 
       // 픽셀 오피스 에이전트 상태 업데이트 (기존 9인 캐릭터 매핑)
+      // RC-2(G4): 화면 id ↔ 런타임 id 를 if-else 로 수동 매핑하지 않는다.
+      //   단일 별칭표(agentIdRegistry)로 canonical 비교한다. 캐릭터명·표시명은 그대로.
       setAgents(prev => prev.map(a => {
-        let matchingJob = null;
-        if (a.id === 'manager') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'manager_agent');
-        } else if (a.id === 'product') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'product_lead');
-        } else if (a.id === 'order') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'product_analyst');
-        } else if (a.id === 'stock') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'inventory_monitor');
-        } else if (a.id === 'cs') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'cs_lead');
-        } else if (a.id === 'delivery') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'inquiry_analyst');
-        } else if (a.id === 'review') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'review_detector');
-        } else if (a.id === 'marketing') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'marketing_lead');
-        } else if (a.id === 'trend_researcher' || a.id === 'finance') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'trend_researcher');
-        }
+        const matchingJob = runtimeResult.run.jobs.find(j => isSameAgent(j.assignedAgentId, a.id)) ?? null;
 
         if (matchingJob) {
           return {
@@ -580,8 +565,11 @@ function App() {
       });
 
       // 3. Today's Tasks(tasks)에 협업 제안 반영
-      const runtimeTasks: OperationTask[] = runtimeResult.orchestration.proposedTasks.map((t, idx) => ({
-        id: `runtime-task-${idx}-${Date.now()}`,
+      // RC-2(G1/G5): 업무 식별자는 제안 시점(orchestrateManager)에 확정된 것을 **그대로 쓴다**.
+      //   여기서 새로 만들면 승인이 원래 업무를 찾지 못한다(RC-2 RED R1).
+      const runtimeTasks: OperationTask[] = runtimeResult.orchestration.proposedTasks.map((t) => ({
+        id: t.id,
+        correlationId: t.correlationId,
         title: t.title,
         description: t.description,
         assignedAgentId: t.agentId,
@@ -597,12 +585,14 @@ function App() {
 
       // 4. Approval Queue에 반영
       const newApprovals: ApprovalItem[] = runtimeResult.orchestration.proposedApprovalItems.map((item, idx) => {
-        const apprId = `appr-runtime-${idx}-${Date.now()}`;
+        const apprId = `appr-runtime-${idx}-${item.taskId}`;
         return {
           id: apprId,
-          taskId: `task-${item.agentId}-${Date.now()}`,
+          // 제안 단계에서 확정된 taskId 를 그대로 쓴다(새로 만들지 않는다).
+          taskId: item.taskId,
+          correlationId: item.correlationId,
           title: item.title,
-          requestedByAgentId: item.agentId,
+          requestedByAgentId: toCanonicalAgentId(item.agentId),
           riskLevel: item.artifact.approvalRequired ? 'high' : 'medium',
           reason: item.reason,
           proposedAction: item.proposedAction + '\n\n' + item.artifact.body,
@@ -757,9 +747,9 @@ function App() {
     }));
 
     // 관련 에이전트 캐릭터를 완료 상태로 갱신하여 픽셀 오피스에 피드백
-    setAgents(currentAgents => currentAgents.map(a => 
-      a.id === item.requestedByAgentId 
-        ? { ...a, status: 'completed', bubbleText: '승인 확인 완료! 🎉' } 
+    setAgents(currentAgents => currentAgents.map(a =>
+      isSameAgent(a.id, item.requestedByAgentId)
+        ? { ...a, status: 'completed', bubbleText: '승인 확인 완료! 🎉' }
         : a
     ));
 
@@ -795,6 +785,25 @@ function App() {
     setSelectedApprovalDetail(null);
   };
 
+  // 취소 처리 액션 — RC-2: '작업 중단'. 기록을 삭제하지 않고 상태만 닫는다.
+  const handleCancel = (approvalId: string, reason = '운영자 작업 중단') => {
+    const item = approvalQueue.find(i => i.id === approvalId);
+    if (!item) return;
+
+    setTasks(currentTasks => currentTasks.map(t =>
+      t.id === item.taskId ? { ...t, status: 'cancelled', resultSummary: `${t.resultSummary ?? ''} (${userStatusLabel('stopped')})`.trim() } : t
+    ));
+    setAgents(currentAgents => currentAgents.map(a =>
+      isSameAgent(a.id, item.requestedByAgentId) ? { ...a, status: 'idle', bubbleText: '작업 중단됨' } : a
+    ));
+    addLog(`[Approval] "${item.title}" ${userStatusLabel('stopped')} — ${reason}`, 'warning', 'Approval');
+
+    // 승인 대기열에서만 제외한다. 결정 이력은 사유와 함께 남긴다.
+    setApprovalQueue(prev => prev.map(i => (i.id === approvalId ? { ...i, status: 'cancelled' as const, decisionReason: reason } : i))
+      .filter(i => i.status === 'waiting'));
+    setSelectedApprovalDetail(null);
+  };
+
   // 거절 처리 액션
   const handleReject = (approvalId: string) => {
     const item = approvalQueue.find(i => i.id === approvalId);
@@ -824,9 +833,9 @@ function App() {
     }));
 
     // 관련 에이전트 캐릭터를 대기 상태로 원복
-    setAgents(currentAgents => currentAgents.map(a => 
-      a.id === item.requestedByAgentId 
-        ? { ...a, status: 'idle', bubbleText: '작업 반려됨' } 
+    setAgents(currentAgents => currentAgents.map(a =>
+      isSameAgent(a.id, item.requestedByAgentId)
+        ? { ...a, status: 'idle', bubbleText: '작업 반려됨' }
         : a
     ));
 
@@ -1030,6 +1039,7 @@ function App() {
           approvalQueue={approvalQueue}
           onApprove={handleApprove}
           onReject={handleReject}
+          onCancel={handleCancel}
         />
       )}
 
@@ -1039,6 +1049,7 @@ function App() {
           onClose={() => setSelectedApprovalDetail(null)}
           onApprove={handleApprove}
           onReject={handleReject}
+          onCancel={handleCancel}
         />
       )}
     </>

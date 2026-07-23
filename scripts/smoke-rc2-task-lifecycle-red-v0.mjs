@@ -6,7 +6,7 @@
  * 목적: 하나의 업무가 생성된 뒤 실행·결과물·승인·기록까지 **같은 업무로 추적되는지**를
  *   문자열 grep 이 아니라 **실제 함수 호출**로 검증한다.
  *
- * 이 단계는 RED 진단 전용. 제품 소스는 한 줄도 고치지 않는다.
+ * RED(진단) → GREEN(구현) 공용 계약 검사.
  *   [BASE] = 진단 전제(현재 코드에서도 참). fail>0 이면 진단 자체를 다시 써야 한다.
  *   [RED ] = 생명주기 계약 목표. 지금은 미충족(unmet)이 정상이다.
  *
@@ -127,10 +127,12 @@ base('B3. AgentResult/AgentArtifact 는 이미 id·runId·jobId·agentId 를 갖
   !!mktPlan.artifacts[0].id && !!mktPlan.artifacts[0].runId,
   'result.id/runId/jobId/agentId · artifact.id/runId 존재');
 
-base('B4. 원장 ActivityEvent 는 refId 한 칸만 갖는다(taskId/runId/artifactId 구분 없음)',
-  (() => { const ev = LEDGER.createActivity({ teamId: 'product', type: 'task_run', status: 'pending', title: 't', actor: { kind: 'agent', teamId: 'product', label: 'x', agentId: 'stock' } }, AT);
-    return 'refId' in ev && !('taskId' in ev) && !('runId' in ev) && !('artifactId' in ev); })(),
-  'refId 단일 슬롯');
+// RED 당시: refId 한 칸뿐이라 업무 추적이 불가능했다. GREEN(G2) 이후 taskId/correlationId 를 갖는다.
+base('B4. 원장 ActivityEvent 가 업무 추적 식별자(taskId·correlationId)를 갖는다',
+  (() => { const ev = LEDGER.createActivity({ teamId: 'product', type: 'task_run', status: 'pending', title: 't',
+      actor: { kind: 'agent', teamId: 'product', label: 'x', agentId: 'stock' }, taskId: 'T9', correlationId: 'C9' }, AT);
+    return ev.taskId === 'T9' && ev.correlationId === 'C9' && 'refId' in ev; })(),
+  'taskId·correlationId + refId(표시용) 공존');
 
 base('B5. 원장 상태 집계는 refId 로 dedup 하고, refId 없는 이벤트는 dedup 을 우회한다',
   (() => {
@@ -485,8 +487,10 @@ red('P20. 수정 요청은 기존 결과를 보존하고 같은 업무의 새 re
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (진단 전제 — fail>0이면 진단 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (생명주기 계약 — GREEN 미착수이므로 unmet>0 정상)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (생명주기 계약 R1~R7 + 운영 정책 P1~P20)`);
 rmSync(tmp, { recursive: true, force: true });
-if (baseF > 0) { console.log('\n✗ 진단 전제 불일치'); process.exit(1); }
-console.log(`\n✗ RC-2 RED — 생명주기 계약 ${redUnmet}건 미충족(의도된 실패 · GREEN 대기)`);
-process.exit(1);
+if (baseF > 0 || redUnmet > 0) {
+  console.log(`\n✗ 미충족 — BASE fail ${baseF} · RED unmet ${redUnmet}`);
+  process.exit(1);
+}
+console.log('\n✓ 전부 충족 — RC-2 GREEN 도달 (업무→실행→결과물→승인→기록이 같은 업무로 추적)');
