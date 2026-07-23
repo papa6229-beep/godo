@@ -7,7 +7,7 @@ import type {
   DataImportStatus
 } from '../types/dataConnector';
 import { parseCSVToObjectArray } from '../utils/csvParser';
-import { buildOperationsSnapshot, normalizeRawObject } from '../utils/dataNormalizer';
+import { buildOperationsSnapshot, normalizeRawObject, displayOrderQuantity, displayOrderAmount } from '../utils/dataNormalizer';
 import { classifyResource, userLabelOf, summarizeScreenStatus } from '../services/dataSourceProvenanceContract';
 import {
   defaultOperationsData,
@@ -791,10 +791,12 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                           <td>{o.customerNameMasked}</td>
                           <td>{o.orderDate}</td>
                           <td>{o.productName}</td>
-                          <td>{o.optionName}</td>
-                          <td>{o.quantity}</td>
-                          <td>{o.amount.toLocaleString()}원</td>
-                          <td>{o.paymentStatus} | {o.deliveryStatus}</td>
+                          <td>{o.optionName || '미확인'}</td>
+                          {/* GODO-ORDER-MAPPING-01(D-1): 근거 없는 수량·금액을 1개·0원으로 지어내지 않는다 */}
+                          <td>{displayOrderQuantity(o)}</td>
+                          <td>{displayOrderAmount(o)}</td>
+                          {/* GODO-ORDER-MAPPING-01: 상류 근거 없는 상태를 결제완료/배송대기로 단정하지 않는다 */}
+                          <td>{[o.paymentStatus, o.deliveryStatus].filter(Boolean).join(' | ') || '미확인'}</td>
                           <td>
                             {o.riskFlags.map(f => (
                               <span key={f} className={`flag-badge ${f === 'delivery_delayed' ? 'danger' : ''}`}>{f}</span>

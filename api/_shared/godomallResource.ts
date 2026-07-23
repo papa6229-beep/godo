@@ -60,10 +60,13 @@ const ORDER_SEARCH_PATH = '/order/Order_Search.php';
 
 // 리스트 추출 후보 키 (실 응답 확인: Goods_Search 리스트는 data.return.goods_data)
 export const GOODS_LIST_KEYS = ['goods_data', 'goods', 'item', 'list', 'row', 'data'];
-export const ORDER_LIST_KEYS = ['order', 'item', 'list', 'row', 'data'];
-// 관리자 주문 리스트 추출 후보 (Order_Search 실응답: data.return.order_data)
+// 주문 리스트 추출 후보 (Order_Search 실응답: data.return.order_data)
 // 실제 리스트 키 order_data 를 generic wrapper 'data'보다 앞에 둔다.
 export const ADMIN_ORDER_LIST_KEYS = ['order_data', 'order_list', 'order', 'orderInfo', 'orderList', 'orderData', 'item', 'list', 'row', 'data'];
+// GODO-ORDER-MAPPING-01: orders 리소스 경로도 admin/revenue 와 **같은 후보 키**를 쓴다.
+// (과거 이 상수만 'order_data' 를 빠뜨려 generic 래퍼를 주문 1건으로 오인 → 유령 주문 발생.
+//  두 상수가 다시 갈라지지 않도록 별도 배열을 두지 않고 동일 참조로 고정한다.)
+export const ORDER_LIST_KEYS = ADMIN_ORDER_LIST_KEYS;
 
 // 주문 조회 기본 기간 (최근 30일)
 const defaultOrderRange = (): { startDate: string; endDate: string } => {
@@ -100,7 +103,9 @@ const fetchLiveRecords = async (
     if (!res.ok || !res.xml) throw new Error(res.error || 'Order_Search failed');
     const parsed = parseGodomallXml(res.xml);
     if (!parsed.ok) throw new Error(`Order_Search error code ${parsed.code}: ${parsed.msg}`);
-    const rawOrders = extractList(parsed.root, ORDER_LIST_KEYS);
+    // GODO-ORDER-MAPPING-01: 0건/빈 응답/메타 래퍼를 주문으로 오인하지 않도록
+    // admin·revenue 경로와 동일하게 phantom 가드를 매핑 **전에** 적용한다.
+    const rawOrders = normalizeOrderData(extractList(parsed.root, ORDER_LIST_KEYS));
     const mappedOrders = mapOrderList(rawOrders);
     return resourceType === 'sales' ? deriveSalesFromOrders(mappedOrders) : mappedOrders;
   }
