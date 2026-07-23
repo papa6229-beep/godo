@@ -21,7 +21,7 @@ import {
   APPROVAL_ROUTES
 } from './taskLifecycleContract';
 import type {
-  ActorRef, ApprovalDecisionKind, CreateTaskInput, IdContext,
+  ActorRef, ApprovalDecisionKind, CreateTaskInput, ExecutorKind, IdContext,
   LifecycleTask, TaskLifecycleStatus
 } from './taskLifecycleContract';
 import { loadLifecycleTasks, saveLifecycleTask, saveLifecycleTasks, findTask } from './taskLifecycleStore';
@@ -124,11 +124,30 @@ const DEPARTMENT_TO_TEAM: Record<string, ActorRef['teamId']> = {
   manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing', design: 'design'
 };
 
-/** canonical agentId → 소속 팀. 알 수 없으면 hq(총괄)로 둔다(추측 금지). */
-export function teamOfAgent(agentId: string): ActorRef['teamId'] {
+/** 소속을 확인할 수 없는 담당자에게 쓰는 화면 문구(내부 ID·'알 수 없음' 대체). */
+export const UNKNOWN_AFFILIATION_LABEL = '소속 확인 필요';
+
+/**
+ * canonical agentId → 소속 팀.
+ * RC-2 D-1.2: 소속을 확인할 수 없으면 **null**. hq(총괄)로 자동 승격하지 않는다.
+ *   미상을 hq 로 두면 권한이 가장 높은 팀으로 올라가 버린다(반대 방향의 안전값).
+ */
+export function teamOfAgent(agentId: string): ActorRef['teamId'] | null {
   const canonical = toCanonicalAgentId(agentId);
   const def = defaultNativeAgents.find((a) => a.id === canonical);
-  return def ? (DEPARTMENT_TO_TEAM[def.departmentId] ?? 'hq') : 'hq';
+  if (!def) return null;
+  return DEPARTMENT_TO_TEAM[def.departmentId] ?? null;
+}
+
+/**
+ * 화면에 보일 수행자 이름. 내부 AI ID 를 그대로 노출하지 않는다.
+ *   비어 있음 → 아직 팀장이 수행 방식을 고르지 않은 상태
+ *   등록되지 않은 id → 소속 확인 필요(삭제하지 않고 격리 표시)
+ */
+export function executorDisplayName(executorId?: string): string {
+  if (!executorId) return '수행자 미정';
+  const def = defaultNativeAgents.find((a) => a.id === toCanonicalAgentId(executorId));
+  return def ? def.name : UNKNOWN_AFFILIATION_LABEL;
 }
 
 /**
@@ -210,23 +229,58 @@ export function applyDecision(
 /**
  * 수동 업무도 공통 생성기를 통과한다(임의 id 금지). 생성 즉시 저장한다.
  * RC-2 D-1.1: 담당 팀은 **선택한 에이전트의 소속**, 승인 경로는 **생성자·수행팀 관계**로 정한다.
+ *
+ * RC-2 D-1.2 정정 — 화면에서 고른 AI 는 **추천 수행자**일 뿐이다.
+ *   · 고른 사람이 그 팀의 팀장일 때만 수행자로 확정한다(자기 팀 AI 직접 지시).
+ *   · HQ·다른 팀장이 골랐으면 수행자 미정으로 담당 팀장에게 도착한다.
+ *   · 다른 팀에 넘기는 업무는 요청팀 부모 + 수행팀 자식 두 건으로 남긴다.
  */
 export function createManualTask(
   input: Omit<CreateTaskInput, 'ownerTeamId' | 'ownerHumanId'> & { ownerTeamId?: ActorRef['teamId']; ownerHumanId?: string },
   ids: IdContext
 ): LifecycleTask {
-  const ownerTeamId = input.ownerTeamId ?? teamOfAgent(input.assignedAgentId);
+  const suggested = toCanonicalAgentId(input.assignedAgentId ?? '');
+  const agentTeam = teamOfAgent(input.assignedAgentId ?? '');
+  // 소속을 확인할 수 없는 AI 로는 팀을 정하지 않는다(추측 금지) → 지시자 팀에 남긴다.
+  const ownerTeamId = input.ownerTeamId ?? agentTeam ?? input.createdBy.teamId;
   const route = input.approvalRoute ?? routeFor(input.createdBy, ownerTeamId);
-  const task = createLifecycleTask({
+
+  // 자기 팀 AI 를 그 팀 팀장이 직접 고른 경우에만 배정 확정.
+  const isOwnTeamLead = input.createdBy.kind === 'human' && input.createdBy.teamId === ownerTeamId;
+  const assignable = !!suggested && agentTeam === ownerTeamId && isOwnTeamLead;
+
+  const common = {
     ...input,
-    ownerTeamId,
     ownerHumanId: input.ownerHumanId ?? `u-${ownerTeamId}`,
-    approvalRoute: route,
-    // 협업 요청이면 요청팀을 남겨 요청팀 확인 단계가 성립하게 한다.
-    ...(route === APPROVAL_ROUTES.collaboration || input.createdBy.teamId !== ownerTeamId
-      ? { requestingTeamId: input.requestingTeamId ?? input.createdBy.teamId }
-      : {})
-  }, ids);
+    assignedAgentId: assignable ? suggested : '',
+    executorKind: (assignable ? 'agent' : 'unassigned') as ExecutorKind,
+    status: 'open' as const
+  };
+
+  // 팀 간 '협업'만 부모+자식 두 건이다. HQ 지시는 협업이 아니라 지시이므로 담당팀 카드 한 건.
+  const crossTeam = input.createdBy.teamId !== ownerTeamId && input.createdBy.teamId !== 'hq';
+  if (crossTeam) {
+    // 요청팀 카드(부모) — 요청한 팀이 자기 화면에서 진행을 볼 자리.
+    const parent = createLifecycleTask({
+      ...common,
+      title: `${input.title} (협업 요청)`,
+      ownerTeamId: input.createdBy.teamId,
+      ownerHumanId: `u-${input.createdBy.teamId}`,
+      assignedAgentId: '',
+      executorKind: 'unassigned',
+      approvalRoute: APPROVAL_ROUTES.team_internal
+    }, ids);
+    const child = createChildTask(parent, {
+      ...common,
+      ownerTeamId,
+      approvalRoute: route,
+      requestingTeamId: input.requestingTeamId ?? input.createdBy.teamId
+    }, ids);
+    saveLifecycleTasks([parent, child]);
+    return child; // 화면이 다루는 것은 수행팀 업무다.
+  }
+
+  const task = createLifecycleTask({ ...common, ownerTeamId, approvalRoute: route }, ids);
   saveLifecycleTask(task);
   return task;
 }
@@ -305,11 +359,23 @@ export function assignExecutor(
   return okResult(next);
 }
 
+/**
+ * 팀장이 AI 작업을 **직접 인수**한다. 기존 AI 시도·결과는 지우지 않고 이력에 쌓인다.
+ * (assignExecutor 의 '직접 처리' 경로와 같은 함수 — 화면 문구용 이름)
+ */
+export function takeOverByLead(
+  taskId: string,
+  input: { actor: ActorRef; reason?: string },
+  ctx: { nowIso: string }
+) {
+  return assignExecutor(taskId, { kind: 'human', actor: input.actor, reason: input.reason ?? '팀장 직접 인수' }, ctx);
+}
+
 /** 수행자가 결과를 제출한다. **결과물 참조가 없으면 거부**한다. 이때부터 팀장 확인 대상이 된다. */
 export function submitResult(
   taskId: string,
   input: { artifactRefs: string[]; actor: ActorRef; note?: string },
-  _ctx: { nowIso: string }
+  ctx: { nowIso: string }
 ) {
   const all = loadLifecycleTasks();
   const task = findTask(all, taskId);
@@ -322,6 +388,7 @@ export function submitResult(
     ...task,
     status: 'awaiting_approval',
     submittedBy: input.actor,
+    submittedAt: ctx.nowIso,
     artifactRefs: [...(task.artifactRefs ?? []), ...refs]
   };
   saveLifecycleTask(next);
@@ -416,25 +483,30 @@ export function acceptRuntimeProposals(
   const existing = loadLifecycleTasks();
   const accepted: LifecycleTask[] = [];
 
+  const resultTaskIds = new Set(proposals.proposedApprovalItems.map((i) => i.taskId));
+
   for (const p of proposals.proposedTasks) {
     if (findTask(existing, p.id) || accepted.some((t) => t.ref.taskId === p.id)) continue; // 중복 수용 금지
+    const canonical = toCanonicalAgentId(p.agentId);
+    // RC-2 D-1.1/D-1.2: 담당 팀은 에이전트 소속에서 온다. 미상은 hq 로 올리지 않고 지시자 팀에 남긴다.
+    const ownerTeamId = teamOfAgent(p.agentId) ?? opts.ownerTeamId ?? opts.createdBy.teamId;
+    // 결과가 딸려 온 제안 = AI 가 이미 수행한 결과 → **담당 팀장 확인** 대상.
+    // 결과가 없는 제안 = 아직 할 일 → 수행자 미정으로 팀장에게 도착(AI 확정 금지).
+    const hasResult = resultTaskIds.has(p.id);
     accepted.push({
       ref: { taskId: p.id, correlationId: p.correlationId, runId: undefined },
       title: p.title,
-      // RC-2 D-1.1: 담당 팀은 에이전트 소속(런타임 정의)에서 온다. 'hq' 고정 금지.
-      ownerTeamId: teamOfAgent(p.agentId),
-      ownerHumanId: `u-${teamOfAgent(p.agentId)}`,
-      assignedAgentId: toCanonicalAgentId(p.agentId),
+      ownerTeamId,
+      ownerHumanId: `u-${ownerTeamId}`,
+      assignedAgentId: hasResult ? canonical : '',
       requestingTeamId: opts.createdBy.teamId,
-      // 승인 필요 제안은 대기 상태로 둔다(완료로 고정 금지).
-      // RC-2 D-1.2: runtime 제안도 수행자 미정으로 팀장에게 도착한다(AI 확정 금지).
-      //   AI 지목은 '추천 수행자'일 뿐 실제 배정이 아니다.
-      executorKind: 'unassigned',
-      suggestedExecutorId: toCanonicalAgentId(p.agentId),
+      executorKind: hasResult ? 'agent' : 'unassigned',
+      executorId: hasResult ? canonical : undefined,
+      suggestedExecutorId: canonical,
       executorHistory: [],
-      status: 'open',
+      status: hasResult ? 'awaiting_approval' : 'open',
       dependencyMode: 'independent',
-      approvalRoute: routeFor(opts.createdBy, teamOfAgent(p.agentId)),
+      approvalRoute: routeFor(opts.createdBy, ownerTeamId),
       createdBy: opts.createdBy,
       createdAt: opts.nowIso,
       decisions: []

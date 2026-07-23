@@ -9,6 +9,9 @@ import {
   isBrainConnected
 } from '../services/aiBrainSettings';
 import './AgentDetailModal.css';
+import { teamOfAgent } from '../services/taskLifecycleAppAdapter';
+import { loadRole, roleMeta } from '../services/sessionRole';
+import type { ViewerRole } from '../services/sessionRole';
 
 const BRAIN_OPTIONS: { value: 'global' | BrainProviderId; label: string }[] = [
   { value: 'global', label: '전체 기본 AI 따라가기' },
@@ -26,7 +29,8 @@ const brainIsLocalDev: boolean =
 interface AgentDetailModalProps {
   agent: Agent;
   onClose: () => void;
-  onDirectInstruct: (agentId: string, instruction: string) => void;
+  /** RC-2 D-1.2: 지시자 팀을 함께 넘겨 App 에서도 권한을 다시 확인한다(화면 숨김만으로 막지 않는다). */
+  onDirectInstruct: (target: { agentId: string; byTeamId: string }, instruction: string) => void;
   onNavigateToBrain: (itemId: string) => void;
   onNavigateToStudio?: (agentId: string) => void;
 }
@@ -63,6 +67,9 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
   onNavigateToStudio
 }) => {
   const [instruction, setInstruction] = useState('');
+  // 이 AI 의 소속 팀 — 소속을 확인할 수 없으면 아무도 직접 지시할 수 없다(추측 금지).
+  const instructionTargetTeam = teamOfAgent(agent.id);
+  const canInstructDirectly = !!instructionTargetTeam && loadRole() === instructionTargetTeam;
   const [showPrompt, setShowPrompt] = useState(false);
   const [brainChoice, setBrainChoice] = useState<'global' | BrainProviderId>(() => getAgentBrainChoice(agent.id));
   const [brainMsg, setBrainMsg] = useState('');
@@ -83,7 +90,9 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!instruction.trim()) return;
-    onDirectInstruct(agent.id, instruction);
+    if (!canInstructDirectly) return;
+    // RC-2 D-1.2: 상세 직접 지시는 **그 AI 가 속한 팀의 팀장**만 쓸 수 있다.
+    onDirectInstruct({ agentId: agent.id, byTeamId: instructionTargetTeam }, instruction);
     setInstruction('');
   };
 
@@ -328,9 +337,15 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
               )}
             </div>
 
-            {/* 개별 지시 내리기 */}
+            {/* 개별 지시 내리기 — 담당 팀장만 사용 가능(총괄·다른 팀장은 볼 수만 있다) */}
             <div className="modal-section instruction-section sub-panel">
               <h3 className="section-title">🛰️ 개별 지시 내리기 (Direct Instruction)</h3>
+              {!canInstructDirectly ? (
+                <p className="section-desc">
+                  이 담당자에게 직접 지시할 수 있는 사람은 {instructionTargetTeam ? roleMeta(instructionTargetTeam as ViewerRole).label : '해당 팀장'}입니다.
+                  다른 자리에서는 팀에 업무를 보내 주세요.
+                </p>
+              ) : (
               <form onSubmit={handleSubmit} className="instruction-form">
                 <input
                   type="text"
@@ -343,6 +358,7 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
                   지시 전송
                 </button>
               </form>
+              )}
             </div>
           </div>
         </div>

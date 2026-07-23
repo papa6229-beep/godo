@@ -150,6 +150,8 @@ export interface LifecycleTask {
   executorHistory: ExecutorHistoryEntry[];
   /** 팀장이 HQ 에 제출한 주체(결과 제출 기록). */
   submittedBy?: ActorRef;
+  /** 결과를 제출한 시각(팀장 확인 대기 시작점). */
+  submittedAt?: string;
   /** 화면 추천값 — 자동 재배정에 쓰지 않는다. */
   suggestedExecutorId?: string;
   /** 팀장 부재 시 HQ 가 명시 지정한 임시 책임자. */

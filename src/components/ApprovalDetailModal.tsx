@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ApprovalItem } from '../types/approval';
+import { executorDisplayName } from '../services/taskLifecycleAppAdapter';
 
 interface ApprovalDetailModalProps {
   item: ApprovalItem;
@@ -123,7 +124,7 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
           <div style={summaryRowStyle}>
             <div style={summaryItemStyle}>
               <span style={summaryLabelStyle}>담당 에이전트</span>
-              <span style={summaryValueStyle}>{item.requestedByAgentId.toUpperCase()} AI</span>
+              <span style={summaryValueStyle}>{executorDisplayName(item.requestedByAgentId)}</span>
             </div>
             <div style={summaryItemStyle}>
               <span style={summaryLabelStyle}>위험 수준</span>

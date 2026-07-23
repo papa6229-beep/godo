@@ -32,10 +32,10 @@ import { classifyResource, userLabelOf, migrateResourceProvenance } from './serv
 import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigration';
 import { isSameAgent } from './services/agentIdRegistry';
 import {
-  hydrateAppState, applyDecision, createManualTask, acceptRuntimeProposals,
+  hydrateAppState, applyDecision, createDirectiveTask, acceptRuntimeProposals, teamOfAgent,
   actorForRole, pendingForActor
 } from './services/taskLifecycleAppAdapter';
-import { loadRole, subscribeRole, roleMeta } from './services/sessionRole';
+import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
 import './App.css';
 
@@ -656,22 +656,29 @@ function App() {
     setApprovalHistory(st.history);
   };
 
-  // 수동 태스크 추가 — 공통 createLifecycleTask 를 통과해 taskId 를 한 번만 발급한다.
-  const handleAddTask = (title: string, agentId: string) => {
-    createManualTask(
-      // 담당 팀은 선택한 에이전트 소속에서, 승인 경로는 생성자·수행팀 관계에서 결정된다.
-      { title, assignedAgentId: agentId, createdBy: sessionActor() },
+  // 업무 지시 — **팀에게** 보낸다. 수행 방식(AI 배정/직접 처리)은 담당 팀장이 고른다.
+  //   RC-2 D-1.2: 화면에서 AI 를 직접 골라 배정하지 않는다.
+  const handleAddTask = (title: string, targetTeamId: string) => {
+    const teamId = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
+    createDirectiveTask(
+      { title, targetTeamId: teamId, instructedBy: sessionActor() },
       { newId: () => `task-manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, nowIso: new Date().toISOString() }
     );
     refreshLifecycleState();
-    const agent = agents.find(a => a.id === agentId);
-    addLog(`사용자가 새로운 수동 작업 "${title}"을 추가하고 [${agent?.name || agentId}] 에이전트에 배정했습니다.`, 'info', 'SYSTEM');
+    addLog(`새 업무 "${title}"을 ${roleMeta(teamId).label}에게 전달했습니다. 수행 방식은 담당 팀장이 정합니다.`, 'info', 'SYSTEM');
   };
 
   // 상세 모달에서 개별 지시 내리기
-  const handleDirectInstruct = (agentId: string, instruction: string) => {
+  const handleDirectInstruct = (target: { agentId: string; byTeamId: string }, instruction: string) => {
+    const { agentId, byTeamId } = target;
     const agent = agents.find((a) => a.id === agentId);
     if (!agent) return;
+    // RC-2 D-1.2: 자기 팀 AI 에 대한 팀장 지시만 허용. 총괄·다른 팀장의 우회 경로를 막는다.
+    const ownerTeam = teamOfAgent(agentId);
+    if (!ownerTeam || byTeamId !== ownerTeam || viewerRole !== ownerTeam) {
+      addLog(`직접 지시가 거절되었습니다 — 담당 팀장만 이 담당자에게 지시할 수 있습니다.`, 'warning', 'SYSTEM');
+      return;
+    }
 
     setSelectedAgent(null);
 

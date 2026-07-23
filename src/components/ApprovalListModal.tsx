@@ -2,6 +2,7 @@ import React from 'react';
 import type { ApprovalItem } from '../types/approval';
 import type { Agent } from '../types';
 import './ApprovalListModal.css';
+import { UNKNOWN_AFFILIATION_LABEL } from '../services/taskLifecycleAppAdapter';
 
 interface ApprovalListModalProps {
   isOpen: boolean;
@@ -52,7 +53,8 @@ export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
 
   const getAgentInfo = (agentId: string) => {
     const agent = agents.find(a => a.id === agentId);
-    return agent ? { name: agent.name, emoji: agent.emoji } : { name: '알 수 없음', emoji: '⚙️' };
+    if (agent) return { name: agent.name, emoji: agent.emoji };
+    return agentId ? { name: UNKNOWN_AFFILIATION_LABEL, emoji: '❓' } : { name: '수행자 미정', emoji: '🕓' };
   };
 
   const handleSelect = (item: ApprovalItem) => {

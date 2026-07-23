@@ -5,6 +5,11 @@ import type { Agent } from '../types';
 import { TaskListModal } from './TaskListModal';
 import { ApprovalListModal } from './ApprovalListModal';
 import './TaskBoard.css';
+import { UNKNOWN_AFFILIATION_LABEL } from '../services/taskLifecycleAppAdapter';
+import { VIEWER_ROLES } from '../services/sessionRole';
+
+// 업무를 받을 팀(총괄 자신은 지시 대상이 아니다).
+const TARGET_TEAMS = VIEWER_ROLES.filter((r) => r.id !== 'hq');
 
 interface TaskBoardProps {
   tasks: OperationTask[];
@@ -12,7 +17,8 @@ interface TaskBoardProps {
   isSimulating: boolean;
   approvalQueue: ApprovalItem[];
   onStartSimulation: () => void;
-  onAddTask: (title: string, agentId: string) => void;
+  /** RC-2 D-1.2: 업무는 **팀에게** 보낸다. 두 번째 인자는 팀 id(수행 방식은 담당 팀장이 고른다). */
+  onAddTask: (title: string, targetTeamId: string) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onSelectTask?: (task: OperationTask) => void;
@@ -48,7 +54,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   hideAddTask = false
 }) => {
   const [newTitle, setNewTitle] = useState('');
-  const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id || 'cs');
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(TARGET_TEAMS[0].id);
   const [listFilter, setListFilter] = useState<{ title: string; statuses: TaskStatus[] } | null>(null);
   const [approvalListFilter, setApprovalListFilter] = useState<{
     title: string;
@@ -73,7 +79,9 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
 
   const getAgentInfo = (agentId: string) => {
     const agent = agents.find((a) => a.id === agentId);
-    return agent ? { name: agent.name, emoji: agent.emoji } : { name: '알 수 없음', emoji: '⚙️' };
+    if (agent) return { name: agent.name, emoji: agent.emoji };
+    // 수행자가 아직 정해지지 않았거나(팀장 선택 대기) 소속을 확인할 수 없는 경우를 구분해서 말한다.
+    return agentId ? { name: UNKNOWN_AFFILIATION_LABEL, emoji: '❓' } : { name: '수행자 미정', emoji: '🕓' };
   };
 
   const getPermissionLabel = (perm: string) => {
@@ -145,7 +153,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    onAddTask(newTitle, selectedAgentId);
+    onAddTask(newTitle, selectedTeamId);
     setNewTitle('');
   };
 
@@ -267,13 +275,13 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
               />
               <div className="add-task-meta">
                 <select
-                  value={selectedAgentId}
-                  onChange={(e) => setSelectedAgentId(e.target.value)}
+                  value={selectedTeamId}
+                  onChange={(e) => setSelectedTeamId(e.target.value)}
                   className="agent-select"
                 >
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.emoji} {agent.name.split(' ')[0]}
+                  {TARGET_TEAMS.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.emoji} {team.short}
                     </option>
                   ))}
                 </select>
