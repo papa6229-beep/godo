@@ -120,6 +120,20 @@ export interface DecisionRecord {
   stageLabel?: string;
 }
 
+/**
+ * RC-2 D-1.2: 수행자 유형. 업무는 **수행자 미정(unassigned)** 으로 팀장에게 도착하고,
+ * 팀장이 AI 배정(agent) 또는 직접 처리(human)를 고른다.
+ */
+export type ExecutorKind = 'unassigned' | 'agent' | 'human';
+
+export interface ExecutorHistoryEntry {
+  kind: ExecutorKind;
+  id?: string;
+  at: string;
+  byLabel: string;
+  reason?: string;
+}
+
 export interface LifecycleTask {
   ref: LifecycleRef;
   title: string;
@@ -129,6 +143,18 @@ export interface LifecycleTask {
   ownerHumanId: string;
   /** 협업 자식이면 요청한 팀. */
   requestingTeamId?: DeptTeamId;
+  /** RC-2 D-1.2: 수행자 정본. assignedAgentId 는 하위호환 파생 필드일 뿐이다. */
+  executorKind: ExecutorKind;
+  executorId?: string;
+  /** 수행자 변경 이력(덮어쓰지 않고 append). */
+  executorHistory: ExecutorHistoryEntry[];
+  /** 팀장이 HQ 에 제출한 주체(결과 제출 기록). */
+  submittedBy?: ActorRef;
+  /** 화면 추천값 — 자동 재배정에 쓰지 않는다. */
+  suggestedExecutorId?: string;
+  /** 팀장 부재 시 HQ 가 명시 지정한 임시 책임자. */
+  actingLeadUserId?: string;
+  /** @deprecated 하위호환 표시용. 정본은 executorKind/executorId. */
   assignedAgentId: string;
   status: TaskLifecycleStatus;
   dependencyMode: DependencyMode;
@@ -149,6 +175,10 @@ export interface IdContext {
 
 export interface CreateTaskInput {
   title: string;
+  /** 생성 시 수행자 유형(기본 unassigned). */
+  executorKind?: ExecutorKind;
+  /** 생성 시 상태(기본 open). 승인 대기로 바로 만들지 않는다. */
+  status?: TaskLifecycleStatus;
   ownerTeamId: DeptTeamId;
   ownerHumanId: string;
   assignedAgentId: string;
@@ -170,7 +200,12 @@ export function createLifecycleTask(input: CreateTaskInput, ids: IdContext): Lif
     ownerHumanId: input.ownerHumanId,
     requestingTeamId: input.requestingTeamId,
     assignedAgentId: input.assignedAgentId,
-    status: 'awaiting_approval',
+    // RC-2 D-1.2: 생성 즉시 승인 대기로 만들지 않는다. 결과가 제출돼야 확인 대상이 된다.
+    executorKind: input.executorKind ?? (input.assignedAgentId ? 'agent' : 'unassigned'),
+    ...(input.executorKind === 'agent' || (input.executorKind === undefined && input.assignedAgentId)
+      ? { executorId: input.assignedAgentId } : {}),
+    executorHistory: [],
+    status: input.status ?? 'open',
     dependencyMode: input.dependencyMode ?? 'independent',
     approvalRoute: input.approvalRoute ?? APPROVAL_ROUTES.team_internal,
     createdBy: input.createdBy,
@@ -203,13 +238,18 @@ export function createRevisionTask(
   input: { reason: string; createdBy: ActorRef; title?: string },
   ids: IdContext
 ): { revision: LifecycleTask; superseded: LifecycleTask } {
+  // RC-2 D-1.2: 수정본은 새 버전이다.
+  //   승인 경로를 **처음부터** 다시 밟고(stageIndex 0), 수행자는 **미정**으로 되돌린다.
+  //   직전 수행자는 화면 추천값으로만 남기고 자동 재배정하지 않는다.
   const revision = createLifecycleTask({
     title: input.title ?? `${original.title} (수정본)`,
     ownerTeamId: original.ownerTeamId,
     ownerHumanId: original.ownerHumanId,
-    assignedAgentId: original.assignedAgentId,
+    assignedAgentId: '',
+    executorKind: 'unassigned',
+    status: 'open',
     createdBy: input.createdBy,
-    approvalRoute: original.approvalRoute,
+    approvalRoute: { ...original.approvalRoute, currentStageIndex: 0 },
     dependencyMode: original.dependencyMode,
     requestingTeamId: original.requestingTeamId
   }, ids);
@@ -226,6 +266,7 @@ export function createRevisionTask(
   return {
     revision: {
       ...revision,
+      ...(original.executorId ? { suggestedExecutorId: original.executorId } : {}),
       ref: {
         ...revision.ref,
         correlationId: original.ref.correlationId,
@@ -329,9 +370,13 @@ export function decideApproval(
   return { ok: true, task: next, events: [{ taskId: next.ref.taskId, correlationId: next.ref.correlationId, status: next.status, kind: 'approve', at: ctx.nowIso, actorLabel: input.actor.label, reason: input.reason }] };
 }
 
-/** 승인 대기 화면 집계 대상인가. 승인·미채택·중단된 항목은 이력에만 남는다. */
+/**
+ * 승인 대기 화면 집계 대상인가.
+ * RC-2 D-1.2: **결과가 제출된(awaiting_approval)** 업무만 확인 대상이다.
+ *   open(수행자 미정)·in_progress(수행 중)는 아직 결정할 것이 없다.
+ */
 export const isPendingForApproval = (task: LifecycleTask): boolean =>
-  task.status === 'awaiting_approval' || task.status === 'open' || task.status === 'in_progress';
+  task.status === 'awaiting_approval';
 
 // ── dependencyMode 집계 ──────────────────────────────────────────────────────
 export interface ParentResolution {

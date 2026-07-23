@@ -13,6 +13,7 @@
 
 import {
   canDecide,
+  createChildTask,
   createLifecycleTask,
   decideApproval,
   isPendingForApproval,
@@ -230,6 +231,173 @@ export function createManualTask(
   return task;
 }
 
+// ── RC-2 D-1.2: 업무 수신 → 수행자 선택 → 결과 제출 (승인과 분리) ────────────
+
+/** HQ(또는 팀장)가 **팀에게** 지시한다. 수행자는 미정으로 팀장에게 도착한다. */
+export function createDirectiveTask(
+  input: { title: string; targetTeamId: ActorRef['teamId']; instructedBy: ActorRef; dependencyMode?: 'independent' | 'all_required' | 'selection' },
+  ids: IdContext
+): LifecycleTask {
+  const task = createLifecycleTask({
+    title: input.title,
+    ownerTeamId: input.targetTeamId,
+    ownerHumanId: `u-${input.targetTeamId}`,
+    assignedAgentId: '',
+    executorKind: 'unassigned',
+    status: 'open',
+    createdBy: input.instructedBy,
+    approvalRoute: routeFor(input.instructedBy, input.targetTeamId),
+    dependencyMode: input.dependencyMode ?? 'independent',
+    ...(input.instructedBy.teamId !== input.targetTeamId ? { requestingTeamId: input.instructedBy.teamId } : {})
+  }, ids);
+  saveLifecycleTask(task);
+  return task;
+}
+
+const okResult = (task: LifecycleTask) => ({ ok: true as const, task, state: hydrateAppState() });
+const failResult = (reason: string) => ({ ok: false as const, reason, state: hydrateAppState() });
+
+/** 이 사람이 그 업무의 담당 팀장(또는 지정된 임시 책임자)인가. */
+function isOwningLead(task: LifecycleTask, actor: ActorRef): boolean {
+  if (actor.kind !== 'human') return false;
+  if (task.actingLeadUserId && actor.userId === task.actingLeadUserId) return true;
+  return actor.teamId === task.ownerTeamId;
+}
+
+/**
+ * 팀장이 수행 방식을 고른다 — AI 배정 또는 직접 처리.
+ *   담당 팀장만 가능(HQ·타 팀장 차단), 타 팀 AI·미상 AI 는 거부한다.
+ *   기존 수행자 기록은 덮어쓰지 않고 executorHistory 에 append 한다.
+ */
+export function assignExecutor(
+  taskId: string,
+  input: { kind: 'agent' | 'human'; executorId?: string; actor: ActorRef; reason?: string },
+  ctx: { nowIso: string }
+) {
+  const all = loadLifecycleTasks();
+  const task = findTask(all, taskId);
+  if (!task) return failResult('업무를 찾을 수 없습니다.');
+  if (!isOwningLead(task, input.actor)) return failResult('담당 팀장만 수행 방식을 정할 수 있습니다.');
+
+  let executorId: string | undefined;
+  if (input.kind === 'agent') {
+    const canonical = toCanonicalAgentId(input.executorId ?? '');
+    if (!canonical || !defaultNativeAgents.some((a) => a.id === canonical)) {
+      return failResult('소속을 확인할 수 없는 담당자입니다. 배정할 수 없습니다.');
+    }
+    if (teamOfAgent(canonical) !== task.ownerTeamId) return failResult('다른 팀 담당자에게는 배정할 수 없습니다.');
+    executorId = canonical;
+  } else {
+    executorId = input.actor.userId;
+  }
+
+  const next: LifecycleTask = {
+    ...task,
+    executorKind: input.kind,
+    executorId,
+    assignedAgentId: input.kind === 'agent' ? (executorId ?? '') : '',
+    status: 'in_progress',
+    executorHistory: [...task.executorHistory, {
+      kind: input.kind, id: executorId, at: ctx.nowIso, byLabel: input.actor.label, reason: input.reason
+    }]
+  };
+  saveLifecycleTask(next);
+  return okResult(next);
+}
+
+/** 수행자가 결과를 제출한다. **결과물 참조가 없으면 거부**한다. 이때부터 팀장 확인 대상이 된다. */
+export function submitResult(
+  taskId: string,
+  input: { artifactRefs: string[]; actor: ActorRef; note?: string },
+  _ctx: { nowIso: string }
+) {
+  const all = loadLifecycleTasks();
+  const task = findTask(all, taskId);
+  if (!task) return failResult('업무를 찾을 수 없습니다.');
+  if (task.executorKind === 'unassigned') return failResult('수행 방식이 정해지지 않았습니다.');
+  const refs = (input.artifactRefs ?? []).filter((r) => typeof r === 'string' && r.trim().length > 0);
+  if (refs.length === 0) return failResult('제출할 결과물이 없습니다.');
+
+  const next: LifecycleTask = {
+    ...task,
+    status: 'awaiting_approval',
+    submittedBy: input.actor,
+    artifactRefs: [...(task.artifactRefs ?? []), ...refs]
+  };
+  saveLifecycleTask(next);
+  return okResult(next);
+}
+
+/** 팀장 부재 시 HQ 가 **명시적으로** 임시 책임자를 지정한다(자동 대행 아님). */
+export function designateActingLead(
+  taskId: string,
+  input: { actingUserId: string; actor: ActorRef; reason?: string },
+  ctx: { nowIso: string }
+) {
+  const all = loadLifecycleTasks();
+  const task = findTask(all, taskId);
+  if (!task) return failResult('업무를 찾을 수 없습니다.');
+  if (input.actor.teamId !== 'hq') return failResult('임시 책임자 지정은 총괄만 할 수 있습니다.');
+  const next: LifecycleTask = {
+    ...task,
+    actingLeadUserId: input.actingUserId,
+    executorHistory: [...task.executorHistory, {
+      kind: 'human', id: input.actingUserId, at: ctx.nowIso, byLabel: input.actor.label,
+      reason: input.reason ?? '임시 책임자 지정'
+    }]
+  };
+  saveLifecycleTask(next);
+  return okResult(next);
+}
+
+/** HQ 는 전 팀 업무를 **열람**할 수 있다(결정 가능 여부와 별개). */
+export function visibleTasksFor(actor: ActorRef): OperationTask[] {
+  const all = loadLifecycleTasks();
+  const rows = actor.teamId === 'hq'
+    ? all
+    : all.filter((t) => t.ownerTeamId === actor.teamId || t.requestingTeamId === actor.teamId);
+  return rows.map(toOperationTask);
+}
+
+/** 협업 요청 — 요청팀 부모 + 수행팀 자식 2건으로 기록한다. */
+export function createCollaborationRequest(
+  input: { title: string; requestingTeamId: ActorRef['teamId']; targetTeamId: ActorRef['teamId']; instructedBy: ActorRef },
+  ids: IdContext
+): { parent: LifecycleTask; child: LifecycleTask } {
+  const parent = createLifecycleTask({
+    title: `${input.title} (협업 요청)`,
+    ownerTeamId: input.requestingTeamId,
+    ownerHumanId: `u-${input.requestingTeamId}`,
+    assignedAgentId: '',
+    executorKind: 'unassigned',
+    status: 'open',
+    createdBy: input.instructedBy,
+    approvalRoute: APPROVAL_ROUTES.team_internal
+  }, ids);
+  const child = createChildTask(parent, {
+    title: input.title,
+    ownerTeamId: input.targetTeamId,
+    ownerHumanId: `u-${input.targetTeamId}`,
+    assignedAgentId: '',
+    executorKind: 'unassigned',
+    status: 'open',
+    createdBy: input.instructedBy,
+    requestingTeamId: input.requestingTeamId
+  }, ids);
+  saveLifecycleTasks([parent, child]);
+  return { parent, child };
+}
+
+/** 상시 지시(자동 스케줄) 실행 가능 여부 — 팀장 사전 승인이 없으면 실행하지 않는다. */
+export function canRunStandingDirective(d: {
+  id: string; ownerTeamId: string; active: boolean; approvedByLeadAt?: string; mode?: 'real' | 'simulation';
+}): { allowed: boolean; reason?: string; dataKind?: 'real' | 'fixture' } {
+  if (d.mode === 'simulation') return { allowed: true, dataKind: 'fixture' };
+  if (!d.active) return { allowed: false, reason: '중지된 상시 업무입니다.' };
+  if (!d.approvedByLeadAt) return { allowed: false, reason: '담당 팀장 확인이 필요합니다.' };
+  return { allowed: true, dataKind: 'real' };
+}
+
 export interface RuntimeProposalInput {
   proposedTasks: { id: string; correlationId: string; title: string; agentId: string; description: string }[];
   proposedApprovalItems: { taskId: string; correlationId: string; title: string; agentId: string; artifact?: { id?: string } }[];
@@ -246,12 +414,10 @@ export function acceptRuntimeProposals(
   opts: { createdBy: ActorRef; nowIso: string; ownerTeamId?: ActorRef['teamId'] }
 ): LifecycleTask[] {
   const existing = loadLifecycleTasks();
-  const approvalTaskIds = new Set(proposals.proposedApprovalItems.map((i) => i.taskId));
   const accepted: LifecycleTask[] = [];
 
   for (const p of proposals.proposedTasks) {
     if (findTask(existing, p.id) || accepted.some((t) => t.ref.taskId === p.id)) continue; // 중복 수용 금지
-    const needsApproval = approvalTaskIds.has(p.id);
     accepted.push({
       ref: { taskId: p.id, correlationId: p.correlationId, runId: undefined },
       title: p.title,
@@ -261,7 +427,12 @@ export function acceptRuntimeProposals(
       assignedAgentId: toCanonicalAgentId(p.agentId),
       requestingTeamId: opts.createdBy.teamId,
       // 승인 필요 제안은 대기 상태로 둔다(완료로 고정 금지).
-      status: needsApproval ? 'awaiting_approval' : 'in_progress',
+      // RC-2 D-1.2: runtime 제안도 수행자 미정으로 팀장에게 도착한다(AI 확정 금지).
+      //   AI 지목은 '추천 수행자'일 뿐 실제 배정이 아니다.
+      executorKind: 'unassigned',
+      suggestedExecutorId: toCanonicalAgentId(p.agentId),
+      executorHistory: [],
+      status: 'open',
       dependencyMode: 'independent',
       approvalRoute: routeFor(opts.createdBy, teamOfAgent(p.agentId)),
       createdBy: opts.createdBy,
