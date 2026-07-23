@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import type { LifecycleTask, ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import { userStatusLabel } from '../services/taskLifecycleContract';
-import { availableDecisions, executorDisplayName } from '../services/taskLifecycleAppAdapter';
+import { availableDecisions, executorDisplayName, pendingStopRequest } from '../services/taskLifecycleAppAdapter';
+import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
 
@@ -21,8 +22,13 @@ export interface TeamTaskPanelProps {
   actor: ActorRef;
   /** 지금 보고 있는 팀. */
   teamId: DeptTeamId;
-  /** App 이 소유한 정본에서 내려온 업무들(이미 열람 범위로 걸러져 있다). */
-  tasks: LifecycleTask[];
+  /**
+   * App 이 소유한 정본에서 내려온 **업무 흐름**들(이미 열람 범위로 걸러져 있다).
+   * 협업은 부모·자식이 한 흐름으로 묶여 오므로 같은 일이 두 장으로 보이지 않는다.
+   */
+  flows: TaskFlow[];
+  /** 총괄·요청자가 담당 팀장에게 중단을 요청한다(실제 중단은 팀장이 한다). */
+  onRequestStop: (taskId: string, reason: string) => void;
   onAssign: (taskId: string, kind: 'agent' | 'human', executorId?: string) => void;
   onTakeOver: (taskId: string) => void;
   onSubmit: (taskId: string, report: string) => void;
@@ -50,16 +56,20 @@ const lastReasonOf = (t: LifecycleTask): string | undefined => {
 };
 
 export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
-  actor, teamId, tasks, onAssign, onTakeOver, onSubmit, onDecide
+  actor, teamId, flows, onAssign, onTakeOver, onSubmit, onDecide, onRequestStop
 }) => {
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [reportFor, setReportFor] = useState<string | null>(null);
   const [reportText, setReportText] = useState('');
   const [reasonFor, setReasonFor] = useState<{ taskId: string; kind: ApprovalDecisionKind } | null>(null);
   const [reasonText, setReasonText] = useState('');
+  const [stopReqFor, setStopReqFor] = useState<string | null>(null);
+  const [stopReqText, setStopReqText] = useState('');
 
-  // 이 팀의 업무만. (열람 범위는 App 이 이미 걸렀고, 여기서는 보고 있는 팀으로 한 번 더 좁힌다.)
-  const teamTasks = tasks.filter((t) => t.ownerTeamId === teamId || t.requestingTeamId === teamId);
+  // 이 팀의 흐름만. (열람 범위는 App 이 이미 걸렀고, 여기서는 보고 있는 팀으로 한 번 더 좁힌다.)
+  const teamFlows = flows.filter(
+    (f) => f.task.ownerTeamId === teamId || f.task.requestingTeamId === teamId
+  );
   const isOwningLead = actor.kind === 'human' && actor.teamId === teamId;
   const teamAgents = agentsOfTeam(teamId);
 
@@ -80,7 +90,12 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
     setReasonText('');
   };
 
-  const renderCard = (t: LifecycleTask) => {
+  const renderCard = (flow: TaskFlow) => {
+    const t = flow.task;
+    // 협업 요청팀 카드는 수행팀 진행 상황을 함께 보여 준다(별도 카드를 만들지 않는다).
+    const tracked = flow.tracking;
+    const canAct = flow.actionable;
+    const stopReq = pendingStopRequest(t);
     // 화면에 보이는 행동 = 서비스가 허용하는 행동. 눌러 본 뒤 막지 않는다.
     const decisions = availableDecisions(t, actor);
     const revisionReason = t.ref.revisionOfTaskId ? lastReasonOf(t) : undefined;
@@ -104,6 +119,20 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
 
         {revisionReason && (
           <p className="ttask-revision">✏️ 수정 요청 사유: {revisionReason}</p>
+        )}
+
+        {stopReq && (
+          <p className="ttask-stopreq">
+            ⏸ 중단 요청 도착 — {stopReq.requestedBy.label}: {stopReq.reason}
+            {isOwningLead ? ' (아래 작업 중단으로 처리해 주세요)' : ''}
+          </p>
+        )}
+
+        {tracked && (
+          <p className="ttask-tracking">
+            🔗 수행: {DEPT_TEAM_META[tracked.ownerTeamId]?.name ?? tracked.ownerTeamId} · {userStatusLabel(tracked.status)}
+            {tracked.executorKind !== 'unassigned' ? ' · ' + executorDisplayName(tracked.executorId) : ''}
+          </p>
         )}
 
         {t.executorHistory.length > 1 && (
@@ -131,7 +160,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
         )}
 
         {/* ── 할 일: 수행 방식 선택 (담당 팀장만) ── */}
-        {t.status === 'open' && isOwningLead && (
+        {t.status === 'open' && isOwningLead && canAct && (
           <div className="ttask-actions">
             {teamAgents.length > 0 && (
               <button type="button" className="ttask-btn" onClick={() => setPickerFor(pickerFor === t.ref.taskId ? null : t.ref.taskId)}>
@@ -159,7 +188,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
         )}
 
         {/* ── 진행 중: 인수 / 결과 제출 ── */}
-        {t.status === 'in_progress' && isOwningLead && (
+        {t.status === 'in_progress' && isOwningLead && canAct && (
           <div className="ttask-actions">
             {t.executorKind === 'agent' && (
               <>
@@ -215,6 +244,40 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
           </div>
         )}
 
+        {!isOwningLead && !['stopped', 'completed', 'not_adopted', 'returned', 'superseded'].includes(t.status) && (
+          <div className="ttask-actions">
+            <button
+              type="button"
+              className="ttask-btn"
+              onClick={() => { setStopReqFor(t.ref.taskId); setStopReqText(''); }}
+            >
+              ⏸ 중단 요청
+            </button>
+          </div>
+        )}
+
+        {stopReqFor === t.ref.taskId && (
+          <div className="ttask-report">
+            <textarea
+              className="ttask-report-input"
+              value={stopReqText}
+              onChange={(e) => setStopReqText(e.target.value)}
+              placeholder="왜 그만두려는지 적어 주세요. 담당 팀장이 보고 판단합니다."
+            />
+            <div className="ttask-actions">
+              <button
+                type="button"
+                className="ttask-btn primary"
+                disabled={!stopReqText.trim()}
+                onClick={() => { onRequestStop(t.ref.taskId, stopReqText.trim()); setStopReqFor(null); setStopReqText(''); }}
+              >
+                중단 요청 보내기
+              </button>
+              <button type="button" className="ttask-btn" onClick={() => setStopReqFor(null)}>취소</button>
+            </div>
+          </div>
+        )}
+
         {reasonFor?.taskId === t.ref.taskId && (
           <div className="ttask-report">
             <textarea
@@ -242,7 +305,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
       </p>
 
       {SECTIONS.map((sec) => {
-        const rows = teamTasks.filter((t) => t.status === sec.key);
+        const rows = teamFlows.filter((f) => f.task.status === sec.key);
         if (rows.length === 0) return null;
         return (
           <section key={sec.key} className="ttask-section">
@@ -253,7 +316,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
         );
       })}
 
-      {teamTasks.filter((t) => ['open', 'in_progress', 'awaiting_approval'].includes(t.status)).length === 0 && (
+      {teamFlows.filter((f) => ['open', 'in_progress', 'awaiting_approval'].includes(f.task.status)).length === 0 && (
         <p className="ttask-empty">지금 처리할 업무가 없습니다.</p>
       )}
     </div>

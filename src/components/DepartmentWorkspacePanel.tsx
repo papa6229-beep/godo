@@ -28,7 +28,8 @@ import { runCsDraftRequest } from '../services/csDraftRuntime';
 import { TeamMessagePanel } from './TeamMessagePanel';
 import { AgentTaskPanel } from './AgentTaskPanel';
 import { TeamTaskPanel } from './TeamTaskPanel';
-import type { ActorRef, ApprovalDecisionKind, LifecycleTask } from '../services/taskLifecycleContract';
+import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
+import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, isHqRole, type ViewerRole } from '../services/sessionRole';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import { loadAgentTasks, subscribeAgentTasks } from '../services/agentTaskStore';
@@ -166,11 +167,14 @@ type ChatMessage = DeptChatMessage;
  */
 export interface DepartmentWorkspaceLifecycle {
   actor: ActorRef;
-  tasks: LifecycleTask[];
+  /** 협업이 한 흐름으로 묶인 목록(같은 일이 두 장으로 보이지 않게). */
+  flows: TaskFlow[];
   onAssign: (taskId: string, kind: 'agent' | 'human', executorId?: string) => void;
   onTakeOver: (taskId: string) => void;
   onSubmit: (taskId: string, report: string) => void;
   onDecide: (taskId: string, kind: ApprovalDecisionKind, reason?: string) => void;
+  /** 총괄·요청자가 담당 팀장에게 중단을 요청한다(실제 중단은 팀장이 한다). */
+  onRequestStop: (taskId: string, reason: string) => void;
   /** 팀 간 '지원 요청'을 보낼 때 요청팀 부모 + 수행팀 자식 업무로도 남긴다. */
   onCollaborate: (title: string, targetTeamId: string) => void;
 }
@@ -229,9 +233,9 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
   useEffect(() => subscribeAgentTasks(() => setAgentTasks(loadAgentTasks())), []);
   const tasksForSelectedTeam = agentTasksForTeam(agentTasks, selectedTeamId);
   // 지금 이 팀에서 사람 손이 필요한 업무 수(할 일 + 결과 도착).
-  const leadTaskCount = (lifecycle?.tasks ?? []).filter(
-    (t) => (t.ownerTeamId === selectedTeamId || t.requestingTeamId === selectedTeamId)
-      && (t.status === 'open' || t.status === 'awaiting_approval')
+  const leadTaskCount = (lifecycle?.flows ?? []).filter(
+    (f) => (f.task.ownerTeamId === selectedTeamId || f.task.requestingTeamId === selectedTeamId)
+      && (f.task.status === 'open' || f.task.status === 'awaiting_approval')
   ).length;
 
   useEffect(() => {
@@ -718,11 +722,12 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
             <TeamTaskPanel
               actor={lifecycle.actor}
               teamId={selectedTeamId}
-              tasks={lifecycle.tasks}
+              flows={lifecycle.flows}
               onAssign={lifecycle.onAssign}
               onTakeOver={lifecycle.onTakeOver}
               onSubmit={lifecycle.onSubmit}
               onDecide={lifecycle.onDecide}
+              onRequestStop={lifecycle.onRequestStop}
             />
           )}
           {tasksForSelectedTeam.length > 0 && (

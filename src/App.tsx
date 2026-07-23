@@ -34,9 +34,9 @@ import { isSameAgent } from './services/agentIdRegistry';
 import {
   hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
   actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
-  quarantineUnknownAffiliation
+  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor
 } from './services/taskLifecycleAppAdapter';
-import type { ApprovalDecisionKind, LifecycleTask } from './services/taskLifecycleContract';
+import type { ApprovalDecisionKind } from './services/taskLifecycleContract';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
 import './App.css';
@@ -111,11 +111,11 @@ function App() {
   const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForRole(loadRole())));
   // RC-2 D-1.3: 팀장 화면은 화면용 요약이 아니라 **정본 LifecycleTask** 를 그대로 본다.
   //   (수행자·이력·제출 내용이 필요하다. 저장·갱신은 계속 App 이 소유한다.)
-  const [lifecycleTasks, setLifecycleTasks] = useState<LifecycleTask[]>(() => {
+  const [lifecycleFlows, setLifecycleFlows] = useState(() => {
     // 구버전 저장자료에 소속을 확인할 수 없는 담당자가 남아 있으면 지우지 않고 '소속 확인 필요'로 표시한다.
     //   (신규 입력은 애초에 거부된다 — 이건 과거 자료 전용, idempotent.)
     quarantineUnknownAffiliation();
-    return hydrateAppState().source;
+    return taskFlowsFor(actorForRole(loadRole()));
   });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -131,7 +131,7 @@ function App() {
     const next = loadRole();
     setViewerRole(next);
     setTasks(visibleTasksFor(actorForRole(next)));
-    setLifecycleTasks(hydrateAppState().source);
+    setLifecycleFlows(taskFlowsFor(actorForRole(next)));
   }), []);
   // 지금 이 역할이 결정할 수 있는 대기 업무(= '내 확인 대기').
   const myPendingTasks = pendingForActor(actorForRole(viewerRole));
@@ -693,7 +693,7 @@ function App() {
   const refreshLifecycleState = (next?: ReturnType<typeof hydrateAppState>) => {
     const st = next ?? hydrateAppState();
     setTasks(visibleTasksFor(sessionActor()));
-    setLifecycleTasks(st.source);
+    setLifecycleFlows(taskFlowsFor(sessionActor()));
     setApprovalQueue(st.approvalQueue);
     setApprovalHistory(st.history);
   };
@@ -741,6 +741,12 @@ function App() {
   const handleTaskDecision = (taskId: string, kind: ApprovalDecisionKind, reason?: string) => {
     const r = applyDecision(taskId, { kind, actor: sessionActor(), reason }, { nowIso: nowIso(), newId: newTaskId });
     reportOutcome(r, '처리했습니다.');
+  };
+
+  /** 총괄·요청자가 담당 팀장에게 중단을 요청한다. 요청만으로는 아무것도 멈추지 않는다. */
+  const handleRequestStop = (taskId: string, reason: string) => {
+    const r = requestTaskStop(taskId, { reason, actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, '담당 팀장에게 중단 요청을 보냈습니다. 실제 중단은 담당 팀장이 처리합니다.');
   };
 
   /** 팀 간 협업 요청 — 요청팀 카드와 수행팀 카드를 함께 남긴다. */
@@ -962,7 +968,8 @@ function App() {
           departmentLifecycle={{
             actor: sessionActor(),
             onCollaborate: handleCollaborationRequest,
-            tasks: lifecycleTasks,
+            flows: lifecycleFlows,
+            onRequestStop: handleRequestStop,
             onAssign: handleAssignExecutor,
             onTakeOver: handleTakeOver,
             onSubmit: handleSubmitResult,

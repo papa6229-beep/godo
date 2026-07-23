@@ -254,8 +254,10 @@ function syncParentFromChild(child: LifecycleTask, all: LifecycleTask[]): Lifecy
     child.status === 'returned' ? 'returned'
       : child.status === 'stopped' ? 'stopped'
         : child.status === 'not_adopted' ? 'not_adopted'
-          : child.status === 'in_progress' || child.status === 'awaiting_approval' ? 'in_progress'
-            : null;
+          // 정상 완료도 반드시 반영한다 — 반영하지 않으면 요청팀 카드가 영원히 진행 중으로 남는다.
+          : child.status === 'completed' ? 'completed'
+            : child.status === 'in_progress' || child.status === 'awaiting_approval' ? 'in_progress'
+              : null;
   if (!mirrored || mirrored === parent.status) return null;
 
   const last = child.decisions[child.decisions.length - 1];
@@ -320,6 +322,7 @@ export function createManualTask(
       ownerHumanId: `u-${input.createdBy.teamId}`,
       assignedAgentId: '',
       executorKind: 'unassigned',
+      trackingOnly: true,          // 추적용 — 실행은 수행팀 자식 카드에서
       approvalRoute: APPROVAL_ROUTES.team_internal
     }, ids);
     const child = createChildTask(parent, {
@@ -387,6 +390,10 @@ export function assignExecutor(
   if (isTerminalStatus(task.status)) {
     return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 수행자를 다시 정할 수 없습니다.`);
   }
+  if (task.trackingOnly) {
+    return failResult('이 카드는 진행 상황을 보는 용도입니다. 실제 수행은 담당 팀에서 합니다.');
+  }
+
   // 수행자를 정하는 것은 아직 아무도 손대지 않은 업무(수정본 포함)에서만.
   if (task.status !== 'open') {
     return failResult('이미 수행 중이거나 확인 대기 중인 업무입니다. 수행자를 다시 정하려면 인수하거나 수정 요청을 하세요.');
@@ -437,6 +444,9 @@ export function takeOverByLead(
   }
   if (task.status === 'awaiting_approval') {
     return failResult('이미 결과가 제출된 업무입니다. 확인하거나 수정 요청을 하세요.');
+  }
+  if (task.trackingOnly) {
+    return failResult('이 카드는 진행 상황을 보는 용도입니다. 실제 수행은 담당 팀에서 합니다.');
   }
   if (!isOwningLead(task, input.actor)) return failResult('담당 팀장만 인수할 수 있습니다.');
   if (task.status === 'open') {
@@ -511,6 +521,9 @@ export function submitResult(
   if (isTerminalStatus(task.status)) {
     return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 결과를 제출할 수 없습니다.`);
   }
+  if (task.trackingOnly) {
+    return failResult('이 카드는 진행 상황을 보는 용도입니다. 실제 수행은 담당 팀에서 합니다.');
+  }
   // 수행 중인 업무만 결과를 낼 수 있다(배정 전 제출·중복 제출 금지).
   if (task.status !== 'in_progress') {
     return failResult(task.status === 'awaiting_approval'
@@ -576,11 +589,63 @@ export function visibleTasksFor(actor: ActorRef): OperationTask[] {
   return rows.map(toOperationTask);
 }
 
+/**
+ * 화면에 보여 줄 업무 흐름 한 장.
+ *   협업이면 부모(추적)·자식(실행)을 한 흐름으로 묶어 **중복 카드를 만들지 않는다**.
+ *   actionable=true 인 흐름에서만 수행자 선택·결과 제출을 할 수 있다.
+ */
+export interface TaskFlow {
+  /** 이 사람이 실제로 다룰 카드(수행팀이면 자식, 요청팀·총괄이면 대표 카드). */
+  task: LifecycleTask;
+  /** 이 흐름에서 실행 행동(배정·인수·제출)을 할 수 있는가. */
+  actionable: boolean;
+  /** 추적 전용으로 볼 때의 상대 카드(요청팀이 보는 수행팀 진행 상황). */
+  tracking?: LifecycleTask;
+}
+
+/**
+ * 역할별 업무 흐름 목록 — 같은 협업이 두 장으로 보이지 않게 묶는다.
+ *   수행팀 : 자식 1장(실행 가능)
+ *   요청팀 : 자식 진행 상황을 얹은 추적 1장(실행 불가)
+ *   총괄   : 협업 1건 = 1흐름
+ */
+export function taskFlowsFor(actor: ActorRef): TaskFlow[] {
+  const all = loadLifecycleTasks();
+  const isHq = actor.teamId === 'hq';
+  const childOf = new Map<string, LifecycleTask>();
+  for (const t of all) if (t.ref.parentTaskId) childOf.set(t.ref.parentTaskId, t);
+
+  const flows: TaskFlow[] = [];
+  for (const t of all) {
+    // 자식은 그 자체로 흐름이 되지만, 요청팀·총괄에게는 부모 흐름 안에서 보이므로 건너뛴다.
+    if (t.ref.parentTaskId) {
+      const parent = findTask(all, t.ref.parentTaskId);
+      const mineAsDoer = t.ownerTeamId === actor.teamId;
+      if (mineAsDoer) flows.push({ task: t, actionable: !t.trackingOnly });
+      else if (!parent) flows.push({ task: t, actionable: false });   // 부모가 없으면 단독 표시
+      continue;
+    }
+    const child = childOf.get(t.ref.taskId);
+    const mine = t.ownerTeamId === actor.teamId || t.requestingTeamId === actor.teamId;
+    if (!isHq && !mine) continue;
+    if (child) {
+      // 협업 흐름 — 요청팀·총괄은 한 장으로 본다.
+      if (!isHq && t.ownerTeamId !== actor.teamId) continue;   // 수행팀은 위에서 자식으로 이미 봤다
+      flows.push({ task: t, actionable: false, tracking: child });
+    } else {
+      flows.push({ task: t, actionable: !t.trackingOnly });
+    }
+  }
+  return flows;
+}
+
 /** 협업 요청 — 요청팀 부모 + 수행팀 자식 2건으로 기록한다. */
 export function createCollaborationRequest(
   input: { title: string; requestingTeamId: ActorRef['teamId']; targetTeamId: ActorRef['teamId']; instructedBy: ActorRef },
   ids: IdContext
 ): { parent: LifecycleTask; child: LifecycleTask } {
+  // RC-2 D-1.3.1: 요청팀 카드는 **추적용**이다. 실제 수행은 수행팀 자식 카드에서 한다.
+  //   (같은 일이 두 팀에서 두 번 실행되지 않게 한다.)
   const parent = createLifecycleTask({
     title: `${input.title} (협업 요청)`,
     ownerTeamId: input.requestingTeamId,
@@ -588,6 +653,7 @@ export function createCollaborationRequest(
     assignedAgentId: '',
     executorKind: 'unassigned',
     status: 'open',
+    trackingOnly: true,
     createdBy: input.instructedBy,
     approvalRoute: APPROVAL_ROUTES.team_internal
   }, ids);

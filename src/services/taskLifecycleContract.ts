@@ -229,6 +229,8 @@ export interface CreateTaskInput {
   artifactRefs?: string[];
   inputRefs?: string[];
   resultSummary?: string;
+  /** 협업 요청팀 카드처럼 진행만 지켜보는 카드. 실행 행동을 받지 않는다. */
+  trackingOnly?: boolean;
 }
 
 /** 업무 생성 — taskId 는 **여기서 한 번만** 만든다. */
@@ -253,7 +255,9 @@ export function createLifecycleTask(input: CreateTaskInput, ids: IdContext): Lif
     createdAt: ids.nowIso,
     decisions: [],
     ...(input.artifactRefs ? { artifactRefs: input.artifactRefs } : {}),
-    ...(input.inputRefs ? { inputRefs: input.inputRefs } : {})
+    ...(input.inputRefs ? { inputRefs: input.inputRefs } : {}),
+    ...(input.resultSummary ? { resultSummary: input.resultSummary } : {}),
+    ...(input.trackingOnly ? { trackingOnly: true } : {})
   };
 }
 

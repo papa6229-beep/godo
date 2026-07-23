@@ -727,3 +727,5 @@
 .ttask-note { font-size: 11px; color: var(--text-muted); margin: 0; width: 100%; word-break: keep-all; }
 .ttask-report { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .ttask-report-input { width: 100%; min-height: 68px; resize: vertical; border-radius: 8px; border: 1px solid var(--line-subtle); background: var(--bg-base); color: var(--text-primary); font-size: 12px; padding: 8px; font-family: inherit; line-height: 1.45; }
+.ttask-stopreq { font-size: 11px; font-weight: 600; color: var(--warn, #E0A800); margin: 0; line-height: 1.45; word-break: keep-all; }
+.ttask-tracking { font-size: 11px; color: var(--text-secondary); margin: 0; line-height: 1.45; word-break: keep-all; }
