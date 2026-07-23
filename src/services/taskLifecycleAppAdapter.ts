@@ -495,13 +495,17 @@ export function requestTaskStop(
   const reason = (input.reason ?? '').trim();
   if (!reason) return failResult('중단 사유를 입력해 주세요. 담당 팀장이 판단할 근거가 됩니다.');
 
-  // 이 업무를 시킨 쪽이거나 담당 팀 사람만 요청할 수 있다(남의 팀 일에 끼어들지 않는다).
-  //   총괄은 전 팀 업무를 지시·중단 요청할 수 있다.
+  // RC-2 D-1.3.3: 정식 '중단 요청' 은 **일을 시킨 쪽**이 보내는 것이다.
+  //   총괄 또는 원 요청팀만 보낼 수 있다.
+  //   수행팀장은 자기 팀 일이므로 자신에게 요청하지 않는다 — 바로 '작업 중단' 으로 처리한다.
   const requesterTeam = task.requestingTeamId ?? (task.createdBy.teamId !== task.ownerTeamId ? task.createdBy.teamId : undefined);
   const allowed = input.actor.teamId === 'hq'
-    || input.actor.teamId === task.ownerTeamId
     || (!!requesterTeam && input.actor.teamId === requesterTeam);
-  if (!allowed) return failResult('이 업무를 요청한 쪽이나 담당 팀만 중단을 요청할 수 있습니다.');
+  if (!allowed) {
+    return failResult(input.actor.teamId === task.ownerTeamId
+      ? '담당 팀은 요청 없이 바로 작업 중단으로 처리할 수 있습니다.'
+      : '총괄 또는 이 업무를 요청한 팀만 중단을 요청할 수 있습니다.');
+  }
 
   const next: LifecycleTask = {
     ...task,
