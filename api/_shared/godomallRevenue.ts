@@ -10,7 +10,10 @@ import type { StandardProduct } from './godomallMapper.js';
 
 type Raw = Record<string, unknown>;
 
-export type RevenueDataSource = 'real_godomall' | 'synthetic_test';
+// DATA-SOURCE-SERVER-01: 실제 / 시뮬레이션 / 명시적 시험 fixture 를 서로 구별한다.
+//   'fixture_mock' 은 사용자가 시험(mock) 모드를 **명시적으로 선택**했을 때만 쓰이며,
+//   자동 대체로 실제 자리에 들어가지 않는다(그 경우는 아예 0건 + unavailable).
+export type RevenueDataSource = 'real_godomall' | 'synthetic_test' | 'fixture_mock';
 
 export type RevenueOrderState = {
   paid: boolean;
@@ -316,6 +319,7 @@ export const buildMemberKey = (rawId: string, sourceType: RevenueDataSource): st
   const id = str(rawId);
   if (!id || id === '0') return undefined; // 비회원/식별불가
   if (sourceType === 'synthetic_test') return `syn_member_${id}`;
+  if (sourceType === 'fixture_mock') return `fixture_member_${id}`;
   return `real_member_${fnv1a(id)}`; // real은 가명 해시 (원문 미노출)
 };
 
@@ -370,7 +374,8 @@ export const mapOrdersToRevenue = (
     const settleKind = str(o['settleKind']) || undefined;
     const orderChannel = str(o['orderChannelFl']) || undefined;
     const claimSummary = deriveClaimSummary(o, lines);
-    const dataKind: 'real' | 'synthetic' | 'mock' = sourceType === 'synthetic_test' ? 'synthetic' : 'real';
+    const dataKind: 'real' | 'synthetic' | 'mock' =
+      sourceType === 'synthetic_test' ? 'synthetic' : sourceType === 'fixture_mock' ? 'mock' : 'real';
 
     // ── 마케팅 enrichment: 회원그룹 / 할인 / 마일리지·예치금 (raw 보유 시에만) ──
     const memberGroupName = str(o['memGroupNm']) || undefined;

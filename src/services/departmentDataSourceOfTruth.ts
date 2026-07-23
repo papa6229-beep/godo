@@ -19,6 +19,7 @@ import {
 } from './revenueMetricContract';
 import { summarizeStockRisk } from './inventoryRiskContract';
 import { summarizeInquiryStatus, isUnresolved } from './inquiryStatusContract';
+import { screenStateFromRevenue } from './revenueScreenState';
 
 export type DepartmentSourceMode = 'real' | 'synthetic' | 'mixed' | 'unavailable';
 
@@ -141,11 +142,25 @@ export function buildDepartmentSourceOfTruthSnapshot(
   // source mode
   const syntheticOrderCount = summary ? num(summary.syntheticOrderCount) : orders.filter((o) => o.sourceType === 'synthetic_test').length;
   const realOrderCount = summary ? num(summary.realOrderCount) : totalOrders - syntheticOrderCount;
-  let sourceMode: DepartmentSourceMode = 'unavailable';
-  if (totalOrders > 0) {
-    if (syntheticOrderCount > 0 && realOrderCount > 0) sourceMode = 'mixed';
-    else if (syntheticOrderCount > 0) sourceMode = 'synthetic';
-    else sourceMode = 'real';
+  // DATA-SOURCE-SERVER-01(GREEN F.1): 출처는 summary 숫자로 추측하지 않는다.
+  //   명시적 시험 fixture 는 realOrderCount 에 잡히고 syntheticOrderCount=0 이라
+  //   숫자만 보면 'real' 이 된다. 공통 화면 판정(kind)을 권위로 쓴다.
+  //   판정 권위는 공통 화면 상태(kind)다. 주문 건수(totalOrders>0)를 전제로 두면
+  //   **실제 성공 0건**(계약상 '실제 데이터 0건')이 unavailable 로 잘못 남는다.
+  const screenState = screenStateFromRevenue(revenue);
+  let sourceMode: DepartmentSourceMode;
+  switch (screenState.kind) {
+    case 'actual':
+      sourceMode = 'real'; // 주문이 0건이어도 실제 데이터 0건이다
+      break;
+    case 'fixture':
+      sourceMode = 'synthetic'; // 시험 데이터 계열 — 실데이터로 표현하지 않는다(기존 4종 유지)
+      break;
+    case 'simulation':
+      sourceMode = realOrderCount > 0 ? 'mixed' : 'synthetic';
+      break;
+    default:
+      sourceMode = 'unavailable';
   }
 
   return {
@@ -162,7 +177,9 @@ export function buildDepartmentSourceOfTruthSnapshot(
       realOrderCount,
       syntheticOrderCount,
       basisDescription: '대표 운영 매출/주문 = 유효 주문(결제완료·미취소) 기준(netOrderRevenue/orderCountValid). 상품 라인 매출(gross)은 부서 전용 분석값. ' +
-        (syntheticOrderCount > 0 ? 'synthetic/demo 데이터 포함(실데이터 아님).' : '')
+        (screenState.kind === 'fixture'
+          ? '시험 데이터(기능시험 fixture) — 실데이터 아님.'
+          : syntheticOrderCount > 0 ? 'synthetic/demo 데이터 포함(실데이터 아님).' : '')
     },
     operationalRevenue,
     operationalOrderCount,

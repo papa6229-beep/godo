@@ -11,6 +11,7 @@ import { parseAnalyticsQuery } from './analyticsQueryParser';
 import { executeAnalyticsQuery } from './analyticsQueryExecutor';
 import type { AnalyticsQueryResult } from './analyticsQueryTypes';
 import { formatSharePercent } from './productCategoryDisplay';
+import { screenStateFromRevenue } from './revenueScreenState';
 
 export interface ProductTeamFacts {
   intent: string;
@@ -207,11 +208,32 @@ function aggregateTopProducts(revenue: RevenueResult): { name: string; revenue: 
   return [...map.values()].sort((a, b) => b.revenue - a.revenue);
 }
 
+// DATA-SOURCE-SERVER-01(GREEN F.1): 출처는 summary 숫자로 추측하지 않는다.
+//   명시적 시험 fixture 는 realOrderCount 에 잡히고 syntheticOrderCount=0 이라
+//   숫자만 보면 "REAL"로 보인다. 공통 화면 판정(kind)을 권위로 쓴다.
 const dataSourceLabel = (revenue: RevenueResult): string => {
+  const state = screenStateFromRevenue(revenue);
+  if (state.kind === 'fixture') return '시험 데이터(기능시험 자료) — 실데이터 아님';
+  if (state.kind === 'unavailable') return '연결 안 됨(데이터 없음)';
   const s = revenue.summary;
-  if (s && s.syntheticOrderCount > 0 && s.realOrderCount > 0) return 'REAL 상품 + SYNTHETIC 매출/주문/재고';
-  if (s && s.syntheticOrderCount > 0) return 'SYNTHETIC 매출/주문/재고';
+  if (state.kind === 'simulation') {
+    return s && s.realOrderCount > 0
+      ? 'REAL 상품 + SYNTHETIC 매출/주문/재고'
+      : 'SYNTHETIC 매출/주문/재고';
+  }
   return 'REAL 상품 데이터';
+};
+
+// DATA-SOURCE-SERVER-01(GREEN F.2): 주문 구성 문구도 summary 숫자가 아니라 공통 판정이 권위.
+//   명시적 fixture 는 realOrderCount 에 잡히므로 "실 N + 가상 0"으로 쓰면 실제 주문처럼 전달된다.
+//   실제/시뮬레이션 정상 경로의 숫자·계산은 그대로 둔다(문구만 분기).
+const orderCompositionPhrase = (
+  revenue: RevenueResult,
+  s: { orderCount: number; realOrderCount: number; syntheticOrderCount: number }
+): string => {
+  const kind = screenStateFromRevenue(revenue).kind;
+  if (kind === 'fixture') return `총 시험 주문 ${s.orderCount}건(기능시험 자료)`;
+  return `총 주문 ${s.orderCount}건(실 ${s.realOrderCount} + 가상 ${s.syntheticOrderCount})`;
 };
 
 // 데이터 한계(회원/세그먼트/유입 등) 질문 감지
@@ -433,7 +455,7 @@ export function buildProductTeamChatFacts(
       facts: [
         '사용자는 전체/일반 매출을 질문했다.',
         `전체 기간 상품매출: ${won(totalRevenue)}`,
-        s ? `총 주문 ${s.orderCount}건(실 ${s.realOrderCount} + 가상 ${s.syntheticOrderCount}), 배송비 ${won(s.deliveryFeeTotal)}, 총주문금액 ${won(s.totalAmount)}` : '',
+        s ? `${orderCompositionPhrase(revenue, s)}, 배송비 ${won(s.deliveryFeeTotal)}, 총주문금액 ${won(s.totalAmount)}` : '',
         baseFact
       ].filter(Boolean),
       answerGuidance: '전체 기간 기준임을 명확히 밝히고 값을 답하라. 특정 월을 원하면 말해달라고 덧붙여라. 고도몰 관리자 확인을 권하지 마라.'

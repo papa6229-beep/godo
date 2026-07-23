@@ -4,6 +4,8 @@
 // 서버 라우트에서 읽어온다. 프론트는 고도몰 API를 직접 호출하지 않으며, 키도 다루지 않는다.
 // 라우트 실패 시(로컬 dev 등) UI가 깨지지 않도록 안전하게 빈 결과로 폴백한다.
 
+import type { RealOrdersStatus, SyntheticStatus } from './revenueScreenState';
+
 export type DataSourceTag = 'real' | 'sandbox' | 'mock' | 'unavailable';
 
 export interface AdminProduct {
@@ -54,10 +56,14 @@ export interface AdminOrdersResult {
 }
 
 // sourceType(api_proxy_real 등) → 화면 표기 태그
+// DATA-SOURCE-SERVER-01: 실패한 실제 요청을 '시험 데이터'로 둔갑시키지 않는다.
+//   서버가 'unavailable' 을 보내면 '연결 안 됨'으로, 명시적 시험 모드(api_mock_fallback)만 'mock' 으로.
+//   판별 불가(미상)도 추측하지 않고 unavailable(fail-closed).
 const toSourceTag = (sourceType: string | undefined): DataSourceTag => {
   if (sourceType === 'api_proxy_real') return 'real';
   if (sourceType === 'api_proxy_sandbox') return 'sandbox';
-  return 'mock';
+  if (sourceType === 'api_mock_fallback') return 'mock';
+  return 'unavailable';
 };
 
 const num = (v: unknown): number => {
@@ -352,6 +358,13 @@ export interface RevenueResult {
   count: number;
   source: DataSourceTag;
   live: boolean;
+  // DATA-SOURCE-SERVER-01(GREEN F): 실제 주문 slice 와 시뮬레이션 slice 의 상태를 **유실 없이** 보존한다.
+  //   최상위 source 는 실제 주문 slice 기준이라, 이것만 보면 멀쩡한 시뮬레이션까지 가려진다.
+  //   화면 판정은 resolveRevenueScreenState(두 slice 를 함께 봄)로 한다.
+  realOrdersStatus?: RealOrdersStatus;
+  syntheticStatus?: SyntheticStatus;
+  realOrdersErrorMessage?: string;
+  syntheticErrorMessage?: string;
   summary: RevenueSummary | null;
   stockImpact: StockImpactItem[];
   orders: RevenueOrderLite[];
@@ -487,8 +500,15 @@ export const fetchRevenue = async (
     const universeAux = data.universeAux ? (data.universeAux as UniverseAux) : undefined;
     return {
       count: num(data.count),
-      source: tagFromModeLive(data.mode, data.live),
+      // DATA-SOURCE-SERVER-01: 서버가 sourceType 을 명시하면 그것이 권위.
+      //   (구버전 응답 호환을 위해 없을 때만 mode/live 추정으로 물러선다.)
+      source: typeof data.sourceType === 'string' ? toSourceTag(data.sourceType) : tagFromModeLive(data.mode, data.live),
       live: data.live === true,
+      // slice 상태 보존(구버전 응답이면 undefined → 판정 함수가 fail-closed 처리).
+      realOrdersStatus: data.realOrdersStatus as RealOrdersStatus | undefined,
+      syntheticStatus: data.syntheticStatus as SyntheticStatus | undefined,
+      realOrdersErrorMessage: data.realOrdersErrorMessage as string | undefined,
+      syntheticErrorMessage: data.syntheticErrorMessage as string | undefined,
       summary: parseSummary(data.summary as Record<string, unknown> | undefined),
       stockImpact,
       orders,

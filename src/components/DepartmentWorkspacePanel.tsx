@@ -38,6 +38,7 @@ import {
 import type { TeamMessage, TeamMessageStatus } from '../types/teamMessage';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META } from '../types/teamMessage';
 import { logActivity } from '../services/activityLedger';
+import { screenStateFromRevenue } from '../services/revenueScreenState';
 
 // ────────────────────────────────────────────────────────────────────────────
 // 부서 업무 관장 (Department Workspace) — 1차 뼈대(shell)
@@ -293,13 +294,22 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const buildProductContextNote = (): string | undefined => {
     const s = productData.revenue?.summary;
     if (!s) return undefined;
+    // DATA-SOURCE-SERVER-01(GREEN F.1): 출처 문구는 summary 숫자가 아니라 공통 판정이 권위.
+    //   명시적 fixture 를 "실 N건"으로 쓰면 AI 가 시험자료를 실데이터로 받아들인다.
+    const state = screenStateFromRevenue(productData.revenue);
+    const originPhrase = state.kind === 'fixture'
+      ? `시험 데이터(기능시험 자료) · 시험 주문 ${s.orderCount}건`
+      : `실 ${s.realOrderCount}건 + ${synSourceLabel()} 가상 ${s.syntheticOrderCount}건`;
+    const basisPhrase = state.kind === 'fixture'
+      ? '(기능시험용 fixture 기준 — 실데이터 아님)'
+      : `(실 고도몰 상품 + ${synSourceLabel()} synthetic 매출/재고 기준)`;
     return (
-      `상품관리팀 매출 요약(실 ${s.realOrderCount}건 + ${synSourceLabel()} 가상 ${s.syntheticOrderCount}건): ` +
+      `상품관리팀 매출 요약(${originPhrase}): ` +
       `상품매출 ${s.productRevenueByLines.toLocaleString()}원, 배송비 ${s.deliveryFeeTotal.toLocaleString()}원, ` +
       `총주문금액 ${s.totalAmount.toLocaleString()}원, 결제완료 ${s.paidOrderCount} / 미결제 ${s.unpaidOrderCount} / ` +
       `구매확정 ${s.confirmedOrderCount} / 취소 ${s.canceledOrderCount}. ` +
       `재고추적 ${s.syntheticTrackedProductCount}종, 순판매 ${s.syntheticTotalNetSoldQuantity}개. ` +
-      `(실 고도몰 상품 + ${synSourceLabel()} synthetic 매출/재고 기준)`
+      basisPhrase
     );
   };
 

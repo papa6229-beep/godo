@@ -3,6 +3,7 @@ import './CsTeamDashboard.css';
 import { inquiryStatusKo, isOnHold } from '../services/inquiryStatusContract';
 import type { RevenueResult } from '../services/departmentDataService';
 import { classifyResource, userLabelOf, type ProvenanceKind } from '../services/dataSourceProvenanceContract';
+import { screenStateFromRevenue } from '../services/revenueScreenState';
 import { composeCsDraftFromOrders } from '../services/csDraftComposer';
 import {
   buildCsAdminWorkflow,
@@ -948,9 +949,12 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
         <h2 className="dept-dashboard-title"><span className="dept-team-emoji">💬</span>CS팀 처리판
           {(() => {
             // C-출처: CS 문의/리뷰는 가상 2년치(universeAux) 기반 → 신분 라벨. 수치 계산은 불변.
+            // DATA-SOURCE-SERVER-01(GREEN F): 최상위 source 로 단정하지 않는다.
+            //   실제 주문만 실패하고 시뮬레이션(CS 시험자료)이 살아 있으면 '시험 데이터'를 유지한다.
             const hasSynthetic = !!(revenue?.universeAux?.inquiries?.length || revenue?.universeAux?.reviews?.length);
-            const kind: ProvenanceKind = revenue?.source === 'unavailable' ? 'unavailable'
-              : hasSynthetic ? 'simulation'
+            const screenState = screenStateFromRevenue(revenue);
+            const kind: ProvenanceKind = !screenState.usable ? 'unavailable'
+              : hasSynthetic || screenState.hasSimulation ? 'simulation'
               : userLabelOf(classifyResource({ sourceType: revenue?.source }).kind) === '실제 데이터' ? 'actual' : 'simulation';
             return (
               <span className={`cs-provenance-badge prov-${kind}`} title={kind === 'simulation' ? '문의·리뷰는 가상 운영자료(시험 데이터)입니다.' : ''}

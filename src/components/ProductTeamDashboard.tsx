@@ -6,6 +6,7 @@ import type {
   RevenueOrderLite,
   StockImpactItem
 } from '../services/departmentDataService';
+import { screenStateFromRevenue } from '../services/revenueScreenState';
 import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
 import {
   aggregateProductRanking as aggregateProducts,
@@ -673,7 +674,10 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   );
 
   const synthOn = (summary?.syntheticOrderCount ?? 0) > 0;
-  const unavailable = !revenue || revenue.source === 'unavailable' || !summary;
+  // DATA-SOURCE-SERVER-01(GREEN F): 최상위 source 하나로 숨기지 않는다.
+  //   실제 주문만 실패하고 2년치 시뮬레이션이 살아 있으면 시험 데이터로 계속 사용한다.
+  const screenState = screenStateFromRevenue(revenue);
+  const unavailable = !screenState.usable;
   const topCat = categoryData.items[0];
 
   return (
@@ -685,8 +689,13 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         </div>
         <div className="ptd-header-right">
           <span className={`ptd-badge ${synthOn ? 'on' : 'off'}`}>
-            {/* C-출처: 사용자 표기 3종만. realOrderCount/syntheticOrderCount는 '주문' 수치이므로 문구도 주문으로 정확히. */}
-            🧪 {synthOn ? `시험 데이터 (실제 유효 주문 ${(summary?.realOrderCount ?? 0).toLocaleString()}건 + 시험 주문 ${(summary?.syntheticOrderCount ?? 0).toLocaleString()}건)` : '실제 데이터'}
+            {/* C-출처: 사용자 표기 3종만. 라벨은 공통 판정(screenState)이 권위 —
+                summary 숫자로 추측하면 명시적 fixture 가 '실제 데이터'로 보인다(GREEN F.1). */}
+            🧪 {screenState.kind === 'fixture'
+              ? `시험 데이터 (기능시험 자료 · 시험 주문 ${(summary?.orderCount ?? 0).toLocaleString()}건)`
+              : screenState.kind === 'simulation'
+                ? `시험 데이터 (실제 유효 주문 ${(summary?.realOrderCount ?? 0).toLocaleString()}건 + 시험 주문 ${(summary?.syntheticOrderCount ?? 0).toLocaleString()}건)`
+                : screenState.userLabel}
           </span>
           <button type="button" className="ptd-refresh" onClick={onRefresh} disabled={loading}>{loading ? '새로고침 중…' : '↻ 새로고침'}</button>
         </div>
@@ -696,6 +705,12 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         <div className="ptd-empty">데이터를 불러오지 못했습니다. (로컬 dev에서는 서버 라우트가 없을 수 있습니다 — 배포 환경에서 확인하세요.)</div>
       ) : (
         <>
+          {/* 실제 주문 연결만 실패한 경우: 시험 통계는 그대로 두고 안내만 함께 표시한다. */}
+          {screenState.realOrdersNotice && (
+            <div className="ptd-notice" style={{ padding: '8px 12px', marginBottom: 10, borderRadius: 8, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', fontSize: '0.85em' }}>
+              ※ {screenState.realOrdersNotice}
+            </div>
+          )}
           <div className="ptd-filterbar">
             {/* 1차 조건 = 기간 (CS팀과 통일). KPI·추이·구성·순위가 모두 이 기준을 공유 */}
             <div className="ptd-filter-group ptd-filter-group-period">
