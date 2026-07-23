@@ -456,5 +456,8 @@ console.log(`[BASE] ${baseP} pass / ${baseF} fail   (진단 전제 — fail>0이
 console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (확정 권한 정책 P1~P36 + A26R/A27R)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0) { console.log('\n✗ 진단 전제 불일치'); process.exit(1); }
-console.log(`\n✗ RC-2 D-1.2 RED — 권한 정책 ${redUnmet}건 미충족(의도된 실패 · GREEN 미승인)`);
-process.exit(1);
+if (redUnmet > 0) {
+  console.log(`\n✗ RC-2 D-1.2 — 권한 정책 ${redUnmet}건 미충족`);
+  process.exit(1);
+}
+console.log('\n✓ 전부 충족 — RC-2 D-1.2 GREEN 도달 (지시는 팀장에게, 수행자는 팀장이, 승인은 결과 제출 후)');
