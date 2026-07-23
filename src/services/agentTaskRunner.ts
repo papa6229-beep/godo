@@ -45,6 +45,9 @@ export interface RunAgentTaskContext {
   nowMs?: number;
 }
 
+// RC-2(G2): 자동업무의 업무 식별자. 같은 spec 의 대기→완료가 같은 키로 닫히게 한다.
+export const lifecycleTaskId = (spec: AgentTaskSpec): string => `agenttask-${spec.id}`;
+
 const agentActor = (spec: AgentTaskSpec): TeamMessageActor => ({ kind: 'agent', teamId: spec.teamId, label: spec.agentLabel, agentId: spec.agentId });
 
 // canonical 계산만(발신·기록 없음). approval/draft에서 사람 검토용 본문 생성.
@@ -57,13 +60,17 @@ export function computeAgentReport(spec: AgentTaskSpec, revenue: RevenueResult |
 export function postAgentReport(spec: AgentTaskSpec, report: { title: string; body: string }, ctx: RunAgentTaskContext, opts?: { resolvedByHuman?: boolean }): { posted: TeamMessage } {
   const from = agentActor(spec);
   const posted = postTeamMessage({ from, toTeam: spec.reportTo, kind: spec.reportKind, title: report.title, body: report.body }, ctx.nowIso);
+  // RC-2(G2): 추적 키는 **업무 식별자(spec.id)**. refId(메시지 id)만 남기면 원 업무로 돌아갈 수 없다.
   logActivity({
     teamId: spec.teamId, type: 'task_run', status: 'done',
     title: spec.title, detail: `${report.body} → ${DEPT_TEAM_META[spec.reportTo].name}에 보고`,
-    actor: from, relatedTeam: spec.reportTo, refId: posted.id
+    actor: from, relatedTeam: spec.reportTo, refId: posted.id,
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
   }, ctx.nowIso);
   if (opts?.resolvedByHuman) {
-    logActivity({ teamId: spec.teamId, type: 'approval', status: 'done', title: `${spec.title} 승인/등록`, actor: { kind: 'human', teamId: spec.teamId, label: '운영자' }, refId: posted.id }, ctx.nowIso);
+    logActivity({ teamId: spec.teamId, type: 'approval', status: 'done', title: `${spec.title} 승인/등록`,
+      actor: { kind: 'human', teamId: spec.teamId, label: '운영자' }, refId: posted.id,
+      taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec) }, ctx.nowIso);
   }
   return { posted };
 }
@@ -81,9 +88,29 @@ export function stageApprovalTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext)
   logActivity({
     teamId: spec.teamId, type: 'task_run', status: 'pending',
     title: spec.title, detail: `${report.body} (승인 대기)`,
-    actor: agentActor(spec), relatedTeam: spec.reportTo
+    actor: agentActor(spec), relatedTeam: spec.reportTo,
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
   }, ctx.nowIso);
   return report;
+}
+
+// RC-2(G2): 반려·중단 — 발신하지 않고 같은 업무 식별자로 상태만 닫는다(기록 삭제 없음).
+export function rejectAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, reason: string): void {
+  logActivity({
+    teamId: spec.teamId, type: 'approval', status: 'rejected',
+    title: `${spec.title} 반려`, detail: reason,
+    actor: { kind: 'human', teamId: spec.teamId, label: '운영자' },
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
+  }, ctx.nowIso);
+}
+
+export function cancelAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, reason: string): void {
+  logActivity({
+    teamId: spec.teamId, type: 'task_run', status: 'rejected',
+    title: `${spec.title} 작업 중단`, detail: reason,
+    actor: { kind: 'human', teamId: spec.teamId, label: '운영자' },
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
+  }, ctx.nowIso);
 }
 
 // 사람이 승인/수정한 본문으로 최종 발신 + 원장(done + approval).

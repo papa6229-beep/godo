@@ -23,7 +23,11 @@ export interface ActivityEvent {
   detail?: string;
   actor: TeamMessageActor;   // 누가(사람/AI 에이전트)
   relatedTeam?: DeptTeamId;  // 보고/전달 대상 등
-  refId?: string;            // 연결된 메시지/작업 식별자
+  refId?: string;            // 연결된 메시지 식별자(표시용 참조)
+  // RC-2(G2): 업무 흐름 추적 식별자. 구버전 이벤트에는 없을 수 있어 optional 이며,
+  //   집계는 `taskId ?? refId` 순으로 안전 후퇴한다(구버전 원장 무회귀).
+  taskId?: string;
+  correlationId?: string;
   at: string;                // ISO
 }
 

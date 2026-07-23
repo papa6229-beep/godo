@@ -100,23 +100,38 @@ export async function runNativeAgentOperation(
   // 4단계: handoffEngine - 부서 간 Handoff 조율 및 마케팅 전략 보정
   // 요약된 결과를 포함해 전체 멤버 + 팀장 결과 리스트 취합
   const allCurrentResults = [...memberResults, ...teamLeadResults];
-  const handoffOutput = processHandoffs(runId, allCurrentResults);
+  // RC-2(G4): handoff 에 업무 흐름 참조를 넘겨 원 결과로 역추적 가능하게 한다.
+  const lifecycleTaskId = `task-${runId}`;
+  const handoffOutput = processHandoffs(runId, allCurrentResults, { taskId: lifecycleTaskId, correlationId: lifecycleTaskId });
 
   // 보정된 마케팅 결과 반영
   const finalResults = handoffOutput.adjustedResults;
 
   // 팀원들 결과물에서 생성된 아티팩트도 취합
+  // RC-2: 산출물이 어느 결과/작업/업무에서 나왔는지 역참조를 붙인다(값 자체는 불변).
   const allArtifacts: AgentArtifact[] = [];
   finalResults.forEach(r => {
-    allArtifacts.push(...r.artifacts);
+    allArtifacts.push(...r.artifacts.map((a) => ({
+      ...a, resultId: a.resultId ?? r.id, jobId: a.jobId ?? r.jobId,
+      taskId: a.taskId ?? lifecycleTaskId, correlationId: a.correlationId ?? lifecycleTaskId
+    })));
   });
 
   const orchestrationResult = orchestrateManager(runId, finalResults, handoffOutput.handoffs);
 
   // 6단계: NativeAgentRun 객체 완성
+  // RC-2(G3): 예외가 없다는 이유만으로 completed 로 고정하지 않는다.
+  //   실패한 작업이 있으면 부분 완료로 표현하고, 성공 결과는 그대로 보존한다.
+  const failedJobCount = finalJobs.filter((j) => j.status === 'failed').length;
+  const runStatus: NativeAgentRun['status'] =
+    failedJobCount === 0 ? 'completed'
+      : failedJobCount === finalJobs.length ? 'failed'
+        : 'partially_completed';
+
   const run: NativeAgentRun = {
     id: runId,
-    status: 'completed',
+    status: runStatus,
+    failedJobCount,
     startedAt: startTime,
     completedAt: new Date().toISOString(),
     objective,
