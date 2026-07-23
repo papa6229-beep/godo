@@ -6,7 +6,7 @@ import type {
   RevenueOrderLite,
   StockImpactItem
 } from '../services/departmentDataService';
-import { resolveRevenueScreenState } from '../services/revenueScreenState';
+import { screenStateFromRevenue } from '../services/revenueScreenState';
 import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
 import {
   aggregateProductRanking as aggregateProducts,
@@ -676,15 +676,7 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
   const synthOn = (summary?.syntheticOrderCount ?? 0) > 0;
   // DATA-SOURCE-SERVER-01(GREEN F): 최상위 source 하나로 숨기지 않는다.
   //   실제 주문만 실패하고 2년치 시뮬레이션이 살아 있으면 시험 데이터로 계속 사용한다.
-  const screenState = resolveRevenueScreenState(revenue ? {
-    loaded: true,
-    realOrdersStatus: revenue.realOrdersStatus,
-    syntheticStatus: revenue.syntheticStatus,
-    syntheticOrderCount: summary?.syntheticOrderCount ?? 0,
-    hasSummary: !!summary,
-    realOrdersErrorMessage: revenue.realOrdersErrorMessage,
-    syntheticErrorMessage: revenue.syntheticErrorMessage
-  } : null);
+  const screenState = screenStateFromRevenue(revenue);
   const unavailable = !screenState.usable;
   const topCat = categoryData.items[0];
 
@@ -697,8 +689,13 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
         </div>
         <div className="ptd-header-right">
           <span className={`ptd-badge ${synthOn ? 'on' : 'off'}`}>
-            {/* C-출처: 사용자 표기 3종만. realOrderCount/syntheticOrderCount는 '주문' 수치이므로 문구도 주문으로 정확히. */}
-            🧪 {synthOn ? `시험 데이터 (실제 유효 주문 ${(summary?.realOrderCount ?? 0).toLocaleString()}건 + 시험 주문 ${(summary?.syntheticOrderCount ?? 0).toLocaleString()}건)` : '실제 데이터'}
+            {/* C-출처: 사용자 표기 3종만. 라벨은 공통 판정(screenState)이 권위 —
+                summary 숫자로 추측하면 명시적 fixture 가 '실제 데이터'로 보인다(GREEN F.1). */}
+            🧪 {screenState.kind === 'fixture'
+              ? `시험 데이터 (기능시험 자료 · 시험 주문 ${(summary?.orderCount ?? 0).toLocaleString()}건)`
+              : screenState.kind === 'simulation'
+                ? `시험 데이터 (실제 유효 주문 ${(summary?.realOrderCount ?? 0).toLocaleString()}건 + 시험 주문 ${(summary?.syntheticOrderCount ?? 0).toLocaleString()}건)`
+                : screenState.userLabel}
           </span>
           <button type="button" className="ptd-refresh" onClick={onRefresh} disabled={loading}>{loading ? '새로고침 중…' : '↻ 새로고침'}</button>
         </div>

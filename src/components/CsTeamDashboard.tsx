@@ -3,7 +3,7 @@ import './CsTeamDashboard.css';
 import { inquiryStatusKo, isOnHold } from '../services/inquiryStatusContract';
 import type { RevenueResult } from '../services/departmentDataService';
 import { classifyResource, userLabelOf, type ProvenanceKind } from '../services/dataSourceProvenanceContract';
-import { resolveRevenueScreenState } from '../services/revenueScreenState';
+import { screenStateFromRevenue } from '../services/revenueScreenState';
 import { composeCsDraftFromOrders } from '../services/csDraftComposer';
 import {
   buildCsAdminWorkflow,
@@ -952,15 +952,7 @@ export const CsTeamDashboard: React.FC<CsTeamDashboardProps> = ({ revenue, goods
             // DATA-SOURCE-SERVER-01(GREEN F): 최상위 source 로 단정하지 않는다.
             //   실제 주문만 실패하고 시뮬레이션(CS 시험자료)이 살아 있으면 '시험 데이터'를 유지한다.
             const hasSynthetic = !!(revenue?.universeAux?.inquiries?.length || revenue?.universeAux?.reviews?.length);
-            const screenState = resolveRevenueScreenState(revenue ? {
-              loaded: true,
-              realOrdersStatus: revenue.realOrdersStatus,
-              syntheticStatus: revenue.syntheticStatus,
-              syntheticOrderCount: revenue.summary?.syntheticOrderCount ?? 0,
-              hasSummary: !!revenue.summary,
-              realOrdersErrorMessage: revenue.realOrdersErrorMessage,
-              syntheticErrorMessage: revenue.syntheticErrorMessage
-            } : null);
+            const screenState = screenStateFromRevenue(revenue);
             const kind: ProvenanceKind = !screenState.usable ? 'unavailable'
               : hasSynthetic || screenState.hasSimulation ? 'simulation'
               : userLabelOf(classifyResource({ sourceType: revenue?.source }).kind) === '실제 데이터' ? 'actual' : 'simulation';

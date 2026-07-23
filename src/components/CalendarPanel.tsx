@@ -3,7 +3,7 @@ import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { CalendarMetricLevel } from '../types/calendar';
 import { fetchRevenue, type RevenueResult } from '../services/departmentDataService';
 import { classifyStockRisk, summarizeStockRisk } from '../services/inventoryRiskContract';
-import { resolveRevenueScreenState } from '../services/revenueScreenState';
+import { screenStateFromRevenue } from '../services/revenueScreenState';
 import './CalendarPanel.css';
 
 // Operation Calendar Revenue Binding v0
@@ -83,15 +83,7 @@ export const CalendarPanel: React.FC<CalendarPanelProps> = ({
   const [loaded, setLoaded] = useState(false);
 
   // DATA-SOURCE-SERVER-01(GREEN F): 화면 데이터 상태는 두 slice 를 함께 보는 공통 판정으로 결정한다.
-  const calendarDataState = resolveRevenueScreenState(revenue ? {
-    loaded: true,
-    realOrdersStatus: revenue.realOrdersStatus,
-    syntheticStatus: revenue.syntheticStatus,
-    syntheticOrderCount: revenue.summary?.syntheticOrderCount ?? 0,
-    hasSummary: !!revenue.summary,
-    realOrdersErrorMessage: revenue.realOrdersErrorMessage,
-    syntheticErrorMessage: revenue.syntheticErrorMessage
-  } : null);
+  const calendarDataState = screenStateFromRevenue(revenue);
   useEffect(() => {
     let active = true;
     void fetchRevenue(true).then((r) => {

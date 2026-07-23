@@ -107,3 +107,25 @@ export function resolveRevenueScreenState(input: RevenueScreenStateInput | null 
   // 상태 미상(구버전 응답 등) → 추측하지 않는다.
   return mk('unavailable', false, '판별 불가(slice 상태 없음)');
 }
+
+/** RevenueResult 형태에서 판정 입력을 뽑는 어댑터 — 소비자마다 매핑을 복붙하지 않기 위한 것. */
+export interface RevenueLikeForScreenState {
+  realOrdersStatus?: RealOrdersStatus;
+  syntheticStatus?: SyntheticStatus;
+  realOrdersErrorMessage?: string;
+  syntheticErrorMessage?: string;
+  summary?: { syntheticOrderCount?: number } | null;
+}
+
+export const screenStateFromRevenue = (
+  revenue: RevenueLikeForScreenState | null | undefined
+): RevenueScreenState =>
+  resolveRevenueScreenState(revenue ? {
+    loaded: true,
+    realOrdersStatus: revenue.realOrdersStatus,
+    syntheticStatus: revenue.syntheticStatus,
+    syntheticOrderCount: revenue.summary?.syntheticOrderCount ?? 0,
+    hasSummary: revenue.summary !== null && revenue.summary !== undefined,
+    realOrdersErrorMessage: revenue.realOrdersErrorMessage,
+    syntheticErrorMessage: revenue.syntheticErrorMessage
+  } : null);

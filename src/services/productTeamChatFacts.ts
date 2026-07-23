@@ -11,6 +11,7 @@ import { parseAnalyticsQuery } from './analyticsQueryParser';
 import { executeAnalyticsQuery } from './analyticsQueryExecutor';
 import type { AnalyticsQueryResult } from './analyticsQueryTypes';
 import { formatSharePercent } from './productCategoryDisplay';
+import { screenStateFromRevenue } from './revenueScreenState';
 
 export interface ProductTeamFacts {
   intent: string;
@@ -207,10 +208,19 @@ function aggregateTopProducts(revenue: RevenueResult): { name: string; revenue: 
   return [...map.values()].sort((a, b) => b.revenue - a.revenue);
 }
 
+// DATA-SOURCE-SERVER-01(GREEN F.1): 출처는 summary 숫자로 추측하지 않는다.
+//   명시적 시험 fixture 는 realOrderCount 에 잡히고 syntheticOrderCount=0 이라
+//   숫자만 보면 "REAL"로 보인다. 공통 화면 판정(kind)을 권위로 쓴다.
 const dataSourceLabel = (revenue: RevenueResult): string => {
+  const state = screenStateFromRevenue(revenue);
+  if (state.kind === 'fixture') return '시험 데이터(기능시험 자료) — 실데이터 아님';
+  if (state.kind === 'unavailable') return '연결 안 됨(데이터 없음)';
   const s = revenue.summary;
-  if (s && s.syntheticOrderCount > 0 && s.realOrderCount > 0) return 'REAL 상품 + SYNTHETIC 매출/주문/재고';
-  if (s && s.syntheticOrderCount > 0) return 'SYNTHETIC 매출/주문/재고';
+  if (state.kind === 'simulation') {
+    return s && s.realOrderCount > 0
+      ? 'REAL 상품 + SYNTHETIC 매출/주문/재고'
+      : 'SYNTHETIC 매출/주문/재고';
+  }
   return 'REAL 상품 데이터';
 };
 
