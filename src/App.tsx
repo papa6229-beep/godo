@@ -28,6 +28,7 @@ import { composeOperationReport } from './engine/reportComposer';
 import { getScenarioData, type ValidationScenarioType } from './engine/nativeAgentRuntime/validationScenarios';
 import { useTheme } from './hooks/useTheme';
 import { classifyResource, userLabelOf, migrateResourceProvenance } from './services/dataSourceProvenanceContract';
+import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigration';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -189,10 +190,15 @@ function App() {
   // C-4: 문의 상태는 이 스냅샷이 앱 상태로 들어오는 단일 경계(초기 조립/localStorage 복원/API·import setter)
   //   에서 1회만 canonical화한다. default/mock/API 응답/저장 복원 모든 경로가 여기를 통과.
   //   idempotent이므로 재설정·재복원 시에도 최초 rawStatus/normalizationReason이 보존된다.
+  // GODO-ORDER-MAPPING-01(D-2): 저장 스냅샷 복원 시 **과거 코드가 만든 유령 주문**만 1회 청소한다.
+  //   (신원 필드가 전혀 없는데 수량1·0원·결제완료·배송대기로 채워진 행 — 실제 0원 주문은 보존)
+  //   순수·멱등이며, 출처는 '실제 데이터'를 유지한 채 건수만 정정한다 → Sync 전에도 '실제 데이터 0건'.
+  //   setter 경로가 아니라 복원 경계에만 건다(새 동기화 결과는 D-1 매퍼가 이미 유령을 만들지 않는다).
   const [activeOperationsData, setActiveOperationsDataRaw] = useState<OperationsDataSnapshot>(() => {
     try {
       const saved = localStorage.getItem('godo.data.activeSnapshot');
-      return withCanonicalInquiries(saved ? JSON.parse(saved) : defaultOperationsData);
+      const restored = saved ? JSON.parse(saved) : defaultOperationsData;
+      return withCanonicalInquiries(migrateLegacyGhostOrders(restored).snapshot);
     } catch {
       return withCanonicalInquiries(defaultOperationsData);
     }
