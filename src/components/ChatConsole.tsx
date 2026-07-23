@@ -430,7 +430,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         
         if (act.type === 'start_operation') {
           onStartSimulation();
-          onAddLog('운영자가 채팅 명령을 통해 오늘의 전체 자동 운영을 구동시켰습니다.', 'success', 'CEO');
+          onAddLog('운영자가 채팅 명령으로 시험 운영(검증 시나리오)을 시작했습니다. 결과는 시험 자료입니다.', 'success', 'CEO');
         } else if (act.type === 'approve_all') {
           const pendingWaiting = approvalQueue.filter(a => a.status === 'waiting');
           pendingWaiting.forEach(item => {

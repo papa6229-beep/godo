@@ -53,13 +53,13 @@ export const lifecycleTaskId = (spec: AgentTaskSpec): string => `agenttask-${spe
 const agentActor = (spec: AgentTaskSpec): TeamMessageActor => ({ kind: 'agent', teamId: spec.teamId, label: spec.agentLabel, agentId: spec.agentId });
 
 // canonical 계산만(발신·기록 없음). approval/draft에서 사람 검토용 본문 생성.
-export function computeAgentReport(spec: AgentTaskSpec, revenue: RevenueResult | null, nowMs?: number): { title: string; body: string } {
+function computeAgentReport(spec: AgentTaskSpec, revenue: RevenueResult | null, nowMs?: number): { title: string; body: string } {
   const snap = buildDepartmentSourceOfTruthSnapshot(revenue, nowMs != null ? { nowMs } : {});
   return formatTaskReport(spec, snap);
 }
 
 // 최종 보고 발신 + 원장 기록. resolvedByHuman=true(승인/검토 후)면 approval(done)로도 남긴다.
-export function postAgentReport(spec: AgentTaskSpec, report: { title: string; body: string }, ctx: RunAgentTaskContext, opts?: { resolvedByHuman?: boolean }): { posted: TeamMessage } {
+function postAgentReport(spec: AgentTaskSpec, report: { title: string; body: string }, ctx: RunAgentTaskContext, opts?: { resolvedByHuman?: boolean }): { posted: TeamMessage } {
   const from = agentActor(spec);
   const posted = postTeamMessage({ from, toTeam: spec.reportTo, kind: spec.reportKind, title: report.title, body: report.body }, ctx.nowIso);
   // RC-2(G2): 추적 키는 **업무 식별자(spec.id)**. refId(메시지 id)만 남기면 원 업무로 돌아갈 수 없다.
@@ -87,16 +87,18 @@ export function canAutoRunAgentTask(spec: AgentTaskSpec): StandingRunVerdict {
 }
 
 // 자동 완료 경로: 계산 → 발신 → 원장(done).
-//   ⚠ 이 함수 자체는 게이트를 보지 않는다. **외부 진입점으로 쓰지 말 것** —
-//     사람이 누른 실행은 runManualAgentTask, 시각 스케줄은 runScheduledAgentTask 를 쓴다.
-export function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { posted: TeamMessage; body: string } {
+//   RC-2 D-1.3.1: **모듈 내부 전용.** 게이트를 보지 않는 함수라서 밖으로 내보내지 않는다.
+//   (주석으로 '쓰지 말 것' 이라고 적는 것만으로는 우회를 막지 못한다.)
+//   공개 진입점은 runManualAgentTask(사람) / runScheduledAgentTask(스케줄) 뿐이다.
+function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { posted: TeamMessage; body: string } {
   const report = computeAgentReport(spec, ctx.revenue, ctx.nowMs);
   const { posted } = postAgentReport(spec, report, ctx);
   return { posted, body: report.body };
 }
 
 // 승인/검토 경로: 계산 → 원장(task_run, pending)만. 발신은 사람 승인 후(approveAgentTask).
-export function stageApprovalTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { title: string; body: string } {
+//   RC-2 D-1.3.1: 모듈 내부 전용(공개 진입점을 통해서만 도달한다).
+function stageApprovalTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { title: string; body: string } {
   const report = computeAgentReport(spec, ctx.revenue, ctx.nowMs);
   logActivity({
     teamId: spec.teamId, type: 'task_run', status: 'pending',

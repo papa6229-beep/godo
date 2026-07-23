@@ -43,7 +43,7 @@ const OPTIONAL_SRC = [
 ];
 const optionalPresent = OPTIONAL_SRC.filter(([, f]) => existsSync(f));
 
-let LEDGER, RUNNER, HANDOFF, ORCH, AGG;
+let LEDGER, RUNNER, HANDOFF, ORCH, AGG, MSG;
 const OPT = {};
 try {
   execFileSync(process.execPath, [tscBin,
@@ -68,6 +68,7 @@ try {
   const eng = async (n) => import(pathToFileURL(path.join(tmp, 'engine', 'nativeAgentRuntime', n)).href);
   LEDGER = await svc('activityLedger.js');
   RUNNER = await svc('agentTaskRunner.js');
+  try { MSG = await svc('teamMessageStore.js'); } catch { MSG = null; }
   HANDOFF = await eng('handoffEngine.js');
   ORCH = await eng('managerOrchestrator.js');
   AGG = await eng('teamLeadAggregator.js');
@@ -168,7 +169,9 @@ store.clear();
 const spec = { id: 'spec-inv', teamId: 'product', agentId: 'stock', agentLabel: '상품 관리 AI', title: '재고 일일 점검',
   focus: 'inventory', reportTo: 'hq', reportKind: 'report', schedule: { kind: 'manual' }, approvalMode: 'approval' };
 const ctx = { revenue: null, nowIso: AT, nowMs: 0 };
-RUNNER.stageApprovalTask(spec, ctx);
+// RC-2 D-1.3.1: raw 실행 함수는 비공개다. 담당 팀장이 화면에서 누르는 공개 진입점으로 대기 상태를 만든다.
+const stageAsLead = (sp, c) => RUNNER.runManualAgentTask(sp, { kind: 'human', teamId: sp.teamId }, c);
+stageAsLead(spec, ctx);
 const stagedEvents = LEDGER.loadActivity();
 const pendingEv = stagedEvents.find((e) => e.status === 'pending');
 // 계약: 추적 키는 taskId 우선, 구버전 호환으로 refId 후퇴(둘 중 하나는 반드시 있어야 한다).
@@ -185,8 +188,8 @@ red('R2b. 승인 후 pending 이 0 이 된다(같은 업무로 닫힘)',
   `pending=${sumAfter.pending} · done=${sumAfter.done} (pending 이 닫히지 않고 누적)`);
 
 // 같은 업무를 2회 대기시키면 계속 쌓이는가
-RUNNER.stageApprovalTask(spec, { ...ctx, nowIso: '2026-07-23T00:00:06.000Z' });
-RUNNER.stageApprovalTask(spec, { ...ctx, nowIso: '2026-07-23T00:00:07.000Z' });
+stageAsLead(spec, { ...ctx, nowIso: '2026-07-23T00:00:06.000Z' });
+stageAsLead(spec, { ...ctx, nowIso: '2026-07-23T00:00:07.000Z' });
 const sumTwice = LEDGER.teamSummary(LEDGER.loadActivity(), 'product');
 red('R2c. 같은 업무를 반복 대기시켜도 중복 누적되지 않는다',
   sumTwice.pending <= 1, `pending=${sumTwice.pending}건 누적`);
@@ -246,9 +249,16 @@ red('R7a. 승인 항목의 결과물이 원래 result 로 역추적 가능하다
 red('R7b. 원장 기록의 **추적 키**가 메시지 id 가 아니라 업무 식별자다',
   (() => {
     store.clear();
-    const { posted } = RUNNER.postAgentReport(spec, { title: 't', body: 'b' }, ctx);
+    // RC-2 D-1.3.1: 발신도 공개 진입점을 거친다(승인된 상시 지시 + 자동 완료).
+    const autoSpec = { ...spec, approvalMode: 'auto', standing: {
+      ownerTeamId: spec.teamId, ownerLeadUserId: `u-${spec.teamId}`, scope: '일일 점검',
+      schedule: { kind: 'daily', at: '09:00' }, active: true, approvedByLeadAt: AT,
+      riskLevel: 'normal', source: 'real', history: []
+    } };
+    RUNNER.runScheduledAgentTask(autoSpec, ctx);
+    const posted = MSG ? MSG.loadTeamMessages().slice(-1)[0] : { id: '__no-msg__' };
     const ev = LEDGER.loadActivity().find((e) => e.type === 'task_run');
-    return !!ev && typeof ev.taskId === 'string' && ev.taskId.length > 0 && ev.taskId !== posted.id;
+    return !!ev && !!posted && typeof ev.taskId === 'string' && ev.taskId.length > 0 && ev.taskId !== posted.id;
   })(),
   '추적 키가 발신 메시지 id 라 원래 업무(spec.id)/run 으로 못 돌아간다',
   '추적 키=업무 식별자(taskId)');

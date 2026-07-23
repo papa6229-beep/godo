@@ -524,7 +524,9 @@ function App() {
       const targets = VIEWER_ROLES.filter((r) => r.id !== 'hq');
       for (const t of targets) {
         createDirectiveTask(
-          { title: `오늘의 운영 점검 — ${t.label}`, targetTeamId: t.id, instructedBy: sessionActor() },
+          // 이 실행은 검증 시나리오 기반 시험 운영이므로 만들어지는 지시도 시험 표식을 갖는다.
+          //   (정식 HQ 업무 지시는 업무 탭의 '팀에 지시' 경로로 따로 만든다.)
+          { title: `[시험 시나리오] 오늘의 운영 점검 — ${t.label}`, targetTeamId: t.id, instructedBy: sessionActor() },
           { newId: newTaskId, nowIso: nowIso() }
         );
       }
@@ -666,8 +668,10 @@ function App() {
         id: `op-hist-${runtimeResult.run.id}`,
         date: activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
         timestamp: new Date().toLocaleTimeString(),
-        sourceType: activeOperationsData.sourceType,
-        reportTitle: `Native 협업 자동화 운영 보고서 (${userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind)})`,
+        // RC-2 D-1.3.1: 이력의 출처는 **이 실행이 실제로 쓴 입력**(검증 시나리오)이어야 한다.
+        //   화면에 실제 데이터가 열려 있다는 이유로 시험 실행을 실제로 기록하지 않는다.
+        sourceType: snapshotToUse.sourceType,
+        reportTitle: `[시험 운영] Native 협업 시험 보고서 (${userLabelOf(classifyResource({ sourceType: snapshotToUse.sourceType }).kind)})`,
         autoCompletedCount: finalReport.autoCompletedCount,
         approvalPendingCount: finalReport.approvalRequiredCount,
         issueHighlights: finalReport.warningSignals,

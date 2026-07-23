@@ -72,7 +72,7 @@ export const AiBriefing: React.FC<AiBriefingProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: isMini ? '1rem' : '1.25rem' }}>🛰️</span>
           <h2 style={isMini ? miniTitleStyle : titleStyle}>
-            {operationRunState === 'running' ? 'AI 운영 분석 중' : '오늘의 운영 점검 완료'}
+            {operationRunState === 'running' ? 'AI 시험 운영 분석 중' : '시험 운영 점검 완료 (검증 시나리오)'}
           </h2>
         </div>
         {!isMini && (
