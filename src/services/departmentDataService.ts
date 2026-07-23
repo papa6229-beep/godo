@@ -54,10 +54,14 @@ export interface AdminOrdersResult {
 }
 
 // sourceType(api_proxy_real 등) → 화면 표기 태그
+// DATA-SOURCE-SERVER-01: 실패한 실제 요청을 '시험 데이터'로 둔갑시키지 않는다.
+//   서버가 'unavailable' 을 보내면 '연결 안 됨'으로, 명시적 시험 모드(api_mock_fallback)만 'mock' 으로.
+//   판별 불가(미상)도 추측하지 않고 unavailable(fail-closed).
 const toSourceTag = (sourceType: string | undefined): DataSourceTag => {
   if (sourceType === 'api_proxy_real') return 'real';
   if (sourceType === 'api_proxy_sandbox') return 'sandbox';
-  return 'mock';
+  if (sourceType === 'api_mock_fallback') return 'mock';
+  return 'unavailable';
 };
 
 const num = (v: unknown): number => {
@@ -487,7 +491,9 @@ export const fetchRevenue = async (
     const universeAux = data.universeAux ? (data.universeAux as UniverseAux) : undefined;
     return {
       count: num(data.count),
-      source: tagFromModeLive(data.mode, data.live),
+      // DATA-SOURCE-SERVER-01: 서버가 sourceType 을 명시하면 그것이 권위.
+      //   (구버전 응답 호환을 위해 없을 때만 mode/live 추정으로 물러선다.)
+      source: typeof data.sourceType === 'string' ? toSourceTag(data.sourceType) : tagFromModeLive(data.mode, data.live),
       live: data.live === true,
       summary: parseSummary(data.summary as Record<string, unknown> | undefined),
       stockImpact,
