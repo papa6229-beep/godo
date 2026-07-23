@@ -32,7 +32,7 @@ import { classifyResource, userLabelOf, migrateResourceProvenance } from './serv
 import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigration';
 import { isSameAgent } from './services/agentIdRegistry';
 import {
-  hydrateAppState, applyDecision, createDirectiveTask, acceptRuntimeProposals, teamOfAgent, visibleTasksFor,
+  hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
   actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest
 } from './services/taskLifecycleAppAdapter';
 import type { ApprovalDecisionKind, LifecycleTask } from './services/taskLifecycleContract';
@@ -511,6 +511,20 @@ function App() {
 
     setIsSimulating(true);
     setReport(null);
+
+    // RC-2 D-1.3: 총괄의 '오늘의 운영 시작'은 **각 팀장에게 오늘 점검을 지시**하는 것이다.
+    //   총괄이 다른 팀 AI 를 대신 실행하지 않는다. 수행 방식은 각 팀장이 정한다.
+    if (viewerRole === 'hq') {
+      const targets = VIEWER_ROLES.filter((r) => r.id !== 'hq');
+      for (const t of targets) {
+        createDirectiveTask(
+          { title: `오늘의 운영 점검 — ${t.label}`, targetTeamId: t.id, instructedBy: sessionActor() },
+          { newId: newTaskId, nowIso: nowIso() }
+        );
+      }
+      refreshLifecycleState();
+      addLog(`오늘의 운영 점검을 ${targets.length}개 팀장에게 지시했습니다. 수행 방식은 각 팀장이 정합니다.`, 'info', 'SYSTEM');
+    }
     // RC-2 D-1.1: 실행 중 기존 승인 목록을 비우지 않는다.
     //   (비우면 실행 실패 시 새로고침 전까지 대기 건이 사라져 보인다. 정본은 저장 원장이다.)
     
@@ -598,17 +612,19 @@ function App() {
         addLog(`[Brain] RAG 시스템이 지식 저장소에서 "${file}"을(를) 참조했습니다.`, 'info', 'Brain');
       });
 
-      // 3. Today's Tasks(tasks)에 협업 제안 반영
-      // RC-2 D-1: runtime 제안을 lifecycle task 로 수용하고, 화면 상태는 저장 정본에서 파생한다.
-      //   제안 taskId 를 그대로 쓰고(새로 만들지 않음), 승인 필요 업무를 completed 로 고정하지 않는다.
-      acceptRuntimeProposals(
-        {
-          proposedTasks: runtimeResult.orchestration.proposedTasks,
-          proposedApprovalItems: runtimeResult.orchestration.proposedApprovalItems
-        },
-        { createdBy: sessionActor(), nowIso: new Date().toISOString() }
+      // 3. RC-2 D-1.3: 이 실행은 **시험 운영**이다.
+      //    입력이 검증 시나리오(getScenarioData → defaultOperationsData 복제본)이고,
+      //    총괄이 버튼 하나로 각 팀 AI 를 대신 돌린 결과이기도 하다.
+      //    그래서 결과를 실제 운영 업무·승인함에 넣지 않는다(팀장 우회 + 시험/실제 혼합 금지).
+      //    실제 업무는 아래에서 **각 팀장에게 보내는 지시**로만 만들어진다.
+      for (const p of runtimeResult.orchestration.proposedTasks) {
+        addLog(`[시험 운영] 제안: ${p.title} — 시험 자료입니다(실제 업무 아님).`, 'info', 'SYSTEM');
+      }
+      addLog(
+        `[시험 운영] 결과 ${runtimeResult.orchestration.proposedTasks.length}건은 시험 자료입니다. ` +
+        '실제 업무·승인함에는 저장하지 않았습니다.',
+        'warning', 'SYSTEM'
       );
-      refreshLifecycleState();
 
       // 5. 종합 운영 리포트 작성
       const simulatedTasksForReport: OperationTask[] = runtimeResult.run.jobs.map(j => ({
@@ -625,6 +641,8 @@ function App() {
         completedAt: j.completedAt
       }));
       const finalReport = composeOperationReport(simulatedTasksForReport, snapshotToUse);
+      // 이 리포트는 검증 시나리오로 돌린 **시험 운영** 결과다. 실제 운영 실적으로 읽히지 않게 표시한다.
+      finalReport.summary = `[시험 운영 · 검증 시나리오] ${finalReport.summary}`;
       
       finalReport.warningSignals = runtimeResult.run.results.reduce((acc: string[], r) => {
         return acc.concat(r.riskFlags);

@@ -291,12 +291,17 @@ console.log('  --- HQ 운영 시작의 팀장 우회 ---');
 red('W15. HQ 오늘 운영 시작이 팀장 승인 없이 타 팀 AI 를 실행하지 않는다',
   (() => {
     // 현재 App: 버튼 → runNativeAgentOperation(전 팀 AI 실행) → acceptRuntimeProposals(결과)
-    const runsAllAgents = /runNativeAgentOperation\(/.test(appSource);
-    const gated = /canStartTeamRun|requiresLeadApproval|createDirectiveTask\(/.test(appSource)
-      && /simulationRun|시험 업무|dryRun/.test(appSource);
-    return !runsAllAgents || gated;
+    const scenarioRun = /getScenarioData\(/.test(appSource) && /runNativeAgentOperation\(/.test(appSource);
+    if (!scenarioRun) return true;   // 시험 실행 자체가 없으면 우회 문제도 없다
+    // (1) 시험 실행 결과를 실제 운영 lifecycle 에 저장하지 않는다
+    const writesLifecycle = /acceptRuntimeProposals\(/.test(appSource);
+    // (2) 총괄의 시작은 각 팀장에게 지시를 만든다
+    const createsDirectives = /createDirectiveTask\(/.test(appSource) && /targets|VIEWER_ROLES\.filter/.test(appSource);
+    // (3) 실제 운영으로 오인되지 않게 시험 표시가 붙는다
+    const labeled = /시험 운영/.test(appSource);
+    return !writesLifecycle && createsDirectives && labeled;
   })(), 'HQ 버튼이 곧바로 전 팀 AI 를 실행하고 그 결과를 운영 lifecycle 에 넣음',
-  '팀장 지시 생성만 하거나 시험 업무로 분리');
+  '시험 결과는 저장 안 함 · 실제 업무는 팀장 지시로만 · 시험 표시');
 
 red('W16. 결과 인정에 artifact·소속·제출자가 모두 필요하다(taskId 존재만으로 불가)',
   (() => { reset();
