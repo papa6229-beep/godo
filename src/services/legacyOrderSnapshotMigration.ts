@@ -22,7 +22,7 @@
 //   - 특정 주문번호·날짜·개인정보·현재 건수(1)의 하드코딩
 // ────────────────────────────────────────────────────────────────────────────
 
-import type { DataQualityReport, OperationsDataSnapshot, StandardOrder } from '../types/dataConnector';
+import type { OperationsDataSnapshot, StandardOrder } from '../types/dataConnector';
 
 /** 과거 코드가 옵션 근거 없이 채우던 기본값(서버 '단품' / 클라이언트 정규화 '기본옵션'). */
 const LEGACY_DEFAULT_OPTION_NAMES = ['단품', '기본옵션'];
@@ -58,41 +58,14 @@ export const isLegacyGhostOrder = (o: StandardOrder | undefined | null): boolean
   );
 };
 
-const clamp = (n: number, min: number, max: number): number => Math.min(Math.max(n, min), max);
-
-/**
- * 제거된 유령 행을 품질보고서에서도 함께 덜어낸다.
- * 유령은 신원 필드가 없으므로 정규화 당시 "필수값 누락 = 오류 행"으로 집계돼 있었다.
- * 따라서 총 행수·오류 행수를 함께 줄이고, 어떤 수치도 음수/총계 초과로 남지 않게 정합화한다.
- * (qualityScore·notes 같은 서술 항목은 추정으로 다시 쓰지 않는다 — 수치 정합만 맞춘다.)
- */
-const reconcileQualityReport = (
-  report: DataQualityReport | undefined,
-  removedOrders: StandardOrder[]
-): DataQualityReport | undefined => {
-  if (!report || removedOrders.length === 0) return report;
-  const removed = removedOrders.length;
-  const removedRiskFlags = removedOrders.reduce((sum, o) => sum + (Array.isArray(o.riskFlags) ? o.riskFlags.length : 0), 0);
-
-  const totalRows = Math.max(0, (report.totalRows ?? 0) - removed);
-  const errorRows = clamp((report.errorRows ?? 0) - removed, 0, totalRows);
-  const warningRows = clamp(report.warningRows ?? 0, 0, totalRows);
-  const duplicateRows = clamp(report.duplicateRows ?? 0, 0, totalRows);
-  const validRows = clamp(report.validRows ?? 0, 0, totalRows - errorRows);
-
-  return {
-    ...report,
-    totalRows,
-    validRows,
-    warningRows,
-    errorRows,
-    duplicateRows,
-    // 제거된 행에 대한 지적은 함께 덜어낸다(오류 행수와 개수를 맞춘다).
-    missingRequiredFields: (report.missingRequiredFields ?? []).slice(0, errorRows),
-    privacyMaskedCount: Math.max(0, (report.privacyMaskedCount ?? 0) - removed),
-    riskFlagCount: Math.max(0, (report.riskFlagCount ?? 0) - removedRiskFlags)
-  };
-};
+// ── qualityReport 는 손대지 않는다 (D-2.1) ───────────────────────────────────
+// OperationsDataSnapshot.qualityReport 에는 그 보고서가 orders/inventory/inquiries/
+// reviews/sales 중 **어느 도메인 것인지 식별하는 필드가 없다**(buildOperationsSnapshot 은
+// 마지막 import 도메인 기준으로 한 벌만 남긴다). 따라서 주문 유령을 지웠다고 해서
+// 그 보고서가 주문 보고서라고 단정하고 수치를 차감하면, 마지막 동기화가 재고·리뷰였을 때
+// 무관한 수치를 훼손한다. "근거 없이 추측하지 않는다"는 출처 계약에 어긋난다.
+// → 이 마이그레이션은 qualityReport 를 입력 그대로 보존한다.
+// 후속: DATA-QUALITY-DOMAIN-01(리소스별 품질보고서 구조)에서 해결한다.
 
 export interface LegacyGhostOrderMigrationResult {
   /** 청소된 스냅샷. 제거 대상이 없으면 입력을 그대로 돌려준다. */
@@ -133,8 +106,6 @@ export function migrateLegacyGhostOrders(
     };
   }
 
-  const qualityReport = reconcileQualityReport(snapshot.qualityReport, removedOrders);
-  if (qualityReport) next.qualityReport = qualityReport;
-
+  // qualityReport 는 의도적으로 건드리지 않는다(위 주석 — 도메인 근거 없음).
   return { snapshot: next, removed: removedOrders.length };
 }

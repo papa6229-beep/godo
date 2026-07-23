@@ -265,22 +265,41 @@ red('G12. 두 번 실행해도 결과가 같다 (idempotent)',
   once.orders.length === twice.orders.length ? '길이는 같으나 내용 상이' : `1회=${once.orders.length} vs 2회=${twice.orders.length}`,
   `1회=2회 (orders ${twice.orders.length}건 · 재실행 무변경)`);
 
-// 품질보고서 정합
-const qr = hydratedGhost.qualityReport;
-red('G13. 품질보고서가 제거된 유령을 계속 집계하지 않는다 (총 행수 정합)',
-  !!qr && qr.totalRows === 0 && qr.validRows === 0,
-  `totalRows=${qr?.totalRows} · validRows=${qr?.validRows}`);
+// ── 품질보고서 불변 (D-2.1) ───────────────────────────────────────────────────
+// qualityReport 에는 "어느 도메인의 보고서인가" 식별자가 없다(마지막 import 도메인 한 벌).
+// 따라서 주문 유령을 지웠다고 그 보고서를 주문 보고서로 단정하고 차감하면 안 된다.
+// 후속: DATA-QUALITY-DOMAIN-01.
+// 재고 13건을 뜻하는 품질보고서 + 유령 주문 1건이 함께 있는 스냅샷(실제로 가능한 조합)
+const inventoryQualityReport = () => ({
+  totalRows: 13,
+  validRows: 13,
+  warningRows: 2,
+  errorRows: 0,
+  missingRequiredFields: [],
+  duplicateRows: 0,
+  privacyMaskedCount: 0,
+  riskFlagCount: 2,
+  qualityScore: 97,
+  notes: ['상품 재고가 안전재고 수량(5개) 이하입니다.']
+});
+const invSnapInput = legacySnapshot([ghostOrder()], 'api_proxy_real', { qualityReport: inventoryQualityReport() });
+const hydratedInv = hydrate(invSnapInput);
 
-red('G14. 품질보고서 하위 수치가 총 행수를 넘지 않고 음수도 없다',
-  !!qr && qr.errorRows <= qr.totalRows && qr.warningRows <= qr.totalRows &&
-  qr.errorRows >= 0 && qr.validRows >= 0 && qr.riskFlagCount >= 0 &&
-  qr.missingRequiredFields.length <= qr.errorRows,
-  `errorRows=${qr?.errorRows} / totalRows=${qr?.totalRows} · 누락지적=${qr?.missingRequiredFields?.length}`);
+red('G13. 재고 13건을 뜻하는 품질보고서는 주문 유령 제거로 바뀌지 않는다 (도메인 근거 없음)',
+  JSON.stringify(hydratedInv.qualityReport) === JSON.stringify(inventoryQualityReport()),
+  `totalRows=${hydratedInv.qualityReport?.totalRows} (입력 13에서 변경됨)`,
+  'totalRows=13 그대로 · 전 필드 동일');
 
-const qrMixed = hydratedMixed.qualityReport;
-red('G15. 혼재 시 품질보고서는 남은 정상 주문 1건 기준으로 정합',
-  !!qrMixed && qrMixed.totalRows === 1 && qrMixed.validRows === 1 && qrMixed.errorRows === 0,
-  `total=${qrMixed?.totalRows} · valid=${qrMixed?.validRows} · error=${qrMixed?.errorRows}`);
+red('G14. 그 스냅샷에서도 유령 주문은 제거되고 출처 건수는 0으로 정정된다',
+  hydratedInv.orders.length === 0 && hydratedInv.resourceProvenance?.orders?.count === 0,
+  `orders=${hydratedInv.orders.length}건 · count=${hydratedInv.resourceProvenance?.orders?.count}`,
+  'orders=0건 · count=0 (핵심 해결 유지)');
+
+red('G15. 주문 전용처럼 보이는 품질보고서도 임의 수정하지 않는다 (바이트 단위 보존)',
+  JSON.stringify(hydratedGhost.qualityReport) === JSON.stringify(legacySnapshot([ghostOrder()]).qualityReport) &&
+  JSON.stringify(hydratedMixed.qualityReport) === JSON.stringify(legacySnapshot([ghostOrder(), realZeroAmountOrder()]).qualityReport),
+  `유령전용=${JSON.stringify(hydratedGhost.qualityReport?.totalRows)} · 혼재=${JSON.stringify(hydratedMixed.qualityReport?.totalRows)}`,
+  '입력 품질보고서와 완전히 동일');
 
 // 남은 주문은 원본 그대로 (PII·필드 추가 없음)
 red('G16. 살아남은 주문 레코드에 새 필드·문자열을 추가하지 않는다 (PII 출력·저장 추가 없음)',
