@@ -30,7 +30,7 @@ import { AgentTaskPanel } from './AgentTaskPanel';
 import { TeamTaskPanel } from './TeamTaskPanel';
 import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
-import { loadRole, subscribeRole, isHqRole, type ViewerRole } from '../services/sessionRole';
+import { loadRole, subscribeRole, isHqRole, roleMeta, type ViewerRole } from '../services/sessionRole';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import { loadAgentTasks, subscribeAgentTasks } from '../services/agentTaskStore';
 import type { AgentTaskSpec } from '../types/agentTask';
@@ -206,11 +206,17 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
   const [teamMessages, setTeamMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
   useEffect(() => subscribeTeamMessages(() => setTeamMessages(loadTeamMessages())), []);
   const refreshTeamMessages = () => setTeamMessages(loadTeamMessages());
+  /**
+   * 메시지를 실제로 보내고 처리하는 사람 — **세션 역할**에서 온다.
+   * 화면에서 어느 팀을 보고 있든(selectedTeamId) 신원은 바뀌지 않는다.
+   */
+  const messageActor = { kind: 'human' as const, teamId: role as TeamId, label: roleMeta(role).label };
   const handlePostTeamMessage = (input: CreateTeamMessageInput) => {
     const posted = postTeamMessage(input);
     // RC-2 D-1.3: 다른 팀에 **지원을 요청**하면 메시지로만 끝내지 않고 협업 업무로도 남긴다.
     //   요청팀에는 내 카드, 수행팀에는 자기 업무 카드 — 총괄 화면에서는 하나의 흐름으로 이어진다.
-    if (input.kind === 'support' && input.toTeam !== input.from.teamId) {
+    // 총괄의 일반 메시지는 업무를 자동으로 만들지 않는다(정식 지시는 업무 탭에서 한다).
+    if (input.kind === 'support' && input.from.teamId !== 'hq' && input.toTeam !== input.from.teamId) {
       lifecycle?.onCollaborate(input.title || '협업 요청', input.toTeam);
     }
     // 활동 원장: 팀 간 전달 기록.
@@ -218,16 +224,19 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
     refreshTeamMessages();
   };
   const handleResolveTeamMessage = (id: string, status: TeamMessageStatus) => {
-    const actor = { kind: 'human' as const, teamId: selectedTeamId, label: '운영자' };
+    // 처리 주체도 화면 선택값이 아니라 실제 사용자다. 받은 팀 본인만 처리한다.
+    const actor = messageActor;
+    const msgToResolve = teamMessages.find((m) => m.id === id);
+    if (msgToResolve && msgToResolve.toTeam !== actor.teamId) return;
     resolveTeamMessage(id, status, actor);
     // 활동 원장: 완료 처리 = 처리 활동 기록(대기/완료 상태 반영).
     if (status === 'done' || status === 'in_progress') {
       const msg = teamMessages.find((m) => m.id === id);
-      logActivity({ teamId: selectedTeamId, type: 'approval', status: status === 'done' ? 'done' : 'in_progress', title: msg?.title || '요청 처리', detail: msg ? `${DEPT_TEAM_META[msg.from.teamId].name}의 요청 처리` : undefined, actor, refId: id });
+      logActivity({ teamId: actor.teamId, type: 'approval', status: status === 'done' ? 'done' : 'in_progress', title: msg?.title || '요청 처리', detail: msg ? `${DEPT_TEAM_META[msg.from.teamId].name}의 요청 처리` : undefined, actor, refId: id });
     }
     refreshTeamMessages();
   };
-  const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, { kind: 'human', teamId: selectedTeamId, label: '운영자' }); refreshTeamMessages(); };
+  const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, messageActor); refreshTeamMessages(); };
   // 자동 업무 스펙(Studio에서 편집) — 스토어에서 로드, 편집 시 storage 이벤트로 반영.
   const [agentTasks, setAgentTasks] = useState<AgentTaskSpec[]>(() => loadAgentTasks());
   useEffect(() => subscribeAgentTasks(() => setAgentTasks(loadAgentTasks())), []);
@@ -709,7 +718,8 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
 
         {rightTab === 'messages' && (
           <TeamMessagePanel
-            teamId={selectedTeamId}
+            viewedTeamId={selectedTeamId}
+            actor={messageActor}
             messages={teamMessages}
             onPost={handlePostTeamMessage}
             onResolve={handleResolveTeamMessage}
