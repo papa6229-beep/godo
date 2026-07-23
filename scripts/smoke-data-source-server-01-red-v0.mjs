@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /*
  * scripts/smoke-data-source-server-01-red-v0.mjs
- * DATA-SOURCE-SERVER-01 — 서버 자동 mock 대체 경로 전수 재현 (RED 진단)
+ * DATA-SOURCE-SERVER-01 — 서버 경계 출처 계약 (RED→GREEN)
  *
  * 목적: 실제/샌드박스 요청이 실패·미구현·키 부재일 때 **서버가** 시험 mock 레코드를
  *   만들어 반환하는 경로를 실제 함수 수준에서 재현한다. 네트워크에 의존하지 않는다
  *   (globalThis.fetch 스텁 + process.env 제어).
  *
- * 이 단계는 RED **진단 전용**이다. 제품 소스는 한 줄도 고치지 않는다.
- *   [FACT] = 현재 동작을 값으로 고정(진단 사실). 지금 통과해야 정상이며, GREEN 이후 바뀔 수 있다.
- *   [RED ] = 목표 계약. 지금은 미충족(unmet)이 정상이다.
+ *   [BASE] = GREEN 계약 불변식. fail>0 이면 회귀다.
+ *            (RED 커밋 d002419 시점에는 이 중 다수가 결함 동작을 기록하고 있었다 —
+ *             그 커밋을 체크아웃하면 당시 값을 그대로 재현할 수 있다.)
+ *   [RED ] = 계약 목표 C1~C13. GREEN 도달 후에는 전부 MET 여야 한다.
  *
  * 계약 목표 초안(문서 §4와 동일):
  *   - real/sandbox 성공 빈배열 = 실제 데이터 0건
@@ -57,7 +58,7 @@ try {
 }
 
 let factP = 0, factF = 0, redMet = 0, redUnmet = 0;
-const fact = (n, c, cur) => { console.log(`  ${c ? 'PASS' : 'FAIL'} [FACT] ${n}${cur ? `  — ${cur}` : ''}`); c ? factP++ : factF++; };
+const fact = (n, c, cur) => { console.log(`  ${c ? 'PASS' : 'FAIL'} [BASE] ${n}${cur ? `  — ${cur}` : ''}`); c ? factP++ : factF++; };
 const red = (n, c, cur, met) => { console.log(`  ${c ? 'MET ' : 'RED '} [RED ] ${n}${c ? ((met ?? cur) ? `  — ${met ?? cur}` : '') : `  (현재: ${cur})`}`); c ? redMet++ : redUnmet++; };
 
 // ── XML 스텁 (익명 — 실주문번호·PII 없음) ────────────────────────────────────
@@ -82,6 +83,7 @@ const setScenario = ({ mode, keys = true, net }) => {
   else { delete process.env.GODOMALL_PARTNER_KEY; delete process.env.GODOMALL_USER_KEY; }
   globalThis.fetch = async (url) => {
     if (net === 'throw') throw new Error('network down (stub)');
+    if (net === 'orderFailOnly' && String(url).includes('Order_Search')) throw new Error('order api down (stub)');
     if (net === 'http500') return { ok: false, status: 500, text: async () => 'err' };
     const isGoods = String(url).includes('Goods_Search');
     const body = net === 'empty' ? xmlEmpty : (isGoods ? xmlGoods1 : xmlOrders1);
@@ -100,7 +102,9 @@ const S = {
   realHttp500: { mode: 'real', net: 'http500' },
   realNoKeys:  { mode: 'real', keys: false, net: 'ok' },
   sandboxFail: { mode: 'sandbox', net: 'throw' },
-  explicitMock:{ mode: 'mock', net: 'ok' }
+  explicitMock:{ mode: 'mock', net: 'ok' },
+  // 주문 API 만 실패, 상품 API 는 성공 — 시뮬레이션 독립성 확인용
+  orderFailOnly:{ mode: 'real', net: 'orderFailOnly' }
 };
 
 const run = async (scenario, fn) => { setScenario(scenario); try { return await fn(); } finally { globalThis.fetch = realFetch; } };
@@ -110,7 +114,7 @@ const record = (경로, 시나리오, r) => {
   return r;
 };
 
-console.log('=== DATA-SOURCE-SERVER-01 — 서버 자동 mock 대체 전수 재현 (RED 진단) ===');
+console.log('=== DATA-SOURCE-SERVER-01 — 서버 경계 출처 계약 (RED→GREEN) ===');
 console.log('');
 
 // ── A. resolveResource ───────────────────────────────────────────────────────
@@ -139,16 +143,26 @@ const rvFail      = record('resolveOrdersRevenue(synthetic=false)', 'real 실패
 const rvNoKey     = record('resolveOrdersRevenue(synthetic=false)', 'real 키 부재',     await run(S.realNoKeys,() => R.resolveOrdersRevenue({ includeSynthetic: false })));
 const rvSynthOk   = record('resolveOrdersRevenue(synthetic=true)',  'real 성공+레코드', await run(S.realOk,    () => R.resolveOrdersRevenue({ includeSynthetic: true })));
 const rvSynthFail = record('resolveOrdersRevenue(synthetic=true)',  'real 실패',        await run(S.realFail,  () => R.resolveOrdersRevenue({ includeSynthetic: true })));
+// 주문만 실패 + 상품 성공 → 시뮬레이션은 유지돼야 한다(독립 시험자료).
+const rvSynthOrderFail = record('resolveOrdersRevenue(synthetic=true)', '주문실패+상품성공', await run(S.orderFailOnly, () => R.resolveOrdersRevenue({ includeSynthetic: true })));
+const rvMock = record('resolveOrdersRevenue(synthetic=false)', '명시적 mock 모드', await run(S.explicitMock, () => R.resolveOrdersRevenue({ includeSynthetic: false })));
 
 // ── D. Sync All 혼합 (sync.ts 집계 로직 재현) ────────────────────────────────
 const syncAll = await run(S.realOk, async () => {
   const resources = ['orders', 'inquiries', 'reviews', 'inventory', 'sales'];
   const resolved = await Promise.all(resources.map((r) => R.resolveResource(r)));
-  const sources = {}; let anyLive = false, importedCount = 0;
-  resources.forEach((r, i) => { sources[r] = resolved[i].source; if (resolved[i].live) anyLive = true; importedCount += resolved[i].count; });
-  const primaryMode = resolved[0]?.mode || 'mock';
-  const sourceType = anyLive ? (primaryMode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox') : 'api_mock_fallback';
-  return { sources, sourceType, importedCount, resolved };
+  // 라우트가 쓰는 **실제 집계 함수**를 그대로 호출한다(복사본 검증 금지).
+  return { ...R.summarizeSyncAll(resources, resolved), resolved };
+});
+const syncAllOk = await run(S.realOk, async () => {
+  const resources = ['orders', 'inventory', 'sales'];
+  const resolved = await Promise.all(resources.map((r) => R.resolveResource(r)));
+  return R.summarizeSyncAll(resources, resolved);
+});
+const syncAllMock = await run(S.explicitMock, async () => {
+  const resources = ['orders', 'inquiries', 'reviews', 'inventory', 'sales'];
+  const resolved = await Promise.all(resources.map((r) => R.resolveResource(r)));
+  return R.summarizeSyncAll(resources, resolved);
 });
 restore();
 
@@ -162,69 +176,107 @@ for (const r of rows) {
 console.log('');
 
 // ── [FACT] 현재 동작 고정 ────────────────────────────────────────────────────
-fact('F1. real 성공+레코드 → 실제 레코드 반환(api_proxy_real, live)',
+fact('B1. real 성공+레코드 → 실제 레코드 반환(api_proxy_real, live)',
   rrOrdersOk.count === 1 && rrOrdersOk.source === 'api_proxy_real' && rrOrdersOk.live === true,
   `count=${rrOrdersOk.count} source=${rrOrdersOk.source}`);
 
-fact('F2. real 성공+빈배열 → 0건 유지(실제 데이터 0건, mock 주입 없음)',
+fact('B2. real 성공+빈배열 → 실제 데이터 0건(live 유지, mock 주입 없음)',
   rrOrdersEmpty.count === 0 && rrOrdersEmpty.source === 'api_proxy_real' && rrOrdersEmpty.live === true,
   `count=${rrOrdersEmpty.count} source=${rrOrdersEmpty.source} live=${rrOrdersEmpty.live}`);
 
-fact('F3. real 실패 → **mock 주문이 반환된다**(자동 대체)',
-  rrOrdersFail.count > 0 && rrOrdersFail.source === 'api_mock_fallback' && rrOrdersFail.live === false && !!rrOrdersFail.errorMessage,
+fact('B3. real 실패 → 0건 + unavailable + 사유 (RED 당시: mock 5건/api_mock_fallback)',
+  rrOrdersFail.count === 0 && rrOrdersFail.source === 'unavailable' && rrOrdersFail.live === false && !!rrOrdersFail.errorMessage,
   `count=${rrOrdersFail.count} source=${rrOrdersFail.source} errorMessage=있음`);
 
-fact('F4. real 미구현(inquiries/reviews) → mock 3건 반환',
-  rrInquiries.count === 3 && rrReviews.count === 3 && rrInquiries.source === 'api_mock_fallback',
+fact('B4. real 실패(HTTP500)도 동일 (RED 당시: mock 5건)',
+  rrOrders500.count === 0 && rrOrders500.source === 'unavailable' && !!rrOrders500.errorMessage,
+  `count=${rrOrders500.count} source=${rrOrders500.source}`);
+
+fact('B5. real 미구현(inquiries/reviews) → 0건 (RED 당시: mock 3건씩)',
+  rrInquiries.count === 0 && rrReviews.count === 0 && rrInquiries.source === 'unavailable',
   `inquiries=${rrInquiries.count}건 reviews=${rrReviews.count}건`);
 
-fact('F5. real 키 부재 → mock 반환 + errorMessage 조차 없음(사유 미상)',
-  rrOrdersNoKey.count > 0 && rrOrdersNoKey.source === 'api_mock_fallback' && rrOrdersNoKey.errorMessage === undefined,
-  `count=${rrOrdersNoKey.count} errorMessage=${rrOrdersNoKey.errorMessage === undefined ? '없음' : '있음'}`);
+fact('B6. real 키 부재 → 0건 + 안전한 사유 문구 (RED 당시: mock 5건·사유 없음)',
+  rrOrdersNoKey.count === 0 && rrOrdersNoKey.source === 'unavailable' &&
+  rrOrdersNoKey.errorMessage === 'Godomall live mode is not configured (mode/keys missing).',
+  `count=${rrOrdersNoKey.count} errorMessage="${rrOrdersNoKey.errorMessage}"`);
 
-fact('F6. sandbox 실패 → mock 반환',
-  rrSandboxFail.count > 0 && rrSandboxFail.source === 'api_mock_fallback',
+fact('B7. 사유 문구에 키·URL 파라미터·raw XML·PII 가 포함되지 않는다',
+  [rrOrdersFail, rrOrders500, rrOrdersNoKey, rrSandboxFail, rrInquiries]
+    .every((r) => !/stub-partner|stub-user|partner_key|key=|<\?xml|orderNo|godo\.co\.kr/i.test(String(r.errorMessage ?? ''))),
+  '비밀값 미포함');
+
+fact('B8. sandbox 실패 → 0건 + unavailable (RED 당시: mock 5건)',
+  rrSandboxFail.count === 0 && rrSandboxFail.source === 'unavailable',
   `count=${rrSandboxFail.count} source=${rrSandboxFail.source}`);
 
-fact('F7. 명시적 mock 모드 → fixture 반환 (이 경우는 계약상 허용)',
+fact('B9. 명시적 mock 모드 → fixture 반환 (계약상 허용 — 불변)',
   rrMock.count > 0 && rrMock.source === 'api_mock_fallback' && rrMock.mode === 'mock',
-  `count=${rrMock.count} mode=${rrMock.mode}`);
+  `count=${rrMock.count} mode=${rrMock.mode} source=${rrMock.source}`);
 
-fact('F8. resolveOrdersAdmin real 실패 → mock 주문 반환',
-  adFail.count > 0 && adFail.source === 'api_mock_fallback' && adFail.live === false,
-  `count=${adFail.count} source=${adFail.source}`);
+fact('B10. resolveOrdersAdmin real 실패 → 0건·집계 0·unavailable (RED 당시: mock 5건)',
+  adFail.count === 0 && adFail.records.length === 0 && adFail.source === 'unavailable' &&
+  adFail.unpaidCount === 0 && adFail.undeliveredCount === 0 && !!adFail.errorMessage,
+  `count=${adFail.count} unpaid=${adFail.unpaidCount} undelivered=${adFail.undeliveredCount} source=${adFail.source}`);
 
-fact('F9. resolveOrdersRevenue real 실패 → includeSynthetic=false 인데도 mock 주문 유입',
-  rvFail.count > 0 && rvFail.live === false,
-  `count=${rvFail.count} live=${rvFail.live}`);
+fact('B11. resolveOrdersAdmin real 성공은 그대로 (레코드/빈배열)',
+  adOk.count === 1 && adOk.source === 'api_proxy_real' && adEmpty.count === 0 && adEmpty.live === true,
+  `성공=${adOk.count}건 · 빈배열=${adEmpty.count}건(live=${adEmpty.live})`);
 
-fact('F10. 그 mock 주문이 **dataKind=real / sourceType=real_godomall** 로 표시된다',
-  rvFail.orders.length > 0 && rvFail.orders.every((o) => o.sourceType === 'real_godomall' && o.dataKind === 'real'),
-  `첫 주문 sourceType=${rvFail.orders[0]?.sourceType} dataKind=${rvFail.orders[0]?.dataKind}`);
+fact('B12. revenue real 실패(synthetic=false) → 0건·summary null (RED 당시: mock 5건 유입)',
+  rvFail.count === 0 && rvFail.orders.length === 0 && rvFail.source === 'unavailable' &&
+  rvFail.summary === null && rvFail.realOrdersStatus === 'unavailable',
+  `count=${rvFail.count} summary=${rvFail.summary === null ? 'null' : '있음'} source=${rvFail.source}`);
 
-fact('F11. includeSynthetic=true 시뮬레이션은 synthetic_test 로 구별 표시된다',
+fact('B13. revenue 어떤 경로에서도 fallback 주문이 real_godomall/dataKind:real 로 표시되지 않는다',
+  [rvFail, rvNoKey, rvSynthFail].every((r) => r.orders.every((o) => o.sourceType !== 'real_godomall' && o.dataKind !== 'real')),
+  'fallback 주문 0건');
+
+fact('B14. 명시적 mock 모드 revenue fixture 는 fixture_mock/dataKind:mock 으로 구별된다',
+  rvMock.orders.length > 0 && rvMock.orders.every((o) => o.sourceType === 'fixture_mock' && o.dataKind === 'mock') &&
+  rvMock.source === 'api_mock_fallback' && rvMock.realOrdersStatus === 'fixture',
+  `${rvMock.orders.length}건 fixture_mock/dataKind=mock`);
+
+fact('B15. revenue real 성공은 그대로 (레코드 / 빈배열은 유효한 0값 summary)',
+  rvOk.count === 1 && rvOk.source === 'api_proxy_real' &&
+  rvEmpty.count === 0 && rvEmpty.live === true && rvEmpty.summary !== null,
+  `성공=${rvOk.count}건 · 빈배열 summary=${rvEmpty.summary === null ? 'null' : '유효(0값)'}`);
+
+fact('B16. includeSynthetic=true 시뮬레이션은 synthetic_test 로 구별 (불변)',
   rvSynthOk.orders.some((o) => o.sourceType === 'synthetic_test' && o.dataKind === 'synthetic'),
-  `synthetic 주문 ${rvSynthOk.orders.filter((o) => o.sourceType === 'synthetic_test').length}건 포함`);
+  `synthetic ${rvSynthOk.orders.filter((o) => o.sourceType === 'synthetic_test').length}건`);
 
-// real 실패 시 시뮬레이션은 실 Products 조인에 의존하므로 함께 붕괴한다(products=[] → 0건).
-// 결과적으로 남는 것은 **mock 주문뿐이며 그것이 real 로 표시된다** — 대시보드가 가장 오해하기 쉬운 상태.
-fact('F12. real 실패 + synthetic=true → 시뮬레이션은 0건으로 붕괴하고 mock(real 표시)만 남는다',
-  rvSynthFail.orders.filter((o) => o.dataKind === 'synthetic').length === 0 &&
-  rvSynthFail.orders.length > 0 && rvSynthFail.orders.every((o) => o.dataKind === 'real'),
-  `synthetic ${rvSynthFail.orders.filter((o) => o.dataKind === 'synthetic').length}건 · real표시 ${rvSynthFail.orders.filter((o) => o.dataKind === 'real').length}건`);
+fact('B17. 주문 실패 + 상품 성공 + synthetic=true → 시뮬레이션 유지, 실제 slice 만 unavailable',
+  rvSynthOrderFail.orders.filter((o) => o.dataKind === 'synthetic').length > 0 &&
+  rvSynthOrderFail.orders.every((o) => o.dataKind !== 'real') &&
+  rvSynthOrderFail.realOrdersStatus === 'unavailable' && rvSynthOrderFail.syntheticStatus === 'success' &&
+  !!rvSynthOrderFail.realOrdersErrorMessage,
+  `시뮬 ${rvSynthOrderFail.orders.filter((o) => o.dataKind === 'synthetic').length}건 유지 · realOrdersStatus=${rvSynthOrderFail.realOrdersStatus}`);
 
-fact('F13. Sync All 혼합: 일부 실제/일부 mock 인데 전역 sourceType 은 api_proxy_real 하나로 표기',
-  syncAll.sourceType === 'api_proxy_real' &&
-  syncAll.sources.orders === 'api_proxy_real' && syncAll.sources.inquiries === 'api_mock_fallback',
-  `전역=${syncAll.sourceType} · sources=${JSON.stringify(syncAll.sources)}`);
+fact('B18. 상품 조회까지 실패 → 시뮬레이션 unavailable (작은 mock 상품으로 대체하지 않음)',
+  rvSynthFail.syntheticStatus === 'unavailable' && rvSynthFail.orders.length === 0 &&
+  rvSynthFail.summary === null && !!rvSynthFail.syntheticErrorMessage,
+  `syntheticStatus=${rvSynthFail.syntheticStatus} orders=${rvSynthFail.orders.length} summary=${rvSynthFail.summary === null ? 'null' : '있음'}`);
 
-fact('F14. Sync All importedCount 에 mock 건수가 합산된다',
-  syncAll.importedCount > (syncAll.resolved[0].count + syncAll.resolved[3].count + syncAll.resolved[4].count),
-  `importedCount=${syncAll.importedCount} (문의3+리뷰3 mock 포함)`);
+fact('B19. Sync All 부분 실패 → syncStatus=partial · 전역 unavailable · 성공 리소스는 sources 로 보존',
+  syncAll.syncStatus === 'partial' && syncAll.sourceType === 'unavailable' &&
+  syncAll.sources.orders === 'api_proxy_real' && syncAll.sources.inquiries === 'unavailable',
+  `syncStatus=${syncAll.syncStatus} 전역=${syncAll.sourceType} sources=${JSON.stringify(syncAll.sources)}`);
 
-fact('F15. PII 마스킹 경계는 mock 경로에서도 동일하게 통과한다(경계 불변 확인)',
-  typeof rrOrdersFail.maskedCount === 'number' && rrOrdersFail.maskedCount >= 0,
-  `maskedCount=${rrOrdersFail.maskedCount}`);
+fact('B20. Sync All importedCount 는 허용된 레코드만 합산(unavailable 리소스 0건) + 리소스별 사유 보존',
+  syncAll.importedCount === syncAll.resolved.reduce((s, r) => s + (r.source === 'unavailable' ? 0 : r.count), 0) &&
+  syncAll.unavailableResourceCount === 2 && !!syncAll.resourceErrors.inquiries,
+  `importedCount=${syncAll.importedCount} unavailable=${syncAll.unavailableResourceCount}건 · 사유보존=${Object.keys(syncAll.resourceErrors).join(',')}`);
+
+fact('B21. Sync All 전부 성공 → success, 명시적 mock → fixture',
+  syncAllOk.syncStatus === 'success' && syncAllOk.sourceType === 'api_proxy_real' &&
+  syncAllMock.syncStatus === 'fixture' && syncAllMock.sourceType === 'api_mock_fallback',
+  `success=${syncAllOk.syncStatus} · fixture=${syncAllMock.syncStatus}`);
+
+fact('B22. PII 마스킹 경계 불변 — 실제 성공 경로에서 마스킹이 계속 동작한다',
+  typeof rrOrdersOk.maskedCount === 'number' && rrOrdersOk.maskedCount >= 0 &&
+  typeof rrMock.maskedCount === 'number' && rrMock.maskedCount > 0,
+  `real=${rrOrdersOk.maskedCount} · mock=${rrMock.maskedCount}`);
 
 // ── [RED] 계약 목표 (지금은 미충족이 정상) ───────────────────────────────────
 console.log('');
@@ -263,8 +315,8 @@ red('C13. products/inventory 도 동일 원칙 (real 실패 시 0건)',
 
 console.log('');
 console.log('--- 요약 ---');
-console.log(`[FACT] ${factP} pass / ${factF} fail   (현재 동작 고정 — fail>0이면 진단 재작성 필요)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (계약 목표 — GREEN 미착수이므로 unmet>0이 정상)`);
+console.log(`[BASE] ${factP} pass / ${factF} fail   (GREEN 계약 불변식 — fail>0이면 회귀)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (계약 목표 C1~C13)`);
 rmSync(tmp, { recursive: true, force: true });
 if (factF > 0) { console.log('\n✗ 진단 불일치 — FACT 실패'); process.exit(1); }
-console.log(`\n✓ RED 진단 완료 — 자동 mock 대체 경로 ${redUnmet}건 미충족(예상된 상태)`);
+console.log('\n✓ 전부 충족 — GREEN 도달 (서버 경계에서 실제 0건 / 연결 안 됨 / 명시적 시험자료 구별)');

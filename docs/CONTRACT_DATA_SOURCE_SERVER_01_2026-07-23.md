@@ -104,3 +104,54 @@ HTTP            = 200
 ## 6. 이번 단계 범위
 
 제품 소스 변경 **0파일**. 신규 파일 2개(RED 검사 1 + 이 문서 1). main·Production·기존 브랜치 무변경. push·Preview 없음.
+
+---
+
+# GREEN 구현 결과 (2026-07-23)
+
+확정 결정에 따라 구현했다. 제품 소스 5파일 변경.
+
+## 확정 계약 (구현됨)
+
+| 상황 | records | source/sourceType | live | summary | errorMessage |
+|---|---|---|---|---|---|
+| real/sandbox 성공 + 레코드 | 실제 | `api_proxy_real`/`_sandbox` | true | 유효 | — |
+| real/sandbox **성공 빈배열** | `[]` (0건) | `api_proxy_real`/`_sandbox` | **true** | **유효한 0값** | — |
+| real/sandbox 실패·미구현·**키 부재** | `[]` (0건) | **`unavailable`** | false | **null** | 안전한 사유 |
+| **명시적 mock 모드** | fixture | `api_mock_fallback` | false | 유효 | — |
+
+- HTTP 는 모든 경우 **200 + structured unavailable** (503 아님).
+- 키 부재 사유: `Godomall live mode is not configured (mode/keys missing).`
+- 사유 문구에 키·URL 파라미터·raw XML·PII 를 담지 않는다(검사 B7로 잠금).
+
+## Sync All
+
+`syncStatus` 신설: `success` / `partial` / `unavailable` / `fixture`.
+부분 실패면 전역 `sourceType='unavailable'` + `syncStatus='partial'`, **성공 리소스는 `sources` 로 보존**.
+`importedCount` 는 허용된 레코드만 합산(unavailable 리소스는 0건). `resourceErrors` 로 리소스별 사유 보존.
+집계는 `summarizeSyncAll()` 공용 함수로 올려 라우트에 복사본을 두지 않는다(검사가 실제 코드를 검증).
+
+## 매출 경로
+
+- 실제 주문 조회와 상품 카탈로그 조회를 **독립 수행**(한 try 블록 분리).
+- 실제 주문 실패 → mock 을 실제 자리에 넣지 않고 0건 + `realOrdersStatus='unavailable'` + 사유 보존.
+- **주문 실패 + 상품 성공 + `includeSynthetic=true` → 2년치 시뮬레이션은 그대로 생성**(`syntheticStatus='success'`).
+  실제 주문 연결 실패 안내는 `realOrdersErrorMessage` 로 별도 보존.
+- 상품 조회까지 실패 → `syntheticStatus='unavailable'`. **작은 mock 상품으로 조용히 대체하지 않는다.**
+  → 후속 **`SIMULATION-CATALOG-BASELINE-01`** 로 기록(이번에 새 baseline 미구현).
+- `RevenueDataSource` 에 `fixture_mock` 추가 → 명시적 시험 fixture 는 `dataKind:'mock'`.
+  **실제·시뮬레이션·fixture 3자가 서로 구별된다.**
+- `/orders-revenue` 응답에 `sourceType`·`realOrdersStatus`·`syntheticStatus`·각 사유 추가.
+
+## 클라이언트 (이중 방어 유지)
+
+- `departmentDataService.toSourceTag`: `api_mock_fallback` 만 `'mock'`, 그 외 미상은 **`'unavailable'`(fail-closed)**.
+  실패한 실제 요청이 '시험 데이터'로 둔갑하지 않는다 → 화면은 '연결 안 됨'.
+- `fetchRevenue`: 서버 `sourceType` 이 있으면 그것이 권위, 없으면 구버전 호환으로 `mode/live` 추정.
+- 클라이언트 GREEN3(`resolveFetchOutcome`) 자동대체 차단은 **제거하지 않았다**(서버·클라 양쪽 방어).
+
+## 범위 밖 (기록만)
+
+- **`DATA-SOURCE-SERVER-02`** — `read.ts` category/brand/code mock fallback. 표기는 이미 정직(`source:'mock'`, 라벨 `(mock)`)이라 이번에 수정하지 않음.
+- **`SIMULATION-CATALOG-BASELINE-01`** — 상품 카탈로그 없이도 시뮬레이션이 서려면 baseline 이 필요. 이번에 임의 생성하지 않음.
+- C4-SERVER-01 · DATA-QUALITY-DOMAIN-01 · RC-2 미착수.
