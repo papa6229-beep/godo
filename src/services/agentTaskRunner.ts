@@ -86,7 +86,9 @@ export function canAutoRunAgentTask(spec: AgentTaskSpec): StandingRunVerdict {
   return canRunStandingDirective(spec.standing);
 }
 
-// 자동 완료 경로(approvalMode='auto' 또는 스케줄러): 계산 → 발신 → 원장(done).
+// 자동 완료 경로: 계산 → 발신 → 원장(done).
+//   ⚠ 이 함수 자체는 게이트를 보지 않는다. **외부 진입점으로 쓰지 말 것** —
+//     사람이 누른 실행은 runManualAgentTask, 시각 스케줄은 runScheduledAgentTask 를 쓴다.
 export function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { posted: TeamMessage; body: string } {
   const report = computeAgentReport(spec, ctx.revenue, ctx.nowMs);
   const { posted } = postAgentReport(spec, report, ctx);
@@ -127,4 +129,53 @@ export function cancelAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, r
 // 사람이 승인/수정한 본문으로 최종 발신 + 원장(done + approval).
 export function approveAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, body: string): { posted: TeamMessage } {
   return postAgentReport(spec, { title: spec.title, body }, ctx, { resolvedByHuman: true });
+}
+
+// ── RC-2 D-1.3: 공개 진입점 ────────────────────────────────────────────────
+//   미래의 스케줄러가 raw runAgentTask 를 직접 불러 상시 지시 확인을 건너뛰지 못하게 한다.
+
+export type AgentTaskRunOutcome =
+  | { ran: true; body: string; staged: false; dataKind: 'real' | 'fixture' }
+  | { ran: false; staged: true; body: string; reason: string; dataKind: 'real' | 'fixture' }
+  | { ran: false; staged: false; reason: string };
+
+/** 사람이 화면에서 직접 누른 실행 — **그 팀 팀장만**. */
+export function runManualAgentTask(
+  spec: AgentTaskSpec,
+  actor: { kind: 'human' | 'agent'; teamId: string },
+  ctx: RunAgentTaskContext
+): AgentTaskRunOutcome {
+  if (actor.kind !== 'human' || actor.teamId !== spec.teamId) {
+    return { ran: false, staged: false, reason: '담당 팀장만 이 업무를 실행할 수 있습니다.' };
+  }
+  const verdict = canAutoRunAgentTask(spec);
+  // 사람이 눌렀더라도 고위험 결과를 그냥 내보내지는 않는다.
+  if (spec.approvalMode !== 'auto' || verdict.requiresLeadConfirmation) {
+    const report = stageApprovalTask(spec, ctx);
+    return {
+      ran: false, staged: true, body: report.body, dataKind: verdict.dataKind,
+      reason: verdict.requiresLeadConfirmation
+        ? '고위험 업무라 결과를 바로 보내지 않고 확인 뒤 보고합니다.'
+        : '확인 후 보고하도록 설정된 업무입니다.'
+    };
+  }
+  const { body } = runAgentTask(spec, ctx);
+  return { ran: true, staged: false, body, dataKind: verdict.dataKind };
+}
+
+/** 시각 스케줄이 부르는 유일한 진입점 — 상시 지시 확인을 **건너뛸 수 없다**. */
+export function runScheduledAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): AgentTaskRunOutcome {
+  const verdict = canRunStandingDirective(spec.standing);
+  if (!verdict.allowed) {
+    return { ran: false, staged: false, reason: verdict.reason ?? '담당 팀장 확인이 필요합니다.' };
+  }
+  if (verdict.requiresLeadConfirmation || spec.approvalMode !== 'auto') {
+    const report = stageApprovalTask(spec, ctx);
+    return {
+      ran: false, staged: true, body: report.body, dataKind: verdict.dataKind,
+      reason: '결과를 담당 팀장이 확인한 뒤 보고합니다.'
+    };
+  }
+  const { body } = runAgentTask(spec, ctx);
+  return { ran: true, staged: false, body, dataKind: verdict.dataKind };
 }

@@ -3,6 +3,8 @@ import type { ApprovalItem } from '../types/approval';
 import type { Agent } from '../types';
 import './ApprovalListModal.css';
 import { UNKNOWN_AFFILIATION_LABEL } from '../services/taskLifecycleAppAdapter';
+import { isSameAgent, toCanonicalAgentId } from '../services/agentIdRegistry';
+import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 
 interface ApprovalListModalProps {
   isOpen: boolean;
@@ -52,8 +54,13 @@ export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
     : items;
 
   const getAgentInfo = (agentId: string) => {
-    const agent = agents.find(a => a.id === agentId);
+    // RC-2 D-1.3: 정본은 canonical id, 화면 캐릭터 목록은 legacy id 다.
+    //   별칭표(isSameAgent)를 거쳐 찾는다 — 정확 일치로만 찾으면 알려진 AI 도 미상으로 보인다.
+    const agent = agents.find((a) => isSameAgent(a.id, agentId));
     if (agent) return { name: agent.name, emoji: agent.emoji };
+    // 런타임 정의에 있는 AI 는 그 표시명을 쓴다(내부 id 를 그대로 노출하지 않는다).
+    const known = defaultNativeAgents.find((a) => a.id === toCanonicalAgentId(agentId));
+    if (known) return { name: known.name, emoji: '🤖' };
     return agentId ? { name: UNKNOWN_AFFILIATION_LABEL, emoji: '❓' } : { name: '수행자 미정', emoji: '🕓' };
   };
 

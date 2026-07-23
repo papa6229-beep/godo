@@ -33,14 +33,20 @@ import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigratio
 import { isSameAgent } from './services/agentIdRegistry';
 import {
   hydrateAppState, applyDecision, createDirectiveTask, acceptRuntimeProposals, teamOfAgent, visibleTasksFor,
-  actorForRole, pendingForActor
+  actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest
 } from './services/taskLifecycleAppAdapter';
+import type { ApprovalDecisionKind, LifecycleTask } from './services/taskLifecycleContract';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
 // (effect 안의 unguarded setItem이 throw하면 React가 통째로 언마운트/흰 화면이 됨 → 방지)
+// 업무 id·시각 생성기 — 렌더 중 호출되지 않도록 컴포넌트 밖에 둔다(핸들러에서만 부른다).
+const nowIso = () => new Date().toISOString();
+const newTaskId = () => `task-manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const newLogId = () => `log-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+
 const safeSetItem = (key: string, value: string) => {
   try {
     window.localStorage.setItem(key, value);
@@ -102,6 +108,9 @@ function App() {
   // RC-2 D-1: 업무·승인 상태의 정본은 저장된 lifecycle task 다. 화면 상태는 거기서 파생한다.
   //   (App 이 localStorage 를 직접 만지지 않고 어댑터/저장 서비스만 사용한다.)
   const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForRole(loadRole())));
+  // RC-2 D-1.3: 팀장 화면은 화면용 요약이 아니라 **정본 LifecycleTask** 를 그대로 본다.
+  //   (수행자·이력·제출 내용이 필요하다. 저장·갱신은 계속 App 이 소유한다.)
+  const [lifecycleTasks, setLifecycleTasks] = useState<LifecycleTask[]>(() => hydrateAppState().source);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department'>('office');
@@ -116,6 +125,7 @@ function App() {
     const next = loadRole();
     setViewerRole(next);
     setTasks(visibleTasksFor(actorForRole(next)));
+    setLifecycleTasks(hydrateAppState().source);
   }), []);
   // 지금 이 역할이 결정할 수 있는 대기 업무(= '내 확인 대기').
   const myPendingTasks = pendingForActor(actorForRole(viewerRole));
@@ -486,7 +496,7 @@ function App() {
   // 로그 추가 유틸리티
   const addLog = (text: string, type: LogEntry['type'], agentName?: string) => {
     const newLog: LogEntry = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: newLogId(),
       timestamp: getFormattedTime(),
       text,
       type,
@@ -659,6 +669,7 @@ function App() {
   const refreshLifecycleState = (next?: ReturnType<typeof hydrateAppState>) => {
     const st = next ?? hydrateAppState();
     setTasks(visibleTasksFor(sessionActor()));
+    setLifecycleTasks(st.source);
     setApprovalQueue(st.approvalQueue);
     setApprovalHistory(st.history);
   };
@@ -669,10 +680,54 @@ function App() {
     const teamId = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
     createDirectiveTask(
       { title, targetTeamId: teamId, instructedBy: sessionActor() },
-      { newId: () => `task-manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, nowIso: new Date().toISOString() }
+      { newId: newTaskId, nowIso: nowIso() }
     );
     refreshLifecycleState();
     addLog(`새 업무 "${title}"을 ${roleMeta(teamId).label}에게 전달했습니다. 수행 방식은 담당 팀장이 정합니다.`, 'info', 'SYSTEM');
+  };
+
+  // ── RC-2 D-1.3: 팀장 화면 실배선 ──────────────────────────────────────────
+  //   화면은 결정하지 않는다. 계약 함수가 거부하면 그 이유를 그대로 보여 준다.
+
+  const reportOutcome = (r: { ok: boolean; reason?: string }, okText: string) => {
+    if (r.ok) addLog(okText, 'success', 'SYSTEM');
+    else addLog(r.reason ?? '처리할 수 없습니다.', 'warning', 'SYSTEM');
+    refreshLifecycleState();
+  };
+
+  /** 팀장이 수행 방식을 고른다 — 우리 팀 AI에게 맡기기 / 내가 직접 처리. */
+  const handleAssignExecutor = (taskId: string, kind: 'agent' | 'human', executorId?: string) => {
+    const r = assignExecutor(taskId, { kind, executorId, actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, kind === 'agent' ? '담당 AI에게 업무를 맡겼습니다.' : '직접 처리로 지정했습니다.');
+  };
+
+  /** 진행 중인 AI 작업을 팀장이 인수한다(기존 시도는 이력에 남는다). */
+  const handleTakeOver = (taskId: string) => {
+    const r = takeOverByLead(taskId, { actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, '팀장이 직접 인수했습니다. 이전 수행 기록은 그대로 남습니다.');
+  };
+
+  /** 수행자가 결과(업무보고)를 제출한다. 빈 보고는 계약에서 거부된다. */
+  const handleSubmitResult = (taskId: string, report: string) => {
+    const r = submitResult(taskId, { resultSummary: report, actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, '결과를 제출했습니다. 담당 팀장 확인 대기로 넘어갑니다.');
+  };
+
+  /** 확인 완료·수정 요청·미채택·중단·반송 — 어떤 것이 가능한지는 계약이 정한다. */
+  const handleTaskDecision = (taskId: string, kind: ApprovalDecisionKind, reason?: string) => {
+    const r = applyDecision(taskId, { kind, actor: sessionActor(), reason }, { nowIso: nowIso(), newId: newTaskId });
+    reportOutcome(r, '처리했습니다.');
+  };
+
+  /** 팀 간 협업 요청 — 요청팀 카드와 수행팀 카드를 함께 남긴다. */
+  const handleCollaborationRequest = (title: string, targetTeamId: string) => {
+    const team = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
+    createCollaborationRequest(
+      { title, requestingTeamId: viewerRole, targetTeamId: team, instructedBy: sessionActor() },
+      { newId: newTaskId, nowIso: nowIso() }
+    );
+    refreshLifecycleState();
+    addLog(`${roleMeta(team).label}에게 협업을 요청했습니다. 요청팀·수행팀 카드가 함께 생성됩니다.`, 'info', 'SYSTEM');
   };
 
   // 상세 모달에서 개별 지시 내리기
@@ -880,6 +935,15 @@ function App() {
           onToggleTheme={toggleTheme}
           onStartSimulation={handleStartSimulation}
           onAddTask={handleAddTask}
+          departmentLifecycle={{
+            actor: sessionActor(),
+            onCollaborate: handleCollaborationRequest,
+            tasks: lifecycleTasks,
+            onAssign: handleAssignExecutor,
+            onTakeOver: handleTakeOver,
+            onSubmit: handleSubmitResult,
+            onDecide: handleTaskDecision
+          }}
           onSelectAgent={(agent) => setSelectedAgent(agent)}
           onClearLogs={handleClearLogs}
           onApprove={handleApprove}

@@ -70,6 +70,11 @@ try {
 const src = (p) => readFileSync(path.join(REPO, ...p.split('/')), 'utf8');
 const appSource = src('src/App.tsx');
 const deptPanel = src('src/components/DepartmentWorkspacePanel.tsx');
+// 팀장 화면 = 부서 워크스페이스의 업무 탭. 그 안에서 실제로 그려지는 컴포넌트까지 함께 본다.
+let teamTaskPanel = '';
+try { teamTaskPanel = src('src/components/TeamTaskPanel.tsx'); } catch { teamTaskPanel = ''; }
+const leadScreen = deptPanel + teamTaskPanel;
+const deptRendersLeadScreen = /<TeamTaskPanel/.test(deptPanel);
 const agentTaskPanel = src('src/components/AgentTaskPanel.tsx');
 const agentTaskRunner = src('src/services/agentTaskRunner.ts');
 const apprList = src('src/components/ApprovalListModal.tsx');
@@ -136,13 +141,14 @@ red('W1. HQ 지시 업무가 팀장 화면의 할 일 목록에 실제로 표시
     const t = mkOpen('product');
     const inScope = A.visibleTasksFor(LEAD_PRODUCT).some((x) => x.id === t.ref.taskId);
     // 규칙만으로는 부족하다 — 팀장 화면(부서 워크스페이스)이 실제로 그 목록을 그려야 한다.
-    const rendered = /visibleTasksFor|leadTasks|myTeamTasks/.test(deptPanel);
+    // 규칙만으로는 부족하다 — 팀장 화면이 실제로 그 목록을 그려야 한다.
+    const rendered = deptRendersLeadScreen && /할 일/.test(leadScreen) && /tasks\.filter|teamTasks/.test(leadScreen);
     return inScope && rendered;
   })(), '규칙상 범위에는 들어오지만 팀장 화면(DepartmentWorkspacePanel)이 할 일 목록을 그리지 않음',
   '규칙 범위 + 팀장 화면 렌더');
 
 red('W2. 팀장이 open 업무에서 AI 맡기기 / 직접 처리를 고를 수 있다(화면)',
-  /AI에게 맡기기|AI 에게 맡기기/.test(deptPanel) && /직접 처리/.test(deptPanel),
+  deptRendersLeadScreen && /AI에게 맡기기|AI 에게 맡기기/.test(leadScreen) && /직접 처리/.test(leadScreen),
   '팀장 화면에 수행 방식 선택 UI 없음');
 
 red('W3. HQ·타 팀장에게는 수행자 선택 수단이 아예 보이지 않는다',
@@ -151,7 +157,7 @@ red('W3. HQ·타 팀장에게는 수행자 선택 수단이 아예 보이지 않
     const byHq = A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: HQ }, { nowIso: AT });
     const byOther = A.assignExecutor(t.ref.taskId, { kind: 'human', actor: LEAD_CS }, { nowIso: AT });
     // 실행 차단(규칙)만이 아니라 화면에서 역할로 가려야 한다.
-    const gatedInUi = /viewerRole|isOwningLead|canAssign/.test(deptPanel);
+    const gatedInUi = /viewerRole|isOwningLead|canAssign|canOperate/.test(leadScreen);
     return byHq.ok === false && byOther.ok === false && gatedInUi;
   })(), '규칙은 차단하지만 화면에 역할 가드가 없음(버튼 자체가 없어 검증 불가)',
   '규칙 차단 + 화면 역할 가드');
@@ -172,8 +178,10 @@ red('W6. 결과물이 생긴 뒤 submitResult 로만 팀장 확인 대기로 이
   (() => { if (!hasFn('submitResult')) return false; reset();
     const t = mkOpen('product');
     A.assignExecutor(t.ref.taskId, { kind: 'agent', executorId: 'inventory_monitor', actor: LEAD_PRODUCT }, { nowIso: AT });
-    const empty = A.submitResult(t.ref.taskId, { artifactRefs: [], actor: LEAD_PRODUCT }, { nowIso: AT });
-    const ok = A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: LEAD_PRODUCT }, { nowIso: AT });
+    // 제출자는 배정받은 그 AI 본인이다(W27).
+    const AI = { kind: 'agent', teamId: 'product', label: '재고 감시 AI', agentId: 'inventory_monitor' };
+    const empty = A.submitResult(t.ref.taskId, { artifactRefs: [], actor: AI }, { nowIso: AT });
+    const ok = A.submitResult(t.ref.taskId, { artifactRefs: ['art-1'], actor: AI }, { nowIso: AT });
     const after = S.loadLifecycleTasks().find((x) => x.ref.taskId === t.ref.taskId);
     return empty.ok === false && ok.ok === true && after.status === 'awaiting_approval'
       && calledInProduct('submitResult');

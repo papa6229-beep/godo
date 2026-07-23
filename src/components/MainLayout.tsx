@@ -16,6 +16,7 @@ import { DataPanel } from './DataPanel';
 import { CalendarPanel } from './CalendarPanel';
 import { ApiBridgePanel } from './ApiBridgePanel';
 import { DepartmentWorkspacePanel } from './DepartmentWorkspacePanel';
+import type { DepartmentWorkspaceLifecycle } from './DepartmentWorkspacePanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
@@ -48,6 +49,8 @@ const ADMIN_NAV_GROUPS: { label: string; items: { key: AdminNavKey; label: strin
 const ADMIN_NAV_KEYS: AdminNavKey[] = ['data', 'api', 'logs', 'brain', 'studio', 'engine'];
 
 interface MainLayoutProps {
+  /** RC-2 D-1.3: 팀장 업무 배선(정본·갱신은 App 소유). */
+  departmentLifecycle?: DepartmentWorkspaceLifecycle;
   agents: Agent[];
   tasks: OperationTask[];
   logs: LogEntry[];
@@ -135,6 +138,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   setActiveTab,
   onStartSimulation,
   onAddTask,
+  departmentLifecycle,
   onSelectAgent,
   onClearLogs,
   onApprove,
@@ -396,7 +400,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           )}
 
           {activeTab === 'department' && (
-            <DepartmentWorkspacePanel />
+            <DepartmentWorkspacePanel lifecycle={departmentLifecycle} />
           )}
 
           {activeTab === 'agents' && (
