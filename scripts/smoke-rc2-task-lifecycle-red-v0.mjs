@@ -275,10 +275,14 @@ const LEAD_PRODUCT = { kind: 'human', teamId: 'product', label: '상품 팀장',
 const LEAD_CS = { kind: 'human', teamId: 'cs', label: 'CS 팀장', userId: 'u-cs-lead' };
 const AI_PRODUCT = { kind: 'agent', teamId: 'product', label: '재고 감시 AI', agentId: 'inventory_monitor' };
 
+// RC-2 D-1.3: 확인 계열 결정은 '결과가 제출된 업무'에서만 성립한다.
+//   이 하네스의 관심사는 승인 경로·기록 보존이므로, 전제를 제출 완료 상태로 맞춘다.
+//   (단언은 그대로 — 결과 제출 자체를 검증하는 것은 D-1.3 하네스다.)
 const mkTask = (over = {}) => L && L.createLifecycleTask({
   title: '재고 점검', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
   assignedAgentId: 'inventory_monitor', createdBy: HQ,
-  approvalRoute: L.APPROVAL_ROUTES.hq_directive, dependencyMode: 'independent', ...over
+  approvalRoute: L.APPROVAL_ROUTES.hq_directive, dependencyMode: 'independent',
+  status: 'awaiting_approval', artifactRefs: ['art-fixture'], ...over
 }, { newId: ids, nowIso: AT });
 
 red('P1. HQ 지시 업무: 담당팀 완료 보고 후 HQ 가 최종 확인한다',
@@ -305,7 +309,8 @@ red('P3. 협업 자식 업무는 부모와 같은 correlationId · parentTaskId 
     resetIds();
     const parent = mkTask({ ownerTeamId: 'cs', ownerHumanId: 'u-cs-lead', createdBy: LEAD_CS });
     const child = L.createChildTask(parent, { title: '재고 확인 요청', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
-      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS }, { newId: ids, nowIso: AT });
+      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS,
+      status: 'awaiting_approval', artifactRefs: ['art-fixture'] }, { newId: ids, nowIso: AT });
     return child.ref.taskId !== parent.ref.taskId
       && child.ref.correlationId === parent.ref.correlationId
       && child.ref.parentTaskId === parent.ref.taskId;
@@ -316,7 +321,8 @@ red('P4. 협업 자식 완료 → 요청팀 확인 단계로 간다(수행팀 �
     resetIds();
     const parent = mkTask({ ownerTeamId: 'cs', ownerHumanId: 'u-cs-lead', createdBy: LEAD_CS });
     const child = L.createChildTask(parent, { title: '재고 확인 요청', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
-      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS }, { newId: ids, nowIso: AT });
+      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS,
+      status: 'awaiting_approval', artifactRefs: ['art-fixture'] }, { newId: ids, nowIso: AT });
     const byDoer = L.decideApproval(child, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
     if (!byDoer.ok || byDoer.task.status === 'completed') return false;
     const byRequester = L.decideApproval(byDoer.task, { kind: 'approve', actor: LEAD_CS }, { nowIso: AT });
@@ -328,8 +334,10 @@ red('P5. 수행 불가/반송은 이유를 남기고 부모 업무를 종료시�
     resetIds();
     const parent = mkTask({ ownerTeamId: 'cs', ownerHumanId: 'u-cs-lead', createdBy: LEAD_CS });
     const child = L.createChildTask(parent, { title: '재고 확인 요청', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
-      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS }, { newId: ids, nowIso: AT });
-    const r = L.decideApproval(child, { kind: 'return', actor: LEAD_PRODUCT, reason: '원본 자료 부족' }, { nowIso: AT });
+      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS,
+      status: 'awaiting_approval', artifactRefs: ['art-fixture'] }, { newId: ids, nowIso: AT });
+    // 반송은 '수행 불가' 이므로 결과가 나오기 전(진행 중) 상태에서 일어난다.
+    const r = L.decideApproval({ ...child, status: 'in_progress' }, { kind: 'return', actor: LEAD_PRODUCT, reason: '원본 자료 부족' }, { nowIso: AT });
     if (!r.ok || r.task.status !== 'returned') return false;
     if (!JSON.stringify(r.task).includes('원본 자료 부족')) return false;
     const p2 = L.resolveParentStatus(parent, [r.task]);

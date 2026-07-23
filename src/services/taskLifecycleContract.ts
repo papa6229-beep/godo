@@ -168,6 +168,27 @@ export interface LifecycleTask {
   /** 결과물/입력자료 **참조**만 보관한다(바이너리 금지 — RC-4 후속). */
   artifactRefs?: string[];
   inputRefs?: string[];
+  /**
+   * 텍스트 업무보고. 파일이 없어도 사람이 쓴 보고는 실제 결과로 인정한다.
+   * 여기에 파일/이미지 내용을 넣지 않는다(참조는 artifactRefs).
+   */
+  resultSummary?: string;
+}
+
+/** 더 이상 일반 함수로 되살릴 수 없는 상태. */
+export const TERMINAL_STATUSES: TaskLifecycleStatus[] = [
+  'completed', 'superseded', 'not_adopted', 'not_selected', 'stopped', 'returned', 'failed'
+];
+export const isTerminalStatus = (s: TaskLifecycleStatus): boolean => TERMINAL_STATUSES.includes(s);
+
+/**
+ * 실제로 제출된 결과가 있는가.
+ * 빈 배열·빈 문자열·공백만 있는 값은 결과가 아니다.
+ */
+export function hasSubmittedResult(task: LifecycleTask): boolean {
+  const refs = Array.isArray(task.artifactRefs) ? task.artifactRefs : [];
+  if (refs.some((r) => typeof r === 'string' && r.trim().length > 0)) return true;
+  return typeof task.resultSummary === 'string' && task.resultSummary.trim().length > 0;
 }
 
 export interface IdContext {
@@ -190,6 +211,7 @@ export interface CreateTaskInput {
   requestingTeamId?: DeptTeamId;
   artifactRefs?: string[];
   inputRefs?: string[];
+  resultSummary?: string;
 }
 
 /** 업무 생성 — taskId 는 **여기서 한 번만** 만든다. */
@@ -305,19 +327,79 @@ export interface DecisionResult {
   reason?: string;
 }
 
-/** 이 행위자가 현재 단계의 승인 권한을 갖는가. */
-export function canDecide(task: LifecycleTask, actor: ActorRef): { ok: boolean; reason?: string } {
-  // AI 는 자신의 결과물을 최종 승인할 수 없다.
-  if (actor.kind === 'agent') return { ok: false, reason: 'AI(에이전트)는 자기 결과물을 승인할 수 없습니다 (self-approval 금지).' };
+/** 이 업무를 요청한 쪽(HQ 지시 또는 협업 요청팀). */
+const requesterTeamOf = (task: LifecycleTask): DeptTeamId | undefined =>
+  task.requestingTeamId ?? (task.createdBy.teamId !== task.ownerTeamId ? task.createdBy.teamId : undefined);
+
+/** 현재 확인 단계를 맡은 사람인가(단계 기준 권한). */
+function isCurrentStageApprover(task: LifecycleTask, actor: ActorRef): { ok: boolean; reason?: string } {
   const stage = task.approvalRoute.stages[task.approvalRoute.currentStageIndex];
   if (!stage) return { ok: false, reason: '남은 승인 단계가 없습니다.' };
   if (stage.approverKind === 'hq') return actor.teamId === 'hq' ? { ok: true } : { ok: false, reason: '총괄(HQ) 확인 단계입니다.' };
   if (stage.approverKind === 'owner_team_lead') {
     return actor.teamId === task.ownerTeamId ? { ok: true } : { ok: false, reason: '담당 팀의 확인 단계입니다.' };
   }
-  // requesting_team
   const requester = task.requestingTeamId;
   return requester && actor.teamId === requester ? { ok: true } : { ok: false, reason: '요청팀의 확인 단계입니다.' };
+}
+
+/**
+ * 이 행위자가 지금 이 결정을 내릴 수 있는가.
+ *
+ * RC-2 D-1.3 — 결정을 두 갈래로 나눈다.
+ *   결과 확인 계열(확인 완료 · 수정 요청 · 이번 결과 사용 안 함)
+ *     → status=awaiting_approval + **실제 제출된 결과**가 있어야 하고, 현재 확인 단계 담당자만.
+ *   업무 통제 계열(작업 중단 · 수행 불가 반송)
+ *     → 결과가 나오기 전에도 가능하다. 대신 누가 할 수 있는지가 다르다.
+ *        중단: 아직 팀 손에 있는 동안(open/in_progress)은 요청자 또는 책임 팀장.
+ *              결과가 제출된 뒤에는 지금 확인 단계를 맡은 사람만(그 사이 요청자는 기다린다).
+ *        반송: 지시·협업을 **받은** 수행 팀장이 결과 전(open/in_progress)에 요청자에게 돌려보낸다.
+ *
+ * 종료된 업무는 어떤 결정으로도 되살아나지 않는다.
+ */
+export function canDecide(
+  task: LifecycleTask,
+  actor: ActorRef,
+  kind: ApprovalDecisionKind = 'approve'
+): { ok: boolean; reason?: string } {
+  if (isTerminalStatus(task.status)) {
+    return { ok: false, reason: `이미 끝난 업무입니다(${userStatusLabel(task.status)}). 새 업무로 진행해 주세요.` };
+  }
+  // AI 는 자신의 결과물을 최종 승인할 수 없다.
+  if (actor.kind === 'agent') return { ok: false, reason: 'AI(에이전트)는 자기 결과물을 승인할 수 없습니다 (self-approval 금지).' };
+
+  const requester = requesterTeamOf(task);
+
+  if (kind === 'stop') {
+    if (task.status === 'awaiting_approval') {
+      // 제출된 결과를 앞에 두고는 지금 확인 차례인 사람이 판단한다.
+      return isCurrentStageApprover(task, actor);
+    }
+    const isOwnerLead = actor.teamId === task.ownerTeamId;
+    const isRequester = !!requester && actor.teamId === requester;
+    return isOwnerLead || isRequester
+      ? { ok: true }
+      : { ok: false, reason: '이 업무를 요청한 쪽이나 담당 팀장만 중단할 수 있습니다.' };
+  }
+
+  if (kind === 'return') {
+    if (!requester) return { ok: false, reason: '돌려보낼 요청자가 없는 업무입니다.' };
+    if (task.status !== 'open' && task.status !== 'in_progress') {
+      return { ok: false, reason: '수행 불가 반송은 결과를 제출하기 전에만 가능합니다.' };
+    }
+    return actor.teamId === task.ownerTeamId
+      ? { ok: true }
+      : { ok: false, reason: '지시를 받은 담당 팀장만 반송할 수 있습니다.' };
+  }
+
+  // 결과 확인 계열 — 제출된 결과가 있어야 한다.
+  if (task.status !== 'awaiting_approval') {
+    return { ok: false, reason: '아직 제출된 결과가 없습니다. 수행이 끝난 뒤에 확인할 수 있습니다.' };
+  }
+  if (!hasSubmittedResult(task)) {
+    return { ok: false, reason: '제출된 결과물이 없어 확인할 수 없습니다.' };
+  }
+  return isCurrentStageApprover(task, actor);
 }
 
 const terminal = (kind: ApprovalDecisionKind): TaskLifecycleStatus | null =>
@@ -332,7 +414,7 @@ export function decideApproval(
   input: ApprovalDecisionInput,
   ctx: { nowIso: string; newId?: () => string }
 ): DecisionResult {
-  const permission = canDecide(task, input.actor);
+  const permission = canDecide(task, input.actor, input.kind);
   if (!permission.ok) return { ok: false, task, events: [], reason: permission.reason };
 
   const stage = task.approvalRoute.stages[task.approvalRoute.currentStageIndex];

@@ -14,6 +14,7 @@
 import {
   canDecide,
   createChildTask,
+  isTerminalStatus,
   createLifecycleTask,
   decideApproval,
   isPendingForApproval,
@@ -25,7 +26,7 @@ import type {
   LifecycleTask, TaskLifecycleStatus
 } from './taskLifecycleContract';
 import { loadLifecycleTasks, saveLifecycleTask, saveLifecycleTasks, findTask } from './taskLifecycleStore';
-import { toCanonicalAgentId } from './agentIdRegistry';
+import { toCanonicalAgentId, isSameAgent } from './agentIdRegistry';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { roleMeta } from './sessionRole';
 import type { ViewerRole } from './sessionRole';
@@ -127,6 +128,16 @@ const DEPARTMENT_TO_TEAM: Record<string, ActorRef['teamId']> = {
 /** 소속을 확인할 수 없는 담당자에게 쓰는 화면 문구(내부 ID·'알 수 없음' 대체). */
 export const UNKNOWN_AFFILIATION_LABEL = '소속 확인 필요';
 
+/** 신규 입력에 미상 담당자가 들어왔을 때. 조용히 넘기지 않고 명시적으로 거부한다. */
+export class UnknownAffiliationError extends Error {
+  readonly agentId: string;
+  constructor(agentId: string) {
+    super('소속을 확인할 수 없는 담당자입니다. 업무를 만들 수 없습니다.');
+    this.name = 'UnknownAffiliationError';
+    this.agentId = agentId;
+  }
+}
+
 /**
  * canonical agentId → 소속 팀.
  * RC-2 D-1.2: 소속을 확인할 수 없으면 **null**. hq(총괄)로 자동 승격하지 않는다.
@@ -220,9 +231,46 @@ export function applyDecision(
 
   const toSave: LifecycleTask[] = [result.task];
   if (result.revisionTask) toSave.push(result.revisionTask);
+  // 협업 자식의 결말은 요청팀 부모 카드에도 그대로 보여야 한다(부모가 영원히 대기하지 않게).
+  const parent = syncParentFromChild(result.task, all);
+  if (parent) toSave.push(parent);
   saveLifecycleTasks(toSave);
 
   return { ok: true, state: hydrateAppState(), ...(result.revisionTask ? { revisionTaskId: result.revisionTask.ref.taskId } : {}) };
+}
+
+/**
+ * 협업 자식 → 요청팀 부모 상태 반영.
+ *   자식이 진행되면 부모도 진행 중, 자식이 반송·중단되면 부모도 같은 결말과 사유를 보여 준다.
+ *   기록은 어느 쪽도 지우지 않는다.
+ */
+function syncParentFromChild(child: LifecycleTask, all: LifecycleTask[]): LifecycleTask | null {
+  const parentId = child.ref.parentTaskId;
+  if (!parentId) return null;
+  const parent = findTask(all, parentId);
+  if (!parent || isTerminalStatus(parent.status)) return null;
+
+  const mirrored: TaskLifecycleStatus | null =
+    child.status === 'returned' ? 'returned'
+      : child.status === 'stopped' ? 'stopped'
+        : child.status === 'not_adopted' ? 'not_adopted'
+          : child.status === 'in_progress' || child.status === 'awaiting_approval' ? 'in_progress'
+            : null;
+  if (!mirrored || mirrored === parent.status) return null;
+
+  const last = child.decisions[child.decisions.length - 1];
+  return {
+    ...parent,
+    status: mirrored,
+    decisions: [...parent.decisions, {
+      kind: last?.kind ?? 'approve',
+      actorLabel: last?.actorLabel ?? '수행팀',
+      actorTeamId: child.ownerTeamId,
+      reason: last?.reason ? `수행팀 회신: ${last.reason}` : `수행팀 진행 상태: ${userStatusLabel(child.status)}`,
+      at: last?.at ?? child.createdAt,
+      stageLabel: '협업 회신'
+    }]
+  };
 }
 
 // ── 업무 수용/생성 ───────────────────────────────────────────────────────────
@@ -241,7 +289,11 @@ export function createManualTask(
 ): LifecycleTask {
   const suggested = toCanonicalAgentId(input.assignedAgentId ?? '');
   const agentTeam = teamOfAgent(input.assignedAgentId ?? '');
-  // 소속을 확인할 수 없는 AI 로는 팀을 정하지 않는다(추측 금지) → 지시자 팀에 남긴다.
+  // RC-2 D-1.3: 소속을 확인할 수 없는 담당자를 지정한 **신규** 업무는 만들지 않는다.
+  //   조용히 지시자 팀으로 옮기면 잘못된 팀이 책임을 지게 된다(과거 저장자료는 별도 격리).
+  if (suggested && !agentTeam) {
+    throw new UnknownAffiliationError(suggested);
+  }
   const ownerTeamId = input.ownerTeamId ?? agentTeam ?? input.createdBy.teamId;
   const route = input.approvalRoute ?? routeFor(input.createdBy, ownerTeamId);
 
@@ -331,6 +383,14 @@ export function assignExecutor(
   const all = loadLifecycleTasks();
   const task = findTask(all, taskId);
   if (!task) return failResult('업무를 찾을 수 없습니다.');
+  // 끝난 업무를 다시 진행 중으로 되살리지 않는다(수정 요청만 새 업무를 만든다).
+  if (isTerminalStatus(task.status)) {
+    return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 수행자를 다시 정할 수 없습니다.`);
+  }
+  // 수행자를 정하는 것은 아직 아무도 손대지 않은 업무(수정본 포함)에서만.
+  if (task.status !== 'open') {
+    return failResult('이미 수행 중이거나 확인 대기 중인 업무입니다. 수행자를 다시 정하려면 인수하거나 수정 요청을 하세요.');
+  }
   if (!isOwningLead(task, input.actor)) return failResult('담당 팀장만 수행 방식을 정할 수 있습니다.');
 
   let executorId: string | undefined;
@@ -355,7 +415,8 @@ export function assignExecutor(
       kind: input.kind, id: executorId, at: ctx.nowIso, byLabel: input.actor.label, reason: input.reason
     }]
   };
-  saveLifecycleTask(next);
+  const parent = syncParentFromChild(next, all);
+  saveLifecycleTasks(parent ? [next, parent] : [next]);
   return okResult(next);
 }
 
@@ -368,28 +429,75 @@ export function takeOverByLead(
   input: { actor: ActorRef; reason?: string },
   ctx: { nowIso: string }
 ) {
-  return assignExecutor(taskId, { kind: 'human', actor: input.actor, reason: input.reason ?? '팀장 직접 인수' }, ctx);
+  const all = loadLifecycleTasks();
+  const task = findTask(all, taskId);
+  if (!task) return failResult('업무를 찾을 수 없습니다.');
+  if (isTerminalStatus(task.status)) {
+    return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 인수할 수 없습니다.`);
+  }
+  if (task.status === 'awaiting_approval') {
+    return failResult('이미 결과가 제출된 업무입니다. 확인하거나 수정 요청을 하세요.');
+  }
+  if (!isOwningLead(task, input.actor)) return failResult('담당 팀장만 인수할 수 있습니다.');
+  if (task.status === 'open') {
+    return assignExecutor(taskId, { kind: 'human', actor: input.actor, reason: input.reason ?? '팀장 직접 인수' }, ctx);
+  }
+  // 진행 중인 AI 작업을 팀장이 가져온다. 기존 시도는 지우지 않고 이력에 남는다.
+  const next: LifecycleTask = {
+    ...task,
+    executorKind: 'human',
+    executorId: input.actor.userId,
+    assignedAgentId: '',
+    executorHistory: [...task.executorHistory, {
+      kind: 'human', id: input.actor.userId, at: ctx.nowIso,
+      byLabel: input.actor.label, reason: input.reason ?? '팀장 직접 인수'
+    }]
+  };
+  saveLifecycleTask(next);
+  return okResult(next);
 }
 
 /** 수행자가 결과를 제출한다. **결과물 참조가 없으면 거부**한다. 이때부터 팀장 확인 대상이 된다. */
 export function submitResult(
   taskId: string,
-  input: { artifactRefs: string[]; actor: ActorRef; note?: string },
+  input: { artifactRefs?: string[]; resultSummary?: string; actor: ActorRef; note?: string },
   ctx: { nowIso: string }
 ) {
   const all = loadLifecycleTasks();
   const task = findTask(all, taskId);
   if (!task) return failResult('업무를 찾을 수 없습니다.');
-  if (task.executorKind === 'unassigned') return failResult('수행 방식이 정해지지 않았습니다.');
+  if (isTerminalStatus(task.status)) {
+    return failResult(`이미 끝난 업무입니다(${userStatusLabel(task.status)}). 결과를 제출할 수 없습니다.`);
+  }
+  // 수행 중인 업무만 결과를 낼 수 있다(배정 전 제출·중복 제출 금지).
+  if (task.status !== 'in_progress') {
+    return failResult(task.status === 'awaiting_approval'
+      ? '이미 결과가 제출된 업무입니다.'
+      : '아직 수행자가 정해지지 않은 업무입니다. 담당 팀장이 수행 방식을 먼저 정해야 합니다.');
+  }
+  // 제출자는 지금 그 일을 맡고 있는 본인이어야 한다.
+  const submitterOk = task.executorKind === 'agent'
+    ? (input.actor.kind === 'agent' && isSameAgent(input.actor.agentId, task.executorId))
+    : (input.actor.kind === 'human' && !!task.executorId && input.actor.userId === task.executorId);
+  if (!submitterOk) {
+    return failResult(task.executorKind === 'agent'
+      ? '이 업무를 맡은 담당자만 결과를 제출할 수 있습니다. 팀장이 직접 제출하려면 먼저 인수하세요.'
+      : '이 업무를 맡은 사람만 결과를 제출할 수 있습니다.');
+  }
+  // 실제 내용이 있어야 결과다. 빈 배열·공백 문자열은 결과가 아니다.
   const refs = (input.artifactRefs ?? []).filter((r) => typeof r === 'string' && r.trim().length > 0);
-  if (refs.length === 0) return failResult('제출할 결과물이 없습니다.');
+  const summary = typeof input.resultSummary === 'string' ? input.resultSummary.trim() : '';
+  if (refs.length === 0 && summary.length === 0) {
+    return failResult('제출할 결과가 없습니다. 업무보고를 쓰거나 결과물을 첨부해 주세요.');
+  }
 
   const next: LifecycleTask = {
     ...task,
     status: 'awaiting_approval',
     submittedBy: input.actor,
     submittedAt: ctx.nowIso,
-    artifactRefs: [...(task.artifactRefs ?? []), ...refs]
+    ...(summary ? { resultSummary: summary } : {}),
+    ...(refs.length > 0 ? { artifactRefs: [...(task.artifactRefs ?? []), ...refs] } : {})
   };
   saveLifecycleTask(next);
   return okResult(next);
@@ -467,7 +575,14 @@ export function canRunStandingDirective(d: {
 
 export interface RuntimeProposalInput {
   proposedTasks: { id: string; correlationId: string; title: string; agentId: string; description: string }[];
-  proposedApprovalItems: { taskId: string; correlationId: string; title: string; agentId: string; artifact?: { id?: string } }[];
+  proposedApprovalItems: {
+    taskId: string; correlationId: string; title: string; agentId: string;
+    artifact?: { id?: string };
+    /** 결과물 참조. 이것이나 resultSummary 가 있어야 '결과가 나왔다'고 본다. */
+    artifactRefs?: string[];
+    /** 텍스트 업무보고. */
+    resultSummary?: string;
+  }[];
 }
 
 /**
@@ -482,17 +597,30 @@ export function acceptRuntimeProposals(
 ): LifecycleTask[] {
   const existing = loadLifecycleTasks();
   const accepted: LifecycleTask[] = [];
+  /** 소속 미확인으로 받지 않은 제안(조용히 삼키지 않고 호출자에게 알린다). */
+  const rejected: { id: string; agentId: string }[] = [];
 
-  const resultTaskIds = new Set(proposals.proposedApprovalItems.map((i) => i.taskId));
+  // RC-2 D-1.3: taskId 가 승인목록에 있다는 것만으로 '결과가 나왔다'고 보지 않는다.
+  //   실제 근거(결과물 참조 또는 텍스트 보고)가 있고, 수행자 소속이 확인돼야 결과로 인정한다.
+  const resultEvidence = new Map<string, { refs: string[]; summary: string }>();
+  for (const item of proposals.proposedApprovalItems) {
+    const refs = [item.artifact?.id, ...(item.artifactRefs ?? [])]
+      .filter((r): r is string => typeof r === 'string' && r.trim().length > 0);
+    const summary = typeof item.resultSummary === 'string' ? item.resultSummary.trim() : '';
+    if (refs.length > 0 || summary.length > 0) resultEvidence.set(item.taskId, { refs, summary });
+  }
 
   for (const p of proposals.proposedTasks) {
     if (findTask(existing, p.id) || accepted.some((t) => t.ref.taskId === p.id)) continue; // 중복 수용 금지
     const canonical = toCanonicalAgentId(p.agentId);
-    // RC-2 D-1.1/D-1.2: 담당 팀은 에이전트 소속에서 온다. 미상은 hq 로 올리지 않고 지시자 팀에 남긴다.
-    const ownerTeamId = teamOfAgent(p.agentId) ?? opts.ownerTeamId ?? opts.createdBy.teamId;
+    const agentTeam = teamOfAgent(p.agentId);
+    // RC-2 D-1.3: 소속을 확인할 수 없는 AI 의 **신규** 제안은 받지 않는다(옮기지도 않는다).
+    if (canonical && !agentTeam) { rejected.push({ id: p.id, agentId: canonical }); continue; }
+    const ownerTeamId = agentTeam ?? opts.ownerTeamId ?? opts.createdBy.teamId;
     // 결과가 딸려 온 제안 = AI 가 이미 수행한 결과 → **담당 팀장 확인** 대상.
-    // 결과가 없는 제안 = 아직 할 일 → 수행자 미정으로 팀장에게 도착(AI 확정 금지).
-    const hasResult = resultTaskIds.has(p.id);
+    //   단, 근거(결과물·보고)와 확인된 소속과 제출자 기록이 모두 있어야 한다.
+    const evidence = resultEvidence.get(p.id);
+    const hasResult = !!evidence && !!agentTeam && !!canonical;
     accepted.push({
       ref: { taskId: p.id, correlationId: p.correlationId, runId: undefined },
       title: p.title,
@@ -505,6 +633,14 @@ export function acceptRuntimeProposals(
       suggestedExecutorId: canonical,
       executorHistory: [],
       status: hasResult ? 'awaiting_approval' : 'open',
+      ...(hasResult && evidence
+        ? {
+            ...(evidence.refs.length > 0 ? { artifactRefs: evidence.refs } : {}),
+            ...(evidence.summary ? { resultSummary: evidence.summary } : {}),
+            submittedBy: { kind: 'agent' as const, teamId: ownerTeamId, label: canonical, agentId: canonical },
+            submittedAt: opts.nowIso
+          }
+        : {}),
       dependencyMode: 'independent',
       approvalRoute: routeFor(opts.createdBy, ownerTeamId),
       createdBy: opts.createdBy,
@@ -514,17 +650,45 @@ export function acceptRuntimeProposals(
   }
 
   if (accepted.length > 0) saveLifecycleTasks(accepted);
+  if (rejected.length > 0) {
+    console.warn('[lifecycle] 소속을 확인할 수 없는 담당자의 제안을 받지 않았습니다:', rejected);
+  }
   return accepted;
 }
 
+/**
+ * 과거 저장자료 격리 — **이미 저장된** 업무 중 소속을 확인할 수 없는 담당자를 표시만 한다.
+ *   신규 입력은 거부(UnknownAffiliationError)이고, 이쪽은 지우지 않고 '소속 확인 필요'로 남긴다.
+ *   idempotent.
+ */
+export function quarantineUnknownAffiliation(): { quarantined: number; taskIds: string[] } {
+  const all = loadLifecycleTasks();
+  const taskIds: string[] = [];
+  const next = all.map((t) => {
+    const id = t.executorId ?? t.assignedAgentId;
+    const unknown = !!id && !teamOfAgent(id);
+    if (!unknown) return t;
+    taskIds.push(t.ref.taskId);
+    return { ...t, needsAffiliationReview: true as const };
+  });
+  if (taskIds.length > 0) saveLifecycleTasks(next);
+  return { quarantined: taskIds.length, taskIds };
+}
+
 /** 결정 가능한 행동 목록(협업 업무에서만 '반송' 노출). */
-export function availableDecisions(t: LifecycleTask): { kind: ApprovalDecisionKind; label: string }[] {
-  const base: { kind: ApprovalDecisionKind; label: string }[] = [
+export function availableDecisions(
+  t: LifecycleTask,
+  actor?: ActorRef
+): { kind: ApprovalDecisionKind; label: string }[] {
+  const all: { kind: ApprovalDecisionKind; label: string }[] = [
     { kind: 'approve', label: '확인 완료' },
     { kind: 'request_revision', label: '수정 요청' },
     { kind: 'not_adopted', label: '이번 결과 사용 안 함' },
-    { kind: 'stop', label: '작업 중단' }
+    { kind: 'stop', label: '작업 중단' },
+    { kind: 'return', label: '수행 불가 반송' }
   ];
-  if (t.ref.parentTaskId) base.push({ kind: 'return', label: '협업 요청 반송' });
-  return base;
+  // RC-2 D-1.3: 화면에 보이는 행동과 서비스가 허용하는 행동을 같은 판정으로 맞춘다.
+  //   (눌러 본 뒤 오류로 막지 않는다 — 처음부터 안 보인다.)
+  if (!actor) return all;
+  return all.filter((d) => canDecide(t, actor, d.kind).ok);
 }
