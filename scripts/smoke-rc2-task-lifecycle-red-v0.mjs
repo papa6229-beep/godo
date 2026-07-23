@@ -14,7 +14,7 @@
  *   이어지는가)만 본다. 생성되는 id 문자열 자체를 기대값으로 쓰지 않는다.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -35,9 +35,19 @@ globalThis.window = {
   addEventListener() {}, removeEventListener() {}
 };
 
+// G0: 정책 계약 모듈(아직 없을 수 있음 — 없으면 정책 RED 가 미충족으로 남는다)
+const OPTIONAL_SRC = [
+  ['LIFE', path.join(REPO, 'src', 'services', 'taskLifecycleContract.ts'), 'services', 'taskLifecycleContract.js'],
+  ['STORE', path.join(REPO, 'src', 'services', 'taskLifecycleStore.ts'), 'services', 'taskLifecycleStore.js'],
+  ['IDREG', path.join(REPO, 'src', 'services', 'agentIdRegistry.ts'), 'services', 'agentIdRegistry.js']
+];
+const optionalPresent = OPTIONAL_SRC.filter(([, f]) => existsSync(f));
+
 let LEDGER, RUNNER, HANDOFF, ORCH, AGG;
+const OPT = {};
 try {
   execFileSync(process.execPath, [tscBin,
+    ...optionalPresent.map(([, f]) => f),
     path.join(REPO, 'src', 'services', 'activityLedger.ts'),
     path.join(REPO, 'src', 'services', 'agentTaskRunner.ts'),
     path.join(REPO, 'src', 'engine', 'nativeAgentRuntime', 'handoffEngine.ts'),
@@ -61,6 +71,9 @@ try {
   HANDOFF = await eng('handoffEngine.js');
   ORCH = await eng('managerOrchestrator.js');
   AGG = await eng('teamLeadAggregator.js');
+  for (const [key, , sub, file] of optionalPresent) {
+    OPT[key] = await import(pathToFileURL(path.join(tmp, sub, file)).href);
+  }
 } catch (e) {
   console.error('[smoke] tsc emit 실패:\n', e.stdout?.toString() || e.message);
   rmSync(tmp, { recursive: true, force: true });
@@ -236,6 +249,233 @@ red('R7c. 원장 이벤트에 업무 식별자(taskId/specId)가 남는다',
   (() => { const ev = LEDGER.loadActivity().find((e) => e.type === 'task_run');
     return !!ev && JSON.stringify(ev).includes(spec.id); })(),
   `이벤트에 spec.id(${spec.id}) 흔적 없음`);
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// G0 — 운영 정책 RED (사장 확정 정책의 계약 반영 여부)
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- 운영 정책 계약 (G0) ---');
+const L = OPT.LIFE, S = OPT.STORE, ID = OPT.IDREG;
+const noMod = (m) => `${m} 모듈 없음`;
+
+let _n = 0;
+const ids = () => `id-${++_n}`;
+const resetIds = () => { _n = 0; };
+
+const HQ = { kind: 'human', teamId: 'hq', label: '총괄 관리자', userId: 'u-hq' };
+const LEAD_PRODUCT = { kind: 'human', teamId: 'product', label: '상품 팀장', userId: 'u-prod-lead' };
+const LEAD_CS = { kind: 'human', teamId: 'cs', label: 'CS 팀장', userId: 'u-cs-lead' };
+const AI_PRODUCT = { kind: 'agent', teamId: 'product', label: '재고 감시 AI', agentId: 'inventory_monitor' };
+
+const mkTask = (over = {}) => L && L.createLifecycleTask({
+  title: '재고 점검', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
+  assignedAgentId: 'inventory_monitor', createdBy: HQ,
+  approvalRoute: L.APPROVAL_ROUTES.hq_directive, dependencyMode: 'independent', ...over
+}, { newId: ids, nowIso: AT });
+
+red('P1. HQ 지시 업무: 담당팀 완료 보고 후 HQ 가 최종 확인한다',
+  (() => { if (!L) return false;
+    resetIds();
+    const t = mkTask();
+    const afterTeam = L.decideApproval(t, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    if (!afterTeam.ok) return false;
+    if (afterTeam.task.status === 'completed') return false;
+    const afterHq = L.decideApproval(afterTeam.task, { kind: 'approve', actor: HQ }, { nowIso: AT });
+    return afterHq.ok && afterHq.task.status === 'completed' && L.finalApprover(afterHq.task).approverKind === 'hq';
+  })(), noMod('taskLifecycleContract'));
+
+red('P2. 팀 자체 일반 업무는 팀장 선에서 종료 가능하다',
+  (() => { if (!L) return false;
+    resetIds();
+    const t = mkTask({ createdBy: LEAD_PRODUCT, approvalRoute: L.APPROVAL_ROUTES.team_internal });
+    const r = L.decideApproval(t, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    return r.ok && r.task.status === 'completed';
+  })(), noMod('taskLifecycleContract'));
+
+red('P3. 협업 자식 업무는 부모와 같은 correlationId · parentTaskId 로 이어지고 taskId 는 다르다',
+  (() => { if (!L) return false;
+    resetIds();
+    const parent = mkTask({ ownerTeamId: 'cs', ownerHumanId: 'u-cs-lead', createdBy: LEAD_CS });
+    const child = L.createChildTask(parent, { title: '재고 확인 요청', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
+      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS }, { newId: ids, nowIso: AT });
+    return child.ref.taskId !== parent.ref.taskId
+      && child.ref.correlationId === parent.ref.correlationId
+      && child.ref.parentTaskId === parent.ref.taskId;
+  })(), noMod('taskLifecycleContract'));
+
+red('P4. 협업 자식 완료 → 요청팀 확인 단계로 간다(수행팀 단독 종료 불가)',
+  (() => { if (!L) return false;
+    resetIds();
+    const parent = mkTask({ ownerTeamId: 'cs', ownerHumanId: 'u-cs-lead', createdBy: LEAD_CS });
+    const child = L.createChildTask(parent, { title: '재고 확인 요청', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
+      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS }, { newId: ids, nowIso: AT });
+    const byDoer = L.decideApproval(child, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    if (!byDoer.ok || byDoer.task.status === 'completed') return false;
+    const byRequester = L.decideApproval(byDoer.task, { kind: 'approve', actor: LEAD_CS }, { nowIso: AT });
+    return byRequester.ok && byRequester.task.status === 'completed';
+  })(), noMod('taskLifecycleContract'));
+
+red('P5. 수행 불가/반송은 이유를 남기고 부모 업무를 종료시키지 않는다',
+  (() => { if (!L) return false;
+    resetIds();
+    const parent = mkTask({ ownerTeamId: 'cs', ownerHumanId: 'u-cs-lead', createdBy: LEAD_CS });
+    const child = L.createChildTask(parent, { title: '재고 확인 요청', ownerTeamId: 'product', ownerHumanId: 'u-prod-lead',
+      assignedAgentId: 'inventory_monitor', createdBy: LEAD_CS }, { newId: ids, nowIso: AT });
+    const r = L.decideApproval(child, { kind: 'return', actor: LEAD_PRODUCT, reason: '원본 자료 부족' }, { nowIso: AT });
+    if (!r.ok || r.task.status !== 'returned') return false;
+    if (!JSON.stringify(r.task).includes('원본 자료 부족')) return false;
+    const p2 = L.resolveParentStatus(parent, [r.task]);
+    return p2.status !== 'completed' && p2.status !== 'failed';
+  })(), noMod('taskLifecycleContract'));
+
+red('P6. 오류 발견 시 기존 결과는 대체됨(superseded)으로 남고 새 revision 업무가 생성된다',
+  (() => { if (!L) return false;
+    resetIds();
+    const t = mkTask({ approvalRoute: L.APPROVAL_ROUTES.team_internal, createdBy: LEAD_PRODUCT });
+    const done = L.decideApproval(t, { kind: 'approve', actor: LEAD_PRODUCT }, { nowIso: AT });
+    const rev = L.createRevisionTask(done.task, { reason: '수치 오류', createdBy: LEAD_PRODUCT }, { newId: ids, nowIso: AT });
+    return rev.revision.ref.revisionOfTaskId === done.task.ref.taskId
+      && rev.revision.ref.correlationId === done.task.ref.correlationId
+      && rev.superseded.status === 'superseded'
+      && JSON.stringify(rev.superseded).includes('수치 오류');
+  })(), noMod('taskLifecycleContract'));
+
+const kids = (mode) => {
+  const parent = mkTask({ dependencyMode: mode });
+  const okChild = { ...L.createChildTask(parent, { title: 'a', ownerTeamId: 'product', ownerHumanId: 'u', assignedAgentId: 'x', createdBy: HQ }, { newId: ids, nowIso: AT }), status: 'completed' };
+  const badChild = { ...L.createChildTask(parent, { title: 'b', ownerTeamId: 'product', ownerHumanId: 'u', assignedAgentId: 'y', createdBy: HQ }, { newId: ids, nowIso: AT }), status: 'failed' };
+  return { parent, okChild, badChild };
+};
+
+red('P7. independent: 한 업무 실패가 성공한 업무를 부분완료로 강등하지 않는다',
+  (() => { if (!L) return false;
+    resetIds();
+    const { parent, okChild, badChild } = kids('independent');
+    const r = L.resolveParentStatus(parent, [okChild, badChild]);
+    return r.status !== 'partially_completed' && okChild.status === 'completed';
+  })(), noMod('taskLifecycleContract'));
+
+red('P8. all_required: 일부 실패 시 부모는 partially_completed 이고 성공 결과는 보존된다',
+  (() => { if (!L) return false;
+    resetIds();
+    const { parent, okChild, badChild } = kids('all_required');
+    const r = L.resolveParentStatus(parent, [okChild, badChild]);
+    return r.status === 'partially_completed' && r.retryableTaskIds.includes(badChild.ref.taskId)
+      && !r.retryableTaskIds.includes(okChild.ref.taskId);
+  })(), noMod('taskLifecycleContract'));
+
+red('P9. all_required: 관리자가 현재 결과로 충분하다고 하면 부분 결과로 최종 채택 가능',
+  (() => { if (!L) return false;
+    resetIds();
+    const { parent, okChild, badChild } = kids('all_required');
+    const r = L.resolveParentStatus(parent, [okChild, badChild], { acceptPartial: true });
+    return r.status === 'completed' && r.acceptedPartial === true;
+  })(), noMod('taskLifecycleContract'));
+
+red('P10. selection: 선택되지 않은 성공 결과는 failed 가 아니라 not_selected',
+  (() => { if (!L) return false;
+    resetIds();
+    const parent = mkTask({ dependencyMode: 'selection' });
+    const c1 = { ...L.createChildTask(parent, { title: 'A안', ownerTeamId: 'design', ownerHumanId: 'u', assignedAgentId: 'x', createdBy: HQ }, { newId: ids, nowIso: AT }), status: 'completed' };
+    const c2 = { ...L.createChildTask(parent, { title: 'B안', ownerTeamId: 'design', ownerHumanId: 'u', assignedAgentId: 'y', createdBy: HQ }, { newId: ids, nowIso: AT }), status: 'completed' };
+    const r = L.resolveParentStatus(parent, [c1, c2], { selectedTaskId: c1.ref.taskId });
+    const other = r.children.find((c) => c.ref.taskId === c2.ref.taskId);
+    return r.status === 'completed' && other.status === 'not_selected' && other.status !== 'failed';
+  })(), noMod('taskLifecycleContract'));
+
+red('P11. AI 는 자신의 결과물을 최종 승인할 수 없다',
+  (() => { if (!L) return false;
+    resetIds();
+    const t = mkTask({ approvalRoute: L.APPROVAL_ROUTES.team_internal });
+    const r = L.decideApproval(t, { kind: 'approve', actor: AI_PRODUCT }, { nowIso: AT });
+    return r.ok === false && /ai|자기|self/i.test(String(r.reason ?? ''));
+  })(), noMod('taskLifecycleContract'));
+
+red('P12. 승인 경로에 없는 사용자의 결정은 차단된다',
+  (() => { if (!L) return false;
+    resetIds();
+    const t = mkTask();
+    const r = L.decideApproval(t, { kind: 'approve', actor: { kind: 'human', teamId: 'design', label: '디자인 팀장', userId: 'u-design' } }, { nowIso: AT });
+    return r.ok === false;
+  })(), noMod('taskLifecycleContract'));
+
+red('P13. 미채택·중단 결정 후에도 기록은 남고 pending 집계에서만 빠진다',
+  (() => { if (!L) return false;
+    resetIds();
+    const t = mkTask({ approvalRoute: L.APPROVAL_ROUTES.team_internal });
+    const notAdopted = L.decideApproval(t, { kind: 'not_adopted', actor: LEAD_PRODUCT, reason: '이번엔 사용 안 함' }, { nowIso: AT });
+    const stopped = L.decideApproval(mkTask({ approvalRoute: L.APPROVAL_ROUTES.team_internal }), { kind: 'stop', actor: LEAD_PRODUCT, reason: '중단' }, { nowIso: AT });
+    return notAdopted.ok && notAdopted.task.status === 'not_adopted'
+      && stopped.ok && stopped.task.status === 'stopped'
+      && L.isPendingForApproval(notAdopted.task) === false
+      && L.isPendingForApproval(stopped.task) === false
+      && notAdopted.events.length > 0 && stopped.events.length > 0;
+  })(), noMod('taskLifecycleContract'));
+
+red('P14. 내부 상태와 사용자 문구가 분리돼 쉬운 표현으로 노출된다',
+  (() => { if (!L) return false;
+    const labels = ['awaiting_approval', 'partially_completed', 'not_adopted', 'stopped', 'returned', 'not_selected']
+      .map((s2) => L.userStatusLabel(s2));
+    return labels.every((x) => typeof x === 'string' && x.length > 0 && !/_/.test(x));
+  })(), noMod('taskLifecycleContract'));
+
+red('P15. 업무·승인·결정 이력이 새로고침 후에도 보존된다(schemaVersion 보유·바이너리 미저장)',
+  (() => { if (!S || !L) return false;
+    store.clear(); resetIds();
+    const t = mkTask();
+    S.saveLifecycleTask(t);
+    const reloaded = S.loadLifecycleTasks();
+    const raw = [...store.values()].join('');
+    return reloaded.length === 1 && reloaded[0].ref.taskId === t.ref.taskId
+      && typeof S.SCHEMA_VERSION === 'number' && raw.includes('schemaVersion')
+      && !raw.includes('data:image') && !raw.includes('base64');
+  })(), noMod('taskLifecycleStore'));
+
+red('P16. 구버전 원장 이벤트(taskId 없음)는 refId 로 안전 후퇴해 집계된다',
+  (() => {
+    const legacy = [
+      LEDGER.createActivity({ teamId: 'product', type: 'task_run', status: 'pending', title: 'legacy', actor: { kind: 'agent', teamId: 'product', label: 'x', agentId: 'stock' }, refId: 'LEG1' }, AT),
+      LEDGER.createActivity({ teamId: 'product', type: 'task_run', status: 'done', title: 'legacy', actor: { kind: 'agent', teamId: 'product', label: 'x', agentId: 'stock' }, refId: 'LEG1' }, '2026-07-23T00:00:02.000Z')
+    ];
+    const s2 = LEDGER.teamSummary(legacy, 'product');
+    return s2.pending === 0 && s2.done === 1;
+  })(), '구버전 호환 후퇴 실패', '구버전 refId 후퇴 정상');
+
+red('P17. 레거시/화면 agentId 가 단일 별칭표로 canonical id 에 매핑된다',
+  (() => { if (!ID) return false;
+    return ID.toCanonicalAgentId('stock') === 'inventory_monitor'
+      && ID.toCanonicalAgentId('order') === 'product_analyst'
+      && ID.toCanonicalAgentId('inventory_monitor') === 'inventory_monitor'
+      && typeof ID.displayAgentId === 'function';
+  })(), noMod('agentIdRegistry'));
+
+red('P18. handoff 가 부서의 모든 결과를 각각 처리하고 taskId/correlationId/resultId 를 보존한다',
+  (() => {
+    const out = HANDOFF.processHandoffs(RUN_ID, ALL_RESULTS, { taskId: 'T1', correlationId: 'C1' });
+    const refd = new Set(out.handoffs.flatMap((h) => h.referencedResultIds));
+    const allRefd = ALL_RESULTS.every((r) => refd.has(r.id));
+    const idsUnique = new Set(out.handoffs.map((h) => h.id)).size === out.handoffs.length;
+    const carries = out.handoffs.every((h) => h.taskId === 'T1' && h.correlationId === 'C1');
+    return allRefd && idsUnique && carries;
+  })(), 'handoff 가 일부 결과만 참조하거나 lifecycle 참조를 보존하지 않음');
+
+red('P19. 일부 완료 후 실패한 부분만 재실행 대상으로 지목된다',
+  (() => { if (!L) return false;
+    resetIds();
+    const { parent, okChild, badChild } = kids('all_required');
+    const r = L.resolveParentStatus(parent, [okChild, badChild]);
+    return r.retryableTaskIds.length === 1 && r.retryableTaskIds[0] === badChild.ref.taskId;
+  })(), noMod('taskLifecycleContract'));
+
+red('P20. 수정 요청은 기존 결과를 보존하고 같은 업무의 새 revision 을 만든다',
+  (() => { if (!L) return false;
+    resetIds();
+    const t = mkTask({ approvalRoute: L.APPROVAL_ROUTES.team_internal });
+    const r = L.decideApproval(t, { kind: 'request_revision', actor: LEAD_PRODUCT, reason: '수치 재확인' }, { nowIso: AT, newId: ids });
+    return r.ok && !!r.revisionTask && r.revisionTask.ref.revisionOfTaskId === t.ref.taskId
+      && r.task.status === 'superseded' && JSON.stringify(r.task).includes('수치 재확인');
+  })(), noMod('taskLifecycleContract'));
 
 console.log('');
 console.log('--- 요약 ---');
