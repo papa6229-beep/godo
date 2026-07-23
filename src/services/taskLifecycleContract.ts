@@ -401,6 +401,9 @@ export function canDecide(
     // RC-2 D-1.3.1: 실제 중단은 **담당 팀장(또는 지정된 임시 책임자)만** 한다.
     //   총괄은 자기가 시킨 일이라도 그 팀의 실무 상태를 직접 바꾸지 않는다.
     //   그만두고 싶으면 requestTaskStop 으로 담당 팀장에게 요청을 보낸다.
+    // RC-2 D-1.3.3: 결과가 이미 제출돼 **다른 사람의 확인 차례**로 넘어간 뒤에는
+    //   그 차례를 맡은 사람만 멈춘다. 넘겨 놓고 마음대로 되돌리지 않는다.
+    if (task.status === 'awaiting_approval') return isCurrentStageApprover(task, actor);
     const isActingLead = !!task.actingLeadUserId && actor.userId === task.actingLeadUserId;
     if (actor.teamId !== task.ownerTeamId && !isActingLead) {
       return { ok: false, reason: '담당 팀장만 업무를 중단할 수 있습니다. 중단 요청을 보내 주세요.' };

@@ -30,6 +30,7 @@ import { AgentTaskPanel } from './AgentTaskPanel';
 import { TeamTaskPanel } from './TeamTaskPanel';
 import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
+import { routeTeamMessage } from '../services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, isHqRole, roleMeta, type ViewerRole } from '../services/sessionRole';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import { loadAgentTasks, subscribeAgentTasks } from '../services/agentTaskStore';
@@ -177,6 +178,8 @@ export interface DepartmentWorkspaceLifecycle {
   onRequestStop: (taskId: string, reason: string) => void;
   /** 팀 간 '지원 요청'을 보낼 때 요청팀 부모 + 수행팀 자식 업무로도 남긴다. */
   onCollaborate: (title: string, targetTeamId: string) => void;
+  /** 총괄에게 보낸 '확인 요청' 을 총괄이 결정할 카드 1건으로 남긴다. */
+  onHqReview: (message: TeamMessage) => void;
 }
 
 export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspaceLifecycle }> = ({ lifecycle }) => {
@@ -213,11 +216,15 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
   const messageActor = { kind: 'human' as const, teamId: role as TeamId, label: roleMeta(role).label };
   const handlePostTeamMessage = (input: CreateTeamMessageInput) => {
     const posted = postTeamMessage(input);
-    // RC-2 D-1.3: 다른 팀에 **지원을 요청**하면 메시지로만 끝내지 않고 협업 업무로도 남긴다.
-    //   요청팀에는 내 카드, 수행팀에는 자기 업무 카드 — 총괄 화면에서는 하나의 흐름으로 이어진다.
-    // 총괄의 일반 메시지는 업무를 자동으로 만들지 않는다(정식 지시는 업무 탭에서 한다).
-    if (input.kind === 'support' && input.from.teamId !== 'hq' && input.toTeam !== input.from.teamId) {
+    // RC-2 D-1.3.3: 무엇을 만들지는 **받는 곳과 종류**로만 정한다(문구를 읽어 추측하지 않는다).
+    //   다른 팀에 지원요청 → 협업 업무(요청팀 추적 + 수행팀 실행)
+    //   총괄에게 확인요청 → 총괄이 결정할 카드 1건(총괄은 수행팀이 아니다)
+    //   그 밖에는 메시지만 남는다.
+    const route = routeTeamMessage({ from: { teamId: input.from.teamId }, toTeam: input.toTeam, kind: input.kind });
+    if (route.createsCollaboration) {
       lifecycle?.onCollaborate(input.title || '협업 요청', input.toTeam);
+    } else if (route.createsHqReview) {
+      lifecycle?.onHqReview(posted);
     }
     // 활동 원장: 팀 간 전달 기록.
     logActivity({ teamId: input.from.teamId, type: 'message_sent', status: 'info', title: input.title || '팀 간 요청', detail: `${DEPT_TEAM_META[input.toTeam].name}에 ${TEAM_MESSAGE_KIND_META[input.kind].label}`, actor: input.from, relatedTeam: input.toTeam, refId: posted.id });

@@ -667,6 +667,109 @@ export function taskFlowsFor(actor: ActorRef): TaskFlow[] {
 }
 
 /** 협업 요청 — 요청팀 부모 + 수행팀 자식 2건으로 기록한다. */
+// ── RC-2 D-1.3.3: 팀 → 총괄 확인요청 ──────────────────────────────────────
+//
+// 총괄은 실무 수행팀이 아니다. 팀이 총괄에게 보내는 '확인요청' 은
+// **팀이 이미 만든 제안을 총괄이 결정해 달라**는 뜻이지, 총괄에게 일을 시키는 게 아니다.
+// 그래서 협업(부모·자식)을 만들지 않고, 기존 승인 대기 구조를 그대로 재사용한다.
+
+/** 팀 메시지 중 확인요청 카드를 만들 때 필요한 부분만. */
+export interface TeamMessageLike {
+  id: string;
+  from: { kind: 'human' | 'agent'; teamId: string; label: string; agentId?: string };
+  toTeam: string;
+  kind: 'support' | 'confirm' | 'info';
+  title?: string;
+  body?: string;
+  attachments?: { name: string; size: number; mime: string }[];
+  createdAt?: string;
+}
+
+export type HqReviewResult =
+  | { ok: true; task: LifecycleTask; created: boolean }
+  | { ok: false; reason: string };
+
+/** 원본 팀 메시지 참조 키(내용 복제 없이 역추적만). */
+export const messageRef = (messageId: string): string => `teammsg:${messageId}`;
+
+/**
+ * 메시지 하나로 총괄 결정 카드 1건을 만든다.
+ *   부모·자식 없음 · 총괄에게 수행자를 배정하지 않음 · 첨부 원문(dataUrl)은 복제하지 않음.
+ *   같은 메시지로 다시 불러도 카드를 새로 만들지 않는다.
+ */
+export function createHqReviewRequest(
+  input: { message: TeamMessageLike; actor: ActorRef },
+  ids: IdContext
+): HqReviewResult {
+  const m = input.message;
+  if (!m?.id || !String(m.id).trim()) return { ok: false, reason: '원본 메시지를 찾을 수 없습니다.' };
+  if (m.toTeam !== 'hq') return { ok: false, reason: '총괄에게 보낸 확인요청만 결정 대상이 됩니다.' };
+  if (m.kind !== 'confirm') return { ok: false, reason: '확인요청만 총괄 결정 대상이 됩니다.' };
+  if (m.from?.kind !== 'human' || input.actor.kind !== 'human') {
+    return { ok: false, reason: '확인요청은 사람만 보낼 수 있습니다.' };
+  }
+  if (m.from.teamId === 'hq') return { ok: false, reason: '총괄이 총괄에게 확인요청을 보낼 수 없습니다.' };
+  if (m.from.teamId !== input.actor.teamId) {
+    return { ok: false, reason: '다른 팀 이름으로 확인요청을 보낼 수 없습니다.' };
+  }
+  const title = (m.title ?? '').trim();
+  const body = (m.body ?? '').trim();
+  if (!title && !body) return { ok: false, reason: '확인받을 내용을 적어 주세요.' };
+
+  const ref = messageRef(m.id);
+  const existing = loadLifecycleTasks().find((t) => (t.inputRefs ?? []).includes(ref));
+  if (existing) return { ok: true, task: existing, created: false };   // 같은 메시지로 두 번 만들지 않는다
+
+  const ownerTeamId = m.from.teamId as ActorRef['teamId'];
+  // 파일 내용(dataUrl)은 옮기지 않는다 — 원본 메시지에서 본다.
+  const attachmentNote = (m.attachments ?? []).length > 0
+    ? `\n\n첨부 ${(m.attachments ?? []).length}건은 원본 메시지에서 볼 수 있습니다.`
+    : '';
+
+  const task = createLifecycleTask({
+    title: `확인 요청 · ${title || body.slice(0, 24)}`,
+    ownerTeamId,
+    ownerHumanId: `u-${ownerTeamId}`,
+    assignedAgentId: '',
+    executorKind: 'unassigned',
+    // 팀이 이미 만들어 낸 제안이므로 처음부터 '결정 대기' 다(총괄이 시킬 일이 아니다).
+    status: 'awaiting_approval',
+    resultSummary: `${body || title}${attachmentNote}`,
+    inputRefs: [ref],
+    createdBy: input.actor,
+    approvalRoute: APPROVAL_ROUTES.escalation,   // 기존 총괄 결정 경로 재사용
+    dependencyMode: 'independent'
+  }, ids);
+
+  const withSubmission: LifecycleTask = {
+    ...task,
+    submittedBy: input.actor,
+    submittedAt: m.createdAt ?? ids.nowIso
+  };
+  saveLifecycleTask(withSubmission);
+  return { ok: true, task: withSubmission, created: true };
+}
+
+/**
+ * 팀 메시지가 무엇을 만들지 — **수신처와 종류만** 본다.
+ * 제목·본문 같은 문구를 읽어 추측하지 않는다.
+ */
+export function routeTeamMessage(input: { from: { teamId: string }; toTeam: string; kind: string }): {
+  createsCollaboration: boolean;
+  createsHqReview: boolean;
+} {
+  const sameTeam = input.from.teamId === input.toTeam;
+  const fromHq = input.from.teamId === 'hq';
+  if (input.toTeam === 'hq') {
+    // 총괄에게 보내는 지원요청·일반전달은 메시지로만 남는다(총괄은 수행팀이 아니다).
+    return { createsCollaboration: false, createsHqReview: input.kind === 'confirm' && !fromHq };
+  }
+  return {
+    createsCollaboration: input.kind === 'support' && !fromHq && !sameTeam,
+    createsHqReview: false
+  };
+}
+
 /** 협업 요청이 성립하지 않을 때. 조용히 만들지 않고 명시적으로 막는다. */
 export class CollaborationRequestError extends Error {
   constructor(reason: string) {

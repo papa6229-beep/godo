@@ -34,9 +34,10 @@ import { isSameAgent } from './services/agentIdRegistry';
 import {
   hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
   actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
-  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor
+  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest
 } from './services/taskLifecycleAppAdapter';
 import type { ApprovalDecisionKind } from './services/taskLifecycleContract';
+import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
 import './App.css';
@@ -753,6 +754,23 @@ function App() {
     reportOutcome(r, '담당 팀장에게 중단 요청을 보냈습니다. 실제 중단은 담당 팀장이 처리합니다.');
   };
 
+  /**
+   * 팀이 총괄에게 보낸 '확인 요청' — 총괄이 결정할 카드 1건을 만든다.
+   *   총괄에게 일을 시키는 게 아니므로 수행자를 배정하지 않고 협업도 만들지 않는다.
+   */
+  const handleHqReview = (message: TeamMessageLike) => {
+    const r = createHqReviewRequest({ message, actor: sessionActor() }, { newId: newTaskId, nowIso: nowIso() });
+    if (!r.ok) {
+      // 메시지는 이미 전달됐다. 카드를 못 만든 사실을 숨기지 않고 그대로 알린다.
+      addLog(`메시지는 전달했지만 총괄 확인 카드를 만들지 못했습니다 — ${r.reason}`, 'warning', 'SYSTEM');
+      return;
+    }
+    refreshLifecycleState();
+    addLog(r.created
+      ? '총괄에게 확인을 요청했습니다. 총괄이 확인 완료 · 수정 요청 · 이번에는 사용 안 함 중 하나를 정합니다.'
+      : '이미 같은 내용으로 확인을 요청해 두었습니다.', 'info', 'SYSTEM');
+  };
+
   /** 팀 간 협업 요청 — 요청팀 카드와 수행팀 카드를 함께 남긴다. */
   const handleCollaborationRequest = (title: string, targetTeamId: string) => {
     const team = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
@@ -979,6 +997,7 @@ function App() {
           departmentLifecycle={{
             actor: sessionActor(),
             onCollaborate: handleCollaborationRequest,
+            onHqReview: handleHqReview,
             flows: lifecycleFlows,
             onRequestStop: handleRequestStop,
             onAssign: handleAssignExecutor,
