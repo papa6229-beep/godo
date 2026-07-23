@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { runAgentTask, stageApprovalTask, approveAgentTask, canAutoRunAgentTask } from '../services/agentTaskRunner';
+import { runManualAgentTask, approveAgentTask } from '../services/agentTaskRunner';
 import { scheduleLabel, APPROVAL_MODE_META, FOCUS_META, type AgentTaskSpec } from '../types/agentTask';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
 import type { RevenueResult } from '../services/departmentDataService';
@@ -32,25 +32,24 @@ export const AgentTaskPanel: React.FC<Props> = ({ teamId, tasks, revenue, onRan,
 
   const run = (spec: AgentTaskSpec) => {
     if (!canOperate) return;   // 화면 숨김에만 기대지 않는다.
-    // RC-2 D-1.2: 자동 완료는 '팀장이 승인해 둔 상시 지시' + '고위험 아님' 일 때만.
-    //   고위험이거나 상시 승인이 없으면 결과를 바로 내보내지 않고 팀장 확인 대기로 둔다.
-    const verdict = canAutoRunAgentTask(spec);
-    const mayAutoComplete = spec.approvalMode === 'auto' && verdict.allowed && !verdict.requiresLeadConfirmation;
-    if (mayAutoComplete) {
-      const { body } = runAgentTask(spec, { revenue });
-      setDone((p) => ({ ...p, [spec.id]: body }));
+    // RC-2 D-1.3: 실행은 공개 진입점으로만 한다.
+    //   runManualAgentTask 가 담당 팀장 권한과 고위험 여부를 함께 판정하고,
+    //   자동 완료가 아니면 결과를 내보내지 않고 확인 대기로 둔다.
+    const outcome = runManualAgentTask(spec, { kind: 'human', teamId }, { revenue });
+    if (outcome.ran) {
+      setDone((p) => ({ ...p, [spec.id]: outcome.body }));
       setPending((p) => { const n = { ...p }; delete n[spec.id]; return n; });
+      setGateNote((p) => { const n = { ...p }; delete n[spec.id]; return n; });
+    } else if (outcome.staged) {
+      setPending((p) => ({ ...p, [spec.id]: { body: outcome.body, editable: spec.approvalMode === 'draft' } }));
+      setGateNote((p) => ({
+        ...p,
+        [spec.id]: outcome.dataKind === 'fixture'
+          ? `${outcome.reason} (시험 자료로 계산한 결과입니다)`
+          : outcome.reason
+      }));
     } else {
-      const { body } = stageApprovalTask(spec, { revenue });
-      setPending((p) => ({ ...p, [spec.id]: { body, editable: spec.approvalMode === 'draft' } }));
-      if (spec.approvalMode === 'auto') {
-        setGateNote((p) => ({
-          ...p,
-          [spec.id]: verdict.requiresLeadConfirmation && verdict.allowed
-            ? '고위험 업무라 상시 지시가 있어도 팀장 확인 후 보고합니다.'
-            : (verdict.reason ?? '담당 팀장 확인이 필요합니다.')
-        }));
-      }
+      setGateNote((p) => ({ ...p, [spec.id]: outcome.reason }));
     }
     onRan();
   };

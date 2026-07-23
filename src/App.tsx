@@ -33,7 +33,8 @@ import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigratio
 import { isSameAgent } from './services/agentIdRegistry';
 import {
   hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
-  actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest
+  actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
+  quarantineUnknownAffiliation
 } from './services/taskLifecycleAppAdapter';
 import type { ApprovalDecisionKind, LifecycleTask } from './services/taskLifecycleContract';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
@@ -110,7 +111,12 @@ function App() {
   const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForRole(loadRole())));
   // RC-2 D-1.3: 팀장 화면은 화면용 요약이 아니라 **정본 LifecycleTask** 를 그대로 본다.
   //   (수행자·이력·제출 내용이 필요하다. 저장·갱신은 계속 App 이 소유한다.)
-  const [lifecycleTasks, setLifecycleTasks] = useState<LifecycleTask[]>(() => hydrateAppState().source);
+  const [lifecycleTasks, setLifecycleTasks] = useState<LifecycleTask[]>(() => {
+    // 구버전 저장자료에 소속을 확인할 수 없는 담당자가 남아 있으면 지우지 않고 '소속 확인 필요'로 표시한다.
+    //   (신규 입력은 애초에 거부된다 — 이건 과거 자료 전용, idempotent.)
+    quarantineUnknownAffiliation();
+    return hydrateAppState().source;
+  });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department'>('office');
