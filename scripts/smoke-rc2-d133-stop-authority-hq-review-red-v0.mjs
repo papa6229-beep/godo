@@ -343,12 +343,21 @@ red('U19. HQ 만 확인 완료·수정 요청·이번에는 사용 안 함을 �
   (() => { const r = mkHqCard();
     if (r.rejected) return false;
     const t = S.loadLifecycleTasks()[0];
-    const forHq = A.availableDecisions(t, HQ).map((d) => d.kind);
+    // RC-2 D-1.3.3.1: '포함' 검사는 네 번째 행동(stop)을 놓쳤다.
+    //   길이와 전체 집합이 정확히 같은지 본다.
+    const forHq = [...A.availableDecisions(t, HQ).map((d) => d.kind)].sort();
+    const expected = ['approve', 'not_adopted', 'request_revision'];   // 정렬 기준
     const forSender = A.availableDecisions(t, LEAD_CS).length;
     const forOther = A.availableDecisions(t, LEAD_DESIGN).length;
-    return ['approve', 'request_revision', 'not_adopted'].every((k) => forHq.includes(k))
+    return forHq.length === 3 && JSON.stringify(forHq) === JSON.stringify(expected)
       && forSender === 0 && forOther === 0;
-  })(), noFn('createHqReviewRequest'), 'HQ 3행동 · 보낸 팀·타 팀 0');
+  })(),
+  (() => { if (!hasFn('createHqReviewRequest')) return noFn('createHqReviewRequest');
+    reset(); const r = tryHqReview({ message: MSG, actor: LEAD_CS });
+    if (r.rejected) return '카드 생성 실패';
+    const got = A.availableDecisions(S.loadLifecycleTasks()[0], HQ).map((d) => d.kind);
+    return `HQ 에게 ${got.length}개 = [${got.join(', ')}]`;
+  })(), 'HQ 정확히 3행동 · 보낸 팀·타 팀 0');
 
 red('U20. 확인 완료하면 완료가 되고 기록이 남는다',
   (() => { const r = mkHqCard();
