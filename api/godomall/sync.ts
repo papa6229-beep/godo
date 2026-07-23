@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
-import { resolveResource } from '../_shared/godomallResource.js';
+import { resolveResource, summarizeSyncAll } from '../_shared/godomallResource.js';
 import type { ResourceType } from '../_shared/godomallResource.js';
 
 interface ExtendedRequest extends IncomingMessage {
@@ -30,37 +30,25 @@ export default async function handler(req: ExtendedRequest, res: VercelResponse)
       const resolved = await Promise.all(resources.map((r) => resolveResource(r)));
 
       const records: Record<string, unknown> = {};
-      let importedCount = 0;
-      let maskedPiiCount = 0;
-      const sources: Record<string, string> = {};
-      let anyLive = false;
-      const errors: string[] = [];
+      resources.forEach((r, i) => { records[r] = resolved[i].records; });
 
-      resources.forEach((r, i) => {
-        const res0 = resolved[i];
-        records[r] = res0.records;
-        importedCount += res0.count;
-        maskedPiiCount += res0.maskedCount;
-        sources[r] = res0.source;
-        if (res0.live) anyLive = true;
-        if (res0.errorMessage) errors.push(`${r}: ${res0.errorMessage}`);
-      });
-
-      // 대표 sourceType: 하나라도 라이브면 그 모드, 아니면 fallback
-      const primaryMode = resolved[0]?.mode || 'mock';
-      const sourceType = anyLive
-        ? (primaryMode === 'real' ? 'api_proxy_real' : 'api_proxy_sandbox')
-        : 'api_mock_fallback';
+      // 집계는 공용 계약(summarizeSyncAll)에 위임한다 — 라우트에 복사본을 두지 않는다.
+      const agg = summarizeSyncAll(resources, resolved);
+      const errors = Object.entries(agg.resourceErrors).map(([r, m]) => `${r}: ${m}`);
 
       return sendOkResponse(res, {
         resourceType: 'all',
         records,
-        importedCount,
-        maskedPiiCount,
+        importedCount: agg.importedCount,
+        maskedPiiCount: agg.maskedPiiCount,
         warningCount: 0,
-        mode: primaryMode,
-        sourceType,
-        sources,
+        mode: agg.mode,
+        sourceType: agg.sourceType,
+        syncStatus: agg.syncStatus,
+        sources: agg.sources,
+        resourceErrors: errors.length > 0 ? agg.resourceErrors : undefined,
+        liveResourceCount: agg.liveResourceCount,
+        unavailableResourceCount: agg.unavailableResourceCount,
         errorMessage: errors.length > 0 ? errors.join(' | ') : undefined
       });
     }

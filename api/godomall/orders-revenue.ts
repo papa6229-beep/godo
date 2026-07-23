@@ -37,6 +37,12 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     sendOkResponse(res, {
       mode: resolved.mode,
       live: resolved.live,
+      // DATA-SOURCE-SERVER-01: 소비자가 mode/live 로 추정하지 않도록 출처를 명시한다.
+      sourceType: resolved.source,
+      realOrdersStatus: resolved.realOrdersStatus,
+      syntheticStatus: resolved.syntheticStatus,
+      realOrdersErrorMessage: resolved.realOrdersErrorMessage,
+      syntheticErrorMessage: resolved.syntheticErrorMessage,
       count: resolved.count,
       orders: resolved.orders,
       summary: resolved.summary,
