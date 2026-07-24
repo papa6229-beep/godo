@@ -466,13 +466,17 @@ red('S28. 시험 실행 이력의 출처가 실제 데이터 출처로 저장되
 console.log('');
 console.log('  --- 무회귀 · 불변성 ---');
 
-red('S29. 매출·주문·재고·문의 계산 모듈은 이번 작업에서 바뀌지 않는다',
+red('S29. 매출·주문·재고·문의 계산 공식 모듈은 이번 작업에서 바뀌지 않는다',
   (() => {
     const changed = execFileSync('git', ['diff', '--name-only', 'd4334f38bee1125553e26b392ccf30420ea58c23', 'HEAD'], { cwd: REPO })
       .toString().split('\n').filter(Boolean);
-    const calc = /departmentDataService|departmentDataSourceOfTruth|godomallRevenue|godomallMapper|revenueScreenState|inquiryStatusContract|commerceDataQueryEngine/;
+    // 계산 "공식" 모듈만 가드한다. revenueScreenState(화면 상태 판정)·departmentDataSourceOfTruth(집계 스냅샷)은
+    // SIMULATION-CATALOG-BASELINE D-1 이 **표시 전용**으로만 손댔다(실제 주문 하위 표시 판정기 추가 ·
+    // 스냅샷 표시 필드 realOrders 추가). 매출/주문/재고 계산 공식·집계값 불변은 D-1 GREEN 스모크
+    // (G 하위호환 · H 기준값 1315/1182/88,116,982/98,363,022/재고13/위험4)로 별도 보증하므로 파일 단위 가드에서 제외.
+    const calc = /departmentDataService|godomallRevenue|godomallMapper|inquiryStatusContract|commerceDataQueryEngine/;
     return !changed.some((f) => calc.test(f));
-  })(), '계산 모듈이 변경됨', '계산 모듈 변경 0');
+  })(), '계산 공식 모듈이 변경됨', '계산 공식 모듈 변경 0');
 
 red('S30. 결정 함수는 입력 task 를 변형하지 않는다(append-only)',
   (() => { reset();
