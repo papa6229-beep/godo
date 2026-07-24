@@ -125,8 +125,10 @@ export function toApprovalItem(t: LifecycleTask): ApprovalItem {
     ...(last?.reason ? { decisionReason: last.reason } : {}),
     // RC-2 D-1.3.3.2: 제출자 표시를 requestedByAgentId 단독에 의존하지 않도록 의미를 투영한다.
     executorKind: t.executorKind,
+    // RC-2 D-1.3.3.2.1: 부서 귀속 판정의 정본 근거 — 모든 수행자 종류에서 소유/제출 팀을 투영한다.
+    submittingTeamId: t.ownerTeamId,
     ...(t.reviewOnly
-      ? { submittingTeamId: t.ownerTeamId, ...(t.submittedBy?.label ? { submittedByLabel: t.submittedBy.label } : {}) }
+      ? (t.submittedBy?.label ? { submittedByLabel: t.submittedBy.label } : {})
       : t.executorKind === 'human'
         ? { submittedByLabel: executorDisplayLabel(t) }
         : {}),
@@ -200,6 +202,36 @@ export function teamOfAgent(agentId: string): ActorRef['teamId'] | null {
   const def = defaultNativeAgents.find((a) => a.id === canonical);
   if (!def) return null;
   return DEPARTMENT_TO_TEAM[def.departmentId] ?? null;
+}
+
+/**
+ * RC-2 D-1.3.3.2.1: 화면의 부서(departmentId) → 팀(teamId). manager→hq.
+ *   부서 드릴다운(departmentId 도메인)을 팀 판정(teamId 도메인)과 같은 축에서 비교하기 위함.
+ *   미상 부서는 undefined(임의 매핑 금지).
+ */
+export function teamIdForDepartment(departmentId: string): DeptTeamId | undefined {
+  return DEPARTMENT_TO_TEAM[departmentId];
+}
+
+/** 문자열이 등록된 팀 ID 인가(하위호환 정확 일치 판정용). */
+const isDeptTeamId = (x?: string): x is DeptTeamId =>
+  !!x && Object.prototype.hasOwnProperty.call(DEPT_TEAM_META, x);
+
+/**
+ * RC-2 D-1.3.3.2.1: 승인자료의 부서 귀속을 **단일 지점**에서 판정한다.
+ *   startsWith 문자열 추측을 버리고 reviewOnly·human·agent 모두 같은 함수로 판정한다.
+ *   우선순위:
+ *     1) 정본에서 투영된 소유/제출 팀(submittingTeamId)
+ *     2) canonical AI ID 의 실제 소속팀
+ *     3) 하위호환: requestedByAgentId 가 팀 ID 와 정확히 일치
+ *     4) 근거 없음 → undefined(임의 팀으로 승격하지 않는다)
+ */
+export function approvalTeamId(item: ApprovalItem): DeptTeamId | undefined {
+  if (isDeptTeamId(item.submittingTeamId)) return item.submittingTeamId;
+  const byAgent = teamOfAgent(item.requestedByAgentId);
+  if (byAgent) return byAgent;
+  if (isDeptTeamId(item.requestedByAgentId)) return item.requestedByAgentId;
+  return undefined;
 }
 
 /**

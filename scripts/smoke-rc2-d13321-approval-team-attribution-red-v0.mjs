@@ -128,9 +128,7 @@ base('B2. reviewOnly·human 승인자료의 requestedByAgentId 는 빈 값이라
   (() => { const r = itemReviewCS(); const h = itemHumanProduct();
     return `review: reqBy="${r.requestedByAgentId}" 제출팀=${r.submittingTeamId} · human: reqBy="${h.requestedByAgentId}" executorKind=${h.executorKind}`; })());
 
-base('B3(원인). OperationBriefingModal 이 현재 requestedByAgentId.startsWith(deptId) 로 부서를 판정한다',
-  /requestedByAgentId\.startsWith\(/.test(briefing),
-  `startsWith 사용=${/requestedByAgentId\.startsWith\(/.test(briefing)}`);
+// (원인은 S1 이 검증한다: OperationBriefingModal 의 startsWith 를 공통 판정으로 교체.)
 
 // ── 현행 버그 재현(증거·불변): startsWith 는 세 자료를 놓친다 ─────────────────
 console.log('');

@@ -22,7 +22,10 @@ export interface ApprovalItem {
   //   하위호환을 위해 requestedByAgentId 는 그대로 두고, 화면은 공통 표시 함수를 통해 읽는다.
   /** 수행자 유형(정본 executorKind). agent 는 기존 AI 명단 해석을 유지한다. */
   executorKind?: 'unassigned' | 'agent' | 'human';
-  /** reviewOnly 확인요청의 제출팀(정본 ownerTeamId). */
+  /**
+   * 정본 소유/제출 팀(ownerTeamId) — 모든 lifecycle 업무에서 투영된다.
+   * reviewOnly 표시의 '제출팀'이자 부서 귀속 판정(approvalTeamId)의 1순위 근거.
+   */
   submittingTeamId?: string;
   /** reviewOnly 제출자 또는 인간 수행자의 사람 이름(정본 기록). */
   submittedByLabel?: string;
