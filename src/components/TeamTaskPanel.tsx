@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import type { LifecycleTask, ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
+import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import { userStatusLabel } from '../services/taskLifecycleContract';
-import { availableDecisions, executorDisplayName, executorDisplayLabel, pendingStopRequest } from '../services/taskLifecycleAppAdapter';
+import { availableDecisions, executorDisplayName, executorDisplayLabel, pendingStopRequest, revisionReasonOf } from '../services/taskLifecycleAppAdapter';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
@@ -48,16 +48,15 @@ const agentsOfTeam = (teamId: DeptTeamId) =>
     return dept === teamId;
   });
 
-const lastReasonOf = (t: LifecycleTask): string | undefined => {
-  for (let i = t.decisions.length - 1; i >= 0; i--) {
-    if (t.decisions[i].reason) return t.decisions[i].reason;
-  }
-  return undefined;
-};
-
 export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
   actor, teamId, flows, onAssign, onTakeOver, onSubmit, onDecide, onRequestStop
 }) => {
+  // RC-2 D-1.3.3.2: 수정 사유는 원본(superseded) 업무에 있다. 이미 넘어온 흐름 목록을
+  //   그대로 resolver 입력으로 쓴다(렌더 중 저장소 재조회 없음).
+  const flowTasks = React.useMemo(
+    () => flows.flatMap((f) => (f.tracking ? [f.task, f.tracking] : [f.task])),
+    [flows]
+  );
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [reportFor, setReportFor] = useState<string | null>(null);
   const [reportText, setReportText] = useState('');
@@ -104,7 +103,9 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
     const isReviewOnly = t.reviewOnly === true;
     // 화면에 보이는 행동 = 서비스가 허용하는 행동. 추적 카드에는 애초에 계산하지 않는다.
     const decisions = canAct ? availableDecisions(t, actor) : [];
-    const revisionReason = t.ref.revisionOfTaskId ? lastReasonOf(t) : undefined;
+    // 수정 요청으로 돌아온 업무면 원본에서 사유를 찾는다(revision 자신이 아니라).
+    const isRevision = !!t.ref.revisionOfTaskId;
+    const revisionReason = isRevision ? revisionReasonOf(t, flowTasks) : undefined;
     const iAmExecutor = t.executorKind === 'human' && actor.kind === 'human' && actor.userId === t.executorId;
     const startedAt = t.executorHistory[t.executorHistory.length - 1]?.at;
 
@@ -130,8 +131,8 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
           {startedAt && t.status === 'in_progress' && <span>시작: {startedAt.slice(0, 16).replace('T', ' ')}</span>}
         </div>
 
-        {revisionReason && (
-          <p className="ttask-revision">✏️ 수정 요청 사유: {revisionReason}</p>
+        {isRevision && (
+          <p className="ttask-revision">✏️ 수정 요청 사유: {revisionReason ?? '수정 사유 확인 필요'}</p>
         )}
 
         {stopReq && (

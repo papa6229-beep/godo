@@ -53,6 +53,25 @@ const TASK_STATUS_MAP: Record<TaskLifecycleStatus, TaskStatus> = {
 export const currentStageLabel = (t: LifecycleTask): string =>
   t.approvalRoute.stages[t.approvalRoute.currentStageIndex]?.label ?? '';
 
+/**
+ * RC-2 D-1.3.3.2: 수정 요청 사유의 정본은 **원본 superseded 업무**의 decisions 다.
+ *   revision 업무에는 사유를 복제하지 않는다(이중 정본 금지). revisionOfTaskId 로 원본을 찾아
+ *   가장 최근 request_revision 사유를 돌려주는 **순수 resolver** — 렌더 중 저장소를 다시 읽지 않고
+ *   이미 넘어온 task 목록을 입력으로 받는다.
+ *   원본을 못 찾으면(구자료 등) 임의 사유를 만들지 않고 undefined 를 돌려준다(화면이 정직하게 표기).
+ */
+export function revisionReasonOf(task: LifecycleTask, all: LifecycleTask[]): string | undefined {
+  const originalId = task.ref.revisionOfTaskId;
+  if (!originalId) return undefined;
+  const original = all.find((t) => t.ref.taskId === originalId);
+  if (!original) return undefined;
+  for (let i = original.decisions.length - 1; i >= 0; i--) {
+    const d = original.decisions[i];
+    if (d.kind === 'request_revision' && d.reason) return d.reason;
+  }
+  return undefined;
+}
+
 /** LifecycleTask → 화면용 OperationTask. */
 export function toOperationTask(t: LifecycleTask): OperationTask {
   const pending = isPendingForApproval(t);
