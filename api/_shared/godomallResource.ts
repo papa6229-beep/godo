@@ -419,7 +419,6 @@ export const resolveOrdersRevenue = async (
 ): Promise<ResolvedRevenue> => {
   const config = getGodomallConfig();
   let realOrders: RevenueOrder[] = [];
-  let products: StandardProduct[] = [];
   let source: ResourceSource = 'unavailable';
   let live = false;
   let realOrdersStatus: 'success' | 'unavailable' | 'fixture' = 'unavailable';
@@ -440,7 +439,7 @@ export const resolveOrdersRevenue = async (
     //   실 products 는 **실제 주문 조인용(buildProductIndex)에만** 쓴다.
     //   시뮬레이션 상품 원천이 아니다(=sim-catalog-v1 정본) → 실 상품 실패/변경이 시뮬레이션에 영향 없음.
     const productRes = await fetchProductsForJoin(config);
-    products = productRes.products;
+    const products = productRes.products;
 
     const orderRes = await fetchRealRevenueOrders(config, buildProductIndex(products));
     if (orderRes.ok) {
