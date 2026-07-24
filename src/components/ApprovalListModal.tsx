@@ -2,7 +2,7 @@ import React from 'react';
 import type { ApprovalItem } from '../types/approval';
 import type { Agent } from '../types';
 import './ApprovalListModal.css';
-import { UNKNOWN_AFFILIATION_LABEL } from '../services/taskLifecycleAppAdapter';
+import { UNKNOWN_AFFILIATION_LABEL, approvalActorDisplay } from '../services/taskLifecycleAppAdapter';
 import { isSameAgent, toCanonicalAgentId } from '../services/agentIdRegistry';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 
@@ -92,7 +92,8 @@ export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
           ) : (
             <div className="approval-list-cards">
               {filtered.map(item => {
-                const info = getAgentInfo(item.requestedByAgentId);
+                // RC-2 D-1.3.3.2: 확인요청·인간 제출자는 공통 표시 함수로, AI 는 캐릭터 명단으로.
+                const info = approvalActorDisplay(item) ?? getAgentInfo(item.requestedByAgentId);
                 return (
                   <div
                     key={item.id}

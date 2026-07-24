@@ -30,6 +30,8 @@ import { toCanonicalAgentId, isSameAgent } from './agentIdRegistry';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { roleMeta } from './sessionRole';
 import type { ViewerRole } from './sessionRole';
+import { DEPT_TEAM_META } from '../types/teamMessage';
+import type { DeptTeamId } from '../types/teamMessage';
 import type { OperationTask, TaskStatus } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 
@@ -121,8 +123,36 @@ export function toApprovalItem(t: LifecycleTask): ApprovalItem {
     status,
     ...(t.reviewOnly ? { reviewOnly: true } : {}),
     ...(last?.reason ? { decisionReason: last.reason } : {}),
+    // RC-2 D-1.3.3.2: 제출자 표시를 requestedByAgentId 단독에 의존하지 않도록 의미를 투영한다.
+    executorKind: t.executorKind,
+    ...(t.reviewOnly
+      ? { submittingTeamId: t.ownerTeamId, ...(t.submittedBy?.label ? { submittedByLabel: t.submittedBy.label } : {}) }
+      : t.executorKind === 'human'
+        ? { submittedByLabel: executorDisplayLabel(t) }
+        : {}),
     metadata: { taskType: 'lifecycle', approvalRequired: true }
   };
+}
+
+/**
+ * RC-2 D-1.3.3.2: 승인자료를 받는 화면들이 **같은 원칙**으로 제출자를 표시하는 공통 함수.
+ *   화면마다 분기를 복붙하지 않게 하고, requestedByAgentId 단독 판정을 대체한다.
+ *     reviewOnly → 제출팀 · 제출자
+ *     human      → 수행자 사람 이름
+ *     그 외(agent·미배정 등) → null: 화면이 기존 캐릭터 명단(getAgentInfo)으로 해석하도록 위임한다
+ *       (AI 캐릭터의 이모지·표시명을 화면 쪽 명단에서 정확히 쓰기 위함).
+ */
+export function approvalActorDisplay(item: ApprovalItem): { emoji: string; name: string } | null {
+  if (item.reviewOnly) {
+    const team = item.submittingTeamId as DeptTeamId | undefined;
+    const teamName = (team && DEPT_TEAM_META[team]?.name) || item.submittingTeamId || '제출팀';
+    const emoji = (team && DEPT_TEAM_META[team]?.emoji) || '🏢';
+    return { emoji, name: item.submittedByLabel ? `${teamName} · ${item.submittedByLabel}` : teamName };
+  }
+  if (item.executorKind === 'human') {
+    return { emoji: '🙋', name: item.submittedByLabel ?? '담당자' };
+  }
+  return null;
 }
 
 /** App 세션 역할 → 계약 ActorRef. App 이 권한 규칙을 재구현하지 않게 한다. */

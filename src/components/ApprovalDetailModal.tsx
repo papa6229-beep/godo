@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { ApprovalItem } from '../types/approval';
-import { executorDisplayName } from '../services/taskLifecycleAppAdapter';
+import { executorDisplayName, approvalActorDisplay } from '../services/taskLifecycleAppAdapter';
 
 interface ApprovalDetailModalProps {
   item: ApprovalItem;
@@ -123,8 +123,9 @@ export const ApprovalDetailModal: React.FC<ApprovalDetailModalProps> = ({
           {/* 1. 운영 검토 사유 및 정보 */}
           <div style={summaryRowStyle}>
             <div style={summaryItemStyle}>
-              <span style={summaryLabelStyle}>담당 에이전트</span>
-              <span style={summaryValueStyle}>{executorDisplayName(item.requestedByAgentId)}</span>
+              {/* RC-2 D-1.3.3.2: 확인요청은 제출팀·제출자, 인간 수행은 사람 이름, AI 는 기존 표시명. */}
+              <span style={summaryLabelStyle}>{item.reviewOnly ? '제출' : item.executorKind === 'human' ? '수행자' : '담당 에이전트'}</span>
+              <span style={summaryValueStyle}>{approvalActorDisplay(item)?.name ?? executorDisplayName(item.requestedByAgentId)}</span>
             </div>
             <div style={summaryItemStyle}>
               <span style={summaryLabelStyle}>위험 수준</span>

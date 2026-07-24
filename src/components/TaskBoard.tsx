@@ -5,7 +5,7 @@ import type { Agent } from '../types';
 import { TaskListModal } from './TaskListModal';
 import { ApprovalListModal } from './ApprovalListModal';
 import './TaskBoard.css';
-import { UNKNOWN_AFFILIATION_LABEL } from '../services/taskLifecycleAppAdapter';
+import { UNKNOWN_AFFILIATION_LABEL, approvalActorDisplay } from '../services/taskLifecycleAppAdapter';
 import { isSameAgent, toCanonicalAgentId } from '../services/agentIdRegistry';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { VIEWER_ROLES } from '../services/sessionRole';
@@ -369,7 +369,8 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
             </div>
           ) : (
             approvalQueue.map((item) => {
-              const agentInfo = getAgentInfo(item.requestedByAgentId);
+              // RC-2 D-1.3.3.2: 확인요청·인간 제출자는 공통 표시 함수로, AI 는 캐릭터 명단으로.
+              const agentInfo = approvalActorDisplay(item) ?? getAgentInfo(item.requestedByAgentId);
               return (
                 <div key={item.id} className={`approval-item-card status-${item.status}`}>
                   <div className="approval-card-header">

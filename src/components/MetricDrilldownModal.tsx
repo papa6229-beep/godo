@@ -1,6 +1,7 @@
 import React from 'react';
 import type { AgentJob, AgentResult, AgentHandoff } from '../engine/nativeAgentRuntime/types';
 import type { ApprovalItem } from '../types/approval';
+import { approvalActorDisplay, executorDisplayName } from '../services/taskLifecycleAppAdapter';
 import './MetricDrilldownModal.css';
 
 export type MetricType = 'in_progress' | 'completed' | 'handoff' | 'approval';
@@ -195,7 +196,7 @@ export const MetricDrilldownModal: React.FC<MetricDrilldownModalProps> = ({
                   <div className="metric-record-header">
                     <span className="metric-approval-tag">승인 필요</span>
                     <span className={`metric-risk-tag risk-${item.riskLevel}`}>{item.riskLevel}</span>
-                    <span className="metric-agent-tag">{item.requestedByAgentId}</span>
+                    <span className="metric-agent-tag">{approvalActorDisplay(item)?.name ?? executorDisplayName(item.requestedByAgentId)}</span>
                   </div>
                   <div className="metric-record-title">{item.title}</div>
                   <p className="metric-record-sub">{item.reason}</p>

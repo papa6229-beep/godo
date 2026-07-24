@@ -17,6 +17,16 @@ export interface ApprovalItem {
   /** 이미 나온 내용을 결정만 하는 카드(중단 버튼 없음). 정본에서 그대로 온다. */
   reviewOnly?: boolean;
 
+  // ── RC-2 D-1.3.3.2: 표시용 투영 ──────────────────────────────────────────
+  //   requestedByAgentId 단독으로 제출자를 판정하지 않도록 정본에서 의미를 실어 온다.
+  //   하위호환을 위해 requestedByAgentId 는 그대로 두고, 화면은 공통 표시 함수를 통해 읽는다.
+  /** 수행자 유형(정본 executorKind). agent 는 기존 AI 명단 해석을 유지한다. */
+  executorKind?: 'unassigned' | 'agent' | 'human';
+  /** reviewOnly 확인요청의 제출팀(정본 ownerTeamId). */
+  submittingTeamId?: string;
+  /** reviewOnly 제출자 또는 인간 수행자의 사람 이름(정본 기록). */
+  submittedByLabel?: string;
+
   originalIssue?: string;
   maskedInput?: string;
   generatedDraft?: string;
