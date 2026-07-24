@@ -208,7 +208,9 @@ export async function processControlChat(
   if (intent === 'start_operation') {
     return {
       role: 'assistant',
-      content: '좋습니다. 오늘의 쇼핑몰 운영 점검을 시작하겠습니다! 실시간으로 주문, 문의, 리뷰, 재고를 파악하여 우측 오늘의 할 일 보드와 승인 대기 대기열에 결과를 채워 넣겠습니다.',
+      // RC-2 D-1.3.1: 지금 실행은 검증 시나리오로 도는 **시험 운영**이다.
+      //   실제 주문·문의를 실시간으로 처리하는 것처럼 말하지 않는다.
+      content: '좋습니다. **시험 운영(검증 시나리오)** 을 시작하겠습니다. 준비된 시험 자료로 팀별 점검 흐름을 보여 드리고, 결과는 시험 자료로만 표시됩니다(실제 업무·승인함에는 저장되지 않습니다). 실제 업무는 각 팀장에게 지시로 전달됩니다.',
       intent,
       actionTriggered: {
         type: 'start_operation'

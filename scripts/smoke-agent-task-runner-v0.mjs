@@ -50,7 +50,9 @@ try {
   TC = await import(pathToFileURL(find('teamMessageCenter.js')).href);
 } catch (e) { console.error('[smoke] compile failed:', e.stdout?.toString() || e.message); }
 
-ok('런타임 로드', !!R?.runAgentTask && !!R?.formatTaskReport && !!A?.scheduleLabel && !!TC?.inboxFor);
+// RC-2 D-1.3.1: raw 실행 함수는 비공개다. 공개 진입점만으로 검증한다.
+ok('런타임 로드', !!R?.runManualAgentTask && !!R?.runScheduledAgentTask && !!R?.formatTaskReport && !!A?.scheduleLabel && !!TC?.inboxFor);
+ok('런타임 raw 실행 함수 비공개', !R?.runAgentTask && !R?.stageApprovalTask && !R?.postAgentReport);
 
 if (R && A && TC) {
   const NOW = '2026-07-03T00:00:00.000Z';
@@ -76,10 +78,23 @@ if (R && A && TC) {
   ok('6. cs 보고: 총문의/미처리/리뷰', /총 문의 40건/.test(rCs.body) && /미처리 7건/.test(rCs.body) && /리뷰 55건/.test(rCs.body));
   ok('7. snapshot 없으면 정직한 안내', /데이터가 아직 준비되지 않아/.test(R.formatTaskReport(specInv, null).body));
 
-  // 3) runAgentTask — 데이터 없음(revenue=null)이어도 AI-에이전트 명의로 reportTo에 발신
+  // 3) 자동 보고 — 데이터 없음(revenue=null)이어도 AI-에이전트 명의로 reportTo에 발신.
+  //    RC-2 D-1.3.1: 자동 발신은 **팀장이 승인해 둔 상시 지시**가 있을 때만 가능하다.
   store.clear();
-  const out = R.runAgentTask(specInv, { revenue: null, nowIso: NOW });
-  ok('8. runAgentTask 발신 결과 반환', !!out?.posted && typeof out.body === 'string');
+  const APPROVED_STANDING = {
+    ownerTeamId: 'product', ownerLeadUserId: 'u-product', scope: '재고·매출 일일 점검',
+    schedule: { kind: 'daily', at: '09:00' }, active: true, approvedByLeadAt: NOW,
+    riskLevel: 'normal', source: 'real', history: []
+  };
+  const specAuto = { ...specInv, approvalMode: 'auto', standing: APPROVED_STANDING };
+  const ran = R.runScheduledAgentTask(specAuto, { revenue: null, nowIso: NOW });
+  ok('8. 스케줄 진입점이 상시 지시 승인분을 실행', ran.ran === true && typeof ran.body === 'string');
+  const out = { posted: TC.inboxFor(TC.loadTeamMessages(), 'hq')[0] };
+  ok('8b. 미승인 상시 지시는 실행되지 않음',
+    R.runScheduledAgentTask({ ...specInv, approvalMode: 'auto' }, { revenue: null, nowIso: NOW }).ran === false);
+  ok('8c. 수동 진입점은 담당 팀장만',
+    R.runManualAgentTask(specAuto, { kind: 'human', teamId: 'cs' }, { revenue: null, nowIso: NOW }).ran === false
+    && R.runManualAgentTask(specAuto, { kind: 'human', teamId: 'product' }, { revenue: null, nowIso: NOW }).ran === true);
   const hqInbox = TC.inboxFor(TC.loadTeamMessages(), 'hq');
   ok('9. reportTo(hq) 요청함에 보고 도착', hqInbox.some((m) => m.id === out.posted.id));
   const msg = hqInbox.find((m) => m.id === out.posted.id);
@@ -90,8 +105,8 @@ if (R && A && TC) {
   const ledger = () => JSON.parse(store.get('godo_activity_ledger_v0') || '[]');
   store.clear();
   const specAppr = { ...specInv, id: 't2', approvalMode: 'approval' };
-  const staged = R.stageApprovalTask(specAppr, { revenue: null, nowIso: NOW });
-  ok('12. stage: 본문 생성', typeof staged.body === 'string');
+  const staged = R.runManualAgentTask(specAppr, { kind: 'human', teamId: 'product' }, { revenue: null, nowIso: NOW });
+  ok('12. stage: 본문 생성', staged.staged === true && typeof staged.body === 'string');
   ok('13. stage: 원장 task_run(pending)만·메시지 발신 없음', ledger().filter((e) => e.type === 'task_run' && e.status === 'pending').length === 1 && TC.inboxFor(TC.loadTeamMessages(), 'hq').length === 0);
   const appr = R.approveAgentTask(specAppr, { revenue: null, nowIso: NOW }, '사람이 승인한 본문');
   ok('14. approve: 발신됨(승인 본문)', !!appr?.posted && TC.inboxFor(TC.loadTeamMessages(), 'hq').some((m) => m.id === appr.posted.id && m.body === '사람이 승인한 본문'));

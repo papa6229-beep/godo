@@ -1,4 +1,4 @@
-import type { AgentResult, AgentArtifact, DepartmentId } from './types';
+import type { AgentResult, AgentArtifact, AgentResultStatus, DepartmentId } from './types';
 
 export function aggregateTeamResults(
   runId: string,
@@ -72,13 +72,21 @@ export function aggregateTeamResults(
     createdAt: currentTime
   });
 
+  // RC-2(G3): 팀원 결과에 실패가 있으면 success 로 단정하지 않는다.
+  //   전부 실패면 failed, 일부만 실패면 partial(성공 결과는 그대로 보존).
+  const failedCount = memberResults.filter((r) => r.status === 'failed' || r.status === 'blocked').length;
+  const aggregateStatus: AgentResultStatus =
+    memberResults.length > 0 && failedCount === memberResults.length ? 'failed'
+      : failedCount > 0 ? 'partial'
+        : 'success';
+
   return {
     id: `res-lead-${departmentId}-${runId}`,
     runId,
     jobId: `job-lead-aggregate-${departmentId}-${runId}`,
     agentId: leadAgentId,
     departmentId,
-    status: 'success',
+    status: aggregateStatus,
     summary,
     findings,
     recommendations,

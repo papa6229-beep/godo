@@ -2,6 +2,9 @@ import React from 'react';
 import type { ApprovalItem } from '../types/approval';
 import type { Agent } from '../types';
 import './ApprovalListModal.css';
+import { UNKNOWN_AFFILIATION_LABEL, approvalActorDisplay } from '../services/taskLifecycleAppAdapter';
+import { isSameAgent, toCanonicalAgentId } from '../services/agentIdRegistry';
+import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 
 interface ApprovalListModalProps {
   isOpen: boolean;
@@ -19,6 +22,9 @@ const STATUS_LABEL: Record<ApprovalItem['status'], string> = {
   waiting: '승인 대기',
   approved: '승인 완료',
   rejected: '거절 처리',
+  // RC-2: 사용자 문구(내부 상태명 노출 금지)
+  not_adopted: '이번 결과 사용 안 함',
+  cancelled: '작업 중단',
 };
 
 export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
@@ -48,8 +54,14 @@ export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
     : items;
 
   const getAgentInfo = (agentId: string) => {
-    const agent = agents.find(a => a.id === agentId);
-    return agent ? { name: agent.name, emoji: agent.emoji } : { name: '알 수 없음', emoji: '⚙️' };
+    // RC-2 D-1.3: 정본은 canonical id, 화면 캐릭터 목록은 legacy id 다.
+    //   별칭표(isSameAgent)를 거쳐 찾는다 — 정확 일치로만 찾으면 알려진 AI 도 미상으로 보인다.
+    const agent = agents.find((a) => isSameAgent(a.id, agentId));
+    if (agent) return { name: agent.name, emoji: agent.emoji };
+    // 런타임 정의에 있는 AI 는 그 표시명을 쓴다(내부 id 를 그대로 노출하지 않는다).
+    const known = defaultNativeAgents.find((a) => a.id === toCanonicalAgentId(agentId));
+    if (known) return { name: known.name, emoji: '🤖' };
+    return agentId ? { name: UNKNOWN_AFFILIATION_LABEL, emoji: '❓' } : { name: '수행자 미정', emoji: '🕓' };
   };
 
   const handleSelect = (item: ApprovalItem) => {
@@ -80,7 +92,8 @@ export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
           ) : (
             <div className="approval-list-cards">
               {filtered.map(item => {
-                const info = getAgentInfo(item.requestedByAgentId);
+                // RC-2 D-1.3.3.2: 확인요청·인간 제출자는 공통 표시 함수로, AI 는 캐릭터 명단으로.
+                const info = approvalActorDisplay(item) ?? getAgentInfo(item.requestedByAgentId);
                 return (
                   <div
                     key={item.id}

@@ -27,7 +27,11 @@ import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { runCsDraftRequest } from '../services/csDraftRuntime';
 import { TeamMessagePanel } from './TeamMessagePanel';
 import { AgentTaskPanel } from './AgentTaskPanel';
-import { loadRole, subscribeRole, isHqRole, type ViewerRole } from '../services/sessionRole';
+import { TeamTaskPanel } from './TeamTaskPanel';
+import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
+import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
+import { routeTeamMessage } from '../services/taskLifecycleAppAdapter';
+import { loadRole, subscribeRole, isHqRole, roleMeta, type ViewerRole } from '../services/sessionRole';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import { loadAgentTasks, subscribeAgentTasks } from '../services/agentTaskStore';
 import type { AgentTaskSpec } from '../types/agentTask';
@@ -158,8 +162,27 @@ const PLACEHOLDER_CARDS = [
 
 type ChatMessage = DeptChatMessage;
 
+/**
+ * RC-2 D-1.3 — 업무 정본과 갱신은 App 이 소유한다.
+ *   이 컴포넌트는 lifecycle 저장소를 직접 읽거나 쓰지 않고, 받은 것만 그리고 핸들러만 부른다.
+ */
+export interface DepartmentWorkspaceLifecycle {
+  actor: ActorRef;
+  /** 협업이 한 흐름으로 묶인 목록(같은 일이 두 장으로 보이지 않게). */
+  flows: TaskFlow[];
+  onAssign: (taskId: string, kind: 'agent' | 'human', executorId?: string) => void;
+  onTakeOver: (taskId: string) => void;
+  onSubmit: (taskId: string, report: string) => void;
+  onDecide: (taskId: string, kind: ApprovalDecisionKind, reason?: string) => void;
+  /** 총괄·요청자가 담당 팀장에게 중단을 요청한다(실제 중단은 팀장이 한다). */
+  onRequestStop: (taskId: string, reason: string) => void;
+  /** 팀 간 '지원 요청'을 보낼 때 요청팀 부모 + 수행팀 자식 업무로도 남긴다. */
+  onCollaborate: (title: string, targetTeamId: string) => void;
+  /** 총괄에게 보낸 '확인 요청' 을 총괄이 결정할 카드 1건으로 남긴다. */
+  onHqReview: (message: TeamMessage) => void;
+}
 
-export const DepartmentWorkspacePanel: React.FC = () => {
+export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspaceLifecycle }> = ({ lifecycle }) => {
   // 세션 역할 — 팀장이면 본인 팀만 보이고 선택됨(총괄은 전체).
   const [role, setRole] = useState<ViewerRole>(loadRole);
   const [selectedTeamId, setSelectedTeamId] = useState<TeamId>(() => { const r = loadRole(); return isHqRole(r) ? 'hq' : (r as TeamId); });
@@ -186,27 +209,50 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const [teamMessages, setTeamMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
   useEffect(() => subscribeTeamMessages(() => setTeamMessages(loadTeamMessages())), []);
   const refreshTeamMessages = () => setTeamMessages(loadTeamMessages());
+  /**
+   * 메시지를 실제로 보내고 처리하는 사람 — **세션 역할**에서 온다.
+   * 화면에서 어느 팀을 보고 있든(selectedTeamId) 신원은 바뀌지 않는다.
+   */
+  const messageActor = { kind: 'human' as const, teamId: role as TeamId, label: roleMeta(role).label };
   const handlePostTeamMessage = (input: CreateTeamMessageInput) => {
     const posted = postTeamMessage(input);
+    // RC-2 D-1.3.3: 무엇을 만들지는 **받는 곳과 종류**로만 정한다(문구를 읽어 추측하지 않는다).
+    //   다른 팀에 지원요청 → 협업 업무(요청팀 추적 + 수행팀 실행)
+    //   총괄에게 확인요청 → 총괄이 결정할 카드 1건(총괄은 수행팀이 아니다)
+    //   그 밖에는 메시지만 남는다.
+    const route = routeTeamMessage({ from: { teamId: input.from.teamId }, toTeam: input.toTeam, kind: input.kind });
+    if (route.createsCollaboration) {
+      lifecycle?.onCollaborate(input.title || '협업 요청', input.toTeam);
+    } else if (route.createsHqReview) {
+      lifecycle?.onHqReview(posted);
+    }
     // 활동 원장: 팀 간 전달 기록.
     logActivity({ teamId: input.from.teamId, type: 'message_sent', status: 'info', title: input.title || '팀 간 요청', detail: `${DEPT_TEAM_META[input.toTeam].name}에 ${TEAM_MESSAGE_KIND_META[input.kind].label}`, actor: input.from, relatedTeam: input.toTeam, refId: posted.id });
     refreshTeamMessages();
   };
   const handleResolveTeamMessage = (id: string, status: TeamMessageStatus) => {
-    const actor = { kind: 'human' as const, teamId: selectedTeamId, label: '운영자' };
+    // 처리 주체도 화면 선택값이 아니라 실제 사용자다. 받은 팀 본인만 처리한다.
+    const actor = messageActor;
+    const msgToResolve = teamMessages.find((m) => m.id === id);
+    if (msgToResolve && msgToResolve.toTeam !== actor.teamId) return;
     resolveTeamMessage(id, status, actor);
     // 활동 원장: 완료 처리 = 처리 활동 기록(대기/완료 상태 반영).
     if (status === 'done' || status === 'in_progress') {
       const msg = teamMessages.find((m) => m.id === id);
-      logActivity({ teamId: selectedTeamId, type: 'approval', status: status === 'done' ? 'done' : 'in_progress', title: msg?.title || '요청 처리', detail: msg ? `${DEPT_TEAM_META[msg.from.teamId].name}의 요청 처리` : undefined, actor, refId: id });
+      logActivity({ teamId: actor.teamId, type: 'approval', status: status === 'done' ? 'done' : 'in_progress', title: msg?.title || '요청 처리', detail: msg ? `${DEPT_TEAM_META[msg.from.teamId].name}의 요청 처리` : undefined, actor, refId: id });
     }
     refreshTeamMessages();
   };
-  const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, { kind: 'human', teamId: selectedTeamId, label: '운영자' }); refreshTeamMessages(); };
+  const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, messageActor); refreshTeamMessages(); };
   // 자동 업무 스펙(Studio에서 편집) — 스토어에서 로드, 편집 시 storage 이벤트로 반영.
   const [agentTasks, setAgentTasks] = useState<AgentTaskSpec[]>(() => loadAgentTasks());
   useEffect(() => subscribeAgentTasks(() => setAgentTasks(loadAgentTasks())), []);
   const tasksForSelectedTeam = agentTasksForTeam(agentTasks, selectedTeamId);
+  // 지금 이 팀에서 사람 손이 필요한 업무 수(할 일 + 결과 도착).
+  const leadTaskCount = (lifecycle?.flows ?? []).filter(
+    (f) => (f.task.ownerTeamId === selectedTeamId || f.task.requestingTeamId === selectedTeamId)
+      && (f.task.status === 'open' || f.task.status === 'awaiting_approval')
+  ).length;
 
   useEffect(() => {
     saveDeptChatLog(chatLog);
@@ -238,7 +284,7 @@ export const DepartmentWorkspacePanel: React.FC = () => {
   const handleSelectTeam = (id: TeamId) => {
     setSelectedTeamId(id);
     // 자동 업무 탭에 있는데 새 팀에 자동 업무가 없으면(총괄팀 등) 지시 탭으로 복귀.
-    if (rightTab === 'tasks' && agentTasksForTeam(agentTasks, id).length === 0) setRightTab('chat');
+    if (rightTab === 'tasks' && agentTasksForTeam(agentTasks, id).length === 0 && !lifecycle) setRightTab('chat');
     if (!productData.loaded && !productData.loading) {
       void loadProductTeamData();
     }
@@ -670,14 +716,17 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           <button type="button" className={`dept-right-tab ${rightTab === 'messages' ? 'active' : ''}`} onClick={() => setRightTab('messages')}>
             📨 팀 간 메시지{unreadCountFor(teamMessages, selectedTeamId) > 0 && <span className="dept-right-tab-badge">{unreadCountFor(teamMessages, selectedTeamId)}</span>}
           </button>
-          {tasksForSelectedTeam.length > 0 && (
-            <button type="button" className={`dept-right-tab ${rightTab === 'tasks' ? 'active' : ''}`} onClick={() => setRightTab('tasks')}>🤖 자동 업무</button>
+          {(tasksForSelectedTeam.length > 0 || !!lifecycle) && (
+            <button type="button" className={`dept-right-tab ${rightTab === 'tasks' ? 'active' : ''}`} onClick={() => setRightTab('tasks')}>
+              📋 업무{leadTaskCount > 0 && <span className="dept-right-tab-badge">{leadTaskCount}</span>}
+            </button>
           )}
         </div>
 
         {rightTab === 'messages' && (
           <TeamMessagePanel
-            teamId={selectedTeamId}
+            viewedTeamId={selectedTeamId}
+            actor={messageActor}
             messages={teamMessages}
             onPost={handlePostTeamMessage}
             onResolve={handleResolveTeamMessage}
@@ -685,14 +734,29 @@ export const DepartmentWorkspacePanel: React.FC = () => {
           />
         )}
 
-        {rightTab === 'tasks' && (
-          <AgentTaskPanel
-            teamId={selectedTeamId}
-            tasks={tasksForSelectedTeam}
-            revenue={productData.revenue}
-            onRan={refreshTeamMessages}
-          />
-        )}
+        {rightTab === 'tasks' && (<>
+          {lifecycle && (
+            <TeamTaskPanel
+              actor={lifecycle.actor}
+              teamId={selectedTeamId}
+              flows={lifecycle.flows}
+              onAssign={lifecycle.onAssign}
+              onTakeOver={lifecycle.onTakeOver}
+              onSubmit={lifecycle.onSubmit}
+              onDecide={lifecycle.onDecide}
+              onRequestStop={lifecycle.onRequestStop}
+            />
+          )}
+          {tasksForSelectedTeam.length > 0 && (
+            <AgentTaskPanel
+              teamId={selectedTeamId}
+              tasks={tasksForSelectedTeam}
+              revenue={productData.revenue}
+              onRan={refreshTeamMessages}
+              viewerRole={role}
+            />
+          )}
+        </>)}
 
         {rightTab === 'chat' && (<>
         {/* dev/smoke marker — 마케팅 chartSpec artifact(비영속). 중앙 그래프 렌더는 다음 작업. JSON/PII 미노출. */}

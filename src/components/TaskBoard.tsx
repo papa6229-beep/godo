@@ -5,6 +5,13 @@ import type { Agent } from '../types';
 import { TaskListModal } from './TaskListModal';
 import { ApprovalListModal } from './ApprovalListModal';
 import './TaskBoard.css';
+import { UNKNOWN_AFFILIATION_LABEL, approvalActorDisplay } from '../services/taskLifecycleAppAdapter';
+import { isSameAgent, toCanonicalAgentId } from '../services/agentIdRegistry';
+import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
+import { VIEWER_ROLES } from '../services/sessionRole';
+
+// 업무를 받을 팀(총괄 자신은 지시 대상이 아니다).
+const TARGET_TEAMS = VIEWER_ROLES.filter((r) => r.id !== 'hq');
 
 interface TaskBoardProps {
   tasks: OperationTask[];
@@ -12,7 +19,8 @@ interface TaskBoardProps {
   isSimulating: boolean;
   approvalQueue: ApprovalItem[];
   onStartSimulation: () => void;
-  onAddTask: (title: string, agentId: string) => void;
+  /** RC-2 D-1.2: 업무는 **팀에게** 보낸다. 두 번째 인자는 팀 id(수행 방식은 담당 팀장이 고른다). */
+  onAddTask: (title: string, targetTeamId: string) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onSelectTask?: (task: OperationTask) => void;
@@ -48,7 +56,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   hideAddTask = false
 }) => {
   const [newTitle, setNewTitle] = useState('');
-  const [selectedAgentId, setSelectedAgentId] = useState(agents[0]?.id || 'cs');
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(TARGET_TEAMS[0].id);
   const [listFilter, setListFilter] = useState<{ title: string; statuses: TaskStatus[] } | null>(null);
   const [approvalListFilter, setApprovalListFilter] = useState<{
     title: string;
@@ -72,8 +80,14 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   };
 
   const getAgentInfo = (agentId: string) => {
-    const agent = agents.find((a) => a.id === agentId);
-    return agent ? { name: agent.name, emoji: agent.emoji } : { name: '알 수 없음', emoji: '⚙️' };
+    // RC-2 D-1.3: 정본은 canonical id, 화면 캐릭터 목록은 legacy id 다.
+    //   별칭표(isSameAgent)를 거쳐 찾는다 — 정확 일치로만 찾으면 알려진 AI 도 미상으로 보인다.
+    const agent = agents.find((a) => isSameAgent(a.id, agentId));
+    if (agent) return { name: agent.name, emoji: agent.emoji };
+    // 런타임 정의에 있는 AI 는 그 표시명을 쓴다(내부 id 를 그대로 노출하지 않는다).
+    const known = defaultNativeAgents.find((a) => a.id === toCanonicalAgentId(agentId));
+    if (known) return { name: known.name, emoji: '🤖' };
+    return agentId ? { name: UNKNOWN_AFFILIATION_LABEL, emoji: '❓' } : { name: '수행자 미정', emoji: '🕓' };
   };
 
   const getPermissionLabel = (perm: string) => {
@@ -145,7 +159,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    onAddTask(newTitle, selectedAgentId);
+    onAddTask(newTitle, selectedTeamId);
     setNewTitle('');
   };
 
@@ -267,13 +281,13 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
               />
               <div className="add-task-meta">
                 <select
-                  value={selectedAgentId}
-                  onChange={(e) => setSelectedAgentId(e.target.value)}
+                  value={selectedTeamId}
+                  onChange={(e) => setSelectedTeamId(e.target.value)}
                   className="agent-select"
                 >
-                  {agents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.emoji} {agent.name.split(' ')[0]}
+                  {TARGET_TEAMS.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.emoji} {team.short}
                     </option>
                   ))}
                 </select>
@@ -355,7 +369,8 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
             </div>
           ) : (
             approvalQueue.map((item) => {
-              const agentInfo = getAgentInfo(item.requestedByAgentId);
+              // RC-2 D-1.3.3.2: 확인요청·인간 제출자는 공통 표시 함수로, AI 는 캐릭터 명단으로.
+              const agentInfo = approvalActorDisplay(item) ?? getAgentInfo(item.requestedByAgentId);
               return (
                 <div key={item.id} className={`approval-item-card status-${item.status}`}>
                   <div className="approval-card-header">
@@ -420,7 +435,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
                             onReject(item.id);
                           }}
                         >
-                          거절 (Reject)
+                          이번 결과 사용 안 함
                         </button>
                       </>
                     ) : (

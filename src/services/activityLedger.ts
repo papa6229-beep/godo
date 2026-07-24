@@ -57,6 +57,8 @@ export interface LogActivityInput {
   actor: TeamMessageActor;
   relatedTeam?: DeptTeamId;
   refId?: string;
+  taskId?: string;
+  correlationId?: string;
 }
 
 export function createActivity(input: LogActivityInput, nowIso: string = nowIsoDefault()): ActivityEvent {
@@ -70,6 +72,8 @@ export function createActivity(input: LogActivityInput, nowIso: string = nowIsoD
     actor: input.actor,
     relatedTeam: input.relatedTeam,
     refId: input.refId,
+    taskId: input.taskId,
+    correlationId: input.correlationId,
     at: nowIso
   };
 }
@@ -84,13 +88,16 @@ export const activityForTeam = (list: ActivityEvent[], teamId: DeptTeamId, since
 export function teamSummary(list: ActivityEvent[], teamId: DeptTeamId, sinceIso?: string): TeamActivitySummary {
   const rows = activityForTeam(list, teamId, sinceIso);
   const taskRuns = rows.filter((e) => e.type === 'task_run');
-  // 현재 상태 집계 — 같은 항목(refId)은 최신 이벤트 하나로 dedup(진행중→완료 이중집계 방지).
+  // 현재 상태 집계 — 같은 업무는 최신 이벤트 하나로 dedup(진행중→완료 이중집계 방지).
+  // RC-2(G2): 추적 키는 **taskId 우선**, 없으면 구버전 호환으로 refId 로 후퇴한다.
+  //   (과거에는 refId 가 없는 이벤트가 dedup 을 통째로 우회해 pending 이 누적됐다.)
   // 전달(message_sent)은 "행위" 카운트라 상태 집계에서 제외.
   const latest = new Map<string, ActivityEvent>();
   const noRef: ActivityEvent[] = [];
   for (const e of rows) {
     if (e.type === 'message_sent') continue;
-    if (e.refId) { const p = latest.get(e.refId); if (!p || e.at > p.at) latest.set(e.refId, e); }
+    const key = e.taskId ?? e.refId;
+    if (key) { const p = latest.get(key); if (!p || e.at > p.at) latest.set(key, e); }
     else noRef.push(e);
   }
   const items = [...latest.values(), ...noRef];

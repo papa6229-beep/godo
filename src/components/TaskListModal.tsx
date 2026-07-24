@@ -20,6 +20,11 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   completed: '확인 완료',
   needs_approval: '검토/승인 대기',
   failed: '실패',
+  // RC-2: 기술 상태명을 그대로 노출하지 않고 쉬운 문구로 표시한다.
+  partially_completed: '일부 완료',
+  cancelled: '작업 중단',
+  not_adopted: '이번 결과 사용 안 함',
+  returned: '협업 요청 반송',
 };
 
 export const TaskListModal: React.FC<TaskListModalProps> = ({

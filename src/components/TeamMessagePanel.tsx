@@ -9,10 +9,16 @@ import {
 } from '../types/teamMessage';
 
 // 팀 간 소통 패널 — 받은 요청 / 보낸 요청 / 새 요청.
-// 발신 주체는 현재 선택 팀의 운영자(사람). (추후 AI 에이전트도 같은 서비스 API로 발신)
+//
+// RC-2 D-1.3.1: **보고 있는 팀(viewedTeamId)과 보내는 사람(actor)은 다른 값이다.**
+//   총괄이 상품팀 화면을 열어 놓고 메시지를 보내도 발신자는 총괄이어야 한다.
+//   화면 선택값으로 신원을 만들면 그 팀 사람인 것처럼 기록된다(사칭).
 
 interface Props {
-  teamId: DeptTeamId;
+  /** 지금 화면에서 보고 있는 팀의 메시지함. 신원이 아니다. */
+  viewedTeamId: DeptTeamId;
+  /** 실제로 보내고 처리하는 사람. 세션 역할에서 온다. */
+  actor: { kind: 'human' | 'agent'; teamId: DeptTeamId; label: string };
   messages: TeamMessage[];
   onPost: (input: CreateTeamMessageInput) => void;
   onResolve: (id: string, status: TeamMessageStatus) => void;
@@ -43,10 +49,14 @@ const Attachments: React.FC<{ items: TeamMessageAttachment[] }> = ({ items }) =>
   );
 };
 
-export const TeamMessagePanel: React.FC<Props> = ({ teamId, messages, onPost, onResolve, onMarkRead }) => {
+export const TeamMessagePanel: React.FC<Props> = ({ viewedTeamId, actor, messages, onPost, onResolve, onMarkRead }) => {
+  // 메시지함은 보고 있는 팀 기준, 발신·처리 권한은 actor 기준.
+  const teamId = viewedTeamId;
+  /** 이 메시지를 처리할 수 있는 사람인가 — 받은 팀 본인만. 총괄이 대신 처리하지 않는다. */
+  const canResolve = (m: TeamMessage): boolean => actor.teamId === m.toTeam;
   const [tab, setTab] = useState<'inbox' | 'outbox' | 'compose'>('inbox');
   // compose 상태
-  const [toTeam, setToTeam] = useState<DeptTeamId>(TEAM_IDS.find((t) => t !== teamId) as DeptTeamId);
+  const [toTeam, setToTeam] = useState<DeptTeamId>(TEAM_IDS.find((t) => t !== actor.teamId) as DeptTeamId);
   const [kind, setKind] = useState<TeamMessageKind>('support');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -59,7 +69,7 @@ export const TeamMessagePanel: React.FC<Props> = ({ teamId, messages, onPost, on
   const unread = useMemo(() => unreadCountFor(messages, teamId), [messages, teamId]);
 
   // 받는 팀 후보(자기 자신 제외)
-  const toOptions = TEAM_IDS.filter((t) => t !== teamId);
+  const toOptions = TEAM_IDS.filter((t) => t !== actor.teamId);
 
   const onPickFiles = (files: FileList | null) => {
     if (!files || !files.length) return;
@@ -81,7 +91,8 @@ export const TeamMessagePanel: React.FC<Props> = ({ teamId, messages, onPost, on
   const send = () => {
     if (!canSend) return;
     onPost({
-      from: { kind: 'human', teamId, label: '운영자' },
+      // 발신자는 화면 선택값이 아니라 실제 보내는 사람이다.
+      from: { kind: actor.kind, teamId: actor.teamId, label: actor.label },
       toTeam, kind, title, body, attachments
     });
     setTitle(''); setBody(''); setAttachments([]); setKind('support');
@@ -112,10 +123,10 @@ export const TeamMessagePanel: React.FC<Props> = ({ teamId, messages, onPost, on
               {m.body && <div className="tmsg-body">{m.body}</div>}
               <Attachments items={m.attachments} />
               <div className="tmsg-actions">
-                {m.status !== 'in_progress' && m.status !== 'done' && (
+                {canResolve(m) && m.status !== 'in_progress' && m.status !== 'done' && (
                   <button type="button" className="tmsg-btn" onClick={() => onResolve(m.id, 'in_progress')}>진행중으로</button>
                 )}
-                {m.status !== 'done' && (
+                {canResolve(m) && m.status !== 'done' && (
                   <button type="button" className="tmsg-btn tmsg-btn-done" onClick={() => onResolve(m.id, 'done')}>완료 처리</button>
                 )}
                 {m.status === 'done' && <span className="tmsg-done-note">처리 완료됨</span>}

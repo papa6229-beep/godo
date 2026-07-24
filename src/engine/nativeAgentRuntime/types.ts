@@ -19,6 +19,7 @@ export type AgentJobStatus =
 
 export type AgentResultStatus =
   | 'success'
+  | 'partial'        // RC-2(G3): 일부 성공 — 성공/실패 이분법으로 뭉개지 않는다
   | 'needs_review'
   | 'blocked'
   | 'failed';
@@ -89,6 +90,11 @@ export interface AgentResult {
 export interface AgentArtifact {
   id: string;
   runId: string;
+  /** RC-2: 이 산출물이 어느 실행/작업/업무에서 나왔는지 역참조. */
+  resultId?: string;
+  jobId?: string;
+  taskId?: string;
+  correlationId?: string;
   agentId: string;
   departmentId: DepartmentId;
   type:
@@ -108,6 +114,9 @@ export interface AgentArtifact {
 export interface AgentHandoff {
   id: string;
   runId: string;
+  /** RC-2(G4): 어느 업무 흐름의 handoff 인지 보존해 역추적을 가능하게 한다. */
+  taskId?: string;
+  correlationId?: string;
   fromDepartmentId: DepartmentId;
   toDepartmentId: DepartmentId;
   fromAgentId: string;
@@ -120,7 +129,10 @@ export interface AgentHandoff {
 
 export interface NativeAgentRun {
   id: string;
-  status: 'idle' | 'running' | 'completed' | 'failed';
+  /** RC-2(G3): 부분 실패를 표현한다. 예외가 없다는 이유만으로 completed 로 고정하지 않는다. */
+  status: 'idle' | 'running' | 'completed' | 'partially_completed' | 'failed';
+  /** 실패한 작업 수(0이면 완전 성공). */
+  failedJobCount?: number;
   startedAt: string;
   completedAt?: string;
   objective: string;

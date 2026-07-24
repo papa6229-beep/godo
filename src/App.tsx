@@ -9,6 +9,7 @@ import { TaskResultModal } from './components/TaskResultModal';
 import { ApprovalDetailModal } from './components/ApprovalDetailModal';
 import { OpeningScreen } from './components/OpeningScreen';
 import { MainLayout } from './components/MainLayout';
+import { ApprovalListModal } from './components/ApprovalListModal';
 import { AgentDetailModal } from './components/AgentDetailModal';
 import { ReportModal } from './components/ReportModal';
 import { initialBrainKnowledgeItems } from './data/brainKnowledge';
@@ -29,10 +30,25 @@ import { getScenarioData, type ValidationScenarioType } from './engine/nativeAge
 import { useTheme } from './hooks/useTheme';
 import { classifyResource, userLabelOf, migrateResourceProvenance } from './services/dataSourceProvenanceContract';
 import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigration';
+import { isSameAgent } from './services/agentIdRegistry';
+import {
+  hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
+  actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
+  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest
+} from './services/taskLifecycleAppAdapter';
+import type { ApprovalDecisionKind } from './services/taskLifecycleContract';
+import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
+import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
+import type { ViewerRole } from './services/sessionRole';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
 // (effect 안의 unguarded setItem이 throw하면 React가 통째로 언마운트/흰 화면이 됨 → 방지)
+// 업무 id·시각 생성기 — 렌더 중 호출되지 않도록 컴포넌트 밖에 둔다(핸들러에서만 부른다).
+const nowIso = () => new Date().toISOString();
+const newTaskId = () => `task-manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const newLogId = () => `log-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+
 const safeSetItem = (key: string, value: string) => {
   try {
     window.localStorage.setItem(key, value);
@@ -91,12 +107,38 @@ function App() {
     }
   });
 
-  const [tasks, setTasks] = useState<OperationTask[]>([]);
+  // RC-2 D-1: 업무·승인 상태의 정본은 저장된 lifecycle task 다. 화면 상태는 거기서 파생한다.
+  //   (App 이 localStorage 를 직접 만지지 않고 어댑터/저장 서비스만 사용한다.)
+  const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForRole(loadRole())));
+  // RC-2 D-1.3: 팀장 화면은 화면용 요약이 아니라 **정본 LifecycleTask** 를 그대로 본다.
+  //   (수행자·이력·제출 내용이 필요하다. 저장·갱신은 계속 App 이 소유한다.)
+  const [lifecycleFlows, setLifecycleFlows] = useState(() => {
+    // 구버전 저장자료에 소속을 확인할 수 없는 담당자가 남아 있으면 지우지 않고 '소속 확인 필요'로 표시한다.
+    //   (신규 입력은 애초에 거부된다 — 이건 과거 자료 전용, idempotent.)
+    quarantineUnknownAffiliation();
+    return taskFlowsFor(actorForRole(loadRole()));
+  });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department'>('office');
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>([]);
+  const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>(() => hydrateAppState().approvalQueue);
+  // 결정이 끝난 항목도 이력에서 계속 조회 가능해야 한다(승인 대기열에서만 빠진다).
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalItem[]>(() => hydrateAppState().history);
+  // 역할 전환기와 동기화 — 전환 직후 결정 버튼도 새 역할을 사용한다.
+  const [viewerRole, setViewerRole] = useState<ViewerRole>(() => loadRole());
+  // 역할이 바뀌면 열람 범위도 함께 바뀐다(팀장 ↔ 총괄 전환 시 이전 역할의 목록이 남지 않게).
+  useEffect(() => subscribeRole(() => {
+    const next = loadRole();
+    setViewerRole(next);
+    setTasks(visibleTasksFor(actorForRole(next)));
+    setLifecycleFlows(taskFlowsFor(actorForRole(next)));
+  }), []);
+  // 지금 이 역할이 결정할 수 있는 대기 업무(= '내 확인 대기').
+  const myPendingTasks = pendingForActor(actorForRole(viewerRole));
+  // '내 확인 대기' 목록(기존 승인 모달 재사용 — 새 화면을 만들지 않는다).
+  const myPendingApprovals = approvalQueue.filter(q => myPendingTasks.some(t => t.id === q.taskId));
+  const [showMyApprovals, setShowMyApprovals] = useState(false);
   const [report, setReport] = useState<OperationReport | null>(null);
   const [selectedTaskForResult, setSelectedTaskForResult] = useState<OperationTask | null>(null);
   const [selectedApprovalDetail, setSelectedApprovalDetail] = useState<ApprovalItem | null>(null);
@@ -461,7 +503,7 @@ function App() {
   // 로그 추가 유틸리티
   const addLog = (text: string, type: LogEntry['type'], agentName?: string) => {
     const newLog: LogEntry = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: newLogId(),
       timestamp: getFormattedTime(),
       text,
       type,
@@ -476,7 +518,24 @@ function App() {
 
     setIsSimulating(true);
     setReport(null);
-    setApprovalQueue([]);
+
+    // RC-2 D-1.3: 총괄의 '오늘의 운영 시작'은 **각 팀장에게 오늘 점검을 지시**하는 것이다.
+    //   총괄이 다른 팀 AI 를 대신 실행하지 않는다. 수행 방식은 각 팀장이 정한다.
+    if (viewerRole === 'hq') {
+      const targets = VIEWER_ROLES.filter((r) => r.id !== 'hq');
+      for (const t of targets) {
+        createDirectiveTask(
+          // 이 실행은 검증 시나리오 기반 시험 운영이므로 만들어지는 지시도 시험 표식을 갖는다.
+          //   (정식 HQ 업무 지시는 업무 탭의 '팀에 지시' 경로로 따로 만든다.)
+          { title: `[시험 시나리오] 오늘의 운영 점검 — ${t.label}`, targetTeamId: t.id, instructedBy: sessionActor() },
+          { newId: newTaskId, nowIso: nowIso() }
+        );
+      }
+      refreshLifecycleState();
+      addLog(`오늘의 운영 점검을 ${targets.length}개 팀장에게 지시했습니다. 수행 방식은 각 팀장이 정합니다.`, 'info', 'SYSTEM');
+    }
+    // RC-2 D-1.1: 실행 중 기존 승인 목록을 비우지 않는다.
+    //   (비우면 실행 실패 시 새로고침 전까지 대기 건이 사라져 보인다. 정본은 저장 원장이다.)
     
     // 시나리오 데이터 적용
     const scenarioData = getScenarioData(validationScenario);
@@ -522,27 +581,10 @@ function App() {
       }
 
       // 픽셀 오피스 에이전트 상태 업데이트 (기존 9인 캐릭터 매핑)
+      // RC-2(G4): 화면 id ↔ 런타임 id 를 if-else 로 수동 매핑하지 않는다.
+      //   단일 별칭표(agentIdRegistry)로 canonical 비교한다. 캐릭터명·표시명은 그대로.
       setAgents(prev => prev.map(a => {
-        let matchingJob = null;
-        if (a.id === 'manager') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'manager_agent');
-        } else if (a.id === 'product') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'product_lead');
-        } else if (a.id === 'order') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'product_analyst');
-        } else if (a.id === 'stock') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'inventory_monitor');
-        } else if (a.id === 'cs') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'cs_lead');
-        } else if (a.id === 'delivery') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'inquiry_analyst');
-        } else if (a.id === 'review') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'review_detector');
-        } else if (a.id === 'marketing') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'marketing_lead');
-        } else if (a.id === 'trend_researcher' || a.id === 'finance') {
-          matchingJob = runtimeResult.run.jobs.find(j => j.assignedAgentId === 'trend_researcher');
-        }
+        const matchingJob = runtimeResult.run.jobs.find(j => isSameAgent(j.assignedAgentId, a.id)) ?? null;
 
         if (matchingJob) {
           return {
@@ -579,49 +621,19 @@ function App() {
         addLog(`[Brain] RAG 시스템이 지식 저장소에서 "${file}"을(를) 참조했습니다.`, 'info', 'Brain');
       });
 
-      // 3. Today's Tasks(tasks)에 협업 제안 반영
-      const runtimeTasks: OperationTask[] = runtimeResult.orchestration.proposedTasks.map((t, idx) => ({
-        id: `runtime-task-${idx}-${Date.now()}`,
-        title: t.title,
-        description: t.description,
-        assignedAgentId: t.agentId,
-        status: 'completed',
-        riskLevel: 'medium',
-        permission: 'approval_required',
-        routeType: 'local',
-        resultSummary: t.description,
-        createdAt: new Date().toISOString(),
-        completedAt: new Date().toISOString()
-      }));
-      setTasks(runtimeTasks);
-
-      // 4. Approval Queue에 반영
-      const newApprovals: ApprovalItem[] = runtimeResult.orchestration.proposedApprovalItems.map((item, idx) => {
-        const apprId = `appr-runtime-${idx}-${Date.now()}`;
-        return {
-          id: apprId,
-          taskId: `task-${item.agentId}-${Date.now()}`,
-          title: item.title,
-          requestedByAgentId: item.agentId,
-          riskLevel: item.artifact.approvalRequired ? 'high' : 'medium',
-          reason: item.reason,
-          proposedAction: item.proposedAction + '\n\n' + item.artifact.body,
-          status: 'waiting',
-          originalIssue: item.artifact.body,
-          generatedDraft: item.artifact.body,
-          metadata: {
-            modelId: (item.artifact.data?.modelId as string) || 'local_gemma',
-            latency: 1200,
-            fallbackUsed: false,
-            piiRemoved: true,
-            route: 'LOCAL',
-            taskType: item.artifact.type,
-            sourceType: activeOperationsData.sourceType,
-            approvalRequired: item.artifact.approvalRequired
-          }
-        };
-      });
-      setApprovalQueue(newApprovals);
+      // 3. RC-2 D-1.3: 이 실행은 **시험 운영**이다.
+      //    입력이 검증 시나리오(getScenarioData → defaultOperationsData 복제본)이고,
+      //    총괄이 버튼 하나로 각 팀 AI 를 대신 돌린 결과이기도 하다.
+      //    그래서 결과를 실제 운영 업무·승인함에 넣지 않는다(팀장 우회 + 시험/실제 혼합 금지).
+      //    실제 업무는 아래에서 **각 팀장에게 보내는 지시**로만 만들어진다.
+      for (const p of runtimeResult.orchestration.proposedTasks) {
+        addLog(`[시험 운영] 제안: ${p.title} — 시험 자료입니다(실제 업무 아님).`, 'info', 'SYSTEM');
+      }
+      addLog(
+        `[시험 운영] 결과 ${runtimeResult.orchestration.proposedTasks.length}건은 시험 자료입니다. ` +
+        '실제 업무·승인함에는 저장하지 않았습니다.',
+        'warning', 'SYSTEM'
+      );
 
       // 5. 종합 운영 리포트 작성
       const simulatedTasksForReport: OperationTask[] = runtimeResult.run.jobs.map(j => ({
@@ -638,6 +650,8 @@ function App() {
         completedAt: j.completedAt
       }));
       const finalReport = composeOperationReport(simulatedTasksForReport, snapshotToUse);
+      // 이 리포트는 검증 시나리오로 돌린 **시험 운영** 결과다. 실제 운영 실적으로 읽히지 않게 표시한다.
+      finalReport.summary = `[시험 운영 · 검증 시나리오] ${finalReport.summary}`;
       
       finalReport.warningSignals = runtimeResult.run.results.reduce((acc: string[], r) => {
         return acc.concat(r.riskFlags);
@@ -651,11 +665,14 @@ function App() {
 
       // OperationHistoryItem 축적 저장 (캘린더 연동)
       const newHistoryItem: OperationHistoryItem = {
-        id: `op-hist-${Date.now()}`,
+        // RC-2: 임의 시각 기반 id 대신 이 실행의 run id 로 고정한다(역추적 가능·순수).
+        id: `op-hist-${runtimeResult.run.id}`,
         date: activeOperationsData.importedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
         timestamp: new Date().toLocaleTimeString(),
-        sourceType: activeOperationsData.sourceType,
-        reportTitle: `Native 협업 자동화 운영 보고서 (${userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind)})`,
+        // RC-2 D-1.3.1: 이력의 출처는 **이 실행이 실제로 쓴 입력**(검증 시나리오)이어야 한다.
+        //   화면에 실제 데이터가 열려 있다는 이유로 시험 실행을 실제로 기록하지 않는다.
+        sourceType: snapshotToUse.sourceType,
+        reportTitle: `[시험 운영] Native 협업 시험 보고서 (${userLabelOf(classifyResource({ sourceType: snapshotToUse.sourceType }).kind)})`,
         autoCompletedCount: finalReport.autoCompletedCount,
         approvalPendingCount: finalReport.approvalRequiredCount,
         issueHighlights: finalReport.warningSignals,
@@ -671,29 +688,124 @@ function App() {
     }
   };
 
-  // 수동 태스크 추가
-  const handleAddTask = (title: string, agentId: string) => {
-    const newTask: OperationTask = {
-      id: `opt-task-${Date.now()}`,
-      title,
-      description: `수동으로 추가된 작업: ${title}`,
-      assignedAgentId: agentId,
-      status: 'pending',
-      riskLevel: 'low',
-      permission: 'auto',
-      routeType: 'local',
-      createdAt: new Date().toISOString()
-    };
-    
-    setTasks(prev => [...prev, newTask]);
-    const agent = agents.find(a => a.id === agentId);
-    addLog(`사용자가 새로운 수동 작업 "${title}"을 추가하고 [${agent?.name || agentId}] 에이전트에 배정했습니다.`, 'info', 'SYSTEM');
+  // RC-2 D-1.1: 현재 세션 역할(역할 전환기) → 계약 ActorRef.
+  //   역할 전환기를 권한 실증의 정본으로 쓴다(실제 로그인·백엔드 권한은 범위 밖).
+  const sessionActor = () => actorForRole(viewerRole);
+
+  // 저장소 정본에서 화면 상태를 다시 파생한다(단일 갱신 지점).
+  //   RC-2 D-1.2: 업무 목록은 **역할별 열람 범위**로 거른다.
+  //   총괄은 전 팀을 하나의 흐름으로 보고, 팀장은 자기 팀 업무와 자기가 요청한 협업만 본다.
+  const refreshLifecycleState = (next?: ReturnType<typeof hydrateAppState>) => {
+    const st = next ?? hydrateAppState();
+    setTasks(visibleTasksFor(sessionActor()));
+    setLifecycleFlows(taskFlowsFor(sessionActor()));
+    setApprovalQueue(st.approvalQueue);
+    setApprovalHistory(st.history);
+  };
+
+  // 업무 지시 — **팀에게** 보낸다. 수행 방식(AI 배정/직접 처리)은 담당 팀장이 고른다.
+  //   RC-2 D-1.2: 화면에서 AI 를 직접 골라 배정하지 않는다.
+  const handleAddTask = (title: string, targetTeamId: string) => {
+    const teamId = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
+    createDirectiveTask(
+      { title, targetTeamId: teamId, instructedBy: sessionActor() },
+      { newId: newTaskId, nowIso: nowIso() }
+    );
+    refreshLifecycleState();
+    addLog(`새 업무 "${title}"을 ${roleMeta(teamId).label}에게 전달했습니다. 수행 방식은 담당 팀장이 정합니다.`, 'info', 'SYSTEM');
+  };
+
+  // ── RC-2 D-1.3: 팀장 화면 실배선 ──────────────────────────────────────────
+  //   화면은 결정하지 않는다. 계약 함수가 거부하면 그 이유를 그대로 보여 준다.
+
+  const reportOutcome = (r: { ok: boolean; reason?: string }, okText: string) => {
+    if (r.ok) addLog(okText, 'success', 'SYSTEM');
+    else addLog(r.reason ?? '처리할 수 없습니다.', 'warning', 'SYSTEM');
+    refreshLifecycleState();
+  };
+
+  /** 팀장이 수행 방식을 고른다 — 우리 팀 AI에게 맡기기 / 내가 직접 처리. */
+  const handleAssignExecutor = (taskId: string, kind: 'agent' | 'human', executorId?: string) => {
+    const r = assignExecutor(taskId, { kind, executorId, actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, kind === 'agent' ? '담당 AI에게 업무를 맡겼습니다.' : '직접 처리로 지정했습니다.');
+  };
+
+  /** 진행 중인 AI 작업을 팀장이 인수한다(기존 시도는 이력에 남는다). */
+  const handleTakeOver = (taskId: string) => {
+    const r = takeOverByLead(taskId, { actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, '팀장이 직접 인수했습니다. 이전 수행 기록은 그대로 남습니다.');
+  };
+
+  /** 수행자가 결과(업무보고)를 제출한다. 빈 보고는 계약에서 거부된다. */
+  const handleSubmitResult = (taskId: string, report: string) => {
+    const r = submitResult(taskId, { resultSummary: report, actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, '결과를 제출했습니다. 담당 팀장 확인 대기로 넘어갑니다.');
+  };
+
+  /** 확인 완료·수정 요청·미채택·중단·반송 — 어떤 것이 가능한지는 계약이 정한다. */
+  const handleTaskDecision = (taskId: string, kind: ApprovalDecisionKind, reason?: string) => {
+    const r = applyDecision(taskId, { kind, actor: sessionActor(), reason }, { nowIso: nowIso(), newId: newTaskId });
+    reportOutcome(r, '처리했습니다.');
+  };
+
+  /** 총괄·요청자가 담당 팀장에게 중단을 요청한다. 요청만으로는 아무것도 멈추지 않는다. */
+  const handleRequestStop = (taskId: string, reason: string) => {
+    const r = requestTaskStop(taskId, { reason, actor: sessionActor() }, { nowIso: nowIso() });
+    reportOutcome(r, '담당 팀장에게 중단 요청을 보냈습니다. 실제 중단은 담당 팀장이 처리합니다.');
+  };
+
+  /**
+   * RC-2 D-1.3.3.1: 확인 요청 카드에는 '작업 중단' 을 주지 않는다.
+   *   멈출 수행 작업이 없기 때문이다. 일반 업무의 중단 버튼은 그대로 둔다.
+   */
+  const cancelHandlerFor = (reviewOnly?: boolean) => (reviewOnly ? undefined : handleCancel);
+
+  /**
+   * 팀이 총괄에게 보낸 '확인 요청' — 총괄이 결정할 카드 1건을 만든다.
+   *   총괄에게 일을 시키는 게 아니므로 수행자를 배정하지 않고 협업도 만들지 않는다.
+   */
+  const handleHqReview = (message: TeamMessageLike) => {
+    const r = createHqReviewRequest({ message, actor: sessionActor() }, { newId: newTaskId, nowIso: nowIso() });
+    if (!r.ok) {
+      // 메시지는 이미 전달됐다. 카드를 못 만든 사실을 숨기지 않고 그대로 알린다.
+      addLog(`메시지는 전달했지만 총괄 확인 카드를 만들지 못했습니다 — ${r.reason}`, 'warning', 'SYSTEM');
+      return;
+    }
+    refreshLifecycleState();
+    addLog(r.created
+      ? '총괄에게 확인을 요청했습니다. 총괄이 확인 완료 · 수정 요청 · 이번에는 사용 안 함 중 하나를 정합니다.'
+      : '이미 같은 내용으로 확인을 요청해 두었습니다.', 'info', 'SYSTEM');
+  };
+
+  /** 팀 간 협업 요청 — 요청팀 카드와 수행팀 카드를 함께 남긴다. */
+  const handleCollaborationRequest = (title: string, targetTeamId: string) => {
+    const team = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
+    // RC-2 D-1.3.2: 협업이 성립하지 않는 경우(총괄 발신·다른 팀 사칭·같은 팀)는 계약이 막는다.
+    //   화면은 그 이유를 그대로 보여 주고 아무것도 만들지 않는다.
+    try {
+      createCollaborationRequest(
+        { title, requestingTeamId: viewerRole, targetTeamId: team, instructedBy: sessionActor() },
+        { newId: newTaskId, nowIso: nowIso() }
+      );
+    } catch (e) {
+      addLog(e instanceof Error ? e.message : '협업 요청을 만들 수 없습니다.', 'warning', 'SYSTEM');
+      return;
+    }
+    refreshLifecycleState();
+    addLog(`${roleMeta(team).label}에게 협업을 요청했습니다. 요청팀·수행팀 카드가 함께 생성됩니다.`, 'info', 'SYSTEM');
   };
 
   // 상세 모달에서 개별 지시 내리기
-  const handleDirectInstruct = (agentId: string, instruction: string) => {
+  const handleDirectInstruct = (target: { agentId: string; byTeamId: string }, instruction: string) => {
+    const { agentId, byTeamId } = target;
     const agent = agents.find((a) => a.id === agentId);
     if (!agent) return;
+    // RC-2 D-1.2: 자기 팀 AI 에 대한 팀장 지시만 허용. 총괄·다른 팀장의 우회 경로를 막는다.
+    const ownerTeam = teamOfAgent(agentId);
+    if (!ownerTeam || byTeamId !== ownerTeam || viewerRole !== ownerTeam) {
+      addLog(`직접 지시가 거절되었습니다 — 담당 팀장만 이 담당자에게 지시할 수 있습니다.`, 'warning', 'SYSTEM');
+      return;
+    }
 
     setSelectedAgent(null);
 
@@ -728,137 +840,66 @@ function App() {
     }, 2000);
   };
 
-  // 승인 처리 액션
-  const handleApprove = (approvalId: string) => {
+  // ── RC-2 D-1: 승인 결정은 전부 공통 decideApproval 을 통과한다 ──────────────
+  //   App 이 상태를 직접 바꾸지 않고, 어떤 결정도 레코드를 삭제하지 않는다.
+  //   승인 대기열에서만 빠지고 이력(approvalHistory)에는 계속 남는다.
+  const DECISION_LABEL: Record<string, string> = {
+    approve: '확인 완료', request_revision: '수정 요청',
+    not_adopted: '이번 결과 사용 안 함', stop: '작업 중단', return: '협업 요청 반송'
+  };
+
+  const handleDecision = (
+    approvalId: string,
+    kind: 'approve' | 'request_revision' | 'not_adopted' | 'stop' | 'return',
+    reason?: string
+  ) => {
     const item = approvalQueue.find(i => i.id === approvalId);
     if (!item) return;
+    if (kind === 'request_revision' && !String(reason ?? '').trim()) {
+      addLog('[Approval] 수정 요청은 사유가 필요합니다.', 'warning', 'Approval');
+      return;
+    }
 
-    // 관련 태스크를 완료 상태로 변경
-    setTasks(currentTasks => currentTasks.map(t => {
-      if (t.id === item.taskId) {
-        const updatedArtifacts = t.artifacts?.map(art => {
-          if (t.assignedAgentId === 'cs') {
-            const isMatch = item.title.includes(art.title.replace('CS 답변 초안 - ', '').replace(' 고객님', '')) || item.proposedAction.includes(art.generatedDraft || '');
-            if (isMatch) return { ...art, approvalStatus: 'approved' as const };
-          } else {
-            return { ...art, approvalStatus: 'approved' as const };
-          }
-          return art;
-        });
+    const result = applyDecision(
+      item.taskId,
+      { kind, actor: sessionActor(), reason },
+      { nowIso: new Date().toISOString(), newId: () => `task-rev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` }
+    );
 
-        return {
-          ...t,
-          status: 'completed',
-          resultSummary: `${t.resultSummary} (운영자 최종 승인 완료)`,
-          artifacts: updatedArtifacts
-        };
-      }
-      return t;
-    }));
+    if (!result.ok) {
+      addLog(`[Approval] 처리할 수 없습니다: ${result.reason ?? '권한 없음'}`, 'warning', 'Approval');
+      return;
+    }
 
-    // 관련 에이전트 캐릭터를 완료 상태로 갱신하여 픽셀 오피스에 피드백
-    setAgents(currentAgents => currentAgents.map(a => 
-      a.id === item.requestedByAgentId 
-        ? { ...a, status: 'completed', bubbleText: '승인 확인 완료! 🎉' } 
+    refreshLifecycleState(result.state);
+    // 이력은 남고 대기열에서만 빠졌음을 사용자에게 알린다(영구 삭제 아님).
+    addLog(`[Approval] 승인 대기 ${result.state.approvalQueue.length}건 · 처리 완료 이력 ${Math.max(0, result.state.history.length - result.state.approvalQueue.length)}건`, 'info', 'Approval');
+    setAgents(currentAgents => currentAgents.map(a =>
+      isSameAgent(a.id, item.requestedByAgentId)
+        ? { ...a, status: kind === 'approve' ? 'completed' : 'idle', bubbleText: DECISION_LABEL[kind] }
         : a
     ));
 
-    const isCS = item.id.includes('appr-cs-draft') || item.title.includes('CS 답변 초안');
-    
-    if (isCS) {
-      addLog(`[Approval] CS 답변 초안 승인됨 (approval approved)`, 'success', 'Approval');
-      addLog(`[System] 실제 고도몰 답변 등록은 아직 미연동 상태입니다.`, 'info', 'SYSTEM');
-    } else {
-      addLog(`[Approval] "${item.title}" 작업이 운영자 승인을 통과했습니다.`, 'success', 'Approval');
-      addLog(`[System] 승인 처리 완료. 고도몰 외부 액션(쿠폰/발행) 실제 커밋은 아직 미연동 상태입니다.`, 'info', 'SYSTEM');
+    const done = result.state.tasks.find(t => t.id === item.taskId);
+    const stillWaiting = result.state.approvalQueue.some(q => q.taskId === item.taskId);
+    addLog(
+      `[Approval] "${item.title}" — ${DECISION_LABEL[kind]}${reason ? ` (${reason})` : ''}` +
+      (stillWaiting ? ' · 다음 확인 단계가 남아 있습니다.' : done?.status === 'completed' ? ' · 확인이 모두 끝났습니다.' : ''),
+      kind === 'approve' ? 'success' : 'info', 'Approval'
+    );
+    if (result.revisionTaskId) {
+      addLog(`[Approval] 기존 결과는 보존되고 수정본 업무가 생성되었습니다. (원본 ${item.taskId} → 수정본 ${result.revisionTaskId})`, 'info', 'Approval');
     }
-
-    // approval approved Usage Log 기록
-    const approvalUsageLog: EngineUsageLog = {
-      id: `usage-appr-ok-${Date.now()}`,
-      timestamp: getFormattedTime(),
-      taskId: item.taskId,
-      taskTitle: item.title,
-      agentId: item.requestedByAgentId,
-      routeType: 'human',
-      providerId: 'human_gate',
-      modelName: 'System Operator',
-      reason: `[taskType: approval] [status: approved]`,
-      status: 'completed'
-    };
-    setEngineUsageLogs(prev => [...prev, approvalUsageLog]);
-
-    // 큐에서 아이템 제거
-    setApprovalQueue(prev => prev.filter(i => i.id !== approvalId));
-
-    // 상세 모달 열려있으면 동기화 후 닫기
+    addLog('[System] 고도몰 외부 실제 실행(WRITE)은 아직 연동되지 않았습니다. 확인 기록만 남습니다.', 'info', 'SYSTEM');
     setSelectedApprovalDetail(null);
   };
 
-  // 거절 처리 액션
-  const handleReject = (approvalId: string) => {
-    const item = approvalQueue.find(i => i.id === approvalId);
-    if (!item) return;
+  const handleApprove = (approvalId: string) => handleDecision(approvalId, 'approve');
+  const handleReject = (approvalId: string, reason = '이번 결과 사용 안 함') => handleDecision(approvalId, 'not_adopted', reason);
+  const handleRequestRevision = (approvalId: string, reason: string) => handleDecision(approvalId, 'request_revision', reason);
+  const handleCancel = (approvalId: string, reason = '운영자 작업 중단') => handleDecision(approvalId, 'stop', reason);
+  const handleReturn = (approvalId: string, reason = '수행 불가로 반송') => handleDecision(approvalId, 'return', reason);
 
-    // 관련 태스크를 실패 상태로 변경
-    setTasks(currentTasks => currentTasks.map(t => {
-      if (t.id === item.taskId) {
-        const updatedArtifacts = t.artifacts?.map(art => {
-          if (t.assignedAgentId === 'cs') {
-            const isMatch = item.title.includes(art.title.replace('CS 답변 초안 - ', '').replace(' 고객님', '')) || item.proposedAction.includes(art.generatedDraft || '');
-            if (isMatch) return { ...art, approvalStatus: 'rejected' as const };
-          } else {
-            return { ...art, approvalStatus: 'rejected' as const };
-          }
-          return art;
-        });
-
-        return {
-          ...t,
-          status: 'failed',
-          resultSummary: `${t.resultSummary} (운영자 검토 후 반려 처리)`,
-          artifacts: updatedArtifacts
-        };
-      }
-      return t;
-    }));
-
-    // 관련 에이전트 캐릭터를 대기 상태로 원복
-    setAgents(currentAgents => currentAgents.map(a => 
-      a.id === item.requestedByAgentId 
-        ? { ...a, status: 'idle', bubbleText: '작업 반려됨' } 
-        : a
-    ));
-
-    const isCS = item.id.includes('appr-cs-draft') || item.title.includes('CS 답변 초안');
-    
-    if (isCS) {
-      addLog(`[Approval] CS 답변 초안 거절됨 (approval rejected)`, 'error', 'Approval');
-    } else {
-      addLog(`[Approval] "${item.title}" 작업이 운영자에 의해 반려(Reject)되었습니다.`, 'error', 'Approval');
-    }
-
-    // approval rejected Usage Log 기록
-    const approvalUsageLog: EngineUsageLog = {
-      id: `usage-appr-no-${Date.now()}`,
-      timestamp: getFormattedTime(),
-      taskId: item.taskId,
-      taskTitle: item.title,
-      agentId: item.requestedByAgentId,
-      routeType: 'human',
-      providerId: 'human_gate',
-      modelName: 'System Operator',
-      reason: `[taskType: approval] [status: rejected]`,
-      status: 'blocked'
-    };
-    setEngineUsageLogs(prev => [...prev, approvalUsageLog]);
-
-    // 큐에서 아이템 제거
-    setApprovalQueue(prev => prev.filter(i => i.id !== approvalId));
-
-    // 상세 모달 열려있으면 동기화 후 닫기
-    setSelectedApprovalDetail(null);
-  };
 
   const handleCloseReport = () => {
     setReport(null);
@@ -920,6 +961,33 @@ function App() {
       {showOpening ? (
         <OpeningScreen onFinished={() => setShowOpening(false)} />
       ) : (
+        <>
+        {/* RC-2 D-1.1: 역할별 '내 확인 대기' 진입로. 팀장은 본인이 결정할 수 있는 업무만 본다. */}
+        {myPendingApprovals.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowMyApprovals(true)}
+            style={{
+              position: 'fixed', right: 18, bottom: 18, zIndex: 60, padding: '10px 16px', borderRadius: 999,
+              border: '1px solid var(--border, #444)', background: 'var(--accent, #2df5a2)', color: '#04241a',
+              fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.25)'
+            }}
+            title={`${roleMeta(viewerRole).label}이 지금 확인할 수 있는 업무`}
+          >
+            ✅ 내 확인 대기 {myPendingApprovals.length}건
+          </button>
+        )}
+
+        <ApprovalListModal
+          isOpen={showMyApprovals}
+          onClose={() => setShowMyApprovals(false)}
+          items={myPendingApprovals}
+          agents={agents}
+          statuses={['waiting']}
+          title={`내 확인 대기 · ${roleMeta(viewerRole).label}`}
+          onSelectApproval={(item) => { setShowMyApprovals(false); setSelectedApprovalDetail(item); }}
+        />
+
         <MainLayout
           agents={agents}
           tasks={tasks}
@@ -932,6 +1000,17 @@ function App() {
           onToggleTheme={toggleTheme}
           onStartSimulation={handleStartSimulation}
           onAddTask={handleAddTask}
+          departmentLifecycle={{
+            actor: sessionActor(),
+            onCollaborate: handleCollaborationRequest,
+            onHqReview: handleHqReview,
+            flows: lifecycleFlows,
+            onRequestStop: handleRequestStop,
+            onAssign: handleAssignExecutor,
+            onTakeOver: handleTakeOver,
+            onSubmit: handleSubmitResult,
+            onDecide: handleTaskDecision
+          }}
           onSelectAgent={(agent) => setSelectedAgent(agent)}
           onClearLogs={handleClearLogs}
           onApprove={handleApprove}
@@ -992,6 +1071,7 @@ function App() {
           manualCommands={manualCommands}
           onAddManualCommand={handleAddManualCommand}
         />
+        </>
       )}
 
       {currentSelectedAgent && (
@@ -1027,18 +1107,23 @@ function App() {
         <TaskResultModal
           task={selectedTaskForResult}
           onClose={() => setSelectedTaskForResult(null)}
-          approvalQueue={approvalQueue}
+          // RC-2 D-1: 결과 화면에는 이력 전체를 넘긴다(승인·미채택·중단도 계속 조회 가능).
+          approvalQueue={approvalHistory}
           onApprove={handleApprove}
           onReject={handleReject}
+          onCancel={cancelHandlerFor(selectedTaskForResult.reviewOnly)}
         />
       )}
 
       {selectedApprovalDetail && (
         <ApprovalDetailModal
           item={selectedApprovalDetail}
+          onRequestRevision={handleRequestRevision}
+          onReturn={tasks.find(t => t.id === selectedApprovalDetail.taskId)?.parentTaskId ? handleReturn : undefined}
           onClose={() => setSelectedApprovalDetail(null)}
           onApprove={handleApprove}
           onReject={handleReject}
+          onCancel={cancelHandlerFor(selectedApprovalDetail.reviewOnly)}
         />
       )}
     </>

@@ -7,6 +7,7 @@
 //  - 스케줄은 지금은 "선언 + 수동 실행". 실제 시각 자동 발화는 2단계(백엔드/상주 프로세스)에서.
 
 import type { DeptTeamId, TeamMessageKind } from './teamMessage';
+import type { StandingDirective } from '../services/standingDirectiveContract';
 
 export type AgentTaskScheduleKind = 'manual' | 'daily' | 'weekly';
 export interface AgentTaskSchedule {
@@ -32,6 +33,11 @@ export interface AgentTaskSpec {
   reportKind: TeamMessageKind;
   schedule: AgentTaskSchedule;
   approvalMode: AgentTaskApprovalMode;
+  /**
+   * RC-2 D-1.2: 자동(시각) 실행은 담당 팀장이 미리 승인한 **상시 지시**가 있을 때만 가능하다.
+   * 없으면 이 업무는 스스로 돌지 않고 팀장 확인을 기다린다(수동 실행은 사람이 누르는 것이라 별개).
+   */
+  standing?: StandingDirective;
 }
 
 export const APPROVAL_MODE_META: Record<AgentTaskApprovalMode, { label: string; short: string; desc: string }> = {

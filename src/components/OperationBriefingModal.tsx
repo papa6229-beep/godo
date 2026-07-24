@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { NativeAgentRun, AgentHandoff } from '../engine/nativeAgentRuntime/types';
 import type { ApprovalItem } from '../types/approval';
+import { approvalTeamId, teamIdForDepartment } from '../services/taskLifecycleAppAdapter';
 import { MetricDrilldownModal, type MetricType } from './MetricDrilldownModal';
 import { HandoffDetailModal } from './HandoffDetailModal';
 import './OperationBriefingModal.css';
@@ -251,7 +252,13 @@ export const OperationBriefingModal: React.FC<OperationBriefingModalProps> = ({
             )}
             approvalItems={drilldown.deptId === '*'
               ? approvalItems
-              : approvalItems.filter(a => a.requestedByAgentId.startsWith(drilldown.deptId))}
+              // RC-2 D-1.3.3.2.1: 문자열 startsWith 추측 대신 공통 판정으로 부서 귀속을 정한다.
+              //   부서(departmentId)를 팀(teamId)으로 정규화해 같은 축에서 비교하고,
+              //   근거 없는(미상) 자료는 어느 부서로도 승격하지 않는다.
+              : approvalItems.filter(a => {
+                  const team = approvalTeamId(a);
+                  return team !== undefined && team === teamIdForDepartment(drilldown.deptId);
+                })}
             onApprove={onApprove}
             onReject={onReject}
           />

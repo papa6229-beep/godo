@@ -11,6 +11,8 @@ import type { RevenueResult } from './departmentDataService';
 import type { DepartmentSourceOfTruthSnapshot } from './departmentDataSourceOfTruth';
 import type { AgentTaskSpec } from '../types/agentTask';
 import type { TeamMessage, TeamMessageActor } from '../types/teamMessage';
+import { canRunStandingDirective } from './standingDirectiveContract';
+import type { StandingRunVerdict } from './standingDirectiveContract';
 
 const won = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}원`;
 const cnt = (n: number): string => `${Math.round(n).toLocaleString('ko-KR')}`;
@@ -45,48 +47,137 @@ export interface RunAgentTaskContext {
   nowMs?: number;
 }
 
+// RC-2(G2): 자동업무의 업무 식별자. 같은 spec 의 대기→완료가 같은 키로 닫히게 한다.
+export const lifecycleTaskId = (spec: AgentTaskSpec): string => `agenttask-${spec.id}`;
+
 const agentActor = (spec: AgentTaskSpec): TeamMessageActor => ({ kind: 'agent', teamId: spec.teamId, label: spec.agentLabel, agentId: spec.agentId });
 
 // canonical 계산만(발신·기록 없음). approval/draft에서 사람 검토용 본문 생성.
-export function computeAgentReport(spec: AgentTaskSpec, revenue: RevenueResult | null, nowMs?: number): { title: string; body: string } {
+function computeAgentReport(spec: AgentTaskSpec, revenue: RevenueResult | null, nowMs?: number): { title: string; body: string } {
   const snap = buildDepartmentSourceOfTruthSnapshot(revenue, nowMs != null ? { nowMs } : {});
   return formatTaskReport(spec, snap);
 }
 
 // 최종 보고 발신 + 원장 기록. resolvedByHuman=true(승인/검토 후)면 approval(done)로도 남긴다.
-export function postAgentReport(spec: AgentTaskSpec, report: { title: string; body: string }, ctx: RunAgentTaskContext, opts?: { resolvedByHuman?: boolean }): { posted: TeamMessage } {
+function postAgentReport(spec: AgentTaskSpec, report: { title: string; body: string }, ctx: RunAgentTaskContext, opts?: { resolvedByHuman?: boolean }): { posted: TeamMessage } {
   const from = agentActor(spec);
   const posted = postTeamMessage({ from, toTeam: spec.reportTo, kind: spec.reportKind, title: report.title, body: report.body }, ctx.nowIso);
+  // RC-2(G2): 추적 키는 **업무 식별자(spec.id)**. refId(메시지 id)만 남기면 원 업무로 돌아갈 수 없다.
   logActivity({
     teamId: spec.teamId, type: 'task_run', status: 'done',
     title: spec.title, detail: `${report.body} → ${DEPT_TEAM_META[spec.reportTo].name}에 보고`,
-    actor: from, relatedTeam: spec.reportTo, refId: posted.id
+    actor: from, relatedTeam: spec.reportTo, refId: posted.id,
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
   }, ctx.nowIso);
   if (opts?.resolvedByHuman) {
-    logActivity({ teamId: spec.teamId, type: 'approval', status: 'done', title: `${spec.title} 승인/등록`, actor: { kind: 'human', teamId: spec.teamId, label: '운영자' }, refId: posted.id }, ctx.nowIso);
+    logActivity({ teamId: spec.teamId, type: 'approval', status: 'done', title: `${spec.title} 승인/등록`,
+      actor: { kind: 'human', teamId: spec.teamId, label: '운영자' }, refId: posted.id,
+      taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec) }, ctx.nowIso);
   }
   return { posted };
 }
 
-// 자동 완료 경로(approvalMode='auto' 또는 스케줄러): 계산 → 발신 → 원장(done).
-export function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { posted: TeamMessage; body: string } {
+/**
+ * RC-2 D-1.2 — 이 자동 업무가 **스스로** 돌아도 되는지.
+ *   사람이 화면에서 직접 누른 실행은 여기 해당하지 않는다(그건 사람의 결정이다).
+ *   상시 지시가 없거나 승인이 없으면 자동 실행하지 않고 팀장 확인 대기로 남긴다.
+ */
+export function canAutoRunAgentTask(spec: AgentTaskSpec): StandingRunVerdict {
+  return canRunStandingDirective(spec.standing);
+}
+
+// 자동 완료 경로: 계산 → 발신 → 원장(done).
+//   RC-2 D-1.3.1: **모듈 내부 전용.** 게이트를 보지 않는 함수라서 밖으로 내보내지 않는다.
+//   (주석으로 '쓰지 말 것' 이라고 적는 것만으로는 우회를 막지 못한다.)
+//   공개 진입점은 runManualAgentTask(사람) / runScheduledAgentTask(스케줄) 뿐이다.
+function runAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { posted: TeamMessage; body: string } {
   const report = computeAgentReport(spec, ctx.revenue, ctx.nowMs);
   const { posted } = postAgentReport(spec, report, ctx);
   return { posted, body: report.body };
 }
 
 // 승인/검토 경로: 계산 → 원장(task_run, pending)만. 발신은 사람 승인 후(approveAgentTask).
-export function stageApprovalTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { title: string; body: string } {
+//   RC-2 D-1.3.1: 모듈 내부 전용(공개 진입점을 통해서만 도달한다).
+function stageApprovalTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): { title: string; body: string } {
   const report = computeAgentReport(spec, ctx.revenue, ctx.nowMs);
   logActivity({
     teamId: spec.teamId, type: 'task_run', status: 'pending',
     title: spec.title, detail: `${report.body} (승인 대기)`,
-    actor: agentActor(spec), relatedTeam: spec.reportTo
+    actor: agentActor(spec), relatedTeam: spec.reportTo,
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
   }, ctx.nowIso);
   return report;
+}
+
+// RC-2(G2): 반려·중단 — 발신하지 않고 같은 업무 식별자로 상태만 닫는다(기록 삭제 없음).
+export function rejectAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, reason: string): void {
+  logActivity({
+    teamId: spec.teamId, type: 'approval', status: 'rejected',
+    title: `${spec.title} 반려`, detail: reason,
+    actor: { kind: 'human', teamId: spec.teamId, label: '운영자' },
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
+  }, ctx.nowIso);
+}
+
+export function cancelAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, reason: string): void {
+  logActivity({
+    teamId: spec.teamId, type: 'task_run', status: 'rejected',
+    title: `${spec.title} 작업 중단`, detail: reason,
+    actor: { kind: 'human', teamId: spec.teamId, label: '운영자' },
+    taskId: lifecycleTaskId(spec), correlationId: lifecycleTaskId(spec)
+  }, ctx.nowIso);
 }
 
 // 사람이 승인/수정한 본문으로 최종 발신 + 원장(done + approval).
 export function approveAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext, body: string): { posted: TeamMessage } {
   return postAgentReport(spec, { title: spec.title, body }, ctx, { resolvedByHuman: true });
+}
+
+// ── RC-2 D-1.3: 공개 진입점 ────────────────────────────────────────────────
+//   미래의 스케줄러가 raw runAgentTask 를 직접 불러 상시 지시 확인을 건너뛰지 못하게 한다.
+
+export type AgentTaskRunOutcome =
+  | { ran: true; body: string; staged: false; dataKind: 'real' | 'fixture' }
+  | { ran: false; staged: true; body: string; reason: string; dataKind: 'real' | 'fixture' }
+  | { ran: false; staged: false; reason: string };
+
+/** 사람이 화면에서 직접 누른 실행 — **그 팀 팀장만**. */
+export function runManualAgentTask(
+  spec: AgentTaskSpec,
+  actor: { kind: 'human' | 'agent'; teamId: string },
+  ctx: RunAgentTaskContext
+): AgentTaskRunOutcome {
+  if (actor.kind !== 'human' || actor.teamId !== spec.teamId) {
+    return { ran: false, staged: false, reason: '담당 팀장만 이 업무를 실행할 수 있습니다.' };
+  }
+  const verdict = canAutoRunAgentTask(spec);
+  // 사람이 눌렀더라도 고위험 결과를 그냥 내보내지는 않는다.
+  if (spec.approvalMode !== 'auto' || verdict.requiresLeadConfirmation) {
+    const report = stageApprovalTask(spec, ctx);
+    return {
+      ran: false, staged: true, body: report.body, dataKind: verdict.dataKind,
+      reason: verdict.requiresLeadConfirmation
+        ? '고위험 업무라 결과를 바로 보내지 않고 확인 뒤 보고합니다.'
+        : '확인 후 보고하도록 설정된 업무입니다.'
+    };
+  }
+  const { body } = runAgentTask(spec, ctx);
+  return { ran: true, staged: false, body, dataKind: verdict.dataKind };
+}
+
+/** 시각 스케줄이 부르는 유일한 진입점 — 상시 지시 확인을 **건너뛸 수 없다**. */
+export function runScheduledAgentTask(spec: AgentTaskSpec, ctx: RunAgentTaskContext): AgentTaskRunOutcome {
+  const verdict = canRunStandingDirective(spec.standing);
+  if (!verdict.allowed) {
+    return { ran: false, staged: false, reason: verdict.reason ?? '담당 팀장 확인이 필요합니다.' };
+  }
+  if (verdict.requiresLeadConfirmation || spec.approvalMode !== 'auto') {
+    const report = stageApprovalTask(spec, ctx);
+    return {
+      ran: false, staged: true, body: report.body, dataKind: verdict.dataKind,
+      reason: '결과를 담당 팀장이 확인한 뒤 보고합니다.'
+    };
+  }
+  const { body } = runAgentTask(spec, ctx);
+  return { ran: true, staged: false, body, dataKind: verdict.dataKind };
 }

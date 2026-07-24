@@ -5,6 +5,11 @@ import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import type { ControlChatMessage, ControlTaskCandidate } from '../types/controlChat';
 import { processControlChat } from '../services/controlChatService';
+import { teamOfAgent } from '../services/taskLifecycleAppAdapter';
+import { VIEWER_ROLES } from '../services/sessionRole';
+
+// 업무를 받을 팀(총괄 자신은 지시 대상이 아니다).
+const TARGET_TEAMS = VIEWER_ROLES.filter((r) => r.id !== 'hq');
 import { getGlobalBrainSelection, providerLabel, isBrainConnected } from '../services/aiBrainSettings';
 import { loadHqMessages, saveHqMessages } from '../services/hqChatMemory';
 import { answerCommerceQuestion } from '../services/commerceDataQueryEngine';
@@ -23,7 +28,8 @@ interface ChatConsoleProps {
   tasks: OperationTask[];
   approvalQueue: ApprovalItem[];
   onAddLog: (text: string, type: 'info' | 'success' | 'warning' | 'error' | 'agent', agentName?: string) => void;
-  onAddTask: (title: string, agentId: string) => void;
+  /** RC-2 D-1.2: 업무는 **팀에게** 보낸다(수행 방식은 담당 팀장이 고른다). 두 번째 인자는 팀 id. */
+  onAddTask: (title: string, targetTeamId: string) => void;
   onStartSimulation: () => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
@@ -332,17 +338,14 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
       ];
 
   const [quickTaskTitle, setQuickTaskTitle] = useState('');
-  const [quickTaskAgent, setQuickTaskAgent] = useState(agents[0]?.id || 'cs');
+  const [quickTaskTeam, setQuickTaskTeam] = useState<string>(TARGET_TEAMS[0].id);
 
   const handleQuickTaskAdd = () => {
     if (!quickTaskTitle.trim()) return;
-    onAddTask(quickTaskTitle, quickTaskAgent);
-    
-    // 에이전트 이름 가져오기
-    const selectedAgent = agents.find(a => a.id === quickTaskAgent);
-    const agentName = selectedAgent ? selectedAgent.name : 'AI 에이전트';
-    
-    onAddLog(`[Quick Add] [${quickTaskTitle}] 작업이 ${agentName}에게 배정되었습니다.`, 'success');
+    onAddTask(quickTaskTitle, quickTaskTeam);
+
+    const team = TARGET_TEAMS.find(t => t.id === quickTaskTeam);
+    onAddLog(`[Quick Add] [${quickTaskTitle}] 업무를 ${team ? team.label : quickTaskTeam}에게 전달했습니다. 수행 방식은 담당 팀장이 정합니다.`, 'success');
     setQuickTaskTitle('');
   };
 
@@ -427,7 +430,7 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         
         if (act.type === 'start_operation') {
           onStartSimulation();
-          onAddLog('운영자가 채팅 명령을 통해 오늘의 전체 자동 운영을 구동시켰습니다.', 'success', 'CEO');
+          onAddLog('운영자가 채팅 명령으로 시험 운영(검증 시나리오)을 시작했습니다. 결과는 시험 자료입니다.', 'success', 'CEO');
         } else if (act.type === 'approve_all') {
           const pendingWaiting = approvalQueue.filter(a => a.status === 'waiting');
           pendingWaiting.forEach(item => {
@@ -480,13 +483,14 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   };
 
   const handleAddCandidateTask = (candidate: ControlTaskCandidate) => {
-    onAddTask(candidate.title, candidate.agentId);
-    onAddLog(`[Control Chat] 작업 후보 [${candidate.title}]가 Today's Tasks에 추가되었습니다.`, 'success');
+    // AI 지목은 **추천**일 뿐이므로 담당 팀으로만 보낸다(직접 배정 금지).
+    onAddTask(candidate.title, teamOfAgent(candidate.agentId) ?? 'hq');
+    onAddLog(`[Control Chat] 작업 후보 [${candidate.title}]를 담당 팀장에게 전달했습니다.`, 'success');
     
     const noticeMsg: ControlChatMessage = {
       id: generateMessageId('msg-notice'),
       role: 'system',
-      content: `✓ [${candidate.title}] 작업 후보가 오른쪽 Today's Tasks에 정식 배정되었습니다. AI 에이전트의 실행 결과를 확인해 주세요.`,
+      content: `✓ [${candidate.title}] 업무를 담당 팀장에게 전달했습니다. 수행 방식(AI 배정 / 직접 처리)은 담당 팀장이 정합니다.`,
       createdAt: getFormattedTime()
     };
     setMessages((prev) => [...prev, noticeMsg]);
@@ -653,13 +657,13 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
           }}
         />
         <select
-          value={quickTaskAgent}
-          onChange={(e) => setQuickTaskAgent(e.target.value)}
+          value={quickTaskTeam}
+          onChange={(e) => setQuickTaskTeam(e.target.value)}
           className="quick-bar-select"
         >
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.emoji} {agent.name.split(' ')[0]}
+          {TARGET_TEAMS.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.emoji} {team.short}
             </option>
           ))}
         </select>
