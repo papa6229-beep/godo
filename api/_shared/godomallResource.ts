@@ -8,6 +8,7 @@
 // 이 모듈만 사용하면 각 라우트(sync.ts, [resource].ts 등)는 동일한 동작/표기를 보장한다.
 
 import { getGodomallConfig, isLiveMode, postGodomall } from './godomallOpenApiClient.js';
+import { loadSimCatalogV1 } from './simCatalog/simCatalogV1.js';
 import { parseGodomallXml, extractList } from './godomallXmlParser.js';
 import {
   mapGoodsToProducts,
@@ -425,8 +426,6 @@ export const resolveOrdersRevenue = async (
   let realOrdersErrorMessage: string | undefined;
   let syntheticStatus: 'not_requested' | 'success' | 'unavailable' = 'not_requested';
   let syntheticErrorMessage: string | undefined;
-  // 상품 카탈로그 조회 성공 여부 — 시뮬레이션 가능 여부의 근거(주문 성패와 독립).
-  let productsOk = false;
 
   if (config.mode === 'mock') {
     // 명시적 시험 모드에서만 fixture 주문을 제시한다. **real_godomall/dataKind:'real' 로 표시하지 않는다.**
@@ -438,10 +437,10 @@ export const resolveOrdersRevenue = async (
     syntheticErrorMessage = NOT_CONFIGURED_MESSAGE;
   } else {
     // 주문 조회와 상품 조회를 **독립적으로** 수행한다(한 try 블록에 묶지 않는다).
+    //   실 products 는 **실제 주문 조인용(buildProductIndex)에만** 쓴다.
+    //   시뮬레이션 상품 원천이 아니다(=sim-catalog-v1 정본) → 실 상품 실패/변경이 시뮬레이션에 영향 없음.
     const productRes = await fetchProductsForJoin(config);
-    productsOk = productRes.ok;
     products = productRes.products;
-    if (!productRes.ok) syntheticErrorMessage = productRes.errorMessage;
 
     const orderRes = await fetchRealRevenueOrders(config, buildProductIndex(products));
     if (orderRes.ok) {
@@ -456,23 +455,30 @@ export const resolveOrdersRevenue = async (
   }
 
   // 가상 매출 데이터 (옵션). 기본 commerce_universe_v1, 명시 godoRaw/legacy만 그 경로.
-  // 시뮬레이션은 실제 주문 실패의 대체물이 아니라 **독립 시험자료**다 — 상품 조회만 성공하면 생성한다.
+  //   SIMULATION-CATALOG-BASELINE-01: 시뮬레이션 상품 원천 = **sim-catalog-v1 정본**(실 products·mock 과 독립).
+  //   실제 상품 API 가 만료·실패해도 시뮬레이션은 유지되고, 실 products 수·내용이 바뀌어도 v1 기준값은 불변이다.
+  //   카탈로그 검증 실패(손상) 시에만 fail-closed — mock 4개·실상품으로 대체하지 않는다.
   const chosen = pickSyntheticSource(opts.syntheticSource);
-  const canSynthesize = opts.includeSynthetic === true && (config.mode === 'mock' || productsOk);
+  let syntheticCatalog: StandardProduct[] = [];
+  let canSynthesize = false;
   if (opts.includeSynthetic === true) {
-    syntheticStatus = canSynthesize ? 'success' : 'unavailable';
-    if (!canSynthesize && !syntheticErrorMessage) {
-      // 상품 카탈로그 없이 새 baseline 을 임의 생성하지 않는다 → 후속 SIMULATION-CATALOG-BASELINE-01.
-      syntheticErrorMessage = 'Simulation requires the product catalog, which is unavailable.';
+    try {
+      syntheticCatalog = [...loadSimCatalogV1()]; // 동결 정본의 사본(생성기엔 mutable 배열 전달, 정본 불변)
+      canSynthesize = true;
+      syntheticStatus = 'success';
+    } catch (err) {
+      canSynthesize = false;
+      syntheticStatus = 'unavailable';
+      syntheticErrorMessage = `Simulation catalog unavailable: ${err instanceof Error ? err.message : String(err)}`;
     }
   }
   let universe: SyntheticCommerceUniverse | undefined; // aux 공급용으로 전체 세계 보관(commerce_universe_v1만)
   const syntheticOrders = canSynthesize
     ? chosen === 'legacy'
-      ? generateSyntheticRevenueOrders(products)
+      ? generateSyntheticRevenueOrders(syntheticCatalog)
       : chosen === 'godoRaw'
-        ? buildSyntheticRevenueOrdersFromGodomallRaw(products)
-        : (universe = buildSyntheticCommerceUniverse(products, { includeBaselineYear: true })).orders // commerce_universe_v1 (기본, baseline+promotion 2년)
+        ? buildSyntheticRevenueOrdersFromGodomallRaw(syntheticCatalog)
+        : (universe = buildSyntheticCommerceUniverse(syntheticCatalog, { includeBaselineYear: true })).orders // commerce_universe_v1 (기본, baseline+promotion 2년)
     : [];
   // syntheticSource 메타데이터 stamp (legacy는 mapper를 안 타 dataKind 미설정 → 보강).
   for (const o of syntheticOrders) {
@@ -482,7 +488,7 @@ export const resolveOrdersRevenue = async (
   const orders = [...realOrders, ...syntheticOrders];
 
   // 가상 재고 영향 (옵션) — 실 Products 현재 재고 기준으로 역산 (고도몰 재고 미변경)
-  const stockImpact = canSynthesize ? computeSyntheticStockImpact(products, syntheticOrders) : [];
+  const stockImpact = canSynthesize ? computeSyntheticStockImpact(syntheticCatalog, syntheticOrders) : [];
   // 실제 주문도 연결 안 됐고 시뮬레이션도 없으면 요약은 **null(계산 불가)** — 0원으로 환산하지 않는다.
   // 실제 성공 빈배열(realOrdersStatus==='success')은 유효한 0값 요약을 그대로 낸다.
   const hasAnyBasis = realOrdersStatus !== 'unavailable' || syntheticOrders.length > 0;

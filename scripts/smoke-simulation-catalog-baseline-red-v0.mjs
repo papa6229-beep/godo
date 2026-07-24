@@ -16,10 +16,10 @@
  *     R2. 카탈로그 [] → 빈 세계(시뮬레이션 통째 소멸)
  *     R4. 화장품 mock 4개 ≠ 시험몰 13개(식별자 부재) → 기준선 재사용 불가
  *
- *   [RED-GAP] 현재 결함(GREEN 전 상태 — GREEN B 로 해소 예정):
- *     R3. 실제 연결 실패 + synthetic=true → 지금은 시뮬레이션이 통째로 소멸한다
- *         (syntheticStatus=unavailable · orders [] · stockImpact [] · summary null).
- *     R5. resolveOrdersRevenue 에 sim-catalog 재주입 경로가 아직 없다(제품 로직 미변경).
+ *   [GREEN 해소 확인] (GREEN B 반영 후 — 연결 실패에도 시뮬레이션 유지):
+ *     R3. 실제 연결 실패 + synthetic=true → sim-catalog-v1 로 시뮬레이션 유지
+ *         (realOrdersStatus=unavailable · syntheticStatus=success · orders>0 · summary present).
+ *     R5. resolveOrdersRevenue 가 sim-catalog-v1 재주입(loadSimCatalogV1) 경로를 가진다.
  *
  * **제품 소스 변경 0.** 로컬 tsc 로 컴파일해 실제 함수를 import·호출한다.
  */
@@ -133,30 +133,31 @@ B('R4. 화장품 mock 4개 ≠ 시험몰 13개(식별자 부재) → 기준선 �
   mockItemCount === 4 && mockItemCount !== records.length && !mockHasId,
   `mock=${mockItemCount} · 시험몰=${records.length} · mock productId=${mockHasId}`);
 
-// ── R3) [RED-GAP] 실제 연결 실패 + synthetic=true → 지금은 시뮬레이션 소멸 ────
+// ── R3) [GREEN 해소] 실제 연결 실패 + synthetic=true → sim-catalog-v1 로 시뮬레이션 유지 ──
 process.env.GODOMALL_API_MODE = 'real';
 process.env.GODOMALL_PARTNER_KEY = 'RED-TEST-DUMMY-partner-not-a-real-key';
 process.env.GODOMALL_USER_KEY = 'RED-TEST-DUMMY-user-not-a-real-key';
 process.env.GODOMALL_REAL_BASE_URL = 'http://127.0.0.1:9';
 const rr = await RES.resolveOrdersRevenue({ includeSynthetic: true });
-R('R3. (RED-GAP) 실제 연결 실패 + synthetic=true → 시뮬레이션 통째 소멸 (GREEN B 로 해소 예정)',
-  rr.realOrdersStatus === 'unavailable' && rr.syntheticStatus === 'unavailable' &&
-  rr.orders.length === 0 && rr.stockImpact.length === 0 && rr.summary === null,
+R('R3. 실제 연결 실패 + synthetic=true → sim-catalog-v1 로 시뮬레이션 유지 (real unavailable · synthetic success · orders>0)',
+  rr.realOrdersStatus === 'unavailable' && rr.syntheticStatus === 'success' &&
+  rr.orders.length > 0 && rr.stockImpact.length === 13 && rr.summary !== null &&
+  rr.orders.every((o) => o.sourceType === 'synthetic_test'),
   `realOrdersStatus=${rr.realOrdersStatus} syntheticStatus=${rr.syntheticStatus} orders=${rr.orders.length} stockImpact=${rr.stockImpact.length} summary=${rr.summary === null ? 'null' : 'present'}`);
 
-// ── R5) [RED-GAP] resolveOrdersRevenue 에 sim-catalog 재주입 경로 아직 없음 ────
+// ── R5) [GREEN 해소] resolveOrdersRevenue 가 sim-catalog-v1 재주입 경로를 가진다 ──
 const resourceSrc = readFileSync(path.join(REPO, 'api/_shared/godomallResource.ts'), 'utf8');
-R('R5. (RED-GAP) resolveOrdersRevenue 에 sim-catalog 재주입 없음(제품 로직 미변경, commit 1=데이터·검사만)',
-  !/loadSimCatalogV1/.test(resourceSrc),
+R('R5. resolveOrdersRevenue 가 sim-catalog-v1 재주입(loadSimCatalogV1) — 실 products 와 독립',
+  /loadSimCatalogV1/.test(resourceSrc),
   `godomallResource 가 loadSimCatalogV1 참조=${/loadSimCatalogV1/.test(resourceSrc)}`);
 
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${base} pass / ${basef} fail`);
-console.log(`[RED ] ${met} met / ${unmet} unmet  (RED-GAP: GREEN 전 결함 — GREEN B/C 로 해소)`);
+console.log(`[RED ] ${met} met / ${unmet} unmet  (GREEN B 반영: 연결 실패에도 v1 시뮬레이션 유지)`);
 rmSync(outApi, { recursive: true, force: true });
 rmSync(outSrc, { recursive: true, force: true });
 if (basef > 0) { console.log('\n✗ 불변식 위반'); process.exit(1); }
-if (unmet > 0) { console.log(`\n✗ ${unmet}건 RED-GAP 미재현`); process.exit(1); }
-console.log('\n✓ RED 최종 잠금 — 표본 민감정보 0, canonical 재현, 카탈로그 의존 불변식,');
-console.log('  현재 결함(연결 실패 시 시뮬레이션 소멸) 재현 확정.');
+if (unmet > 0) { console.log(`\n✗ ${unmet}건 미충족`); process.exit(1); }
+console.log('\n✓ SIMULATION-CATALOG-BASELINE-01 — 표본 민감정보 0, canonical 재현, 카탈로그 의존 불변식,');
+console.log('  연결 실패에도 sim-catalog-v1 로 시뮬레이션 유지 확정.');

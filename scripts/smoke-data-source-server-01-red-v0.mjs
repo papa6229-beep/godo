@@ -253,10 +253,14 @@ fact('B17. 주문 실패 + 상품 성공 + synthetic=true → 시뮬레이션 �
   !!rvSynthOrderFail.realOrdersErrorMessage,
   `시뮬 ${rvSynthOrderFail.orders.filter((o) => o.dataKind === 'synthetic').length}건 유지 · realOrdersStatus=${rvSynthOrderFail.realOrdersStatus}`);
 
-fact('B18. 상품 조회까지 실패 → 시뮬레이션 unavailable (작은 mock 상품으로 대체하지 않음)',
-  rvSynthFail.syntheticStatus === 'unavailable' && rvSynthFail.orders.length === 0 &&
-  rvSynthFail.summary === null && !!rvSynthFail.syntheticErrorMessage,
-  `syntheticStatus=${rvSynthFail.syntheticStatus} orders=${rvSynthFail.orders.length} summary=${rvSynthFail.summary === null ? 'null' : '있음'}`);
+// SIMULATION-CATALOG-BASELINE-01(GREEN B): 상품 API 실패해도 sim-catalog-v1 정본으로 시뮬레이션 유지.
+//   (이전 계약 "상품 실패 → 시뮬레이션 unavailable" 을 대체 — godomallResource:465 주석이 예고한 후속 작업.
+//    여전히 mock 4개·실상품으로 대체하지 않는다: 원천은 버전 정본 sim-catalog-v1, 주문은 synthetic_test.)
+fact('B18. 상품 조회 실패해도 sim-catalog-v1 정본으로 시뮬레이션 유지 (mock 4개·실상품 대체 0) [SIMULATION-CATALOG-BASELINE-01]',
+  rvSynthFail.syntheticStatus === 'success' && rvSynthFail.orders.length > 0 &&
+  rvSynthFail.orders.every((o) => o.sourceType === 'synthetic_test' && o.dataKind === 'synthetic') &&
+  rvSynthFail.summary !== null && rvSynthFail.realOrdersStatus === 'unavailable',
+  `syntheticStatus=${rvSynthFail.syntheticStatus} orders=${rvSynthFail.orders.length}(synthetic_test) real=${rvSynthFail.realOrdersStatus} summary=${rvSynthFail.summary === null ? 'null' : '있음'}`);
 
 fact('B19. Sync All 부분 실패 → syncStatus=partial · 전역 unavailable · 성공 리소스는 sources 로 보존',
   syncAll.syncStatus === 'partial' && syncAll.sourceType === 'unavailable' &&

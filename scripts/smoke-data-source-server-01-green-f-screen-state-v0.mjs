@@ -111,9 +111,11 @@ base('B3. 서버 최상위 sourceType 은 실제 주문 slice 기준이라 unava
   srvOrderFail.source === 'unavailable' && !!srvOrderFail.realOrdersErrorMessage,
   `source=${srvOrderFail.source} · realOrdersErrorMessage=있음`);
 
-base('B4. 서버: 상품까지 실패 → 시뮬레이션 불가 · summary null',
-  srvAllFail.syntheticStatus === 'unavailable' && srvAllFail.summary === null && srvAllFail.orders.length === 0,
-  `synthetic=${srvAllFail.syntheticStatus} · summary=${srvAllFail.summary === null ? 'null' : '있음'}`);
+// SIMULATION-CATALOG-BASELINE-01(GREEN B): 상품 API 실패해도 sim-catalog-v1 정본으로 시뮬레이션 유지.
+base('B4. 서버: 상품까지 실패해도 sim-catalog-v1 로 시뮬레이션 유지 → syntheticStatus success · summary present · orders>0',
+  srvAllFail.syntheticStatus === 'success' && srvAllFail.summary !== null && srvAllFail.orders.length > 0 &&
+  srvAllFail.realOrdersStatus === 'unavailable',
+  `synthetic=${srvAllFail.syntheticStatus} · summary=${srvAllFail.summary === null ? 'null' : '있음'} · orders=${srvAllFail.orders.length} · real=${srvAllFail.realOrdersStatus}`);
 
 base('B5. 서버: 실제 성공 빈배열 + 시뮬 없음 → 실제 0건 · 유효한 요약',
   srvOkNoSynth.realOrdersStatus === 'success' && srvOkNoSynth.count === 0 && srvOkNoSynth.summary !== null,
@@ -141,10 +143,12 @@ red('F2. 그 경우 "실제 주문 연결 안 됨" 안내가 별도로 제공된
   !!sOrderFail && !!sOrderFail.realOrdersNotice,
   ST ? `notice=${sOrderFail.realOrdersNotice ?? '없음'}` : '판정 함수 없음');
 
-const sAllFail = state(fromServer(srvAllFail));
-red('F3. 실제 주문 실패 + 시뮬레이션도 불가 → 연결 안 됨(사용 불가)',
-  !!sAllFail && sAllFail.usable === false && sAllFail.userLabel === '연결 안 됨',
-  ST ? `usable=${sAllFail.usable} label=${sAllFail.userLabel}` : '판정 함수 없음');
+// SIMULATION-CATALOG-BASELINE-01: 상품 API 실패로는 더 이상 시뮬레이션이 죽지 않는다(v1 유지).
+//   시뮬레이션 불가는 이제 카탈로그 손상(fail-closed) 시에만 발생 → 그 입력으로 '연결 안 됨' 분기를 잠근다.
+const sBothFail = state({ loaded: true, realOrdersStatus: 'unavailable', syntheticStatus: 'unavailable', hasSummary: false });
+red('F3. 실제 주문 실패 + 시뮬레이션도 불가(카탈로그 손상) → 연결 안 됨(사용 불가)',
+  !!sBothFail && sBothFail.usable === false && sBothFail.userLabel === '연결 안 됨',
+  ST ? `usable=${sBothFail.usable} label=${sBothFail.userLabel}` : '판정 함수 없음');
 
 const sOk = state(fromServer(srvOk));
 red('F4. 실제 주문 성공 + 시뮬레이션 있음 → 시험 데이터',
