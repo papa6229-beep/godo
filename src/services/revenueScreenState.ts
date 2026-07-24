@@ -108,6 +108,38 @@ export function resolveRevenueScreenState(input: RevenueScreenStateInput | null 
   return mk('unavailable', false, '판별 불가(slice 상태 없음)');
 }
 
+// ── D-1: 실제 주문 하위 표시 상태 (연결 안 됨 ≠ 실제 0건) ─────────────────────
+//   최상위 source/ screenState 와 별개로, 실제 주문 slice 의 "건수를 아는가"를 하나의 순수
+//   판별 유니온으로 판정한다. 여러 boolean/문자열을 중복 저장하지 않는다.
+//     known       : 실제 연결 성공, count 는 0 이상(실제 주문 count 건)
+//     unavailable : 실제 연결 실패, 건수 미확인(count=null 의미)
+export type RealOrdersDisplay =
+  | { readonly kind: 'known'; readonly count: number }
+  | { readonly kind: 'unavailable' };
+
+/**
+ * 실제 주문 하위 표시 상태 판정(순수). **판정 입력 = realOrdersStatus + count 함께.**
+ *   count 단독·배열 길이·화면 이름·mode 로 추측하지 않는다.
+ *   success + count(>=0) → known(count).
+ *   unavailable / fixture / not_requested / 미상·비정상 → unavailable(미확인) — **fail-closed**.
+ *   연결 실패에서 내부 중립값 0 을 사용자 "실제 0건"으로 만들지 않는다.
+ */
+export function resolveRealOrdersDisplay(
+  realOrdersStatus: RealOrdersStatus | undefined,
+  realOrderCount: number | null | undefined
+): RealOrdersDisplay {
+  if (realOrdersStatus === 'success') {
+    const c = typeof realOrderCount === 'number' && Number.isFinite(realOrderCount) && realOrderCount >= 0
+      ? realOrderCount : 0;
+    return { kind: 'known', count: c };
+  }
+  return { kind: 'unavailable' };
+}
+
+/** 실제 주문 하위 상태 → 쉬운 한국어(내부 기술값 미노출). 소비자 공통 문구. */
+export const realOrdersPhrase = (d: RealOrdersDisplay): string =>
+  d.kind === 'known' ? `실제 주문 ${d.count.toLocaleString()}건` : '실제 주문 연결 안 됨';
+
 /** RevenueResult 형태에서 판정 입력을 뽑는 어댑터 — 소비자마다 매핑을 복붙하지 않기 위한 것. */
 export interface RevenueLikeForScreenState {
   realOrdersStatus?: RealOrdersStatus;

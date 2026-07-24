@@ -19,7 +19,7 @@ import {
 } from './revenueMetricContract';
 import { summarizeStockRisk } from './inventoryRiskContract';
 import { summarizeInquiryStatus, isUnresolved } from './inquiryStatusContract';
-import { screenStateFromRevenue } from './revenueScreenState';
+import { screenStateFromRevenue, resolveRealOrdersDisplay, type RealOrdersDisplay } from './revenueScreenState';
 
 export type DepartmentSourceMode = 'real' | 'synthetic' | 'mixed' | 'unavailable';
 
@@ -69,6 +69,8 @@ export interface DepartmentSourceOfTruthSnapshot {
     includesSynthetic: boolean;
     realOrderCount: number;
     syntheticOrderCount: number;
+    // D-1: 실제 주문 하위 상태(연결 안 됨 ≠ 실제 0건). realOrderCount 단독으로는 조합3/4가 구별 안 되므로 보존.
+    realOrders: RealOrdersDisplay;
     basisDescription: string;
   };
 
@@ -176,6 +178,8 @@ export function buildDepartmentSourceOfTruthSnapshot(
       includesSynthetic: syntheticOrderCount > 0,
       realOrderCount,
       syntheticOrderCount,
+      // D-1: 조합3(연결 실패)과 조합4(실제 성공 0건)를 구별 보존. sourceMode 만으로 실제 연결 상태 추측 금지.
+      realOrders: resolveRealOrdersDisplay(revenue?.realOrdersStatus, realOrderCount),
       basisDescription: '대표 운영 매출/주문 = 유효 주문(결제완료·미취소) 기준(netOrderRevenue/orderCountValid). 상품 라인 매출(gross)은 부서 전용 분석값. ' +
         (screenState.kind === 'fixture'
           ? '시험 데이터(기능시험 fixture) — 실데이터 아님.'

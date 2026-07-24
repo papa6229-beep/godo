@@ -11,7 +11,7 @@
  *   일부 소비자가 realOrdersStatus 를 보지 않고 realOrderCount 를 "실 0건"으로 렌더 →
  *   시나리오3(연결 실패)과 시나리오4(실제 성공 0건)를 구별하지 못하고 금지 표현을 만든다.
  *
- * [FACT] = 현재 실제 반환값(불변 관찰). [RED] = 재현된 결함(GREEN 에서 해소 대상).
+ * [FACT] = 실제 반환값(불변 관찰). [RED] = 판정 지점(D1) + D-1 GREEN 해소 확인(D2~D5).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
@@ -119,34 +119,30 @@ R('D1. 연결 실패(3)와 실제 성공 0건(4)이 summary.realOrderCount·scre
   c3.realOrdersStatus === 'unavailable' && c4.realOrdersStatus === 'success',
   `realOrderCount 3=${c3.summary.realOrderCount} 4=${c4.summary.realOrderCount} · kind 3=${s3.kind} 4=${s4.kind} · realOrdersStatus 3=${c3.realOrdersStatus} 4=${c4.realOrdersStatus}`);
 
-// ── [RED] 결함 2~4: 3개 소비처가 realOrdersStatus 가드 없이 "실 0건"을 렌더 ──────
+// ── [GREEN 해소] 결함 2~4: 3개 소비처가 공통 판정기(resolveRealOrdersDisplay)로 이관 ──
+//   (D-1 GREEN 반영 — 연결 실패를 "실 0건"으로 렌더하던 옛 템플릿 제거)
 const ptd = readFileSync(path.join(REPO, 'src/components/ProductTeamDashboard.tsx'), 'utf8');
 const dwp = readFileSync(path.join(REPO, 'src/components/DepartmentWorkspacePanel.tsx'), 'utf8');
 const ptcf = readFileSync(path.join(REPO, 'src/services/productTeamChatFacts.ts'), 'utf8');
-// 배지 삼항: simulation 분기가 realOrderCount 를 "실제 유효 주문 N건"으로, realOrdersStatus 미참조
-const ptdBadge = /simulation'[\s\S]{0,120}실제 유효 주문 \$\{\(summary\?\.realOrderCount/.test(ptd);
-const ptdNoGuard = !/realOrdersStatus[\s\S]{0,200}실제 유효 주문/.test(ptd); // 배지 근처 realOrdersStatus 가드 없음
-R('D2. ProductTeamDashboard 배지 — 연결 실패(3)에서 "실제 유효 주문 0건 + 시험 주문 1,315건" 렌더 (realOrdersStatus 미가드)',
-  ptdBadge && ptdNoGuard && c3.summary.realOrderCount === 0,
-  `배지패턴=${ptdBadge} · realOrdersStatus가드없음=${ptdNoGuard} · 렌더될값="실제 유효 주문 0건 + 시험 주문 1,315건"`);
+R('D2. ProductTeamDashboard 배지 — 공통 판정기 이관 + 옛 "실제 유효 주문 ${realOrderCount}" 템플릿 제거',
+  /resolveRealOrdersDisplay/.test(ptd) && !/실제 유효 주문 \$\{\(summary\?\.realOrderCount/.test(ptd),
+  `이관=${/resolveRealOrdersDisplay/.test(ptd)} · 옛템플릿제거=${!/실제 유효 주문 \$\{\(summary\?\.realOrderCount/.test(ptd)}`);
 
-const dwpDefect = /kind === 'fixture'[\s\S]{0,120}: `실 \$\{s\.realOrderCount\}건 \+ /.test(dwp);
-R('D3. DepartmentWorkspacePanel(AI 컨텍스트) — fixture 만 구별, 연결 실패(3)에서 "실 0건 + 가상 1,315건" 생성 (realOrdersStatus 미가드)',
-  dwpDefect && c3.summary.realOrderCount === 0,
-  `패턴=${dwpDefect} · 렌더될값="실 0건 + ... 가상 1,315건"`);
+R('D3. DepartmentWorkspacePanel(AI 컨텍스트) — 공통 판정기 이관 + 옛 "실 ${realOrderCount}건 + " 템플릿 제거',
+  /resolveRealOrdersDisplay/.test(dwp) && !/`실 \$\{s\.realOrderCount\}건 \+ /.test(dwp),
+  `이관=${/resolveRealOrdersDisplay/.test(dwp)} · 옛템플릿제거=${!/`실 \$\{s\.realOrderCount\}건 \+ /.test(dwp)}`);
 
-const ptcfDefect = /kind === 'fixture'[\s\S]{0,80}return `총 주문 \$\{s\.orderCount\}건\(실 \$\{s\.realOrderCount\} \+ 가상/.test(ptcf);
-R('D4. productTeamChatFacts(채팅 facts) — fixture 만 구별, 연결 실패(3)에서 "총 주문 1,315건(실 0 + 가상 1,315)" 생성 (realOrdersStatus 미가드)',
-  ptcfDefect && c3.summary.realOrderCount === 0,
-  `패턴=${ptcfDefect} · 렌더될값="총 주문 1,315건(실 0 + 가상 1,315)"`);
+R('D4. productTeamChatFacts(채팅) — 공통 판정기 이관 + 옛 "총 주문(실 N + 가상)" 템플릿 제거',
+  /resolveRealOrdersDisplay/.test(ptcf) && !/총 주문 \$\{s\.orderCount\}건\(실 \$\{s\.realOrderCount\}/.test(ptcf),
+  `이관=${/resolveRealOrdersDisplay/.test(ptcf)} · 옛템플릿제거=${!/총 주문 \$\{s\.orderCount\}건\(실 \$\{s\.realOrderCount\}/.test(ptcf)}`);
 
-// ── [RED] 결함 5: 부서 snapshot 이 realOrdersStatus 미보존 → 3/4 스냅샷 동일 ──────
+// ── [GREEN 해소] 결함 5: snapshot 이 실제 주문 하위 상태(realOrders)를 보존 → 3/4 구별 ──
 const snap3 = DS.buildDepartmentSourceOfTruthSnapshot(c3);
 const snap4 = DS.buildDepartmentSourceOfTruthSnapshot(c4);
-R('D5. departmentDataSourceOfTruth 스냅샷이 realOrdersStatus 미보존 → 연결실패(3)·실제0건(4) 동일(sourceMode/realOrderCount) → 하류가 구별 불가',
-  snap3.sourceMode === snap4.sourceMode && snap3.metadata.realOrderCount === snap4.metadata.realOrderCount &&
-  !('realOrdersStatus' in snap3) && !('realOrdersStatus' in (snap3.metadata || {})),
-  `sourceMode 3=${snap3.sourceMode} 4=${snap4.sourceMode} · realOrderCount 3=${snap3.metadata.realOrderCount} 4=${snap4.metadata.realOrderCount} · snapshot에 realOrdersStatus 없음`);
+R('D5. departmentDataSourceOfTruth 스냅샷이 realOrders 보존 → 연결실패(3)=unavailable ≠ 실제0건(4)=known(0)',
+  snap3.metadata.realOrders.kind === 'unavailable' && snap4.metadata.realOrders.kind === 'known' && snap4.metadata.realOrders.count === 0 &&
+  snap3.sourceMode === snap4.sourceMode /* 기존 필드 의미 유지 */,
+  `C.realOrders=${JSON.stringify(snap3.metadata.realOrders)} D.realOrders=${JSON.stringify(snap4.metadata.realOrders)} · sourceMode 동일=${snap3.sourceMode}`);
 
 // ── [FACT] source 단일 의미 확인(이중의미 아님) ──────────────────────────────
 F('source 단일 의미: 최상위 source=실제 주문 slice 상태(3=unavailable, 4=unavailable? 아님 확인)',
@@ -202,5 +198,5 @@ rmSync(outApi, { recursive: true, force: true });
 rmSync(outSrc, { recursive: true, force: true });
 if (factf > 0) { console.log('\n✗ 관찰 불일치'); process.exit(1); }
 if (redx > 0) { console.log(`\n✗ ${redx}건 결함 미재현`); process.exit(1); }
-console.log('\n✓ RED 감사 성립 — 연결 안 됨(3)이 소비처 3곳에서 "실 0건"으로 렌더되어 실제 0건(4)과 혼동됨.');
-console.log('  판정 지점=realOrdersStatus. source 는 단일 의미(실제 주문 slice). 민감검사 양성/음성 확인.');
+console.log('\n✓ D-1 감사 — 판정 지점=realOrdersStatus(D1). 소비처 3곳 공통 판정기 이관·snapshot realOrders 보존으로');
+console.log('  연결 안 됨(3)과 실제 0건(4) 구별(D2~D5). source 단일 의미. 민감검사 양성/음성 확인.');

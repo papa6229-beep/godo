@@ -6,7 +6,7 @@ import type {
   RevenueOrderLite,
   StockImpactItem
 } from '../services/departmentDataService';
-import { screenStateFromRevenue } from '../services/revenueScreenState';
+import { screenStateFromRevenue, resolveRealOrdersDisplay, realOrdersPhrase } from '../services/revenueScreenState';
 import { buildTrendBuckets, labelStepFor } from '../services/productDashboardTrendBuckets';
 import {
   aggregateProductRanking as aggregateProducts,
@@ -694,7 +694,8 @@ export const ProductTeamDashboard: React.FC<ProductTeamDashboardProps> = ({ prod
             🧪 {screenState.kind === 'fixture'
               ? `시험 데이터 (기능시험 자료 · 시험 주문 ${(summary?.orderCount ?? 0).toLocaleString()}건)`
               : screenState.kind === 'simulation'
-                ? `시험 데이터 (실제 유효 주문 ${(summary?.realOrderCount ?? 0).toLocaleString()}건 + 시험 주문 ${(summary?.syntheticOrderCount ?? 0).toLocaleString()}건)`
+                // D-1: 실제 주문 하위 상태는 공통 판정기로. 연결 실패면 "실제 주문 연결 안 됨"(≠ 실제 0건).
+                ? `시험 데이터 (${realOrdersPhrase(resolveRealOrdersDisplay(revenue?.realOrdersStatus, summary?.realOrderCount))} · 시험 주문 ${(summary?.syntheticOrderCount ?? 0).toLocaleString()}건)`
                 : screenState.userLabel}
           </span>
           <button type="button" className="ptd-refresh" onClick={onRefresh} disabled={loading}>{loading ? '새로고침 중…' : '↻ 새로고침'}</button>
