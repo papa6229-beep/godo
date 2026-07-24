@@ -204,10 +204,11 @@ base('B6(원인4 잠금 현황). TaskResultModal 작업 중단 버튼은 이미 
 console.log('');
 console.log('  --- 원인 C · 인간 수행자 표시 (결함4) ---');
 
-red('C0(증거). 현재 executorDisplayName(인간 사용자ID)가 "소속 확인 필요" 를 낸다',
-  A.executorDisplayName('u-product') !== A.UNKNOWN_AFFILIATION_LABEL,
-  `executorDisplayName('u-product') = "${A.executorDisplayName('u-product')}"  ← 인간 수행자를 미상으로 오표시`,
-  '(증거 항목)');
+// 증거(불변): id 만 보는 executorDisplayName 은 인간 사용자ID 를 미상으로 낸다 —
+//   이것이 executorDisplayLabel 이 필요한 이유다. 하위호환상 이 함수 자체는 그대로 둔다.
+base('C0(증거·불변). executorDisplayName(인간 사용자ID)는 "소속 확인 필요" 를 낸다(그래서 executorDisplayLabel 이 필요)',
+  A.executorDisplayName('u-product') === A.UNKNOWN_AFFILIATION_LABEL,
+  `executorDisplayName('u-product') = "${A.executorDisplayName('u-product')}"`);
 
 red('C1. executorDisplayLabel(task) 가 존재하고 executorKind 로 네 경우를 차등 표시한다',
   (() => { if (typeof A.executorDisplayLabel !== 'function') return false;
@@ -234,10 +235,11 @@ red('C2(소비자). TeamTaskPanel 본 업무·협업 추적 수행자 표시가 
 console.log('');
 console.log('  --- 원인 B · 수정 요청 사유 표시 (결함3) ---');
 
-red('C3(증거). revision 카드 자체 결정 이력에는 사유가 없어 현재 화면에 사유가 뜨지 않는다',
-  (() => { const { rev } = revisionOfGeneralTask(); return !!rev && rev.decisions.length > 0; })(),
-  (() => { const { rev } = revisionOfGeneralTask(); return `revision.decisions=${rev ? rev.decisions.length : 'N/A'}건 → lastReasonOf(revision)=undefined`; })(),
-  '(증거 항목)');
+// 증거(불변): 사유의 유일 정본은 원본이고 revision 자체 이력은 비어 있다 —
+//   그래서 revision 자신만 뒤지는 lastReasonOf(t) 는 항상 빈 값이었다(B3 가 정본 위치를 확정).
+base('C3(증거·불변). revision 업무 자체 결정 이력은 비어 있다(사유는 원본에만 존재)',
+  (() => { const { rev } = revisionOfGeneralTask(); return !!rev && rev.decisions.length === 0; })(),
+  (() => { const { rev } = revisionOfGeneralTask(); return `revision.decisions=${rev ? rev.decisions.length : 'N/A'}건 → lastReasonOf(revision)=undefined`; })());
 
 red('B1. revisionReasonOf(task, all) 순수 resolver 가 원본에서 가장 최근 수정 사유를 돌려준다',
   (() => { if (typeof A.revisionReasonOf !== 'function') return false;
@@ -268,11 +270,12 @@ red('B3(소비자). TeamTaskPanel 이 revision 사유를 원본 기준(revisionR
 console.log('');
 console.log('  --- 원인 A · 확인요청·인간 제출자 표시 (결함1·2, 보완1·2·3) ---');
 
-red('C4(증거). reviewOnly ApprovalItem 의 requestedByAgentId 가 비어 두 모달이 "수행자 미정" 을 낸다',
-  (() => { const item = A.toApprovalItem(hqCard()); return !!item.requestedByAgentId && item.requestedByAgentId.length > 0; })(),
+// 증거(불변): reviewOnly 는 수행자가 없어 requestedByAgentId 가 빈 값이다 —
+//   그래서 requestedByAgentId 단독 판정은 '수행자 미정' 으로 귀결된다(투영·공통함수로 대체).
+base('C4(증거·불변). reviewOnly ApprovalItem 의 requestedByAgentId 는 빈 값이다(단독 판정 불가)',
+  (() => { const item = A.toApprovalItem(hqCard()); return item.requestedByAgentId === ''; })(),
   (() => { const item = A.toApprovalItem(hqCard());
-    return `requestedByAgentId="${item.requestedByAgentId}" → executorDisplayName="${A.executorDisplayName(item.requestedByAgentId)}"`; })(),
-  '(증거 항목)');
+    return `requestedByAgentId="${item.requestedByAgentId}" → executorDisplayName(단독)="${A.executorDisplayName(item.requestedByAgentId)}"`; })());
 
 red('A1. toApprovalItem 이 표시용 투영(executorKind·제출팀·제출자)을 담는다',
   (() => { const rItem = A.toApprovalItem(hqCard());

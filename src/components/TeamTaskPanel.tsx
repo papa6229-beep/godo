@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { LifecycleTask, ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import { userStatusLabel } from '../services/taskLifecycleContract';
-import { availableDecisions, executorDisplayName, pendingStopRequest } from '../services/taskLifecycleAppAdapter';
+import { availableDecisions, executorDisplayName, executorDisplayLabel, pendingStopRequest } from '../services/taskLifecycleAppAdapter';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
@@ -125,7 +125,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
               {t.submittedBy && <span>제출: {t.submittedBy.label}</span>}
             </>
           ) : (
-            <span>수행자: {t.executorKind === 'unassigned' ? '미정' : executorDisplayName(t.executorId)}</span>
+            <span>수행자: {executorDisplayLabel(t)}</span>
           )}
           {startedAt && t.status === 'in_progress' && <span>시작: {startedAt.slice(0, 16).replace('T', ' ')}</span>}
         </div>
@@ -144,7 +144,7 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
         {tracked && (
           <p className="ttask-tracking">
             🔗 수행: {DEPT_TEAM_META[tracked.ownerTeamId]?.name ?? tracked.ownerTeamId} · {userStatusLabel(tracked.status)}
-            {tracked.executorKind !== 'unassigned' ? ' · ' + executorDisplayName(tracked.executorId) : ''}
+            {tracked.executorKind !== 'unassigned' ? ' · ' + executorDisplayLabel(tracked) : ''}
           </p>
         )}
 

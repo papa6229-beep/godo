@@ -22,7 +22,7 @@ import {
   APPROVAL_ROUTES
 } from './taskLifecycleContract';
 import type {
-  ActorRef, ApprovalDecisionKind, CreateTaskInput, ExecutorKind, IdContext,
+  ActorRef, ApprovalDecisionKind, CreateTaskInput, ExecutorHistoryEntry, ExecutorKind, IdContext,
   LifecycleTask, TaskLifecycleStatus
 } from './taskLifecycleContract';
 import { loadLifecycleTasks, saveLifecycleTask, saveLifecycleTasks, findTask } from './taskLifecycleStore';
@@ -162,6 +162,35 @@ export function executorDisplayName(executorId?: string): string {
   if (!executorId) return '수행자 미정';
   const def = defaultNativeAgents.find((a) => a.id === toCanonicalAgentId(executorId));
   return def ? def.name : UNKNOWN_AFFILIATION_LABEL;
+}
+
+/**
+ * RC-2 D-1.3.3.2: 화면에 보일 수행자 이름을 **업무 하나로** 정한다.
+ *   executorId 만 보고 AI 명단에서 찾으면 인간 수행자(사용자 ID)가 '소속 확인 필요'로 잘못 뜬다.
+ *   그래서 executorKind 를 근거로 판정한다:
+ *     human      → 그 수행자 이력(byLabel)의 사람 이름(정본 기록)
+ *     agent      → canonical AI 명단 표시명
+ *     unassigned → 수행자 미정
+ *     미상 agent  → 소속 확인 필요
+ *   executorDisplayName(id) 은 id 만 있는 자리(이력 항목 등)를 위해 그대로 남긴다.
+ */
+export function executorDisplayLabel(task: {
+  executorKind: ExecutorKind;
+  executorId?: string;
+  executorHistory?: ExecutorHistoryEntry[];
+  submittedBy?: ActorRef;
+}): string {
+  if (task.executorKind === 'unassigned') return '수행자 미정';
+  if (task.executorKind === 'human') {
+    const hist = task.executorHistory ?? [];
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const h = hist[i];
+      if (h.kind === 'human' && (!task.executorId || h.id === task.executorId) && h.byLabel) return h.byLabel;
+    }
+    // 이력이 유실된 구자료: 제출자 기록이라도 있으면 그 사람, 아니면 중립 표기(미상으로 오표시하지 않는다).
+    return task.submittedBy?.label ?? '담당자';
+  }
+  return executorDisplayName(task.executorId);
 }
 
 /**
