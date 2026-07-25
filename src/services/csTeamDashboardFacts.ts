@@ -12,6 +12,7 @@ import { buildAssociatedOrderFacts, findDuplicatePaymentCandidates, type Groundi
 import { composeCsDraftFromOrders, normalizeCsTopic, type CsDraftInquiry, type CsRiskLevel } from './csDraftComposer';
 // C-4: 문의 상태 판정은 공통 계약(inquiryStatusContract)만 사용(원시 문자열 비교·정규식 복붙 금지).
 import { isUnanswered, isAnswered, isUnresolved, isOnHold } from './inquiryStatusContract';
+import { classifyClaimEvent } from './claimEventContract';
 
 // 입력(safe, 연락처 없음). SafeSyntheticInquiry / SafeSyntheticReview 와 구조적 호환.
 export type CsDashInquiry = CsDraftInquiry;
@@ -765,7 +766,13 @@ export function buildCsCustomerManagementFacts(params: {
     const paidOrders = a.orders.filter((o) => o.paid);
     const totalOrderAmount = paidOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
     const claimCount = a.orders.filter((o) => o.claim?.hasClaim).length;
-    const refundCancelCount = a.orders.filter((o) => (o.claim?.claimTypes || []).some((t) => /refund|cancel|return/.test(t)) || o.canceled).length;
+    // D-1.2: 공통 분류기로 취소·반품·환불 사건을 센다(제각각 정규식 금지). 교환·확인필요 제외.
+    const refundCancelCount = a.orders.filter((o) => {
+      const src = o.claim?.hasClaim ? o.claim : (o.canceled ? { hasClaim: true, claimTypes: ['cancel'] } : undefined);
+      if (!src) return false;
+      const k = classifyClaimEvent(src, { paid: o.paid }).eventKind;
+      return k === 'cancel' || k === 'return' || k === 'refund_only';
+    }).length;
     const lowReviewCount = a.reviews.filter((r) => (typeof r.rating === 'number' && r.rating <= 2) || /negative|부정/i.test(r.sentiment || '')).length;
     const tags: string[] = [];
     if (a.inquiries.length >= 2) tags.push('반복문의');

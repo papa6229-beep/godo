@@ -14,6 +14,7 @@
 import { isValidOrder } from './revenueMetricContract';
 // C-4: 문의 미답변 판정은 공통 계약(inquiryStatusContract)을 재사용한다(원시 문자열 비교 금지).
 import { isUnanswered } from './inquiryStatusContract';
+import { classifyClaimEvent } from './claimEventContract';
 
 export interface AnalyticsOrderLine {
   goodsNo: string;
@@ -508,10 +509,14 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
     case 'claimRate': case 'cancelRate': case 'refundRate': case 'returnRate': case 'exchangeRate': {
       if (orders.length === 0) return noData('주문 데이터');
       const tot = orders.length;
+      // D-1.2: 공통 분류기로 사건별 단일 분류(취소↔반품↔환불 호환 태그 중복 제거).
+      //   cancelRate=cancel · returnRate=return · exchangeRate=exchange · refundRate=refund_only.
       const hit = orders.filter((o) => {
         if (spec.metric === 'claimRate') return o.claim?.hasClaim;
-        const t = spec.metric.replace('Rate', '');
-        return o.claim?.claimTypes?.includes(t);
+        if (!o.claim?.hasClaim) return false;
+        const k = classifyClaimEvent(o.claim).eventKind;
+        const want = spec.metric.replace('Rate', ''); // cancel|refund|return|exchange
+        return want === 'refund' ? k === 'refund_only' : k === want;
       }).length;
       const rate = round(hit / tot, 4);
       return okResult(spec, dataset, reg, [{ key: spec.metric, label: reg.labelKo, value: rate, valueLabel: `${round(rate * 100, 1)}%`, orderCount: hit, meta: { hit, total: tot } }], { total: rate });

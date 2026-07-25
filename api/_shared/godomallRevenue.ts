@@ -51,7 +51,14 @@ export type RevenueClaimType = 'cancel' | 'refund' | 'return' | 'exchange';
 export type RevenueClaimSummary = {
   hasClaim: boolean;
   claimTypes: RevenueClaimType[];
-  claimAmount?: number; // 환불/클레임 금액 합(있을 때)
+  claimAmount?: number; // 환불/클레임 금액 합(있을 때) — 요청/예상금액. 실제 완료금액 아님(D-1.2).
+  // ── D-1.2: 취소·반품·환불 원본 근거 보존 (정규화 전 RAW 를 덮어쓰지 않는다) ──
+  //   분류·완료판정은 소비 계층 공통 분류기(claimEventContract)가 이 근거로 수행한다.
+  handleModes?: string[];       // RAW claimData.handleMode 코드(c/r/b/e/z)
+  handleCompleteFl?: string;    // RAW claimData.handleCompleteFl (y=환불완료 / n=환불접수)
+  handleDt?: string;            // RAW claimData.handleDt 처리완료일자(있을 때)
+  rawStatuses?: string[];       // RAW 라인 orderStatus 코드(c4/b4/r3/e5 …)
+  requestedRefundAmount?: number; // 요청/예상 환불금액(=refundPrice 합, claimAmount 와 동일값·명시적 이름)
   // 코드/라벨: raw에 코드가 없거나 Code_Search 미연결이면 undefined (다음 단계 라벨 연결)
   claimReasonCode?: string;
   claimReasonLabel?: string;
@@ -331,26 +338,46 @@ const deriveClaimSummary = (order: Raw, lines: Raw[]): RevenueClaimSummary | und
   const types = new Set<RevenueClaimType>();
   let claimAmount = 0;
   let sawClaim = false;
+  // D-1.2: 원본 근거 보존(정규화 전 RAW). 분류·완료판정은 소비 계층 공통 분류기가 수행.
+  const handleModes = new Set<string>();
+  const rawStatuses = new Set<string>();
+  let handleCompleteFl: string | undefined;
+  let handleDt: string | undefined;
   for (const g of lines) {
+    const lineStatus = str(g['orderStatus']);
     for (const c of normalizeLines(g['claimData'])) {
       sawClaim = true;
       const mode = str(c['handleMode']).toLowerCase();
+      if (mode) handleModes.add(mode);
       const t = CLAIM_MODE_MAP[mode];
       if (t) types.add(t);
       const amt = num(c['refundPrice']);
       if (amt) claimAmount += amt;
+      // 완료여부: 하나라도 'y'(환불완료)면 y, 아니면 'n'이라도 보존(원본 그대로).
+      const fl = str(c['handleCompleteFl']).toLowerCase();
+      if (fl === 'y') handleCompleteFl = 'y';
+      else if (fl === 'n' && handleCompleteFl === undefined) handleCompleteFl = 'n';
+      const dt = str(c['handleDt']);
+      if (!handleDt && isValidDate(dt)) handleDt = dt;
+      if (lineStatus) rawStatuses.add(lineStatus); // 클레임 라인의 원본 상태코드(b4/r3/c4/e5 …)
     }
   }
-  // 주문 헤더 취소일자도 취소 클레임으로 본다
+  // 주문 헤더 취소일자도 취소 클레임으로 본다(과거 호환 태그 — 분류기는 우선순위로 해소)
   if (isValidDate(order['cancelDt'])) {
     types.add('cancel');
     sawClaim = true;
   }
+  const headerStatus = str(order['orderStatus']);
+  if (headerStatus) rawStatuses.add(headerStatus);
   if (!sawClaim && types.size === 0) return undefined;
   return {
     hasClaim: sawClaim || types.size > 0,
     claimTypes: [...types],
-    ...(claimAmount > 0 ? { claimAmount } : {})
+    ...(claimAmount > 0 ? { claimAmount, requestedRefundAmount: claimAmount } : {}),
+    ...(handleModes.size > 0 ? { handleModes: [...handleModes] } : {}),
+    ...(handleCompleteFl ? { handleCompleteFl } : {}),
+    ...(handleDt ? { handleDt } : {}),
+    ...(rawStatuses.size > 0 ? { rawStatuses: [...rawStatuses] } : {})
     // claimReason/Payment/Bank 코드·라벨: raw에 코드 없음/Code_Search 미연결 → undefined (다음 단계)
   };
 };

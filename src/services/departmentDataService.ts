@@ -268,12 +268,26 @@ export interface RevenueOrderLite {
   unpaid: boolean;
   confirmed: boolean;
   canceled: boolean;
+  // D-1.2: 발송 전/후 판별 근거(state 에 있던 것 승격 — 기존엔 탈락). 취소(발송전)↔반품(발송후) 구분용.
+  shipped?: boolean;
+  delivered?: boolean;
   lines: RevenueLineLite[];
   // ── Commerce Data Contract v0 분석 필드(가산, optional) — Analytics Query Engine 입력용 ──
   memberKey?: string;
   paymentMethodCode?: string;
   orderChannel?: string;
-  claim?: { hasClaim: boolean; claimTypes: string[]; claimAmount?: number };
+  // D-1.2: claim 은 원본 근거(handleModes/handleCompleteFl/handleDt/rawStatuses/requestedRefundAmount)를
+  //   함께 실어 나른다. 분류·완료판정은 소비 계층 공통 분류기(claimEventContract)가 수행한다.
+  claim?: {
+    hasClaim: boolean;
+    claimTypes: string[];
+    claimAmount?: number;
+    handleModes?: string[];
+    handleCompleteFl?: string;
+    handleDt?: string;
+    rawStatuses?: string[];
+    requestedRefundAmount?: number;
+  };
   // ── 마케팅 enrichment 가산 필드(Spec-Based Synthetic Enrichment v0) — 마케팅 분석 facts 입력용 ──
   isFirstPurchase?: boolean;
   memberGroupName?: string;
@@ -452,6 +466,9 @@ export const fetchRevenue = async (
         unpaid: bool(st.unpaid),
         confirmed: bool(st.confirmed),
         canceled: bool(st.canceled),
+        // D-1.2: 발송 전/후 근거 승격(state 에 이미 존재, 기존엔 탈락시킴)
+        shipped: bool(st.shipped),
+        delivered: bool(st.delivered),
         // Contract v0 분석 필드(있으면 그대로 — PII 아님)
         memberKey: str(o.memberKey) || undefined,
         paymentMethodCode: str(o.paymentMethodCode) || str(o.settleKind) || undefined,
@@ -459,10 +476,18 @@ export const fetchRevenue = async (
         claim: o.claimSummary
           ? (() => {
               const c = o.claimSummary as Record<string, unknown>;
+              const strArr = (v: unknown): string[] | undefined =>
+                Array.isArray(v) ? (v as unknown[]).map((x) => str(x)) : undefined;
               return {
                 hasClaim: bool(c.hasClaim),
                 claimTypes: Array.isArray(c.claimTypes) ? (c.claimTypes as unknown[]).map((x) => str(x)) : [],
-                claimAmount: c.claimAmount !== undefined ? num(c.claimAmount) : undefined
+                claimAmount: c.claimAmount !== undefined ? num(c.claimAmount) : undefined,
+                // D-1.2: 원본 근거 보존(덮어쓰지 않음)
+                ...(strArr(c.handleModes) ? { handleModes: strArr(c.handleModes) } : {}),
+                ...(c.handleCompleteFl !== undefined ? { handleCompleteFl: str(c.handleCompleteFl) } : {}),
+                ...(c.handleDt !== undefined ? { handleDt: str(c.handleDt) } : {}),
+                ...(strArr(c.rawStatuses) ? { rawStatuses: strArr(c.rawStatuses) } : {}),
+                ...(c.requestedRefundAmount !== undefined ? { requestedRefundAmount: num(c.requestedRefundAmount) } : {})
               };
             })()
           : undefined,
