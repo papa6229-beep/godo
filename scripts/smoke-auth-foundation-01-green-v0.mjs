@@ -178,6 +178,32 @@ const oaRes = makeRes(); await ordersAdmin({ method: 'GET', headers: {} }, oaRes
 F('orders-admin 은 인증 도입에도 403 유지(재개 안 함)', oaRes._get().status === 403 && oaRes._get().body?.errorCode === 'ADMIN_ACCESS_DISABLED');
 F('orders-admin 에 protectedHandler 미부착(정책상 fail-closed 유지)', !/protectedHandler/.test(readFileSync(path.join(REPO, 'api/godomall/orders-admin.ts'), 'utf8')));
 
+// ── 7. 클라이언트 게이트 로직(순수 판정) ───────────────────────────────────────
+console.log('\n  --- [G] 클라이언트 인증 게이트 로직 ---');
+let AG;
+try {
+  const ctmp = mkdtempSync(path.join(cacheRoot, 'auth-green-cli-'));
+  execFileSync(process.execPath, [tscBin, path.join(REPO, 'src', 'services', 'authGate.ts'),
+    '--ignoreConfig', '--rootDir', path.join(REPO, 'src'), '--outDir', ctmp,
+    '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck', '--jsx', 'react-jsx', '--types', 'node'],
+    { stdio: 'pipe' });
+  AG = await import(pathToFileURL(path.join(ctmp, 'services', 'authGate.js')).href);
+  rmSync(ctmp, { recursive: true, force: true });
+} catch (e) { console.error('[smoke] authGate compile 실패:', e.stdout?.toString() || e.message); rmSync(tmp, { recursive: true, force: true }); process.exit(1); }
+const gate = (i) => AG.computeAuthGate(i);
+G('미구성 → open(현행 앱 무회귀)', gate({ configured: false, loaded: true, signedIn: false }) === 'open');
+G('구성+로딩중 → loading', gate({ configured: true, loaded: false, signedIn: false }) === 'loading');
+G('구성+미로그인 → login', gate({ configured: true, loaded: true, signedIn: false }) === 'login');
+G('구성+로그인+대기 → pending', gate({ configured: true, loaded: true, signedIn: true, status: 'pending' }) === 'pending');
+G('구성+로그인+정지 → suspended', gate({ configured: true, loaded: true, signedIn: true, status: 'suspended' }) === 'suspended');
+G('구성+로그인+active → app', gate({ configured: true, loaded: true, signedIn: true, status: 'active' }) === 'app');
+G('구성+로그인+계정없음 → pending(무권한)', gate({ configured: true, loaded: true, signedIn: true, status: null }) === 'pending');
+G('미로그인 앱은 회사 데이터 fetch 시작 안 함', AG.shouldLoadCompanyData('login') === false && AG.shouldLoadCompanyData('pending') === false && AG.shouldLoadCompanyData('suspended') === false);
+G('active·미구성(open) 는 데이터 로드 허용(정상 사용)', AG.shouldLoadCompanyData('app') === true && AG.shouldLoadCompanyData('open') === true);
+// App 최상위 게이트 배선 확인
+const appSrc = readFileSync(path.join(REPO, 'src', 'App.tsx'), 'utf8');
+G('App 최상위 게이트 배선(useAuthGate + AuthGateScreen 조기 반환)', /useAuthGate\(\)/.test(appSrc) && /authGateMode !== 'open' && authGateMode !== 'app'/.test(appSrc) && /<AuthGateScreen mode=\{authGateMode\}/.test(appSrc));
+
 console.log(`\n[결과] ${pass} pass / ${fail} fail`);
 rmSync(tmp, { recursive: true, force: true });
 if (fail > 0) { console.log('\n✗ GREEN A 미충족'); process.exit(1); }

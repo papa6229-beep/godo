@@ -40,6 +40,8 @@ import type { ApprovalDecisionKind } from './services/taskLifecycleContract';
 import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
+import { useAuthGate } from './services/authGate';
+import AuthGateScreen from './components/AuthGateScreen';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -79,6 +81,9 @@ const withCanonicalInquiries = (snapshot: OperationsDataSnapshot): OperationsDat
 
 function App() {
   const { theme, toggleTheme } = useTheme();
+  // AUTH-FOUNDATION-01 GREEN A: 인증 게이트. 미구성(VITE_CLERK_PUBLISHABLE_KEY 없음) → 'open'(현행 앱).
+  //   구성됨 + 미로그인/대기/정지 → 대시보드·데이터 fetch 를 시작하기 전에 게이트 화면으로 차단.
+  const authGateMode = useAuthGate();
   const [showOpening, setShowOpening] = useState(true);
   const [validationScenario, setValidationScenario] = useState<ValidationScenarioType>(() => {
     try {
@@ -955,6 +960,12 @@ function App() {
   const currentSelectedAgent = selectedAgent
     ? agents.find((a) => a.id === selectedAgent.id) || null
     : null;
+
+  // AUTH-FOUNDATION-01 GREEN A: active(또는 미구성 open)가 아니면 대시보드 트리를 마운트하지 않는다
+  //   → 자식 대시보드의 회사 데이터 fetch 가 시작되지 않는다. 미구성 시 'open' 이라 현행 앱 그대로.
+  if (authGateMode !== 'open' && authGateMode !== 'app') {
+    return <AuthGateScreen mode={authGateMode} />;
+  }
 
   return (
     <>
