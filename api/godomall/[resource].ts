@@ -3,6 +3,7 @@ import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 import { resolveResource } from '../_shared/godomallResource.js';
 import type { ResourceType } from '../_shared/godomallResource.js';
+import { protectedHandler } from '../_shared/authActor.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // /api/godomall/[resource] — Vercel demo gateway adapter (route entry 1개로 통합)
@@ -26,7 +27,8 @@ const resourceOf = (req: IncomingMessage): string => {
   }
 };
 
-export default async function handler(req: IncomingMessage, res: VercelResponse) {
+// AUTH-FOUNDATION-01 GREEN A: 회사 리소스(마스킹 PII 포함) → 인증된 active 사용자만(인증 미구성 시 현행 보존).
+async function handler(req: IncomingMessage, res: VercelResponse) {
   if (req.method !== 'GET') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only GET is accepted.', 405);
   }
@@ -50,3 +52,5 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     sendErrorResponse(res, 'PROXY_FETCH_ERROR', `Failed to fetch ${resource} via proxy: ${errMsg}`, 500);
   }
 }
+
+export default protectedHandler(handler);

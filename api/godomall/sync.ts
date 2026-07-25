@@ -3,6 +3,7 @@ import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 import { resolveResource, summarizeSyncAll } from '../_shared/godomallResource.js';
 import type { ResourceType } from '../_shared/godomallResource.js';
+import { protectedHandler } from '../_shared/authActor.js';
 
 interface ExtendedRequest extends IncomingMessage {
   body?: {
@@ -17,7 +18,8 @@ const VALID_RESOURCES: ResourceType[] = ['orders', 'inquiries', 'reviews', 'inve
 // 모드(real/sandbox/mock)는 서버 환경변수(GODOMALL_API_MODE)가 권위를 가진다.
 // DATA-SOURCE-SERVER-01: real/sandbox 실패·미구현·키 부재는 **mock 자동 대체 없이** 연결 안 됨(0건)이다.
 //   리소스별 sources 가 권위이고, 전역 sourceType/syncStatus 는 표시용이다(부분 실패면 partial).
-export default async function handler(req: ExtendedRequest, res: VercelResponse) {
+// AUTH-FOUNDATION-01 GREEN A: 회사 데이터 동기화(READ 오케스트레이션) → 인증된 active 사용자만.
+async function handler(req: ExtendedRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only POST is accepted.', 405);
   }
@@ -75,3 +77,5 @@ export default async function handler(req: ExtendedRequest, res: VercelResponse)
     sendErrorResponse(res, 'SYNC_ERROR', `Internal Proxy Sync Error: ${errMsg}`, 500);
   }
 }
+
+export default protectedHandler(handler);

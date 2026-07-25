@@ -3,12 +3,14 @@ import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 import { resolveOrdersRevenue } from '../_shared/godomallResource.js';
 import type { SyntheticSource } from '../_shared/godomallResource.js';
+import { protectedHandler } from '../_shared/authActor.js';
 
 // GET /api/godomall/orders-revenue — 매출 분석용 주문 조회 (RevenueOrder v0).
 //
 // 상품관리팀 매출 대시보드 전용. orders-admin(표시용)과 별개의 매출 분석 구조.
 // 보안: 고객 개인정보 미포함(매출 분석용), 키/raw XML 미반환, READ 전용.
-export default async function handler(req: IncomingMessage, res: VercelResponse) {
+// AUTH-FOUNDATION-01 GREEN A: 회사 매출 데이터 → 인증된 active 사용자만(인증 미구성 시 현행 보존).
+async function handler(req: IncomingMessage, res: VercelResponse) {
   if (req.method !== 'GET') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'HTTP Method not allowed. Only GET is accepted.', 405);
   }
@@ -55,3 +57,5 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     sendErrorResponse(res, 'PROXY_FETCH_ERROR', `Failed to fetch revenue orders via proxy: ${errMsg}`, 500);
   }
 }
+
+export default protectedHandler(handler);

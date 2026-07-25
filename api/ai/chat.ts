@@ -7,12 +7,15 @@ import type { IncomingMessage } from 'http';
 import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { handleAiChat } from '../_shared/aiProviderServer.js';
 import type { AiChatServerRequest } from '../_shared/aiProviderServer.js';
+import { protectedHandler } from '../_shared/authActor.js';
 
 interface ExtendedRequest extends IncomingMessage {
   body?: Partial<AiChatServerRequest>;
 }
 
-export default async function handler(req: ExtendedRequest, res: VercelResponse) {
+// AUTH-FOUNDATION-01 GREEN A: AI 프록시(비용·외부전송) → 인증된 active 사용자만(인증 미구성 시 현행 보존).
+// (요청자 키 정책·rate/payload 제한은 R-ROUTE-ABUSE-01/R-KEY-POLICY-01 후속.)
+async function handler(req: ExtendedRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     res.status(405).json({ ok: false, providerId: 'unknown', errorKind: 'unknown', errorMessage: 'POST 요청만 허용됩니다.' });
     return;
@@ -32,3 +35,5 @@ export default async function handler(req: ExtendedRequest, res: VercelResponse)
   // 결과에는 apiKey가 포함되지 않는다(handleAiChat가 보장).
   res.status(result.ok ? 200 : 200).json(result);
 }
+
+export default protectedHandler(handler);
