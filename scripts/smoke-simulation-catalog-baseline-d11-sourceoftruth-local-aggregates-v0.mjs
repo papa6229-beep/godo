@@ -54,20 +54,23 @@ const orders = [
   { orderNo: 'A2', sourceType: 'synthetic_test', paid: false, unpaid: false, canceled: true,  deliveryFee: 3000, totalAmount: 5000,  lines: [{ lineRevenue: 4000,  quantity: 1 }] },
   // 미결제(명시 플래그) — unpaid=true, paid/canceled=false
   { orderNo: 'A3', sourceType: 'synthetic_test', paid: false, unpaid: true,  canceled: false, deliveryFee: 2000, totalAmount: 8000,  lines: [{ lineRevenue: 7000,  quantity: 1 }] },
-  // 환불 claim(refund) · 유효 주문
-  { orderNo: 'A4', sourceType: 'synthetic_test', paid: true,  unpaid: false, canceled: false, deliveryFee: 2500, totalAmount: 20000, lines: [{ lineRevenue: 17500, quantity: 2 }], claim: { hasClaim: true, claimTypes: ['refund'], claimAmount: 15000 } },
-  // 반품 claim(한글 '반품') · 유효 주문 · 배송비 0
-  { orderNo: 'B5', sourceType: 'real_godomall',  paid: true,  unpaid: false, canceled: false, deliveryFee: 0,    totalAmount: 9000,  lines: [{ lineRevenue: 9000,  quantity: 1 }], claim: { hasClaim: true, claimTypes: ['반품'],  claimAmount: 9000 } },
-  // 취소 claim('cancel') · 유효 주문 — returnedOrders(정규식에 cancel 포함)엔 잡히나
-  //   refundedRevenue(정규식에 cancel 없음)엔 안 잡힘 → 두 집계 분리 검증
-  { orderNo: 'B6', sourceType: 'real_godomall',  paid: true,  unpaid: false, canceled: false, deliveryFee: 1000, totalAmount: 7000,  lines: [{ lineRevenue: 6000,  quantity: 1 }], claim: { hasClaim: true, claimTypes: ['cancel'], claimAmount: 7000 } },
+  // 환불 claim(refund_only, 완료) · 유효 주문 — D-1.2: RAW 근거(handleMode r · r3 · handleCompleteFl y) 동반
+  { orderNo: 'A4', sourceType: 'synthetic_test', paid: true,  unpaid: false, canceled: false, deliveryFee: 2500, totalAmount: 20000, lines: [{ lineRevenue: 17500, quantity: 2 }], claim: { hasClaim: true, claimTypes: ['refund'], handleModes: ['r'], rawStatuses: ['r3'], handleCompleteFl: 'y', claimAmount: 15000, requestedRefundAmount: 15000 } },
+  // 반품 claim(return, 접수·환불 대기) · 유효 주문 · 배송비 0 — D-1.2: handleMode b · b4(회수완료)·환불 미완료
+  { orderNo: 'B5', sourceType: 'real_godomall',  paid: true,  unpaid: false, canceled: false, deliveryFee: 0,    totalAmount: 9000,  lines: [{ lineRevenue: 9000,  quantity: 1 }], claim: { hasClaim: true, claimTypes: ['return'], handleModes: ['b'], rawStatuses: ['b4'], claimAmount: 9000, requestedRefundAmount: 9000 } },
+  // 취소 claim('cancel', 완료) · 유효 주문 — D-1.2: 취소는 반품 건수에 미포함(분류기), 환불 완료금액엔 포함
+  { orderNo: 'B6', sourceType: 'real_godomall',  paid: true,  unpaid: false, canceled: false, deliveryFee: 1000, totalAmount: 7000,  lines: [{ lineRevenue: 6000,  quantity: 1 }], claim: { hasClaim: true, claimTypes: ['cancel'], handleModes: ['c'], rawStatuses: ['c4'], handleCompleteFl: 'y', claimAmount: 7000, requestedRefundAmount: 7000 } },
   // 암묵 미결제 — unpaid 플래그 false 이나 !paid && !canceled(폴백 절) → 미결제로 계수
   { orderNo: 'B7', sourceType: 'real_godomall',  paid: false, unpaid: false, canceled: false, deliveryFee: 500,  totalAmount: 3000,  lines: [{ lineRevenue: 2500,  quantity: 1 }] }
 ];
 // 손검산:
 //   totalOrders=7 · validOrders(paid&&!canceled)=A1,A4,B5,B6=4
-//   cancelledOrders=A2=1 · unpaidOrders=A3(flag)+B7(폴백)=2 · returnedOrders=A4,B5,B6=3
-//   refundedRevenue=A4(15000)+B5(9000)=24000 [B6 'cancel' 제외]
+//   unpaidOrders=A3(flag)+B7(폴백)=2
+//   ── D-1.2 GREEN 재정의(폐기·교체 단언, RED 증거는 아래 주석) ──
+//   cancelledOrders(취소 사건=eventKind cancel)=B6=1  [옛: o.canceled=A2=1 — 근거만 바뀜, 값 동일]
+//   returnReceivedOrders(반품 사건=eventKind return)=B5=1  [옛 returnedOrders=A4·B5·B6=3 폐기: 취소·환불을 반품으로 오집계했음(D-1.2 RED F1)]
+//   completedRefundRevenue(완료 근거 있는 환불만)=A4(15000)+B6(7000)=22000  [옛 refundedRevenue=A4·B5=24000 폐기: 완료여부 무시·반품접수 요청금액 합산(D-1.2 RED F3)]
+//   pendingRefundRevenue(반품 접수·환불 대기)=B5(9000)
 //   gross(전 라인합)=10000+4000+7000+17500+9000+6000+2500=56000
 //   net(유효 totalAmount)=12500+20000+9000+7000=48500 · AOV=round(48500/4)=12125
 //   orders deliveryFee 합=2500+3000+2000+2500+0+1000+500=11500
@@ -122,10 +125,13 @@ console.log('  --- 1층: 정상 회귀(현재 제품 코드에서 지역 집계�
 
 // 필수 10개 지역 집계값 — 값 잠금
 T('L1. shippingRevenue(P, summary 분기)=40000', P.revenueUniverse.shippingRevenue === 40000, `got=${P.revenueUniverse.shippingRevenue}`);
-T('L2. refundedRevenue=24000 (refund15000+반품9000, cancel 제외)', P.revenueUniverse.refundedRevenue === 24000, `got=${P.revenueUniverse.refundedRevenue}`);
-T('L3. cancelledOrders=1', P.orderUniverse.cancelledOrders === 1, `got=${P.orderUniverse.cancelledOrders}`);
+// D-1.2 교체: refundedRevenue(완료무관 요청금액 합) 폐기 → completedRefundRevenue(완료 근거만).
+T('L2. completedRefundRevenue=22000 (A4 환불완료15000+B6 취소환불완료7000, B5 반품접수 대기 제외)', P.revenueUniverse.completedRefundRevenue === 22000, `got=${P.revenueUniverse.completedRefundRevenue}`);
+T('L2b. requestedRefundAmount=31000 · pendingRefundRevenue=9000 (요청·대기 분리)', P.revenueUniverse.requestedRefundAmount === 31000 && P.revenueUniverse.pendingRefundRevenue === 9000, `req=${P.revenueUniverse.requestedRefundAmount} pending=${P.revenueUniverse.pendingRefundRevenue}`);
+T('L3. cancelledOrders=1 (취소 사건 eventKind cancel = B6)', P.orderUniverse.cancelledOrders === 1, `got=${P.orderUniverse.cancelledOrders}`);
 T('L4. unpaidOrders=2 (명시 플래그+폴백절)', P.orderUniverse.unpaidOrders === 2, `got=${P.orderUniverse.unpaidOrders}`);
-T('L5. returnedOrders=3 (refund·반품·cancel)', P.orderUniverse.returnedOrders === 3, `got=${P.orderUniverse.returnedOrders}`);
+// D-1.2 교체: returnedOrders(취소·환불을 반품으로 오집계) 폐기 → returnReceivedOrders(반품 사건만).
+T('L5. returnReceivedOrders=1 (B5 반품만 · 취소B6·환불A4 제외)', P.orderUniverse.returnReceivedOrders === 1, `got=${P.orderUniverse.returnReceivedOrders}`);
 T('L6. totalQuantitySold(P, summary 분기)=30', P.productUniverse.totalQuantitySold === 30, `got=${P.productUniverse.totalQuantitySold}`);
 T('L7. repeatCustomers=2 (orderCount>1)', P.customerUniverse.repeatCustomers === 2, `got=${P.customerUniverse.repeatCustomers}`);
 T('L8. highRiskCustomers=2 (claimCount>0)', P.customerUniverse.highRiskCustomers === 2, `got=${P.customerUniverse.highRiskCustomers}`);
@@ -155,7 +161,8 @@ T('L23. shippingRevenue(Q, 주문 reduce 폴백)=11500', Q.revenueUniverse.shipp
 T('L24. totalQuantitySold(Q, summary 없음)=0', Q.productUniverse.totalQuantitySold === 0, `got=${Q.productUniverse.totalQuantitySold}`);
 T('L25. syntheticOrderCount(Q, sourceType 필터)=4', Q.metadata.syntheticOrderCount === 4, `got=${Q.metadata.syntheticOrderCount}`);
 T('L26. realOrderCount(Q, total-synthetic)=3', Q.metadata.realOrderCount === 3, `got=${Q.metadata.realOrderCount}`);
-T('L27. Q 지역 집계(취소1/미결제2/반품3/환불24000) summary 무관 동일', Q.orderUniverse.cancelledOrders === 1 && Q.orderUniverse.unpaidOrders === 2 && Q.orderUniverse.returnedOrders === 3 && Q.revenueUniverse.refundedRevenue === 24000, `c=${Q.orderUniverse.cancelledOrders} u=${Q.orderUniverse.unpaidOrders} r=${Q.orderUniverse.returnedOrders} refund=${Q.revenueUniverse.refundedRevenue}`);
+// D-1.2 교체: 반품3/환불24000(옛 오집계) → 반품접수1/완료환불22000(사건 분류·완료 근거).
+T('L27. Q 지역 집계(취소1/미결제2/반품접수1/완료환불22000) summary 무관 동일', Q.orderUniverse.cancelledOrders === 1 && Q.orderUniverse.unpaidOrders === 2 && Q.orderUniverse.returnReceivedOrders === 1 && Q.revenueUniverse.completedRefundRevenue === 22000, `c=${Q.orderUniverse.cancelledOrders} u=${Q.orderUniverse.unpaidOrders} r=${Q.orderUniverse.returnReceivedOrders} refund=${Q.revenueUniverse.completedRefundRevenue}`);
 
 // ── 입력 fixture 무변형 확인(참조 함수가 입력을 mutate 하지 않음) ─────────────
 const inputUnmutated = orders.length === 7 && orders[0].totalAmount === 12500 && customers.length === 4 && inquiries.length === 5 && reviews.length === 2 &&
