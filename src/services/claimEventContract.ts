@@ -31,14 +31,18 @@ export interface ClaimEvidence {
   claimTypes?: string[];
   /** RAW claimData.handleMode 코드(c/r/b/e/z). */
   handleModes?: string[];
-  /** RAW claimData.handleCompleteFl (y=환불완료 / n=환불접수). 원본 그대로. */
+  /** RAW claimData.handleCompleteFl. 스펙 필드명 "처리완료여부" — 클레임 처리 완료일 뿐,
+   *  금전 환불 완료 근거로 쓰지 않는다(D-1.2.1). 원본 보존용. */
   handleCompleteFl?: string;
-  /** RAW claimData.handleDt 처리완료일자(있을 때). */
+  /** RAW claimData.handleDt "처리완료일자"(있을 때). 환불 완료 시각 근거 아님(원본 보존용). */
   handleDt?: string;
-  /** RAW 라인 orderStatus 코드(c4/b4/r3/e5 …). */
+  /** RAW 라인 orderStatus 코드(c4/b4/r3/e5 …). r3=환불완료(명시 상태코드). */
   rawStatuses?: string[];
   /** 요청/예상 환불금액(=refundPrice/claimAmount 합). 실제 완료금액 아님. */
   requestedRefundAmount?: number;
+  /** D-1.2.1: 금전 환불 완료 시각임이 **확인된** 별도 필드가 있을 때만 채운다(현재 RAW 미제공 →
+   *  대개 undefined). handleDt(처리완료일자)를 여기에 넣지 않는다. 실측 확정=GODO-CLAIM-STATS-01. */
+  refundCompletedAt?: string;
 }
 
 /** 주문 맥락 — 분류에 영향(결제 여부). canceled(cancelDt)는 기준선 전용이라 분류에 쓰지 않는다. */
@@ -117,18 +121,23 @@ export function classifyClaimEvent(
     refundStatus = 'none'; // 미결제 취소 등 → 환불 없음
   } else if (eventKind === 'return') {
     // 반품 접수/회수 완료(b4)는 "환불 완료"가 아니다. 명시적 환불완료(r3)만 완료로 인정.
-    // 그 외는 환불 대기(완료 근거 미확정 — GODO-CLAIM-STATS-PARITY-01 에서 실측 확정).
+    // 그 외는 환불 대기(완료 근거 미확정 — GODO-CLAIM-STATS-01 에서 실측 확정).
     refundStatus = hasCompleteCode ? 'completed' : 'pending';
   } else {
-    // cancel · refund_only (결제됨): handleCompleteFl=y 또는 r3 → 완료, n → 대기, 미상 → unknown.
-    if (completeFl === 'y' || hasCompleteCode) refundStatus = 'completed';
+    // cancel · refund_only (결제됨): D-1.2.1 fail-closed —
+    //   금전 환불 완료는 **명시 상태코드(r3)** 만 근거로 인정한다.
+    //   handleCompleteFl='y' 는 "처리완료"일 뿐 금전 환불완료 근거가 아니므로 완료로 보지 않는다.
+    //   handleCompleteFl='n'(환불접수) → 대기. 그 외(미확인·'y'만) → unknown(0원 단정 금지).
+    if (hasCompleteCode) refundStatus = 'completed';
     else if (completeFl === 'n') refundStatus = 'pending';
     else refundStatus = 'unknown';
   }
 
   const completedRefundAmount = refundStatus === 'completed' ? requested : 0;
   const refundCompletedKnown = refundStatus === 'completed' || refundStatus === 'none';
-  const refundedAt = refundStatus === 'completed' && ev?.handleDt ? ev.handleDt : undefined;
+  // D-1.2.1: refundedAt 은 "환불 완료 시각이 확인된 별도 필드"(refundCompletedAt)가 있을 때만.
+  //   handleDt(처리완료일자)는 근거 아님 → 넣지 않는다. 시각 근거 없으면 완료여도 비워 둔다.
+  const refundedAt = refundStatus === 'completed' && ev?.refundCompletedAt ? ev.refundCompletedAt : undefined;
 
   return {
     eventKind,

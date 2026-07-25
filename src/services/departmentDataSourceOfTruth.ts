@@ -84,7 +84,10 @@ export interface DepartmentSourceOfTruthSnapshot {
     completedRefundCount: number;  // 실제 환불 완료 건수
     pendingRefundCount: number;    // 환불 대기 건수
     unknownRefundCount: number;    // 환불 완료 여부 미확인 건수(0 단정 금지)
-    completedRefundAmount: number; // 실제 환불 완료금액
+    completedRefundAmount: number; // 실제 환불 완료금액(명시 근거 r3 등만)
+    // D-1.2.1: 완료 근거 미확정 환불 요청액(예: 취소 처리완료이나 금전 환불 미확인). 완료금액에서
+    //   제외하되 0으로 소실시키지 않고 금액으로 추적 보존한다(원본 rawClaim 도 보존).
+    unknownRefundRevenue: number;
     requestedRefundAmount: number; // 요청/예상 환불금액(완료 아님)
     returnStageBreakdown: Record<ReturnStage, number>; // 반품 단계(RAW b1~b4 증명분)
   };
@@ -146,7 +149,7 @@ export function buildDepartmentSourceOfTruthSnapshot(
   const exchangeOrders = claimCount('exchange');
   const refundOnlyOrders = claimCount('refund_only');
   const unknownClaimOrders = claimCount('unknown');
-  let completedRefundAmount = 0, requestedRefundAmount = 0, pendingRefundRevenue = 0;
+  let completedRefundAmount = 0, requestedRefundAmount = 0, pendingRefundRevenue = 0, unknownRefundRevenue = 0;
   let completedRefundCount = 0, pendingRefundCount = 0, unknownRefundCount = 0;
   for (const e of claimEvents) {
     if (!e) continue;
@@ -154,7 +157,7 @@ export function buildDepartmentSourceOfTruthSnapshot(
     if (e.eventKind === 'return' && e.returnStage) returnStageBreakdown[e.returnStage] += 1;
     if (e.refundStatus === 'completed') { completedRefundAmount += e.completedRefundAmount; completedRefundCount += 1; }
     else if (e.refundStatus === 'pending') { pendingRefundRevenue += e.requestedRefundAmount; pendingRefundCount += 1; }
-    else if (e.refundStatus === 'unknown') { unknownRefundCount += 1; }
+    else if (e.refundStatus === 'unknown') { unknownRefundRevenue += e.requestedRefundAmount; unknownRefundCount += 1; }
   }
 
   // 매출 universe
@@ -223,7 +226,7 @@ export function buildDepartmentSourceOfTruthSnapshot(
     claimUniverse: {
       cancelOrders: cancelledOrders, returnReceivedOrders, exchangeOrders, refundOnlyOrders, unknownClaimOrders,
       completedRefundCount, pendingRefundCount, unknownRefundCount,
-      completedRefundAmount, requestedRefundAmount, returnStageBreakdown
+      completedRefundAmount, unknownRefundRevenue, requestedRefundAmount, returnStageBreakdown
     },
     metadata: {
       includesSynthetic: syntheticOrderCount > 0,
