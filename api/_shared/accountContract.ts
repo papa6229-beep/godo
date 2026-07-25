@@ -47,46 +47,39 @@ export interface Account {
   history: AccountHistoryEntry[];
 }
 
-// 공개 가입 신청 입력(사용자에게 보이는 5개 항목). 비밀번호는 여기 포함되지 않는다
-// (비밀번호는 관리형 인증이 직접 받아 저장하며 우리 제품 계층을 통과하지 않는다).
+// 공개 가입 신청 입력. 사용자 화면 입력은 이름·팀·직책·희망 아이디·비밀번호 5개뿐이며
+// 아이디·비밀번호는 관리형 인증이 직접 받는다(우리 제품 계층 미통과). 여기는 이름·팀·직책만.
+// ★ A.1 보정: 공개 가입 body 로 role 을 결정하지 않는다 — 신청은 항상 member·pending 으로
+//   생성되고, 역할 상향(team_lead)은 HQ 가 승인 시점에 결정한다. 공개 가입으로 HQ 불가.
 export interface SignupApplication {
   userId: string;             // 인증 공급자가 가입 직후 발급한 검증 ID
   name: string;
   team: string;               // 신청 값(검증 전) — 정본 팀만 허용
   position: string;           // 직책
-  role: string;               // 신청 값(검증 전) — hq 는 거부
 }
-
-// ── 가입 검증·생성 ────────────────────────────────────────────────────────────
-// 공개 가입에서 요청 가능한 역할: member, team_lead 만. hq 는 공개 가입에서 신청할 수 없다.
-export const isPublicSignupRoleAllowed = (role: unknown): role is 'member' | 'team_lead' =>
-  role === 'member' || role === 'team_lead';
 
 export interface SignupResult {
   ok: boolean;
   account?: Account;
-  errorCode?: 'INVALID_ROLE' | 'INVALID_TEAM' | 'INVALID_NAME' | 'INVALID_POSITION' | 'HQ_NOT_ALLOWED';
+  errorCode?: 'INVALID_TEAM' | 'INVALID_NAME' | 'INVALID_POSITION';
 }
 
-// 공개 가입 신청 → pending 계정 생성(또는 거부). 비밀번호는 다루지 않는다.
+// 공개 가입 신청 → 항상 member·pending 계정 생성(또는 거부). 비밀번호·역할은 다루지 않는다.
 export function createSignupAccount(app: SignupApplication, at: string): SignupResult {
   const name = (app.name ?? '').trim();
   const position = (app.position ?? '').trim();
   if (!name) return { ok: false, errorCode: 'INVALID_NAME' };
   if (!position) return { ok: false, errorCode: 'INVALID_POSITION' };
-  if (app.role === 'hq') return { ok: false, errorCode: 'HQ_NOT_ALLOWED' };
-  if (!isPublicSignupRoleAllowed(app.role)) return { ok: false, errorCode: 'INVALID_ROLE' };
   if (!isTeamId(app.team)) return { ok: false, errorCode: 'INVALID_TEAM' };
-  const role = app.role;
   const team: AccountTeam = app.team;
   const account: Account = {
     userId: app.userId,
     name,
     team,
     position,
-    role,
+    role: 'member',
     status: 'pending',
-    history: [{ at, event: 'created', name, team, position, role }]
+    history: [{ at, event: 'created', name, team, position, role: 'member' }]
   };
   return { ok: true, account };
 }
@@ -97,19 +90,27 @@ export const canAccessProtected = (account: Account | null | undefined): boolean
   !!account && account.status === 'active';
 
 // ── 승인 규칙 ─────────────────────────────────────────────────────────────────
-// member 신청 → 같은 팀의 active team_lead 또는 HQ 만 승인.
-// team_lead 신청 → HQ 만 승인.
-// hq 계정은 이 흐름으로 승인되지 않는다(공개 가입 불가·부트스트랩 별도).
-export function canApproveApplication(approver: Account, applicant: Account): boolean {
+// A.1 보정: 신청은 전부 member·pending 이므로 "무슨 역할로 승인하는가"를 승인 시점에 결정한다.
+//   - member 로 승인: 같은 팀의 active team_lead 또는 HQ.
+//   - team_lead 로 승인: HQ 만.
+//   - hq 로 승인: 이 흐름으로 불가(부트스트랩 별도).
+export type ApproveAsRole = 'member' | 'team_lead';
+export const isApproveAsRole = (v: unknown): v is ApproveAsRole => v === 'member' || v === 'team_lead';
+
+export function canApproveAs(approver: Account, applicant: Account, asRole: ApproveAsRole): boolean {
   if (approver.status !== 'active') return false;           // 승인자도 active 여야 함
   if (applicant.status !== 'pending') return false;         // 대기 상태만 승인 대상
-  if (applicant.role === 'hq') return false;
-  if (applicant.role === 'team_lead') return approver.role === 'hq';
-  // applicant.role === 'member'
+  if (asRole === 'team_lead') return approver.role === 'hq';
+  // asRole === 'member'
   if (approver.role === 'hq') return true;
   if (approver.role === 'team_lead') return approver.team === applicant.team;
   return false;                                             // member 는 승인 권한 없음
 }
+
+// 승인자에게 노출 가능한 신청(목록 스코프): member 로라도 승인 가능한 대상만.
+// → 팀장에게 타 팀 신청은 보이지 않는다. HQ 는 전체.
+export const canViewApplication = (approver: Account, applicant: Account): boolean =>
+  canApproveAs(approver, applicant, 'member');
 
 // 정지 권한: HQ 는 누구든(자신 제외), team_lead 는 자기 팀 member 만.
 export function canSuspend(actor: Account, target: Account): boolean {
@@ -121,21 +122,23 @@ export function canSuspend(actor: Account, target: Account): boolean {
   return false;
 }
 
-// 비밀번호 초기화 권한(임시 비번 발급): 자기 팀장 또는 HQ.
-// (실제 비번은 관리형 인증이 설정한다. 이 판정은 "누가 초기화를 명령할 수 있는가"만 다룬다.)
+// 비밀번호 초기화 권한(임시 비번 발급): 같은 팀장 또는 HQ 만.
+// A.1 보정: member self-reset 분기 제거 — 확정 정책은 "회사 메신저 등으로 팀장에게 요청 →
+// 같은 팀장 또는 HQ 가 임시 비번 발급"이며 제품 내 공개 초기화 신청 경로를 만들지 않는다.
 export function canResetPassword(actor: Account, target: Account): boolean {
   if (actor.status !== 'active') return false;
   if (actor.role === 'hq') return true;
   if (actor.role === 'team_lead') return actor.team === target.team && target.role === 'member';
-  return actor.userId === target.userId;                    // 본인은 자기 초기화 요청 가능
+  return false;
 }
 
 // ── 상태 전이(이력 보존) ───────────────────────────────────────────────────────
 const snapshot = (a: Account, event: AccountHistoryEvent, at: string, by?: string): AccountHistoryEntry =>
   ({ at, event, name: a.name, team: a.team, position: a.position, role: a.role, ...(by ? { by } : {}) });
 
-export function applyApproval(account: Account, by: string, at: string): Account {
-  const next: Account = { ...account, status: 'active', history: [...account.history] };
+// 승인: 상태 active 전환 + 승인 시점에 결정된 역할(member|team_lead) 부여(이력에 스냅샷).
+export function applyApproval(account: Account, by: string, at: string, asRole: ApproveAsRole = 'member'): Account {
+  const next: Account = { ...account, status: 'active', role: asRole, history: [...account.history] };
   next.history.push(snapshot(next, 'approved', at, by));
   return next;
 }
