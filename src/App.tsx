@@ -40,8 +40,9 @@ import type { ApprovalDecisionKind } from './services/taskLifecycleContract';
 import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
-import { useAuthGate } from './services/authGate';
+import { useAuthGate, getServerAccount, isAuthConfigured } from './services/authGate';
 import AuthGateScreen from './components/AuthGateScreen';
+import AccountAdminPanel from './components/auth/AccountAdminPanel';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -84,6 +85,8 @@ function App() {
   // AUTH-FOUNDATION-01 GREEN A: 인증 게이트. 미구성(VITE_CLERK_PUBLISHABLE_KEY 없음) → 'open'(현행 앱).
   //   구성됨 + 미로그인/대기/정지 → 대시보드·데이터 fetch 를 시작하기 전에 게이트 화면으로 차단.
   const authGateMode = useAuthGate();
+  // 계정 관리 패널(팀장/HQ 전용) — 서버 계정 뷰가 있고 role 이 team_lead/hq 일 때만 진입로 노출.
+  const [showAccountAdmin, setShowAccountAdmin] = useState(false);
   const [showOpening, setShowOpening] = useState(true);
   const [validationScenario, setValidationScenario] = useState<ValidationScenarioType>(() => {
     try {
@@ -967,8 +970,28 @@ function App() {
     return <AuthGateScreen mode={authGateMode} />;
   }
 
+  const serverAccount = getServerAccount();
+  const canManageAccounts =
+    isAuthConfigured() && (serverAccount?.role === 'hq' || serverAccount?.role === 'team_lead');
+
   return (
     <>
+      {canManageAccounts && (
+        <button
+          type="button"
+          onClick={() => setShowAccountAdmin(true)}
+          style={{
+            position: 'fixed', bottom: 16, left: 16, zIndex: 8900, padding: '8px 14px',
+            borderRadius: 999, border: '1px solid #d1d5db', background: '#ffffff',
+            fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.12)'
+          }}
+        >
+          🔐 계정 관리
+        </button>
+      )}
+      {showAccountAdmin && canManageAccounts && (
+        <AccountAdminPanel onClose={() => setShowAccountAdmin(false)} />
+      )}
       {showOpening ? (
         <OpeningScreen onFinished={() => setShowOpening(false)} />
       ) : (

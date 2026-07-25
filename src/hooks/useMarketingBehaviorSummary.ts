@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { MarketingBehaviorInsights } from '../services/marketingBehaviorTypes';
+import { authorizedFetch } from '../services/authorizedFetch';
 
 // ────────────────────────────────────────────────────────────────────────────
 // useMarketingBehaviorSummary — 고객 행동 분석 모달용 안전 summary fetch hook
@@ -62,7 +63,7 @@ export function useMarketingBehaviorSummary(options?: {
     if (rangeLabel) params.set('rangeLabel', rangeLabel);
     const qs = params.toString();
 
-    fetch(`${SUMMARY_ENDPOINT}${qs ? `?${qs}` : ''}`, { signal: ctrl.signal, headers: { Accept: 'application/json' } })
+    authorizedFetch(`${SUMMARY_ENDPOINT}${qs ? `?${qs}` : ''}`, { signal: ctrl.signal, headers: { Accept: 'application/json' } })
       .then((r) => r.json() as Promise<SummaryApiShape>)
       .then((data) => {
         const storageMode = data.storage?.mode;

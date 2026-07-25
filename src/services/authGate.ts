@@ -44,7 +44,7 @@ export const isAuthConfigured = (): boolean => {
   }
 };
 
-// ── 라이브 상태 소스 레지스트리(Clerk 배선이 주입) ────────────────────────────
+// ── 라이브 상태 소스 레지스트리(ClerkAuthBridge 가 주입) ──────────────────────
 type AuthSource = () => AuthGateInput;
 let liveSource: AuthSource | null = null;
 const subscribers = new Set<() => void>();
@@ -56,6 +56,32 @@ export function registerAuthSource(fn: AuthSource): void {
 export function notifyAuthChange(): void {
   subscribers.forEach((s) => s());
 }
+
+// ── 서버 계정 뷰(/api/auth/me 결과) — 화면 표시·관리 패널 노출 판단용 ─────────
+// 권한의 정본은 서버다. 이 값은 "서버가 알려준 내 계정"의 캐시일 뿐 권한 근거가 아니다.
+export interface ServerAccountView {
+  userId: string; name: string; team: string; position: string;
+  role: 'hq' | 'team_lead' | 'member'; status: 'pending' | 'active' | 'suspended';
+}
+let serverAccount: ServerAccountView | null = null;
+export function setServerAccount(a: ServerAccountView | null): void {
+  serverAccount = a;
+  subscribers.forEach((s) => s());
+}
+export const getServerAccount = (): ServerAccountView | null => serverAccount;
+
+// pending/suspended 화면의 [상태 다시 확인] — 브리지가 실제 재조회 함수를 등록한다.
+let refreshFn: (() => Promise<void>) | null = null;
+export function registerAuthRefresh(fn: (() => Promise<void>) | null): void { refreshFn = fn; }
+export async function refreshAuthStatus(): Promise<void> { if (refreshFn) await refreshFn(); }
+
+// 가입 폼이 Clerk 가입 직후 저장하는 프로필(이름·팀·직책) — 브리지가 signup-metadata 로 전송.
+export interface PendingSignupProfile { name: string; team: string; position: string; }
+let pendingSignupProfile: PendingSignupProfile | null = null;
+export function setPendingSignupProfile(p: PendingSignupProfile | null): void { pendingSignupProfile = p; }
+export const takePendingSignupProfile = (): PendingSignupProfile | null => {
+  const p = pendingSignupProfile; pendingSignupProfile = null; return p;
+};
 
 export function readAuthInput(): AuthGateInput {
   if (!isAuthConfigured()) return { configured: false, loaded: true, signedIn: false, status: null };
