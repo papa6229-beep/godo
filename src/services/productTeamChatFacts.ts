@@ -11,7 +11,7 @@ import { parseAnalyticsQuery } from './analyticsQueryParser';
 import { executeAnalyticsQuery } from './analyticsQueryExecutor';
 import type { AnalyticsQueryResult } from './analyticsQueryTypes';
 import { formatSharePercent } from './productCategoryDisplay';
-import { screenStateFromRevenue } from './revenueScreenState';
+import { screenStateFromRevenue, resolveRealOrdersDisplay, realOrdersPhrase } from './revenueScreenState';
 
 export interface ProductTeamFacts {
   intent: string;
@@ -233,7 +233,9 @@ const orderCompositionPhrase = (
 ): string => {
   const kind = screenStateFromRevenue(revenue).kind;
   if (kind === 'fixture') return `총 시험 주문 ${s.orderCount}건(기능시험 자료)`;
-  return `총 주문 ${s.orderCount}건(실 ${s.realOrderCount} + 가상 ${s.syntheticOrderCount})`;
+  // D-1: 연결 실패면 "실 0 + 가상"이 아니라 "실제 주문 연결 안 됨". 실제 성공 시 건수(수치) 보존.
+  const realPart = realOrdersPhrase(resolveRealOrdersDisplay(revenue.realOrdersStatus, s.realOrderCount));
+  return `${realPart} · 시험 주문 ${s.syntheticOrderCount.toLocaleString()}건`;
 };
 
 // 데이터 한계(회원/세그먼트/유입 등) 질문 감지

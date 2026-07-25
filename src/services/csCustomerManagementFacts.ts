@@ -10,6 +10,7 @@ import type { GroundingOrder } from './csInquiryOrderGrounding';
 import type { CsRiskLevel } from './csDraftComposer';
 import { csTopicKo, type CsDashInquiry, type CsDashReview, type CsDashContact } from './csTeamDashboardFacts';
 import { isAnswered as isAnsweredC } from './inquiryStatusContract';
+import { classifyClaimEvent } from './claimEventContract';
 import type { CsCompletedWorkItem } from './csWorkCompletionState';
 
 export interface CsProfileOrder {
@@ -100,6 +101,14 @@ const prod = (goodsNo: string | undefined, names?: Record<string, string>): stri
 const ageDays = (d: string | undefined, nowMs: number): number => { const t = Date.parse((d || '').replace(' ', 'T')); return Number.isNaN(t) ? Infinity : Math.max(0, (nowMs - t) / 86400000); };
 const CLAIM_KO: Record<string, string> = { refund: '환불', cancel: '취소', return: '반품', exchange: '교환' };
 
+// D-1.2: 취소·반품·환불 사건 여부(공통 분류기). claim 없이 canceled 만인 옛 주문은 취소로 본다.
+const isRefundOrCancelEvent = (o: GroundingOrder): boolean => {
+  const src = o.claim?.hasClaim ? o.claim : (o.canceled ? { hasClaim: true, claimTypes: ['cancel'] } : undefined);
+  if (!src) return false;
+  const k = classifyClaimEvent(src, { paid: o.paid }).eventKind;
+  return k === 'cancel' || k === 'return' || k === 'refund_only';
+};
+
 export function buildCsCustomerProfileHub(params: {
   inquiries: CsDashInquiry[];
   reviews: CsDashReview[];
@@ -137,7 +146,8 @@ export function buildCsCustomerProfileHub(params: {
     const recentYearOrderAmount = paid.filter((o) => ageDays(o.orderDate, nowMs) <= 365).reduce((s, o) => s + (o.totalAmount || 0), 0);
     const claimOrders = a.orders.filter((o) => o.claim?.hasClaim || o.canceled);
     const claimCount = claimOrders.length;
-    const refundCancelCount = a.orders.filter((o) => (o.claim?.claimTypes || []).some((t) => /refund|cancel|return/.test(t)) || o.canceled).length;
+    // D-1.2: 공통 분류기로 취소·반품·환불 사건을 센다(제각각 정규식 금지). 교환·확인필요 제외.
+    const refundCancelCount = a.orders.filter((o) => isRefundOrCancelEvent(o)).length;
     const lowReviewCount = a.reviews.filter(isLowReview).length;
 
     const tags: string[] = [];

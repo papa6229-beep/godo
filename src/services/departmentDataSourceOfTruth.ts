@@ -19,7 +19,8 @@ import {
 } from './revenueMetricContract';
 import { summarizeStockRisk } from './inventoryRiskContract';
 import { summarizeInquiryStatus, isUnresolved } from './inquiryStatusContract';
-import { screenStateFromRevenue } from './revenueScreenState';
+import { screenStateFromRevenue, resolveRealOrdersDisplay, type RealOrdersDisplay } from './revenueScreenState';
+import { classifyClaimEvent, type ClaimEventKind, type ReturnStage } from './claimEventContract';
 
 export type DepartmentSourceMode = 'real' | 'synthetic' | 'mixed' | 'unavailable';
 
@@ -31,15 +32,22 @@ export interface DepartmentSourceOfTruthSnapshot {
   orderUniverse: {
     totalOrders: number;
     validOrders: number;
+    // D-1.2: cancelledOrders = 원본 사건이 "취소"인 주문(발송 전 중단)만. 반품/환불 호환 태그 제외.
     cancelledOrders: number;
     unpaidOrders: number;
-    returnedOrders: number;
+    // D-1.2: 반품 "접수" 건수(사건이 return 인 주문). 취소·환불을 섞지 않는다(옛 returnedOrders 대체).
+    returnReceivedOrders: number;
   };
   revenueUniverse: {
     grossProductRevenue: number;
     netOrderRevenue: number;
     shippingRevenue: number;
-    refundedRevenue: number;
+    // D-1.2: 실제 환불 "완료" 금액만(refundStatus=completed). 요청/대기/미확인은 분리(아래).
+    completedRefundRevenue: number;
+    // D-1.2: 요청/예상 환불금액 합(refundPrice/claimAmount) — 완료금액이 아님. 완료와 혼동 금지.
+    requestedRefundAmount: number;
+    // D-1.2: 환불 대기(pending) 금액. 미확인(unknown)은 0 단정하지 않고 별도 카운트로 보존.
+    pendingRefundRevenue: number;
     operationalRevenue: number;
   };
   productUniverse: {
@@ -65,10 +73,30 @@ export interface DepartmentSourceOfTruthSnapshot {
     totalReviews: number;
     autoCandidates: number;
   };
+  // D-1.2: 취소·반품·환불 사건 분류 요약(공통 분류기 claimEventContract 기준). 정본(데이터가 결정).
+  //   CS팀장 커스텀은 "표시할 지표 선택"만 가능하며 이 정본 사건·상태는 변경 불가.
+  claimUniverse: {
+    cancelOrders: number;          // 취소(발송 전 중단)
+    returnReceivedOrders: number;  // 반품 접수
+    exchangeOrders: number;        // 교환
+    refundOnlyOrders: number;      // 반품 없이 환불만(부분 환불 등)
+    unknownClaimOrders: number;    // 확인 필요(근거 부족/충돌)
+    completedRefundCount: number;  // 실제 환불 완료 건수
+    pendingRefundCount: number;    // 환불 대기 건수
+    unknownRefundCount: number;    // 환불 완료 여부 미확인 건수(0 단정 금지)
+    completedRefundAmount: number; // 실제 환불 완료금액(명시 근거 r3 등만)
+    // D-1.2.1: 완료 근거 미확정 환불 요청액(예: 취소 처리완료이나 금전 환불 미확인). 완료금액에서
+    //   제외하되 0으로 소실시키지 않고 금액으로 추적 보존한다(원본 rawClaim 도 보존).
+    unknownRefundRevenue: number;
+    requestedRefundAmount: number; // 요청/예상 환불금액(완료 아님)
+    returnStageBreakdown: Record<ReturnStage, number>; // 반품 단계(RAW b1~b4 증명분)
+  };
   metadata: {
     includesSynthetic: boolean;
     realOrderCount: number;
     syntheticOrderCount: number;
+    // D-1: 실제 주문 하위 상태(연결 안 됨 ≠ 실제 0건). realOrderCount 단독으로는 조합3/4가 구별 안 되므로 보존.
+    realOrders: RealOrdersDisplay;
     basisDescription: string;
   };
 
@@ -106,13 +134,36 @@ export function buildDepartmentSourceOfTruthSnapshot(
 
   // 주문 universe
   const totalOrders = countAllOrders(orders);
-  const cancelledOrders = orders.filter((o) => o.canceled).length;
   const unpaidOrders = orders.filter((o) => o.unpaid || (!o.paid && !o.canceled)).length;
-  const returnedOrders = orders.filter((o) => o.claim?.claimTypes?.some((t) => /refund|return|cancel|환불|반품/i.test(t))).length;
+
+  // ── D-1.2: 취소·반품·환불 사건 분류(공통 분류기) — 문자열 정규식 제각각 판정 종식 ──
+  //   취소↔반품↔환불을 서로 다른 사건으로 단일 분류하고, 요청금액과 실제 완료금액을 분리한다.
+  const claimEvents = orders.map((o) => (o.claim?.hasClaim
+    ? classifyClaimEvent(o.claim, { paid: o.paid, shipped: o.shipped })
+    : null));
+  const zeroStages: Record<ReturnStage, number> = { received: 0, in_transit: 0, on_hold: 0, collected: 0, unknown: 0 };
+  const returnStageBreakdown: Record<ReturnStage, number> = { ...zeroStages };
+  const claimCount = (k: ClaimEventKind): number => claimEvents.filter((e) => e?.eventKind === k).length;
+  const cancelledOrders = claimCount('cancel');            // 취소만(발송 전 중단)
+  const returnReceivedOrders = claimCount('return');       // 반품 접수만(취소·환불 미포함)
+  const exchangeOrders = claimCount('exchange');
+  const refundOnlyOrders = claimCount('refund_only');
+  const unknownClaimOrders = claimCount('unknown');
+  let completedRefundAmount = 0, requestedRefundAmount = 0, pendingRefundRevenue = 0, unknownRefundRevenue = 0;
+  let completedRefundCount = 0, pendingRefundCount = 0, unknownRefundCount = 0;
+  for (const e of claimEvents) {
+    if (!e) continue;
+    requestedRefundAmount += e.requestedRefundAmount;
+    if (e.eventKind === 'return' && e.returnStage) returnStageBreakdown[e.returnStage] += 1;
+    if (e.refundStatus === 'completed') { completedRefundAmount += e.completedRefundAmount; completedRefundCount += 1; }
+    else if (e.refundStatus === 'pending') { pendingRefundRevenue += e.requestedRefundAmount; pendingRefundCount += 1; }
+    else if (e.refundStatus === 'unknown') { unknownRefundRevenue += e.requestedRefundAmount; unknownRefundCount += 1; }
+  }
 
   // 매출 universe
   const shippingRevenue = summary ? num(summary.deliveryFeeTotal) : orders.reduce((s, o) => s + num(o.deliveryFee), 0);
-  const refundedRevenue = orders.reduce((s, o) => s + (o.claim?.claimAmount && o.claim.claimTypes?.some((t) => /refund|return|환불|반품/i.test(t)) ? num(o.claim.claimAmount) : 0), 0);
+  // D-1.2: 완료 근거가 있는 환불만 완료금액으로 집계(요청/대기/미확인은 분리 — 위 분류기 기준).
+  const completedRefundRevenue = completedRefundAmount;
 
   // 상품 universe
   const totalQuantitySold = summary ? num(summary.syntheticTotalNetSoldQuantity) : 0;
@@ -167,15 +218,22 @@ export function buildDepartmentSourceOfTruthSnapshot(
     generatedAtMs: opts.nowMs ?? 0,
     sourceMode,
     periodLabel: opts.periodLabel ?? '전체 기간',
-    orderUniverse: { totalOrders, validOrders: operationalOrderCount, cancelledOrders, unpaidOrders, returnedOrders },
-    revenueUniverse: { grossProductRevenue: productLineRevenue, netOrderRevenue: operationalRevenue, shippingRevenue, refundedRevenue, operationalRevenue },
+    orderUniverse: { totalOrders, validOrders: operationalOrderCount, cancelledOrders, unpaidOrders, returnReceivedOrders },
+    revenueUniverse: { grossProductRevenue: productLineRevenue, netOrderRevenue: operationalRevenue, shippingRevenue, completedRefundRevenue, requestedRefundAmount, pendingRefundRevenue, operationalRevenue },
     productUniverse: { totalQuantitySold, productCount, riskyStockCount, outOfStockCount: stockRisk.outOfStock, lowStockCount: stockRisk.lowStock, unknownStockCount: stockRisk.unknown, attentionCount: stockRisk.attention },
     customerUniverse: { totalCustomers, repeatCustomers, highRiskCustomers },
     csUniverse: { totalInquiries, unresolvedInquiries, resolvedInquiries, unknownInquiries, totalReviews, autoCandidates },
+    claimUniverse: {
+      cancelOrders: cancelledOrders, returnReceivedOrders, exchangeOrders, refundOnlyOrders, unknownClaimOrders,
+      completedRefundCount, pendingRefundCount, unknownRefundCount,
+      completedRefundAmount, unknownRefundRevenue, requestedRefundAmount, returnStageBreakdown
+    },
     metadata: {
       includesSynthetic: syntheticOrderCount > 0,
       realOrderCount,
       syntheticOrderCount,
+      // D-1: 조합3(연결 실패)과 조합4(실제 성공 0건)를 구별 보존. sourceMode 만으로 실제 연결 상태 추측 금지.
+      realOrders: resolveRealOrdersDisplay(revenue?.realOrdersStatus, realOrderCount),
       basisDescription: '대표 운영 매출/주문 = 유효 주문(결제완료·미취소) 기준(netOrderRevenue/orderCountValid). 상품 라인 매출(gross)은 부서 전용 분석값. ' +
         (screenState.kind === 'fixture'
           ? '시험 데이터(기능시험 fixture) — 실데이터 아님.'
