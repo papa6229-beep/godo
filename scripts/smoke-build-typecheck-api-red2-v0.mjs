@@ -73,9 +73,15 @@ R('A2. 같은 옵션에서 TS2339 좁히기 재현: TargetCheck.status(288) · v
   (cc.TS2339 || 0) >= 3 && vn.some((l) => /detailImageFetch\.ts\(288,65\).*'status'/.test(l)) && vn.some((l) => /marketingBehaviorCollectionValidator\.ts\(179,/.test(l) && /'reason'/.test(l)),
   `TS2339=${cc.TS2339 || 0} (Vercel 로그와 위치 일치)`);
 
+// AUTH-FOUNDATION-01 A.1 이후: @clerk/backend 정적 import 로 node_modules 의 d.ts 가 프로그램에
+// 포함된다. 이 시뮬레이션(skipLibCheck 없음)에서는 SDK 내부 선언의 선택적 peer 의존 오류가 함께
+// 잡히므로, "우리 api 코드 0오류" 단언은 원 의미 그대로 api/ 파일 진단만으로 판정한다
+// (실제 Vercel 검사는 api/tsconfig.json(skipLibCheck) 이 관할 — B1/BASE 가 그 경로).
+const apiOnly = (lines) => lines.filter((l) => !/node_modules[\\/]/.test(l));
+
 // 원인 확정 C: class A = node 타입 부재 → types:["node"] 추가로 TS2591/2552 소멸
 const vnTypes = runCfg({ ...VNODE, types: ['node'] });
-const ccT = codeCount(vnTypes);
+const ccT = codeCount(apiOnly(vnTypes));
 R('B1. class A 원인 확정 = node 타입 부재: 유효 옵션 + types:["node"] → TS2591/2552 = 0 (class A 소멸)',
   (ccT.TS2591 || 0) === 0 && (ccT.TS2552 || 0) === 0,
   `잔여 TS2591=${ccT.TS2591 || 0} TS2552=${ccT.TS2552 || 0} · TS2339=${ccT.TS2339 || 0}(잔존)`);
@@ -84,16 +90,16 @@ R('B1. class A 원인 확정 = node 타입 부재: 유효 옵션 + types:["node"
 const vnTypesSNC = runCfg({ ...VNODE, types: ['node'], strictNullChecks: true });
 const nodeStrictFalse = runCfg({ ...NODEJSON, strict: false });
 R('B2. class B 원인 확정 = strict:false(strictNullChecks off): node 타입만으론 TS2339 잔존, strictNullChecks:true 로만 0',
-  (codeCount(vnTypes).TS2339 || 0) >= 3 && (codeCount(vnTypesSNC).TS2339 || 0) === 0,
-  `+node타입: TS2339=${codeCount(vnTypes).TS2339 || 0} · +strictNullChecks: TS2339=${codeCount(vnTypesSNC).TS2339 || 0}`);
+  (codeCount(apiOnly(vnTypes)).TS2339 || 0) >= 3 && (codeCount(apiOnly(vnTypesSNC)).TS2339 || 0) === 0,
+  `+node타입: TS2339=${codeCount(apiOnly(vnTypes)).TS2339 || 0} · +strictNullChecks: TS2339=${codeCount(apiOnly(vnTypesSNC)).TS2339 || 0}`);
 R('B3. 대조: 저장소 node 옵션(strict UNSET)=0, 여기에 strict:false 만 넣으면 TS2339 재현 → strict:false 가 유일 flipper',
   (codeCount(runCfg(NODEJSON, { files: ERR_FILES })).TS2339 || 0) === 0 && (codeCount(nodeStrictFalse).TS2339 || 0) >= 3,
   `node(strict unset) TS2339=0 · node+strict:false TS2339=${codeCount(nodeStrictFalse).TS2339 || 0}`);
 
 // GREEN 가설 확인: 유효 옵션 + node 타입 + strictNullChecks → 전체 api 0
-const green = runCfg({ ...VNODE, types: ['node'], strictNullChecks: true }, { include: [`${REPO}/api/**/*`] });
-R('G1. GREEN 가설: @vercel/node 유효 옵션 + node타입 + strictNullChecks → 전체 api 0 오류',
-  green.length === 0, `${green.length}건 (설정 보정만으로 A·B 모두 해소)`);
+const green = apiOnly(runCfg({ ...VNODE, types: ['node'], strictNullChecks: true }, { include: [`${REPO}/api/**/*`] }));
+R('G1. GREEN 가설: @vercel/node 유효 옵션 + node타입 + strictNullChecks → 전체 api(우리 파일) 0 오류',
+  green.length === 0, `${green.length}건 (설정 보정만으로 A·B 모두 해소; SDK 내부 d.ts 는 skipLibCheck 관할)`);
 
 console.log('');
 console.log('  --- 재현된 고유 오류(유효 옵션, 코드별) ---');
