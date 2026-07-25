@@ -100,6 +100,8 @@ export const isApproveAsRole = (v: unknown): v is ApproveAsRole => v === 'member
 export function canApproveAs(approver: Account, applicant: Account, asRole: ApproveAsRole): boolean {
   if (approver.status !== 'active') return false;           // 승인자도 active 여야 함
   if (applicant.status !== 'pending') return false;         // 대기 상태만 승인 대상
+  if (applicant.role === 'hq') return false;                // hq 는 이 흐름 대상 아님(부트스트랩 별도)
+  if (applicant.role === 'team_lead') return approver.role === 'hq'; // (legacy) 팀장 신청은 HQ 전용
   if (asRole === 'team_lead') return approver.role === 'hq';
   // asRole === 'member'
   if (approver.role === 'hq') return true;

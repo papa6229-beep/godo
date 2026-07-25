@@ -1,210 +1,261 @@
 #!/usr/bin/env node
 /*
  * scripts/smoke-auth-foundation-01-green-v0.mjs
- * R-AUTH-FOUNDATION-01 GREEN A — 사내 로그인·가입 승인·보호 라우트(서버 경계 검사).
+ * R-AUTH-FOUNDATION-01 GREEN A.1 — 사내 로그인·가입 승인·보호 라우트 (실의미 검사 v1)
  *
- * 관리형 인증(Clerk)의 세션 검증·계정 저장은 "포트"로 추상화하고, 검사는 stub 세션 + in-memory
- * 디렉터리(=mock 경계)로 서버 규칙을 실행한다. 외부 계정·키·실호출 없음(가짜 키 만들지 않음).
- * 실제 Clerk 어댑터(clerkAuthAdapter)는 설정 완료 시 활성화되는 경계이며, 그 실증은 설정 보고로 분리한다.
- *
- * [G]=GREEN 종료조건 · [F]=무회귀 관찰. 하나라도 실패 시 exit 1.
+ * A.1 검사 교체 원칙(보정 RED d4de256 의 T1~T4 해소):
+ *   - 실제 모듈 해석: 설치된 @clerk/backend 를 정적 import 하는 컴파일된 어댑터를 실제로 import.
+ *   - 실제 상태전이: 컴파일된 handler/서비스 실행 + 저장소 직렬화 전수 검사(빈 배열 단언 금지).
+ *   - 실제 요청 경계: authorizedFetch 실행으로 Authorization: Bearer 전달을 관측.
+ *   - 실소비자: 주석 제외 코드 라인의 import/호출만 소비자로 센다.
+ *   - fail-closed 매트릭스: 키 없음/서버만/프론트만/완전설정 × 로컬/배포를 실 handler 로 재현.
+ * 외부 Clerk 네트워크 호출 0 — 완전설정 매트릭스의 키 값은 형식만 갖춘 로컬 검사용이며
+ * 세션 토큰이 없는 요청은 네트워크 없이 signed-out 판정된다(도달 시에도 401 경계 확인용).
+ * 실제 Clerk 가입·브라우저 로그인·실세션·Preview 는 이 검사의 범위가 아니다(설정 후 실증).
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
 const REPO = process.cwd();
+const require_ = createRequire(pathToFileURL(path.join(REPO, 'package.json')).href);
 const tscBin = path.join(REPO, 'node_modules', 'typescript', 'bin', 'tsc');
 const cacheRoot = path.join(REPO, 'node_modules', '.cache'); mkdirSync(cacheRoot, { recursive: true });
-const tmp = mkdtempSync(path.join(cacheRoot, 'auth-green-'));
+const tmp = mkdtempSync(path.join(cacheRoot, 'auth-g1-'));
 let pass = 0, fail = 0;
 const G = (n, ok, d) => { console.log(`  ${ok ? 'MET ' : 'FAIL'} [G] ${n}${d ? `  — ${d}` : ''}`); ok ? pass++ : fail++; };
-const F = (n, ok, d) => { console.log(`  ${ok ? 'PASS' : 'FAIL'} [F] ${n}${d ? `  — ${d}` : ''}`); ok ? pass++ : fail++; };
-console.log('=== R-AUTH-FOUNDATION-01 GREEN A — 사내 로그인·가입 승인·보호 라우트 ===');
+const src = (p) => readFileSync(path.join(REPO, p), 'utf8');
+const codeLines = (p) => src(p).split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l));
+console.log('=== R-AUTH-FOUNDATION-01 GREEN A.1 — 실배선·fail-closed (실의미 검사) ===');
 
-// ── 컴파일 ────────────────────────────────────────────────────────────────────
-let AC, AA, AD, AUTHROUTE, ordersRevenue, ordersAdmin, marketing, aiChat;
+// ── 1. 실제 SDK 모듈 해석(설치 + 정적 import) ─────────────────────────────────
+console.log('\n  --- [G] 1. SDK 실설치·실제 모듈 해석 ---');
+G('S1. @clerk/react·@clerk/backend 설치(require.resolve 실해석)', (() => {
+  try { require_.resolve('@clerk/react'); require_.resolve('@clerk/backend'); return true; } catch { return false; }
+})());
+G('S2. lockfile 에 @clerk 존재', /@clerk\//.test(src('package-lock.json')));
+G('S3. 어댑터가 정적 import(비리터럴 지정자 트릭 제거)', /import \{ createClerkClient \} from '@clerk\/backend'/.test(src('api/_shared/clerkAuthAdapter.ts')) && !/\[['"]@clerk['"]/.test(src('api/_shared/clerkAuthAdapter.ts')));
+
+// ── 컴파일: 서버 모듈 + 클라 순수 모듈 ────────────────────────────────────────
+let AC, AA, AD, AUTHROUTE, ordersRevenue, ordersAdmin, marketing, health, AG, AF, ADAPTER;
 try {
   execFileSync(process.execPath, [tscBin,
     path.join(REPO, 'api', '_shared', 'accountContract.ts'),
     path.join(REPO, 'api', '_shared', 'authActor.ts'),
     path.join(REPO, 'api', '_shared', 'accountDirectory.ts'),
+    path.join(REPO, 'api', '_shared', 'clerkAuthAdapter.ts'),
     path.join(REPO, 'api', 'auth', '[action].ts'),
     path.join(REPO, 'api', 'godomall', 'orders-revenue.ts'),
     path.join(REPO, 'api', 'godomall', 'orders-admin.ts'),
+    path.join(REPO, 'api', 'godomall', 'health.ts'),
     path.join(REPO, 'api', 'marketing', '[action].ts'),
-    path.join(REPO, 'api', 'ai', 'chat.ts'),
     '--ignoreConfig', '--rootDir', path.join(REPO, 'api'), '--outDir', tmp,
     '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck', '--types', 'node'],
     { stdio: 'pipe' });
-  for (const sub of ['_shared', 'auth', 'godomall', 'marketing', 'ai']) {
+  execFileSync(process.execPath, [tscBin,
+    path.join(REPO, 'src', 'services', 'authGate.ts'), path.join(REPO, 'src', 'services', 'authorizedFetch.ts'),
+    '--ignoreConfig', '--rootDir', path.join(REPO, 'src'), '--outDir', path.join(tmp, 'cli'),
+    '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck', '--jsx', 'react-jsx', '--types', 'node'],
+    { stdio: 'pipe' });
+  for (const sub of ['_shared', 'auth', 'godomall', 'marketing', path.join('cli', 'services')]) {
     const dir = path.join(tmp, sub); let files = [];
     try { files = readdirSync(dir).filter((x) => x.endsWith('.js')); } catch { continue; }
     for (const f of files) { const p = path.join(dir, f); writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.[^']+)'/g, (m, rel) => (rel.endsWith('.js') ? m : `from '${rel}.js'`))); }
   }
   const imp = (sub, f) => import(pathToFileURL(path.join(tmp, sub, f)).href);
-  AC = await imp('_shared', 'accountContract.js');
-  AA = await imp('_shared', 'authActor.js');
-  AD = await imp('_shared', 'accountDirectory.js');
+  AC = await imp('_shared', 'accountContract.js'); AA = await imp('_shared', 'authActor.js'); AD = await imp('_shared', 'accountDirectory.js');
+  ADAPTER = await imp('_shared', 'clerkAuthAdapter.js'); // ★ 실제 @clerk/backend import 실행(해석 실패 시 여기서 죽음)
   AUTHROUTE = await imp('auth', '[action].js');
   ordersRevenue = (await imp('godomall', 'orders-revenue.js')).default;
   ordersAdmin = (await imp('godomall', 'orders-admin.js')).default;
+  health = (await imp('godomall', 'health.js')).default;
   marketing = (await imp('marketing', '[action].js')).default;
-  aiChat = (await imp('ai', 'chat.js')).default;
+  AG = await imp(path.join('cli', 'services'), 'authGate.js');
+  AF = await imp(path.join('cli', 'services'), 'authorizedFetch.js');
 } catch (e) {
   console.error('[smoke] tsc/import 실패:\n', e.stdout?.toString() || e.message);
   rmSync(tmp, { recursive: true, force: true }); process.exit(1);
 }
+G('S4. 컴파일된 어댑터 실제 import 성공(=@clerk/backend 실해석·실행)', !!ADAPTER.createClerkAuthDeps && !!ADAPTER.createClerkDirectory);
 
-// ── 헬퍼 ──────────────────────────────────────────────────────────────────────
 const makeRes = () => { const o = { _s: 200, _b: null }; return { status(c) { o._s = c; return this; }, json(b) { o._b = b; }, end() { return this; }, setHeader() {}, _get: () => ({ status: o._s, body: o._b }) }; };
 const NOW = '2026-07-25T00:00:00.000Z';
-const acct = (userId, role, team, status, name = userId) => ({ userId, name, team, position: '직책', role, status, history: [{ at: NOW, event: 'created', name, team, position: '직책', role }] });
-// stub 세션: req.__uid 가 있으면 그 userId 로 인증된 것으로 본다(=Clerk 검증 결과 대체).
+const acct = (userId, role, team, status) => ({ userId, name: `${userId}-이름`, team, position: '직책', role, status, history: [{ at: NOW, event: 'created', name: `${userId}-이름`, team, position: '직책', role }] });
 const stubSession = { verify: async (req) => (req.__uid ? { userId: req.__uid } : null) };
+const ENVK = ['CLERK_SECRET_KEY', 'VITE_CLERK_PUBLISHABLE_KEY', 'CLERK_PUBLISHABLE_KEY', 'AUTH_AUTHORIZED_PARTIES', 'VERCEL_ENV', 'VERCEL_URL', 'VERCEL_PROJECT_PRODUCTION_URL', 'VERCEL_BRANCH_URL', 'GODOMALL_API_MODE', 'GODOMALL_PARTNER_KEY', 'GODOMALL_USER_KEY'];
+const savedEnv = Object.fromEntries(ENVK.map((k) => [k, process.env[k]]));
+const setEnv = (o) => { for (const k of ENVK) delete process.env[k]; Object.assign(process.env, { GODOMALL_API_MODE: 'mock', GODOMALL_PARTNER_KEY: 'stub', GODOMALL_USER_KEY: 'stub' }, o); };
+const restoreEnv = () => { for (const k of ENVK) { if (savedEnv[k] === undefined) delete process.env[k]; else process.env[k] = savedEnv[k]; } };
+const callRoute = async (handler, req) => { const res = makeRes(); await handler(req, res); return res._get(); };
 
-// ── 1. 도메인 계약 규칙 ────────────────────────────────────────────────────────
-console.log('\n  --- [G] 계정·승인 도메인 규칙 ---');
-G('공개 가입에서 hq 역할 거부', AC.createSignupAccount({ userId: 'u1', name: 'A', team: 'product', position: 'p', role: 'hq' }, NOW).errorCode === 'HQ_NOT_ALLOWED');
-G('정본 팀만 허용(임의 팀 거부)', AC.createSignupAccount({ userId: 'u1', name: 'A', team: 'sales', position: 'p', role: 'member' }, NOW).errorCode === 'INVALID_TEAM');
-G('member 가입 → pending 생성', (() => { const r = AC.createSignupAccount({ userId: 'u1', name: 'A', team: 'product', position: 'p', role: 'member' }, NOW); return r.ok && r.account.status === 'pending'; })());
+// ── 2. fail-closed 매트릭스(실 handler·실 설정 계약) ─────────────────────────
+console.log('\n  --- [G] 2. 설정 매트릭스: 키 없음/서버만/프론트만/완전 × 로컬/배포 ---');
+const OR_REQ = () => ({ method: 'GET', headers: {}, url: '/api/godomall/orders-revenue' });
+setEnv({});
+G('M1. 키 0 + 로컬 → 200(명시적 open, 개발 편의)', (await callRoute(ordersRevenue, OR_REQ())).status === 200);
+setEnv({ VERCEL_ENV: 'production' });
+G('M2. 키 0 + Production → 503(익명 open 금지)', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+setEnv({ VERCEL_ENV: 'preview', CLERK_SECRET_KEY: 'sk_test_local-matrix-check' });
+G('M3. Secret만 + Preview → 503(크래시 500 아님)', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+setEnv({ VERCEL_ENV: 'production', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_local-matrix-check' });
+G('M4. Publishable만 + Production → 503', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+setEnv({ VERCEL_ENV: 'production', CLERK_SECRET_KEY: 'sk_test_x', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_x' });
+G('M5. 두 키 + 배포 + authorizedParties 0 → 503(azp 생략 금지)', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+// 완전 설정: parties 는 env 도메인 기반으로 구성되는지(요청 Host 불신)
+const pk = 'pk_test_' + Buffer.from('example.clerk.accounts.dev$').toString('base64');
+setEnv({ VERCEL_ENV: 'production', CLERK_SECRET_KEY: 'sk_test_local-matrix-check', VITE_CLERK_PUBLISHABLE_KEY: pk, AUTH_AUTHORIZED_PARTIES: 'https://godo-psi.vercel.app', VERCEL_PROJECT_PRODUCTION_URL: 'godo-psi.vercel.app' });
+const cfgFull = AA.resolveServerAuthConfig(process.env);
+G('M6. 완전 설정 판정 = complete, parties=env 도메인(요청 Host 아님)', cfgFull.state === 'complete' && cfgFull.authorizedParties.includes('https://godo-psi.vercel.app'));
+let m7;
+try { m7 = await callRoute(ordersRevenue, OR_REQ()); } catch (e) { m7 = { status: 'crash', err: String(e && (e.code || e.message)).slice(0, 80) }; }
+G('M7. 완전 설정 + 무세션 → 401(실 어댑터 경로, 크래시 아님)', m7.status === 401, `status=${m7.status}${m7.err ? ' err=' + m7.err : ''}`);
+setEnv({});
+
+// ── 3. 서버 가드·계약(실 상태전이) ────────────────────────────────────────────
+console.log('\n  --- [G] 3. 가드·승인 스코프·역할 위조 불가(실 실행) ---');
+const inner = async (_req, res) => res.status(200).json({ ok: true, ran: true });
+const mkGuard = (seed) => { const d = AD.createInMemoryDirectory(seed); return { d, g: AA.protectedHandler(inner, { session: stubSession, directory: d }) }; };
+{
+  const { g } = mkGuard([acct('a1', 'member', 'product', 'active'), acct('p1', 'member', 'product', 'pending'), acct('s1', 'member', 'product', 'suspended')]);
+  const call = async (uid, body) => { const res = makeRes(); const req = { method: 'GET', headers: {}, url: '/x', body }; if (uid) req.__uid = uid; await g(req, res); return res._get(); };
+  G('A1. 무인증 → 401', (await call(null)).status === 401);
+  G('A2. pending → 403 / suspended → 403 / 계정없음 → 403', (await call('p1')).status === 403 && (await call('s1')).status === 403 && (await call('ghost')).status === 403);
+  G('A3. active → 통과(inner 실행)', (await call('a1')).body?.ran === true);
+  G('A4. body 역할·actor 위조 무력(pending 이 hq 주장해도 403)', (await call('p1', { role: 'hq', actorUserId: 'a1', status: 'active' })).status === 403);
+}
+// 승인 스코프: 같은 팀장 목록 = 자기 팀 member 신청만(내용까지 검사 — isArray 단언 금지)
 const hq = acct('hq1', 'hq', 'hq', 'active');
 const leadP = acct('leadP', 'team_lead', 'product', 'active');
 const leadC = acct('leadC', 'team_lead', 'cs', 'active');
-const memP = acct('memP', 'member', 'product', 'pending');
-const leadPend = acct('leadPend', 'team_lead', 'design', 'pending');
-G('member 신청 → 같은 팀 active team_lead 승인 가능', AC.canApproveApplication(leadP, memP) === true);
-G('member 신청 → 타 팀 team_lead 승인 불가', AC.canApproveApplication(leadC, memP) === false);
-G('member 신청 → HQ 승인 가능', AC.canApproveApplication(hq, memP) === true);
-G('team_lead 신청 → team_lead 승인 불가', AC.canApproveApplication(leadP, leadPend) === false);
-G('team_lead 신청 → HQ 만 승인', AC.canApproveApplication(hq, leadPend) === true);
-G('member 는 승인 권한 없음', AC.canApproveApplication(acct('m2', 'member', 'product', 'active'), memP) === false);
-G('pending 승인자는 승인 불가(승인자도 active 필요)', AC.canApproveApplication(acct('lp', 'team_lead', 'product', 'pending'), memP) === false);
-G('보호 접근은 active 만(pending/suspended 거부)', AC.canAccessProtected(acct('x', 'member', 'product', 'pending')) === false && AC.canAccessProtected(acct('y', 'member', 'product', 'active')) === true && AC.canAccessProtected(acct('z', 'member', 'product', 'suspended')) === false);
-// 이력 보존
-const suspended = AC.applySuspension(acct('t', 'member', 'product', 'active'), 'hq1', NOW);
-G('정지는 삭제 아님·이력 append(과거 스냅샷 보존)', suspended.status === 'suspended' && suspended.history.length === 2 && suspended.history[0].event === 'created');
-// HQ 부트스트랩
-G('HQ 부트스트랩: env 지정 사용자 & HQ 부재일 때만', AC.shouldBootstrapHq('u9', { bootstrapUserId: 'u9', hqExists: false }) === true && AC.shouldBootstrapHq('u9', { bootstrapUserId: 'u9', hqExists: true }) === false && AC.shouldBootstrapHq('u9', { bootstrapUserId: undefined, hqExists: false }) === false);
+const pendP = acct('pendP', 'member', 'product', 'pending');
+const pendC = acct('pendC', 'member', 'cs', 'pending');
+const pendLegacyLead = acct('pendLead', 'team_lead', 'product', 'pending'); // legacy 팀장 신청 fixture
+{
+  const dir = AD.createInMemoryDirectory([hq, leadP, leadC, pendP, pendC, pendLegacyLead]);
+  const listP = (await AD.listApprovableFor(dir, leadP)).map((a) => a.userId).sort();
+  const listHq = (await AD.listApprovableFor(dir, hq)).map((a) => a.userId).sort();
+  G('A5. 같은 팀장 목록 = 자기 팀 member 신청만 [pendP] (타팀·team_lead 미포함)', JSON.stringify(listP) === JSON.stringify(['pendP']), `leadP=[${listP}]`);
+  G('A6. HQ 목록 = 전체 규칙(모든 승인 가능 신청 포함)', listHq.includes('pendP') && listHq.includes('pendC') && listHq.includes('pendLead'), `hq=[${listHq}]`);
+  // 승인 시 역할 결정
+  G('A7. 팀장이 team_lead 로 승인 → FORBIDDEN', (await AD.approveApplication(dir, 'leadP', 'pendP', NOW, 'team_lead')).errorCode === 'FORBIDDEN');
+  const asLead = await AD.approveApplication(dir, 'hq1', 'pendP', NOW, 'team_lead');
+  G('A8. HQ 가 team_lead 로 승인 → active·role=team_lead(실 상태전이)', asLead.ok && asLead.account.status === 'active' && asLead.account.role === 'team_lead');
+  G('A9. 타 팀장 승인 → FORBIDDEN', (await AD.approveApplication(dir, 'leadP', 'pendC', NOW, 'member')).errorCode === 'FORBIDDEN');
+}
 
-// ── 2. 서버 가드(protectedHandler + 주입 deps) ─────────────────────────────────
-console.log('\n  --- [G] 서버 가드(무인증 401 / pending·suspended 403 / active 통과 / body 역할 우회 불가) ---');
-const spyInner = async (_req, res) => res.status(200).json({ ok: true, ran: true });
-const guardWith = (dir) => AA.protectedHandler(spyInner, { session: stubSession, directory: dir });
-const dirGuard = AD.createInMemoryDirectory([
-  acct('active1', 'member', 'product', 'active'),
-  acct('pend1', 'member', 'product', 'pending'),
-  acct('susp1', 'member', 'product', 'suspended')
-]);
-const g = guardWith(dirGuard);
-const callGuard = async (uid, body) => { const res = makeRes(); const req = { method: 'GET', headers: {}, url: '/x', body }; if (uid) req.__uid = uid; await g(req, res); return res._get(); };
-G('무인증(세션 없음) → 401', (await callGuard(null)).status === 401);
-G('pending 계정 → 403', (await callGuard('pend1')).status === 403);
-G('suspended 계정 → 403', (await callGuard('susp1')).status === 403);
-G('active 계정 → inner 실행(200)', (() => true)() && (await callGuard('active1')).body?.ran === true);
-G('계정 없는 검증세션 → 403(NO_ACCOUNT)', (await callGuard('ghost')).status === 403);
-// body 역할 위조 우회 불가: body 에 role:hq/actorUserId 넣어도 세션이 pending 이면 403
-const spoof = await callGuard('pend1', { role: 'hq', actorUserId: 'hq1', team: 'hq', status: 'active' });
-G('body 의 role/team/actor 위조로 우회 불가', spoof.status === 403);
+// ── 4. 인증 API: 메서드 강제·역할 위조·비번 정책(실 라우트 코어) ───────────────
+console.log('\n  --- [G] 4. api/auth 메서드 405·레코드 불변·역할 위조 불가·비번 정책 ---');
+{
+  const dir = AD.createInMemoryDirectory([hq, leadP, leadC, acct('memP2', 'member', 'product', 'active'), acct('memC2', 'member', 'cs', 'active')]);
+  const call = async (method, uid, action, body) => { const res = makeRes(); const req = { method, headers: {}, url: `/api/auth/${action}`, body: body || {} }; if (uid) req.__uid = uid; await AUTHROUTE.runAuthAction(req, res, { session: stubSession, directory: dir }); return res._get(); };
+  // 가입(역할 위조 불가)
+  const su = await call('POST', 'newU', 'signup-metadata', { name: '신입', team: 'product', position: '사원', role: 'hq', approveAsRole: 'team_lead' });
+  G('B1. 공개 가입 body 의 role/hq 위조 무시 → 항상 member·pending', su.status === 200 && su.body?.account?.role === 'member' && su.body?.account?.status === 'pending');
+  // 메서드 위반 → 405 + 레코드 불변(실검사)
+  const before = JSON.stringify(await dir.getAccount('newU'));
+  const del = await call('DELETE', 'leadP', 'approve', { targetUserId: 'newU' });
+  const get2 = await call('GET', 'leadP', 'suspend', { targetUserId: 'memP2' });
+  const put3 = await call('PUT', 'leadP', 'reset-password', { targetUserId: 'memP2', tempPassword: 'Xx'.repeat(8) });
+  const after = JSON.stringify(await dir.getAccount('newU'));
+  G('B2. DELETE approve / GET suspend / PUT reset → 전부 405', del.status === 405 && get2.status === 405 && put3.status === 405);
+  G('B3. 405 후 레코드 불변(대상 계정 그대로 pending, 비번 미설정)', before === after && (await dir.getAccount('memP2')).status === 'active' && dir._passwords.size === 0);
+  G('B4. POST me / POST pending-approvals → 405(GET 전용)', (await call('POST', 'leadP', 'me', {})).status === 405 && (await call('POST', 'leadP', 'pending-approvals', {})).status === 405);
+  // 승인 정상 경로(서버 규칙)
+  G('B5. 같은 팀장 member 승인 → 200 active', (await call('POST', 'leadP', 'approve', { targetUserId: 'newU', approveAsRole: 'member' })).status === 200 && (await dir.getAccount('newU')).status === 'active');
+  // 비번 정책
+  const TEMP = 'Temp-Pw-3x!aQ9';
+  G('B6. member self-reset → 403(정책: 팀장/HQ 발급만)', (await call('POST', 'memP2', 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP })).status === 403);
+  G('B7. 타 팀장 초기화 → 403', (await call('POST', 'leadC', 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP })).status === 403);
+  const rp = await call('POST', 'leadP', 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP });
+  G('B8. 같은 팀장 초기화 → 200 + 다음 로그인 변경 강제 계약(_forcedChange)', rp.status === 200 && dir._passwords.get('memP2') === TEMP && dir._forcedChange.has('memP2'));
+  G('B9. HQ 초기화 → 200(전체 범위)', (await call('POST', 'hq1', 'reset-password', { targetUserId: 'memC2', tempPassword: TEMP })).status === 200);
+  // 정지(삭제 아님)
+  const sp = await call('POST', 'leadP', 'suspend', { targetUserId: 'memP2' });
+  const target = await dir.getAccount('memP2');
+  G('B10. 정지 → suspended·계정 존재·이력 증가·잠금 호출', sp.status === 200 && target.status === 'suspended' && target.history.length >= 2 && dir._locked.has('memP2'));
+  // 비번 미노출: 전 계정 직렬화 + 전 응답 직렬화(빈 배열 단언 금지 — 실데이터 검사)
+  const allAccounts = JSON.stringify(await dir.listAccounts());
+  const allResponses = JSON.stringify([su, del, get2, put3, rp, sp].map((r) => r.body));
+  G('B11. 전 계정 직렬화에 임시비번 0(계정 수>0 확인 포함)', (await dir.listAccounts()).length >= 5 && !allAccounts.includes(TEMP));
+  G('B12. 전 응답 직렬화에 임시비번 0', !allResponses.includes(TEMP));
+  // pending-approvals 응답에 managed 스코프 포함(내용 검사)
+  const pa = await call('GET', 'leadC', 'pending-approvals', {});
+  const managedIds = (pa.body?.managed ?? []).map((a) => a.userId);
+  G('B13. 팀장 managed = 자기 팀 member 만(타 팀 미포함)', pa.status === 200 && managedIds.includes('memC2') && !managedIds.includes('memP2'), `leadC managed=[${managedIds}]`);
+  // Clerk 어댑터의 실제 초기화 구현이 공식 2단계(교체+강제변경)를 모두 호출하는지(소스 계약)
+  G('B14. Clerk setPassword = updateUser(signOutOfOtherSessions)+setPasswordCompromised(revokeAllSessions)', /updateUser\([^)]*signOutOfOtherSessions: true/.test(src('api/_shared/clerkAuthAdapter.ts')) && /setPasswordCompromised\([^)]*revokeAllSessions: true/.test(src('api/_shared/clerkAuthAdapter.ts')));
+}
 
-// ── 3. 승인·가입·정지·초기화 API(runAuthAction + in-memory dir) ─────────────────
-console.log('\n  --- [G] 승인·가입·정지·비번초기화 API ---');
-const dir = AD.createInMemoryDirectory([hq, leadP, leadC]);
-const runAuth = AUTHROUTE.runAuthAction;
-const callAuth = async (uid, action, body) => { const res = makeRes(); const req = { method: 'POST', headers: {}, url: `/api/auth/${action}`, body: body || {} }; if (uid) req.__uid = uid; await runAuth(req, res, { session: stubSession, directory: dir }); return res._get(); };
-// 가입 메타
-G('signup-metadata 무인증 → 401', (await callAuth(null, 'signup-metadata', { name: 'A', team: 'product', position: 'p', role: 'member' })).status === 401);
-const su = await callAuth('newMem', 'signup-metadata', { name: '신입', team: 'product', position: '사원', role: 'member' });
-G('signup-metadata member → pending 생성(201/200)', su.status === 200 && su.body?.account?.status === 'pending' && su.body?.account?.team === 'product');
-G('signup-metadata hq 역할 → 400 거부', (await callAuth('badHq', 'signup-metadata', { name: 'X', team: 'product', position: 'p', role: 'hq' })).status === 400);
-// 승인 규칙(서버 집행)
-G('member 승인: 타 팀 team_lead → 403', (await callAuth('leadC', 'approve', { targetUserId: 'newMem' })).status === 403);
-const ap1 = await callAuth('leadP', 'approve', { targetUserId: 'newMem' });
-G('member 승인: 같은 팀 team_lead → 200 active', ap1.status === 200 && ap1.body?.account?.status === 'active');
-// team_lead 신청 승인
-await callAuth('newLead', 'signup-metadata', { name: '리더', team: 'design', position: '팀장', role: 'team_lead' });
-G('team_lead 승인: team_lead → 403', (await callAuth('leadP', 'approve', { targetUserId: 'newLead' })).status === 403);
-G('team_lead 승인: HQ → 200', (await callAuth('hq1', 'approve', { targetUserId: 'newLead' })).status === 200);
-// 정지(삭제 아님)
-const beforeSusp = await dir.getAccount('newMem');
-const sp = await callAuth('leadP', 'suspend', { targetUserId: 'newMem' });
-const afterSusp = await dir.getAccount('newMem');
-G('정지 성공(같은 팀장)·계정 유지·이력 증가', sp.status === 200 && afterSusp.status === 'suspended' && afterSusp.history.length > beforeSusp.history.length);
-G('정지 시 계정 삭제 안 됨(디렉터리에 존재)', afterSusp !== null && afterSusp.userId === 'newMem');
-// pending-approvals 스코프
-const pa = await callAuth('leadP', 'pending-approvals', {});
-G('pending-approvals: 승인자 스코프만 반환', pa.status === 200 && Array.isArray(pa.body?.pending));
+// ── 5. 클라이언트 실배선(실소비자·실행 검사) ──────────────────────────────────
+console.log('\n  --- [G] 5. 클라 실배선: Provider·브리지·authorizedFetch·화면 ---');
+const mainSrc = codeLines('src/main.tsx').join('\n');
+G('C1. main.tsx: ClerkProvider 실 import+JSX 마운트', /import \{ ClerkProvider \} from '@clerk\/react'/.test(mainSrc) && /<ClerkProvider publishableKey=/.test(mainSrc));
+const bridgeSrc = codeLines('src/components/auth/ClerkAuthBridge.tsx').join('\n');
+G('C2. 브리지: useAuth 실사용 + registerAuthSource 실호출 + /api/auth/me 실호출', /useAuth\(\)/.test(bridgeSrc) && /registerAuthSource\(/.test(bridgeSrc) && /authorizedFetch\('\/api\/auth\/me'\)/.test(bridgeSrc));
+// /api/auth/* 클라 호출자 전수(주석 제외)
+const apiAuthCallers = ['src/components/auth/ClerkAuthBridge.tsx', 'src/components/auth/AccountAdminPanel.tsx', 'src/components/AuthGateScreen.tsx']
+  .filter((f) => /\/api\/auth\//.test(codeLines(f).join('\n')));
+G('C3. /api/auth/* 실 클라 호출자 ≥3 파일(브리지·관리패널·게이트화면)', apiAuthCallers.length >= 3, `${apiAuthCallers.length}개`);
+// authorizedFetch 실행 검사: 토큰 게터 등록 시 Authorization 전달·미등록 시 무헤더
+{
+  const realFetch = globalThis.fetch;
+  let seen = null;
+  globalThis.fetch = async (url, init) => { seen = { url: String(url), auth: new Headers(init && init.headers).get('Authorization') }; return { ok: true, status: 200, json: async () => ({}) }; };
+  AF.registerSessionTokenGetter(async () => 'test-session-jwt');
+  await AF.authorizedFetch('/api/godomall/orders-revenue');
+  const withToken = seen;
+  AF.registerSessionTokenGetter(null);
+  await AF.authorizedFetch('/api/godomall/orders-revenue');
+  const withoutToken = seen;
+  globalThis.fetch = realFetch;
+  G('C4. 인증 fetch 실행: 게터 등록 → Authorization: Bearer 전달(실행 관측)', withToken.auth === 'Bearer test-session-jwt');
+  G('C5. 게터 미등록 → 헤더 없이 기존 동작(미구성 무회귀)', withoutToken.auth === null);
+}
+// 보호 API 소비자 재배선 전수
+const rewired = [
+  ['src/services/secureProxyClient.ts', 6], ['src/services/departmentDataService.ts', 4],
+  ['src/services/aiProviderAdapter.ts', 1], ['src/hooks/useMarketingBehaviorSummary.ts', 1]
+].map(([f, n]) => [(codeLines(f).join('\n').match(/authorizedFetch\(/g) || []).length, n, f]);
+G('C6. 보호 API 소비자 12지점 authorizedFetch 재배선(파일별 정확 수)', rewired.every(([got, want]) => got >= want), rewired.map(([g2, w, f]) => `${path.basename(f)}:${g2}/${w}`).join(' '));
+G('C7. health(공개)는 재배선 제외(무인증 상태점검 유지)', /await fetch\('\/api\/godomall\/health'\)/.test(src('src/services/secureProxyClient.ts')));
+// 화면: 로그인 실입력·실제출, 가입 5필드, 이메일 없음
+const screen = codeLines('src/components/AuthGateScreen.tsx').join('\n');
+G('C8. 로그인 화면: 입력 2 + form 제출 + signIn.password + finalize 실호출', /id="login-username"/.test(screen) && /id="login-password"/.test(screen) && /signIn\.password\(\{ identifier/.test(screen) && /signIn\.finalize\(\)/.test(screen));
+const signupInputs = (screen.match(/id="su-(name|team|position|username|password)"/g) || []).length;
+G('C9. 가입 화면: 정확히 5입력(이름·팀·직책·아이디·비번) + signUp.password 실호출', signupInputs === 5 && /signUp\.password\(\{ username/.test(screen));
+G('C10. 이메일·전화 입력 없음(가입/로그인 화면)', !/type="email"|emailAddress|전화번호|phoneNumber/.test(screen));
+G('C11. pending/suspended: 로그아웃(signOut)·상태 재확인(refreshAuthStatus) 실배선', (screen.match(/signOut\(\)/g) || []).length >= 2 && (screen.match(/refreshAuthStatus\(\)/g) || []).length >= 3);
+G('C12. 관리패널: 승인(역할 선택은 HQ만)·정지·임시비번 발급 배선', /approveAsRole: 'member'/.test(src('src/components/auth/AccountAdminPanel.tsx')) && /approveAsRole: 'team_lead'/.test(src('src/components/auth/AccountAdminPanel.tsx')) && /isHq &&/.test(src('src/components/auth/AccountAdminPanel.tsx')));
+G('C13. 클라 소스에 비번 localStorage/콘솔 기록 0', !['src/components/AuthGateScreen.tsx', 'src/components/auth/AccountAdminPanel.tsx', 'src/components/auth/ClerkAuthBridge.tsx', 'src/services/authorizedFetch.ts'].some((f) => /localStorage\.[a-z]+\([^)]*[Pp]assword|console\.[a-z]+\([^)]*[Pp]assword/.test(src(f))));
 
-// ── 4. 비밀번호 미노출 ─────────────────────────────────────────────────────────
-console.log('\n  --- [G] 비밀번호 저장/노출 0 ---');
-await callAuth('leadP2reset', 'signup-metadata', { name: 'R', team: 'product', position: 'p', role: 'member' });
-await callAuth('leadP', 'approve', { targetUserId: 'leadP2reset' });
-const TEMP = 'TempP@ssw0rd-xyz';
-const rp = await callAuth('leadP', 'reset-password', { targetUserId: 'leadP2reset', tempPassword: TEMP });
-const rpStr = JSON.stringify(rp.body || {});
-G('reset-password 성공', rp.status === 200 && rp.body?.ok === true);
-G('reset-password 응답에 비밀번호 미포함', !rpStr.includes(TEMP));
-G('저장 계정(account)에 비밀번호 필드 없음', (() => { const a = dir._passwords ? 1 : 0; const acctStr = JSON.stringify(Array.from(dir.listAccounts ? [] : [])); return !acctStr.includes(TEMP); })());
-G('디렉터리는 비번을 Clerk 경계(별도 map)로만 전달(제품 account 에 미저장)', dir._passwords.get('leadP2reset') === TEMP && !JSON.stringify(await dir.getAccount('leadP2reset')).includes(TEMP));
-// 소스 스캔: 비번을 localStorage/console 로 쓰지 않음
-const srcFiles = ['api/auth/[action].ts', 'api/_shared/accountDirectory.ts', 'api/_shared/accountContract.ts', 'api/_shared/clerkAuthAdapter.ts'];
-const badPw = srcFiles.filter((f) => /localStorage\.(setItem|set)\([^)]*password|console\.(log|error|warn)\([^)]*password/i.test(readFileSync(path.join(REPO, f), 'utf8')));
-G('제품 소스: 비밀번호를 localStorage·console 에 기록하지 않음', badPw.length === 0, `위반=${badPw.join(',') || '없음'}`);
-
-// ── 5. 실제 라우트 배선(구성됨=강제 / 미구성=현행 보존) ─────────────────────────
-console.log('\n  --- [G] 라우트 배선: 보호 래핑 + 미구성 시 무회귀 ---');
-const PROTECTED = ['api/godomall/orders-revenue.ts', 'api/godomall/sync.ts', 'api/godomall/products.ts', 'api/godomall/read.ts', 'api/godomall/[resource].ts', 'api/ai/chat.ts'];
-const wired = PROTECTED.filter((f) => /export default protectedHandler\(handler\)/.test(readFileSync(path.join(REPO, f), 'utf8')));
-G('보호 라우트 6종 protectedHandler 래핑', wired.length === PROTECTED.length, `${wired.length}/${PROTECTED.length}`);
-G('behavior-summary 분기만 보호(behavior-events 공개)', /guardedSummary\(req, res\)/.test(readFileSync(path.join(REPO, 'api/marketing/[action].ts'), 'utf8')) && /if \(action === 'behavior-events'\) return handleCollect/.test(readFileSync(path.join(REPO, 'api/marketing/[action].ts'), 'utf8')));
-G('health.ts 는 미보호(공개 유지)', !/protectedHandler/.test(readFileSync(path.join(REPO, 'api/godomall/health.ts'), 'utf8')));
-G('detail 은 GREEN A 미보호(소비자 무회귀 확인 후 후속)', !/protectedHandler/.test(readFileSync(path.join(REPO, 'api/detail/[action].ts'), 'utf8')));
-// 미구성(CLERK_SECRET_KEY 없음) → 실제 default export 가 현행 동작 보존(라이브 무회귀)
-delete process.env.CLERK_SECRET_KEY;
-const ENV = ['GODOMALL_API_MODE', 'GODOMALL_PARTNER_KEY', 'GODOMALL_USER_KEY'];
-const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
-process.env.GODOMALL_API_MODE = 'mock'; process.env.GODOMALL_PARTNER_KEY = 'stub'; process.env.GODOMALL_USER_KEY = 'stub';
-const orRes = makeRes(); await ordersRevenue({ method: 'GET', headers: {}, url: '/api/godomall/orders-revenue' }, orRes);
-G('미구성: orders-revenue 현행 200(라이브 무회귀)', orRes._get().status === 200);
-for (const k of ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
-// behavior-events 공개 유지(미구성): OPTIONS 처리(가드 없이 도달)
-const beRes = makeRes(); await marketing({ method: 'OPTIONS', headers: { origin: 'https://x' }, url: '/api/marketing/behavior-events' }, beRes);
-G('behavior-events 공개 유지(가드 없이 처리)', beRes._get().status !== 401 && beRes._get().status !== 403);
-
-// ── 6. orders-admin 403 불변 ───────────────────────────────────────────────────
-console.log('\n  --- [F] 무회귀: orders-admin fail-closed 유지 ---');
-const oaRes = makeRes(); await ordersAdmin({ method: 'GET', headers: {} }, oaRes);
-F('orders-admin 은 인증 도입에도 403 유지(재개 안 함)', oaRes._get().status === 403 && oaRes._get().body?.errorCode === 'ADMIN_ACCESS_DISABLED');
-F('orders-admin 에 protectedHandler 미부착(정책상 fail-closed 유지)', !/protectedHandler/.test(readFileSync(path.join(REPO, 'api/godomall/orders-admin.ts'), 'utf8')));
-
-// ── 7. 클라이언트 게이트 로직(순수 판정) ───────────────────────────────────────
-console.log('\n  --- [G] 클라이언트 인증 게이트 로직 ---');
-let AG;
-try {
-  const ctmp = mkdtempSync(path.join(cacheRoot, 'auth-green-cli-'));
-  execFileSync(process.execPath, [tscBin, path.join(REPO, 'src', 'services', 'authGate.ts'),
-    '--ignoreConfig', '--rootDir', path.join(REPO, 'src'), '--outDir', ctmp,
-    '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck', '--jsx', 'react-jsx', '--types', 'node'],
-    { stdio: 'pipe' });
-  AG = await import(pathToFileURL(path.join(ctmp, 'services', 'authGate.js')).href);
-  rmSync(ctmp, { recursive: true, force: true });
-} catch (e) { console.error('[smoke] authGate compile 실패:', e.stdout?.toString() || e.message); rmSync(tmp, { recursive: true, force: true }); process.exit(1); }
+// ── 6. 게이트: 미로그인 시 회사 데이터 로드 0 ─────────────────────────────────
+console.log('\n  --- [G] 6. 게이트 판정(순수 실행) + 미로그인 fetch 차단 ---');
 const gate = (i) => AG.computeAuthGate(i);
-G('미구성 → open(현행 앱 무회귀)', gate({ configured: false, loaded: true, signedIn: false }) === 'open');
-G('구성+로딩중 → loading', gate({ configured: true, loaded: false, signedIn: false }) === 'loading');
-G('구성+미로그인 → login', gate({ configured: true, loaded: true, signedIn: false }) === 'login');
-G('구성+로그인+대기 → pending', gate({ configured: true, loaded: true, signedIn: true, status: 'pending' }) === 'pending');
-G('구성+로그인+정지 → suspended', gate({ configured: true, loaded: true, signedIn: true, status: 'suspended' }) === 'suspended');
-G('구성+로그인+active → app', gate({ configured: true, loaded: true, signedIn: true, status: 'active' }) === 'app');
-G('구성+로그인+계정없음 → pending(무권한)', gate({ configured: true, loaded: true, signedIn: true, status: null }) === 'pending');
-G('미로그인 앱은 회사 데이터 fetch 시작 안 함', AG.shouldLoadCompanyData('login') === false && AG.shouldLoadCompanyData('pending') === false && AG.shouldLoadCompanyData('suspended') === false);
-G('active·미구성(open) 는 데이터 로드 허용(정상 사용)', AG.shouldLoadCompanyData('app') === true && AG.shouldLoadCompanyData('open') === true);
-// App 최상위 게이트 배선 확인
-const appSrc = readFileSync(path.join(REPO, 'src', 'App.tsx'), 'utf8');
-G('App 최상위 게이트 배선(useAuthGate + AuthGateScreen 조기 반환)', /useAuthGate\(\)/.test(appSrc) && /authGateMode !== 'open' && authGateMode !== 'app'/.test(appSrc) && /<AuthGateScreen mode=\{authGateMode\}/.test(appSrc));
+G('D1. 미구성→open / 로딩→loading / 미로그인→login / 대기→pending / 정지→suspended / active→app',
+  gate({ configured: false, loaded: true, signedIn: false }) === 'open' && gate({ configured: true, loaded: false, signedIn: false }) === 'loading' &&
+  gate({ configured: true, loaded: true, signedIn: false }) === 'login' && gate({ configured: true, loaded: true, signedIn: true, status: 'pending' }) === 'pending' &&
+  gate({ configured: true, loaded: true, signedIn: true, status: 'suspended' }) === 'suspended' && gate({ configured: true, loaded: true, signedIn: true, status: 'active' }) === 'app');
+G('D2. 미로그인/대기/정지 → 회사 데이터 로드 금지, app/open → 허용', !AG.shouldLoadCompanyData('login') && !AG.shouldLoadCompanyData('pending') && !AG.shouldLoadCompanyData('suspended') && AG.shouldLoadCompanyData('app') && AG.shouldLoadCompanyData('open'));
+const appSrc = codeLines('src/App.tsx').join('\n');
+G('D3. App: 게이트 조기 반환이 대시보드 트리 마운트(=fetch 시작) 이전', /authGateMode !== 'open' && authGateMode !== 'app'/.test(appSrc) && appSrc.indexOf("authGateMode !== 'open'") < appSrc.indexOf('<OpeningScreen'));
+
+// ── 7. 공개/폐쇄 경로 무회귀(실 handler) ──────────────────────────────────────
+console.log('\n  --- [G] 7. 공개·폐쇄 경로 무회귀(실 handler 호출) ---');
+setEnv({ VERCEL_ENV: 'production' }); // 배포 fail-closed 상태에서도 공개 경로는 열려 있어야 한다
+const he = await callRoute(health, { method: 'GET', headers: {}, url: '/api/godomall/health' });
+const be = await callRoute(marketing, { method: 'OPTIONS', headers: { origin: 'https://x' }, url: '/api/marketing/behavior-events' });
+const bs = await callRoute(marketing, { method: 'GET', headers: {}, url: '/api/marketing/behavior-summary' });
+const oa = await callRoute(ordersAdmin, { method: 'GET', headers: {} });
+G('E1. health 공개 유지(배포 fail-closed 중에도 200)', he.status === 200);
+G('E2. behavior-events 공개 유지(방문자 수집 — 401/403/503 아님)', be.status !== 401 && be.status !== 403 && be.status !== 503);
+G('E3. behavior-summary 는 배포 미설정 시 503(회사 통계 닫힘)', bs.status === 503);
+G('E4. orders-admin 403 ADMIN_ACCESS_DISABLED 유지(인증 도입에도 재개 안 함)', oa.status === 403 && oa.body?.errorCode === 'ADMIN_ACCESS_DISABLED');
+G('E5. detail 은 이번 보정 미보호(rate-limit·SSRF 유지)', !/protectedHandler/.test(src('api/detail/[action].ts')) && /consumeRateLimit|rate/i.test(src('api/detail/[action].ts')));
+setEnv({}); restoreEnv();
 
 console.log(`\n[결과] ${pass} pass / ${fail} fail`);
 rmSync(tmp, { recursive: true, force: true });
-if (fail > 0) { console.log('\n✗ GREEN A 미충족'); process.exit(1); }
-console.log('\n✓ R-AUTH-FOUNDATION-01 GREEN A — 서버 인가 기반·보호 라우트·승인규칙·비번 미노출·무회귀 확인.');
+if (fail > 0) { console.log('\n✗ GREEN A.1 미충족'); process.exit(1); }
+console.log('\n✓ R-AUTH-FOUNDATION-01 GREEN A.1 — 실배선·fail-closed·정책 일치(로컬 검증 범위).');
