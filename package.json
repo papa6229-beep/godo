@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@clerk/backend": "^3.13.1",
+    "@clerk/react": "^6.12.8",
     "@types/file-saver": "^2.0.7",
     "fast-xml-parser": "^5.9.3",
     "file-saver": "^2.0.5",

@@ -14,6 +14,8 @@ import type { VercelResponse } from './proxyResponse.js';
 import { sendErrorResponse } from './proxyResponse.js';
 import type { Account } from './accountContract.js';
 import { canAccessProtected } from './accountContract.js';
+import type { AuthConfigState } from './authConfigContract.js';
+import { deriveAuthConfigState, isDeploymentEnv, buildAuthorizedParties } from './authConfigContract.js';
 
 // ── 포트(경계) ────────────────────────────────────────────────────────────────
 export interface VerifiedSession { userId: string; }
@@ -26,9 +28,29 @@ export interface AccountDirectoryPort {
 }
 export interface AuthDeps { session: AuthSessionPort; directory: AccountDirectoryPort; }
 
-// ── 구성 여부 ─────────────────────────────────────────────────────────────────
-// 서버 강제는 CLERK_SECRET_KEY 가 있을 때만 활성화(가짜 키·임시 토큰 만들지 않음).
-export const isAuthConfigured = (): boolean => !!process.env.CLERK_SECRET_KEY;
+// ── 구성 상태(공통 계약 기반) ─────────────────────────────────────────────────
+// A.1 보정: 단일 키 유무가 아니라 authConfigContract 로 complete/partial/off 를 판정한다.
+//   - complete            → 인증 강제(401/403)
+//   - partial/off + 배포  → 안전한 503(익명 open 금지)
+//   - partial/off + 로컬  → 명시적으로 현행 open(개발 편의)
+export interface ServerAuthConfig { state: AuthConfigState; deployment: boolean; authorizedParties: string[]; }
+export function resolveServerAuthConfig(env: NodeJS.ProcessEnv = process.env): ServerAuthConfig {
+  const deployment = isDeploymentEnv(env.VERCEL_ENV);
+  const authorizedParties = buildAuthorizedParties({
+    raw: env.AUTH_AUTHORIZED_PARTIES,
+    productionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
+    deploymentUrl: env.VERCEL_URL,
+    branchUrl: env.VERCEL_BRANCH_URL
+  });
+  const state = deriveAuthConfigState({
+    secretKey: env.CLERK_SECRET_KEY,
+    publishableKey: env.VITE_CLERK_PUBLISHABLE_KEY || env.CLERK_PUBLISHABLE_KEY,
+    authorizedParties,
+    deployment
+  });
+  return { state, deployment, authorizedParties };
+}
+export const isAuthConfigured = (): boolean => resolveServerAuthConfig().state === 'complete';
 
 // ── 행위자 판정 ───────────────────────────────────────────────────────────────
 export type ActorResolution =
@@ -61,15 +83,22 @@ const emptyAccount = (userId: string): Account =>
 export interface ActorRequest extends IncomingMessage { actor?: Account; }
 
 // 보호 라우트 래퍼. deps 미지정 시 기본(Clerk) 어댑터를 지연 로드한다.
-// 인증 미구성 → inner 그대로 실행(현행 동작 보존). 구성됨 → 401/403 게이트.
+// A.1 fail-closed: 설정 complete → 강제 / 미완전+배포(Preview·Production) → 503 / 미완전+로컬 → open.
 // 제네릭 R 로 ExtendedRequest(body 포함) 핸들러도 그대로 래핑한다.
 export function protectedHandler<R extends IncomingMessage>(
   inner: (req: R, res: VercelResponse) => unknown | Promise<unknown>,
   depsOverride?: AuthDeps
 ) {
   return async (req: R, res: VercelResponse) => {
-    if (!depsOverride && !isAuthConfigured()) {
-      return inner(req, res); // 인증 미구성: 라이브 무회귀(활성화는 Clerk 설정 후)
+    if (!depsOverride) {
+      const cfg = resolveServerAuthConfig();
+      if (cfg.state !== 'complete') {
+        if (cfg.deployment) {
+          // 배포환경 미완전 설정: 익명 open 도, SDK/키 오류 크래시도 아닌 정적 503 으로 닫는다.
+          return sendErrorResponse(res, 'AUTH_NOT_CONFIGURED', '서버 인증 설정이 완료되지 않아 이 기능이 잠시 닫혀 있습니다. 관리자에게 문의하세요.', 503);
+        }
+        return inner(req, res); // 로컬 개발 환경만 명시적으로 현행 open 허용
+      }
     }
     const deps = depsOverride ?? (await loadDefaultAuthDeps());
     const r = await resolveActor(req, deps);
