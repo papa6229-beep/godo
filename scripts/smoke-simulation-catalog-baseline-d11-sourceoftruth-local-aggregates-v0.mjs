@@ -126,8 +126,9 @@ console.log('  --- 1층: 정상 회귀(현재 제품 코드에서 지역 집계�
 // 필수 10개 지역 집계값 — 값 잠금
 T('L1. shippingRevenue(P, summary 분기)=40000', P.revenueUniverse.shippingRevenue === 40000, `got=${P.revenueUniverse.shippingRevenue}`);
 // D-1.2 교체: refundedRevenue(완료무관 요청금액 합) 폐기 → completedRefundRevenue(완료 근거만).
-T('L2. completedRefundRevenue=22000 (A4 환불완료15000+B6 취소환불완료7000, B5 반품접수 대기 제외)', P.revenueUniverse.completedRefundRevenue === 22000, `got=${P.revenueUniverse.completedRefundRevenue}`);
-T('L2b. requestedRefundAmount=31000 · pendingRefundRevenue=9000 (요청·대기 분리)', P.revenueUniverse.requestedRefundAmount === 31000 && P.revenueUniverse.pendingRefundRevenue === 9000, `req=${P.revenueUniverse.requestedRefundAmount} pending=${P.revenueUniverse.pendingRefundRevenue}`);
+// D-1.2.1 갱신: 완료는 r3 명시근거만. B6(취소 c4+handleCompleteFl=y·비r3)은 completed 아님→unknown.
+T('L2. completedRefundRevenue=15000 (A4 r3 환불완료만 · B6 취소는 미확정 · B5 반품 대기 제외)', P.revenueUniverse.completedRefundRevenue === 15000, `got=${P.revenueUniverse.completedRefundRevenue}`);
+T('L2b. requestedRefundAmount=31000 · pendingRefundRevenue=9000(반품) · unknownRefundRevenue=7000(취소 처리완료·비환불완료 보존)', P.revenueUniverse.requestedRefundAmount === 31000 && P.revenueUniverse.pendingRefundRevenue === 9000 && P.claimUniverse.unknownRefundRevenue === 7000, `req=${P.revenueUniverse.requestedRefundAmount} pending=${P.revenueUniverse.pendingRefundRevenue} unknown=${P.claimUniverse.unknownRefundRevenue}`);
 T('L3. cancelledOrders=1 (취소 사건 eventKind cancel = B6)', P.orderUniverse.cancelledOrders === 1, `got=${P.orderUniverse.cancelledOrders}`);
 T('L4. unpaidOrders=2 (명시 플래그+폴백절)', P.orderUniverse.unpaidOrders === 2, `got=${P.orderUniverse.unpaidOrders}`);
 // D-1.2 교체: returnedOrders(취소·환불을 반품으로 오집계) 폐기 → returnReceivedOrders(반품 사건만).
@@ -162,7 +163,7 @@ T('L24. totalQuantitySold(Q, summary 없음)=0', Q.productUniverse.totalQuantity
 T('L25. syntheticOrderCount(Q, sourceType 필터)=4', Q.metadata.syntheticOrderCount === 4, `got=${Q.metadata.syntheticOrderCount}`);
 T('L26. realOrderCount(Q, total-synthetic)=3', Q.metadata.realOrderCount === 3, `got=${Q.metadata.realOrderCount}`);
 // D-1.2 교체: 반품3/환불24000(옛 오집계) → 반품접수1/완료환불22000(사건 분류·완료 근거).
-T('L27. Q 지역 집계(취소1/미결제2/반품접수1/완료환불22000) summary 무관 동일', Q.orderUniverse.cancelledOrders === 1 && Q.orderUniverse.unpaidOrders === 2 && Q.orderUniverse.returnReceivedOrders === 1 && Q.revenueUniverse.completedRefundRevenue === 22000, `c=${Q.orderUniverse.cancelledOrders} u=${Q.orderUniverse.unpaidOrders} r=${Q.orderUniverse.returnReceivedOrders} refund=${Q.revenueUniverse.completedRefundRevenue}`);
+T('L27. Q 지역 집계(취소1/미결제2/반품접수1/완료환불15000) summary 무관 동일', Q.orderUniverse.cancelledOrders === 1 && Q.orderUniverse.unpaidOrders === 2 && Q.orderUniverse.returnReceivedOrders === 1 && Q.revenueUniverse.completedRefundRevenue === 15000, `c=${Q.orderUniverse.cancelledOrders} u=${Q.orderUniverse.unpaidOrders} r=${Q.orderUniverse.returnReceivedOrders} refund=${Q.revenueUniverse.completedRefundRevenue}`);
 
 // ── 입력 fixture 무변형 확인(참조 함수가 입력을 mutate 하지 않음) ─────────────
 const inputUnmutated = orders.length === 7 && orders[0].totalAmount === 12500 && customers.length === 4 && inquiries.length === 5 && reviews.length === 2 &&

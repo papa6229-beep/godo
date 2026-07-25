@@ -92,11 +92,14 @@ T('7. 부분 환불 완료 → 완료금액 3000(부분)만', s7.revenueUniverse
 const s8 = build([mk({ n: 'X8', claim: { hasClaim: true, claimTypes: ['weird'], handleModes: ['x'], rawStatuses: ['zz'], requestedRefundAmount: 9000 } })]);
 T('8. 근거 부족 → unknown 1 · 취소/반품/환불완료 임의집계 0', cu(s8).unknownClaimOrders === 1 && s8.orderUniverse.cancelledOrders === 0 && s8.orderUniverse.returnReceivedOrders === 0 && s8.revenueUniverse.completedRefundRevenue === 0 && cu(s8).unknownRefundCount === 1, `unknownClaim=${cu(s8).unknownClaimOrders} unknownRefund=${cu(s8).unknownRefundCount}`);
 
-// 9. RAW 상태·금액·완료일 보존(분류기 무변형 + 완료일 전파)
+// 9. RAW 상태·금액 보존(분류기 무변형). D-1.2.1 교체: handleDt 를 refundedAt 으로 쓰지 않는다.
 const rawClaim = { hasClaim: true, claimTypes: ['refund', 'cancel'], handleModes: ['r'], handleCompleteFl: 'y', handleDt: '2026-07-02 09:00:00', rawStatuses: ['r3'], requestedRefundAmount: 7000 };
 const snapshotBefore = JSON.stringify(rawClaim);
 const ev9 = CE.classifyClaimEvent(rawClaim, { paid: true });
-T('9. RAW 보존: 입력 claim 무변형 · handleDt→refundedAt · requestedRefundAmount 보존', JSON.stringify(rawClaim) === snapshotBefore && ev9.refundedAt === '2026-07-02 09:00:00' && ev9.requestedRefundAmount === 7000 && ev9.completedRefundAmount === 7000, `refundedAt=${ev9.refundedAt} requested=${ev9.requestedRefundAmount}`);
+T('9. RAW 보존: 입력 claim 무변형 · handleDt≠refundedAt(D-1.2.1) · r3근거로 완료 7000', JSON.stringify(rawClaim) === snapshotBefore && ev9.refundedAt === undefined && ev9.requestedRefundAmount === 7000 && ev9.completedRefundAmount === 7000, `refundedAt=${ev9.refundedAt ?? '없음'} requested=${ev9.requestedRefundAmount} completed=${ev9.completedRefundAmount}`);
+// 9b. refundedAt 은 확인된 환불완료 시각 필드(refundCompletedAt)가 있을 때만 채워진다.
+const ev9b = CE.classifyClaimEvent({ ...rawClaim, refundCompletedAt: '2026-07-03 12:00:00' }, { paid: true });
+T('9b. refundCompletedAt(확인된 환불완료시각) 있을 때만 refundedAt 기록', ev9b.refundedAt === '2026-07-03 12:00:00', `refundedAt=${ev9b.refundedAt}`);
 
 // 10. 동일 사건의 취소·반품 중복 집계 0 (반품 1건은 취소로도 세지 않음)
 T('10. 동일 반품 사건 취소·반품 중복 0(취소0+반품1=1)', (s2.orderUniverse.cancelledOrders + s2.orderUniverse.returnReceivedOrders) === 1, `cancel+return=${s2.orderUniverse.cancelledOrders + s2.orderUniverse.returnReceivedOrders}`);
@@ -111,10 +114,10 @@ const toLite = (o) => ({ orderNo: String(o.orderNo), sourceType: o.sourceType, d
 const rev = { count: cC.count, source: cC.source, live: cC.live, realOrdersStatus: cC.realOrdersStatus, syntheticStatus: cC.syntheticStatus, summary: cC.summary, stockImpact: cC.stockImpact, orders: cC.orders.map(toLite) };
 const snap = DS.buildDepartmentSourceOfTruthSnapshot(rev);
 
-// 11. 잘못된 반품 81건·완료 환불 3,051,446원 표현 해소
-T('11. 반품 81→20(실제 반품만) · 완료환불 3,051,446 아님(완료근거만=4,211,219) · 반품 대기 분리',
-  snap.orderUniverse.returnReceivedOrders === 20 && snap.revenueUniverse.completedRefundRevenue !== 3051446 && snap.revenueUniverse.completedRefundRevenue === 4211219 && snap.revenueUniverse.pendingRefundRevenue === 1366172,
-  `return=${snap.orderUniverse.returnReceivedOrders} completed=${snap.revenueUniverse.completedRefundRevenue} pending=${snap.revenueUniverse.pendingRefundRevenue}`);
+// 11. 잘못된 반품 81건·완료 환불 3,051,446원 표현 해소 (D-1.2.1 갱신: 완료는 r3 근거만=1,685,274)
+T('11. 반품 81→20 · 완료환불=1,685,274(r3만) · 미확정 2,525,945 보존 · 반품 대기 1,366,172',
+  snap.orderUniverse.returnReceivedOrders === 20 && snap.revenueUniverse.completedRefundRevenue === 1685274 && snap.claimUniverse.unknownRefundRevenue === 2525945 && snap.revenueUniverse.pendingRefundRevenue === 1366172,
+  `return=${snap.orderUniverse.returnReceivedOrders} completed=${snap.revenueUniverse.completedRefundRevenue} unknown=${snap.claimUniverse.unknownRefundRevenue} pending=${snap.revenueUniverse.pendingRefundRevenue}`);
 T('11b. 취소 81→37(순수취소) · 이중집계 0(취소37+반품20+환불24+교환12+unknown0=93=claim보유)',
   snap.orderUniverse.cancelledOrders === 37 && (cu(snap).cancelOrders + cu(snap).returnReceivedOrders + cu(snap).refundOnlyOrders + cu(snap).exchangeOrders + cu(snap).unknownClaimOrders) === 93,
   `cancel=${snap.orderUniverse.cancelledOrders} 합=${cu(snap).cancelOrders + cu(snap).returnReceivedOrders + cu(snap).refundOnlyOrders + cu(snap).exchangeOrders + cu(snap).unknownClaimOrders}`);

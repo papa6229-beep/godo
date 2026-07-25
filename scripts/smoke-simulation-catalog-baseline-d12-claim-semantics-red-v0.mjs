@@ -54,6 +54,8 @@ const build = (orders) => DS.buildDepartmentSourceOfTruthSnapshot({ count: order
 const sCancel = build([mk({ n: 'X', canceled: true, claim: claim(['cancel'], { handleModes: ['c'], rawStatuses: ['c4'], handleCompleteFl: 'y', requestedRefundAmount: 5000 }) })]);
 const sReturn = build([mk({ n: 'B', shipped: true, claim: claim(['return', 'cancel'], { handleModes: ['b'], rawStatuses: ['b4'], requestedRefundAmount: 8000 }) })]);
 const sRefundOnly = build([mk({ n: 'F', claim: claim(['refund', 'cancel'], { handleModes: ['r'], rawStatuses: ['r3'], handleCompleteFl: 'y', requestedRefundAmount: 10000 }) })]);
+// D-1.2.1: 결제 취소 + 명시 환불완료(r3) → 완료 환불금액 표현 가능(handleCompleteFl=y 단독은 불충분).
+const sCancelRefunded = build([mk({ n: 'XR', canceled: true, claim: claim(['cancel'], { handleModes: ['c'], rawStatuses: ['c4', 'r3'], requestedRefundAmount: 5000 }) })]);
 
 console.log('');
 console.log('  --- [FACT] 해소 후 실제 동작(관찰) ---');
@@ -72,7 +74,9 @@ R('R4. refundedRevenue 는 실제 완료금액만(요청 추측 금지)', sRefun
 R('R5. 환불 대기와 완료를 구별(pending/ completed 분리)', typeof sReturn.revenueUniverse.pendingRefundRevenue === 'number' && sReturn.claimUniverse.pendingRefundCount === 1, `pendingCount=${sReturn.claimUniverse.pendingRefundCount}`);
 R('R6. 반품 접수 건수를 완료와 분리해 셀 수 있다', sReturn.orderUniverse.returnReceivedOrders === 1, `returnReceived=${sReturn.orderUniverse.returnReceivedOrders}`);
 R('R7. 반품 처리 단계 구별(RAW b1~b4 증명분)', sReturn.claimUniverse.returnStageBreakdown.collected === 1, `collected=${sReturn.claimUniverse.returnStageBreakdown.collected}`);
-R('R8. 결제 취소의 실제 환불 완료금액 표현 가능', sCancel.revenueUniverse.completedRefundRevenue === 5000, `completed=${sCancel.revenueUniverse.completedRefundRevenue}`);
+R('R8. 결제 취소의 실제 환불 완료금액은 명시 근거(r3) 있을 때 표현·handleCompleteFl=y 단독은 미확정',
+  sCancelRefunded.revenueUniverse.completedRefundRevenue === 5000 && sCancel.claimUniverse.unknownRefundRevenue === 5000,
+  `r3취소 completed=${sCancelRefunded.revenueUniverse.completedRefundRevenue} · y만 unknown=${sCancel.claimUniverse.unknownRefundRevenue}`);
 
 console.log('');
 console.log(`[FACT] ${fact} pass / ${factf} fail   [RED ] ${red} met / ${redx} unmet`);

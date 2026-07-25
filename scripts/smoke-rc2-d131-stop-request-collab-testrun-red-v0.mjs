@@ -466,17 +466,21 @@ red('S28. 시험 실행 이력의 출처가 실제 데이터 출처로 저장되
 console.log('');
 console.log('  --- 무회귀 · 불변성 ---');
 
-red('S29. 매출·주문·재고·문의 계산 공식 모듈은 이번 작업에서 바뀌지 않는다',
+red('S29. 매출·주문·재고·클레임 계산 의미·기준값이 이번 작업에서 바뀌지 않는다(값 회귀검사)',
   (() => {
-    const changed = execFileSync('git', ['diff', '--name-only', 'd4334f38bee1125553e26b392ccf30420ea58c23', 'HEAD'], { cwd: REPO })
-      .toString().split('\n').filter(Boolean);
-    // 계산 "공식" 모듈만 가드한다. revenueScreenState(화면 상태 판정)·departmentDataSourceOfTruth(집계 스냅샷)은
-    // SIMULATION-CATALOG-BASELINE D-1 이 **표시 전용**으로만 손댔다(실제 주문 하위 표시 판정기 추가 ·
-    // 스냅샷 표시 필드 realOrders 추가). 매출/주문/재고 계산 공식·집계값 불변은 D-1 GREEN 스모크
-    // (G 하위호환 · H 기준값 1315/1182/88,116,982/98,363,022/재고13/위험4)로 별도 보증하므로 파일 단위 가드에서 제외.
-    const calc = /departmentDataService|godomallRevenue|godomallMapper|inquiryStatusContract|commerceDataQueryEngine/;
-    return !changed.some((f) => calc.test(f));
-  })(), '계산 공식 모듈이 변경됨', '계산 공식 모듈 변경 0');
+    // ── D-1.2.1 B-2: S29 의미 변경 ──────────────────────────────────────────────
+    // 이전: "고정 기준점(d4334f38) 이후 특정 파일(departmentDataService/godomallRevenue/…)이
+    //   git diff 상 변경됐는가" = **파일명 커밋 감시**. 문제: ①정상적 클레임 필드 확장(D-1.2)까지
+    //   오검출 ②커밋 기반이라 계산식 "의미"는 검증 못 함(D-1.2.1 RED 음성실험: deliveryFeeTotal·
+    //   gross·canceledOrderCount 변형을 어떤 값 스모크도 못 잡음).
+    // 이후: **계산 의미·기준값 회귀검사**. 실제 제품 파이프라인(mapOrdersToRevenue→summarizeRevenue→
+    //   DS)을 손검산 fixture 로 태워 매출·주문·배송·gross·완료/대기/미확인 환불 등 값을 잠근다.
+    //   파일 변경 자체가 아니라 "계산 결과가 변했는가"를 감시한다. 단순 파일 제외/regex 보정 아님.
+    try {
+      execFileSync(process.execPath, [path.join(REPO, 'scripts', 'smoke-simulation-catalog-baseline-d121-value-lock-green-v0.mjs')], { cwd: REPO, stdio: 'pipe' });
+      return true;
+    } catch { return false; }
+  })(), '계산 의미·기준값 회귀 감지(값-잠금 실패)', '계산 의미·기준값 회귀 없음');
 
 red('S30. 결정 함수는 입력 task 를 변형하지 않는다(append-only)',
   (() => { reset();
