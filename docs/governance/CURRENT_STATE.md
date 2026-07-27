@@ -55,10 +55,10 @@
 
 | 기능 | 코드 | 실무 | 해소 단계 |
 |---|---|---|---|
-| 업무 카드 → 결과 상세 | 모달·핸들러 존재 | **진입 경로 없음** (`OfficeView.tsx:34-35` props 미사용, `<TaskBoard` 렌더 0건) | B6 |
+| 업무 카드 → 결과 상세 | 모달·핸들러 존재 | **진입 경로 없음** (`OfficeView.tsx:34-35` props 미사용, `<TaskBoard` 렌더 0건) | B-use-3 |
 | CS 답변 발송 | 초안·검수 대기실 동작 | `writeStatus:'not_connected'` — **고객에게 나가지 않음** | G |
 | 예약 실행 | 함수 존재 | **호출자 0건** | E |
-| 마케팅 1팀/2팀 분리 | 없음 (`marketing` 단일) | 리터럴 `'marketing'` **95곳/41파일** | B3 |
+| 마케팅 1팀/2팀 분리 | 없음 (`marketing` 단일) | 리터럴 `'marketing'` **95곳/41파일** | 저장 의미 = B-core-5 / 소비자 이관 = Local migration |
 
 ## 7. 팀별 기능 — 존재 상태
 
@@ -70,7 +70,7 @@
 
 정본으로 살아 있음: `revenueMetricContract`(`isValidOrder` 5파일 import) · `inventoryRiskContract`(`classifyStockRisk` 4파일) · `claimEventContract`(4파일) · `inquiryStatusContract` · `dataSourceProvenanceContract`
 
-**제품 경로 우회 3건 남음**(B2에서 해소): `src/utils/dataNormalizer.ts` · `src/engine/nativeAgentRuntime/agentExecutor.ts:70` · `src/services/csCustomerManagementFacts.ts:144-146`
+**제품 경로 우회 3건 남음**(Local migration, B-core 완료 직후): `src/utils/dataNormalizer.ts` · `src/engine/nativeAgentRuntime/agentExecutor.ts:70` · `src/services/csCustomerManagementFacts.ts:144-146`
 
 ## 9. 미확인 항목
 

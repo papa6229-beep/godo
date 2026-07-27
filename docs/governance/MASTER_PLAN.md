@@ -14,6 +14,30 @@
 
 **큰 단계는 A~H 8개, A를 A1·A2로 나눈 실제 실행 구간은 9개다.**
 
+### 안정화의 뜻 (헌법 §9)
+
+안정화는 결함을 미리 다 없애는 것이 아니라, **기본이 작동하고 이후 패치·수정·기능 추가·기술 교체에도 전체가 연쇄로 무너지지 않게** 만드는 것이다. **완벽을 이유로 실제 사용을 미루지 않는다.**
+
+### 작업 구조
+
+| 구간 | 무엇 |
+|---|---|
+| **A2** | 공통 기억·결정·검사 기준 |
+| **B-core** | 회귀 게이트 · 공통 데이터 입구 · 저장 경계 · actor/executor 분리 · TeamId 정본 |
+| **B-use** | 공통 화면과 대표 경로의 데이터 연결 · 서버 기록 · 실제 진입·승인 흐름 |
+| **C** | 새 고도몰 READ·출처 검증 |
+| **D / E** | 실제 대표 업무에 필요한 조사와 AI 실행 기반을 **필요한 시점에** 연결 |
+| **F** | 팀별 대표 AI 업무를 하나씩 완주 |
+| **Patch** | 실제 사용 중 발견된 결함을 완료 단계를 다시 여는 대신 계속 수정 (상시) |
+| **Local migration** | 나머지 소비자를 **실제 사용 시점 전에** 순차 이관 (상시) |
+
+### 용어 분리
+
+- **B-use의 완주 = `핵심 업무 흐름 시나리오 완주`** (지시→수행→결과→승인→기록이 화면에서 끊기지 않음)
+- **F의 완주 = `팀별 대표 AI 업무 완주`** (한 팀의 실제 업무 1건이 AI 실행까지 완결)
+
+두 개는 다른 것이다. B-use가 끝났다고 F가 끝난 것이 아니다.
+
 ---
 
 ## 1. 사업 기준선 (사용자 확정, 2026-07-27)
@@ -39,16 +63,31 @@
 7. 대표 업무 1개 실제 완주
 8. 정식 검사 게이트와 Preview·Production 인수검사
 
-### 오픈 이후 순차 적용 (검증 생략 없이)
+### 오픈 이후 순차 적용 **8항목** (검증 생략 없이)
 
-고도몰 WRITE · 상품등록 자동화 · CS 실제 답글 발송 · 배송·물류 · 재무 · 외부 광고 전체 통합 · 모든 팀 AI 동시 완성 · 고급 무인 자동화
+① 고도몰 WRITE ② 상품등록 자동화 ③ CS 실제 답글 발송 ④ 배송·물류 ⑤ 재무 ⑥ 외부 광고 전체 통합 ⑦ 모든 팀 AI 동시 완성 ⑧ 고급 무인 자동화
+
+### 오픈 최소 구성 ↔ 단계 매핑
+
+**B 완료와 오픈 최소 구성 완료를 같은 뜻으로 쓰지 않는다.** B는 기반 단계이고, 오픈 최소 구성은 출시 범위다. B에서 미룬 항목은 완료로 덮지 않고 후속 단계로 **명시적으로 재분류**한다.
+
+| 오픈 최소 구성 | 충족 단계 |
+|---|---|
+| 1. 새 고도몰 READ 및 데이터 출처 검증 | **C** (+ B-core 공통 데이터 입구) |
+| 2. 공통 통계·재고·운영 화면 | **B-use** |
+| 3. 로그인 행위자와 실제 수행자 분리 | **B-core** |
+| 4. 서버 공용 업무기록과 이력 | **B-use** (저장 경계는 B-core) |
+| 5. 지시→수행→결과→승인→기록 흐름 | **B-use** |
+| 6. 실제·시험·미연결 상태 구분 | **B-core** 공통 데이터 입구 |
+| 7. 대표 업무 1개 실제 완주 | **F** |
+| 8. 정식 검사 게이트와 Preview·Production 인수검사 | **A2**(게이트 완료) + **B-use**(인수검사) |
 
 ---
 
 ## 2. 현재 단계와 다음 한 작업
 
-> **현재 단계: A2 — 정본 배선·릴리스 게이트 구축**
-> **다음 한 작업: A2 산출물 9종 완료 후 사용자 보고 (main 병합은 별도 승인)**
+> **현재 단계: A2 — 정본 배선·릴리스 게이트 구축 (산출물 9종 완료, 합의안 반영 완료)**
+> **다음 한 작업: A2 결과 main 병합 승인 요청 → 승인 시 B-core 착수 (첫 작업은 공통 데이터 입구 B1-0 출처 확정)**
 
 ---
 
@@ -56,7 +95,7 @@
 
 승인일 2026-07-27. 사용자 승인 6건은 `DECISIONS.md` D-001 참조.
 
-시스템 지도는 B1~B7이 건드리는 **다섯 경계로 한정**한다. 그 밖은 "미조사"로 표기하고 필요할 때만 확장한다.
+시스템 지도는 B-core·B-use가 건드리는 **다섯 경계로 한정**한다. 그 밖은 "미조사"로 표기하고 필요할 때만 확장한다.
 
 1. 데이터 공급자 소비자
 2. 계산 계약 소비자
@@ -91,83 +130,126 @@
 
 main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
-## 5. 단계 B — 기반 안정화 마감
+## 5. 단계 B — 기반 안정화
 
 예상 범위: 약 **17~30 작업일**. 정확한 일정은 각 묶음 착수 전 다시 계산한다.
+**DB 결정을 기다리는 동안 DB와 무관한 작업은 계속 진행한다.**
 
-### B1. 데이터 세계 관측과 단일화
+---
 
-- **B1-0 현재 데이터 출처 확정**: Preview의 `products` 13건이 기존 시험몰 API·새 몰·시뮬레이션 중 어디서 왔는지 확인하고 `sourceType`의 정확성을 검증
-- A `activeOperationsData`와 B `fetchRevenue` 차이 실측
-- 동일 fixture parity
-- 읽기 전용 canonical snapshot provider
-- B 소비자 3곳 연결
-- A `OperationsDataSnapshot` adapter 연결
-- `departmentDataSourceOfTruth`는 조합 역할 유지, 입력만 canonical로 변경, 자체 fetch/cache 금지
+## 5-1. B-core — 경계 고정 (DB 결정 없이 완주 가능)
 
-종료: 팀 화면·채팅·보고서·AI가 같은 snapshot에서 파생.
+여기서 고정하는 것은 **변경이 퍼지는 경로**다. 이 다섯이 서면 이후 패치·기능 추가가 옆을 무너뜨리지 않는다.
 
-### B2. 남은 계산 우회 마감
+### B-core-1. 회귀 게이트 — **완료 (A2)**
 
-`src/utils/dataNormalizer.ts` · `src/engine/nativeAgentRuntime/agentExecutor.ts` · `src/services/csCustomerManagementFacts.ts`
+`npm test` = smoke(manifest 120) + build(`tsc -b` + `typecheck:api` + `vite build`) + lint. 실측 130초, exit 0.
 
-종료: 제품 경로에서 공통 주문·클레임·재고 계약을 우회하지 않음.
+### B-core-2. 공통 데이터 입구
 
-### B3. actor·수행자·조직 계약
+- **B1-0 현재 데이터 출처 확정(선행)**: Preview의 `products` 13건이 기존 시험몰 API·새 몰·시뮬레이션 중 어디서 왔는지 확인하고 `sourceType`의 정확성을 검증
+- A `activeOperationsData`와 B `fetchRevenue` 차이 실측 · 동일 fixture parity
+- 읽기 전용 canonical snapshot provider 신설
+- **공통 데이터 입구와 오픈 대표 업무가 쓰는 소비 경로는 오픈 전에 canonical snapshot으로 통일한다**
+- `departmentDataSourceOfTruth`는 조합 역할 유지, 입력만 canonical로 변경, **자체 fetch/cache 금지**
+- 실제 0건·시험자료·연결 안 됨·사용 불가 구분이 이 입구에서 보존될 것
+
+종료: 공통 입구가 하나이고, 오픈 범위 화면·보고서·AI가 그 입구를 통해 같은 사실을 본다.
+
+### B-core-3. 저장 경계 (DB 결정 불필요)
+
+- 공통 metadata + persistence port
+- **localStorage 어댑터로 실동작**할 것 — 이 단계에서 DB를 고르지 않는다
+- **UI가 범용 persistence port에 직접 결합되지 않게 한다.** lifecycle·ledger·message·CS·agent task는 **도메인 의미를 보존한 repository/facade 뒤**에 둔다
+- 현재 결합 실측(확인 범위: `src/components/` import 검색): **10개 컴포넌트 / 15개 지점**
+  (`activityLedger` 5 · `teamMessageCenter` 5 · `agentTaskStore` 2 · `csLocalStatePersistence` 1 · `departmentChatMemory` 1 · `hqChatMemory` 1 · `taskLifecycleStore` 0 — 이미 adapter 뒤)
+- 선례: `api/_shared/marketingBehaviorPersistentStore.ts`(포트) ← `marketingBehaviorPostgresStore.ts`(어댑터) ← `api/marketing/[action].ts:4`(소비자는 포트만 import)
+
+종료: 화면이 스토어가 아니라 repository/facade만 import하고, 저장소 교체가 화면 코드를 건드리지 않는다.
+
+### B-core-4. actor / executor 분리
 
 - 로그인 actor와 기존 수행자 분리 유지
-- 사람 하드코딩 라벨을 실제 actor로 연결
-- 수행자 변경 이력 보존
-- TeamId 정본 한 곳
-- `marketing_internal`·`marketing_external` 반영
-- 리터럴 `marketing` 95곳/41파일 소비자 지도
-- 화면·필터·승인 스코프 무회귀
+- 사람 하드코딩 라벨(`'운영자'`·`'최고관리자'`)을 실제 actor로 연결
+- 수행자 변경 이력(`executorHistory`) 보존
+- **로그인한 사람을 수행자로 자동 덮어쓰지 않는다.** 값이 비어 있을 때만 기본 제안값
 
-종료: 누가 행동했고 누가 수행했는지 분리되어 기록되고, 마케팅 두 팀 의미가 서버 기록 전에 확정.
+종료: 누가 시켰는지(actor)와 누가 했는지(executor)가 분리되어 기록된다.
 
-### B4. 저장 설계와 사용자 DB 결정
+### B-core-5. TeamId 정본
 
-- 공통 metadata·persistence port
-- 도메인별 schema
-- 실제 운영량이 없으므로 `직원 수 × 일 업무 건수 × 보존 기간`의 **보수적 상한 가정**
-- 동시사용·백업·복구 조건 — **디자인팀 4명 동시작업**이 다중사용자 요구의 근거(`docs/MASTER_REPORT_2026-07-03_FINAL.md:210`)
-- DB 후보 2~3개 현재 공식 가격·운영 난이도 조사
-- 상한 가정이 틀렸을 때 다른 저장소로 옮기는 비용도 비교
-- 쉬운 비교표와 추천안 → 사용자 명시적 결정
+- **TeamId 정본 한 곳** 확정
+- **`marketing_internal`·`marketing_external`의 저장 의미를 서버 기록 전에 고정**
+- 리터럴 `marketing` **95곳 / 41파일** 소비자 지도 작성
+- **41파일 전체 이관은 여기서 하지 않는다** → Local migration
 
-종료: 선택한 저장소·schema·마이그레이션·백업·롤백 설계 승인.
+종료: 팀 식별자의 정본과 저장 의미가 하나로 고정되고, 마케팅 두 팀 구분이 기록 스키마에 확정된다.
 
-### B5. 서버 기록 구현
+---
 
-lifecycle · activity ledger · team messages · CS completion · agent tasks/results
-멱등·상관 ID · 실패 표면화 · 500건 절단 제거 · 다중 사용자·다중탭 안전
+## 5-2. B-use — 실제 사용 가능하게 만들기
 
-시험자료 처리: ① JSON 백업 파일 생성 ② 사용자에게 실물 전달 ③ 보존할 자료 명시 확인 ④ 선택 import 또는 새 운영 시작 ⑤ **확인 전 localStorage 삭제 금지**
+### B-use-1. 대표 경로 데이터 연결
 
-### B6. 사용자 진입·승인 흐름
+공통 화면(통계·재고·운영)과 오픈 대표 경로가 B-core-2의 입구를 실제로 소비한다.
+
+### B-use-2. 서버 기록 (DB 결정 후)
+
+- 사용자 DB 결정 → 서버 어댑터를 B-core-3 포트에 연결
+- lifecycle · activity ledger · team messages · CS completion · agent tasks/results
+- 멱등·상관 ID · **실패 표면화** · **500건 절단 제거** · 다중 사용자·다중탭 안전
+  (다중사용자 근거: 디자인팀 4명 동시작업 — `docs/MASTER_REPORT_2026-07-03_FINAL.md:210`)
+
+**DB 결정 입력(B-use-2 착수 전 준비)**: 실제 운영량이 없으므로 `직원 수 × 일 업무 건수 × 보존 기간`의 **보수적 상한 가정** · 동시사용·백업·복구 조건 · DB 후보 2~3개 공식 가격·운영 난이도 · **상한 가정이 틀렸을 때 옮기는 비용** · 쉬운 비교표와 추천안 → 사용자 명시적 결정
+
+**시험자료 처리(미결정)**: ① JSON 백업 파일 생성 ② 사용자에게 실물 전달 ③ 보존할 자료 명시 확인 ④ **선택 import 또는 새 운영 시작을 그때 결정** ⑤ **확인 전 localStorage 삭제 금지**
+
+### B-use-3. 실제 진입·승인 흐름
 
 업무 카드→결과 상세 진입 · 협업 부모 tracking/수행팀 자식 · 원본 메시지 역참조 · 승인 경로 4종 · 팀 내부·HQ 지시·HQ 확인·CS 검토 의미 · 활동 원장 사후 열람
 
-종료: 화면에서 실제로 지시→수행→결과→승인·수정·중단→기록을 완주.
+종료: **핵심 업무 흐름 시나리오 완주** — 화면에서 실제로 지시→수행→결과→승인·수정·중단→기록이 끊기지 않는다.
 
-### B7. 인증 브랜치 판단·통합
+### B-use-4. 인증 브랜치 판단·통합
 
-판단 조건: ① actor/team 계약 확정 ② 기존 `executorId`·`assignee`·`handledBy` 보존 검사 ③ Production Clerk 환경변수·실제 HQ 계정·배포 순서 준비 ④ 이력 보존 방식의 Git 통합안 확정
+판단 조건: ① actor/team 계약 확정(B-core-4·5) ② 기존 `executorId`·`assignee`·`handledBy` 보존 검사 ③ Production Clerk 환경변수·실제 HQ 계정·배포 순서 준비 ④ 이력 보존 방식의 Git 통합안 확정
 
-앞선 기반 구현은 실제 HQ가 정해지기 전에도 진행할 수 있다. 그러나 인증 브랜치를 main에 병합하면 **Production 대시보드가 잠길 수 있으므로** B7 병합은 실제 HQ와 Production 환경설정 준비 뒤에만 가능하다.
+인증 브랜치를 main에 병합하면 **Production 대시보드가 잠길 수 있으므로** 실제 HQ와 Production 환경설정 준비 뒤에만 가능하다.
+**조건이 충족돼도 병합 실행은 사용자 승인 후에 한다.** merge/squash 선택과 Production 환경변수 설정·배포 순서도 함께 승인받는다.
 
-**위 조건이 충족돼도 병합 실행은 사용자 승인 후에 한다.** merge/squash 선택과 Production 환경변수 설정·배포 순서도 함께 승인받는다.
+### B-use-5. 인수검사
 
-### B8. 기반 종료
+`npm test` · manifest 등록 검사 전부 통과 · **Preview 수동 인수검사 체크리스트 전 항목 통과** · Production Source 잠금과 실검증 · 실제·시험·연결 안 됨 구분 · 마스터 계획 갱신
 
-- `npm test`
-- **manifest에 등록된 검사 전부 통과**
-- **Preview 수동 인수검사 체크리스트 전 항목 통과**
-- Production Source 잠금과 실검증
-- 실제·시험·연결 안 됨 구분
-- 마스터 계획 갱신
+---
 
-종료 뒤 새 발견은 B 종료조건 위반이 아니면 B를 다시 열지 않는다.
+## 5-3. Patch — 상시 경로
+
+**완료된 기능에서 실제 사용 중 발견된 결함**은 단계를 다시 열지 않고 여기서 고친다. 규칙은 헌법 §9.
+
+- 아직 만들지 않은 기능은 Patch가 아니라 해당 단계 작업
+- **핵심 경계(B-core 다섯)를 바꾸는 수정은 `구조 패치`로 표시하고 사용자에게 영향을 보고**
+- 모든 Patch는 관련 검사와 `npm test` 통과
+- 수정 이유·영향·검증 결과를 기록
+
+## 5-4. Local migration — 상시 경로
+
+나머지 소비자를 **각자가 실제 사용되는 시점 전에** 순차 이관한다. 한꺼번에 하지 않는다.
+
+| 항목 | 이관 시점 |
+|---|---|
+| 리터럴 `marketing` 95곳/41파일 소비자 | 해당 화면·기능이 실제 사용 경로에 들어오기 전 |
+| A세계(`activeOperationsData`) 나머지 소비자 | 해당 기능이 오픈 범위나 실제 사용 경로에 들어오기 전. **사용자가 숫자 불일치를 발견할 때까지 기다리지 않는다** |
+| 계산 우회 3건 (`dataNormalizer.ts` · `agentExecutor.ts` · `csCustomerManagementFacts.ts`) | B-core 완료 직후 (작고 독립적) |
+| 미마운트 컴포넌트 정리 (`TaskBoard` 등) | B-use-3 진입 복구 완료 후 |
+
+---
+
+## 5-5. B 완료의 뜻
+
+**B 완료와 오픈 최소 구성 완료는 다른 것이다.** B에서 미룬 항목은 완료로 덮지 않고 **후속 단계로 명시적으로 재분류**한다(§1 매핑표·§14 후속 대장).
+
+B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch 또는 Local migration**으로 간다.
 
 ## 6. 단계 C — 새 고도몰 실제 계약 검증
 
