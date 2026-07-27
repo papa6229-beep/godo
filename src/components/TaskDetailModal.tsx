@@ -26,6 +26,22 @@ const DECISION_LABEL: Record<ApprovalDecisionKind, string> = {
 };
 
 const teamName = (id?: DeptTeamId) => (id ? DEPT_TEAM_META[id]?.name ?? id : '');
+
+/**
+ * B-use-3: 업무가 보유한 **원본 자료 참조**를 사람이 읽는 문장으로 바꾼다.
+ *   참조만 읽는다 — 원본 메시지 본문·첨부를 여기서 다시 불러오거나 복제하지 않는다.
+ *   내부 식별자는 사용자가 알아야 할 정보가 아니므로 문장에 노출하지 않는다.
+ */
+const describeInputRefs = (refs?: string[]): string | null => {
+  const list = refs ?? [];
+  if (list.length === 0) return null;
+  const msgCount = list.filter((r) => r.startsWith('teammsg:')).length;
+  const etcCount = list.length - msgCount;
+  const parts: string[] = [];
+  if (msgCount > 0) parts.push(`원본 팀 지시 연결됨${msgCount > 1 ? ` (${msgCount}건)` : ''}`);
+  if (etcCount > 0) parts.push(`기타 참고 자료 ${etcCount}건`);
+  return parts.join(' · ');
+};
 const when = (iso?: string) => (iso ? iso.slice(0, 16).replace('T', ' ') : '');
 
 /** actor 의 신원 출처 — 실제 로그인이 아닌 것을 실제처럼 보이게 하지 않는다(B-core-4). */
@@ -132,6 +148,14 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ flow, onClose 
               </Row>
             )}
             <Row label="등록">{when(t.createdAt)}</Row>
+          </section>
+
+          <section className="tdetail-section">
+            <h4 className="tdetail-section-title">원본 자료</h4>
+            {/* 정본 선택은 결과·중단·수행자 이력과 같은 규칙(resultOf)을 쓴다. */}
+            {describeInputRefs(resultOf.inputRefs)
+              ? <p className="tdetail-meta">🔗 {describeInputRefs(resultOf.inputRefs)}</p>
+              : <p className="tdetail-empty">연결된 원본 자료가 없습니다.</p>}
           </section>
 
           <section className="tdetail-section">

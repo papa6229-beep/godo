@@ -72,13 +72,20 @@ const ids = { newId: () => `t-${++seq}`, nowIso: () => `2026-07-27T09:0${seq}:00
 const HQ = { kind: 'human', teamId: 'hq', label: '최고관리자', userId: 'u-hq', identitySource: 'demo_role' };
 const PRODUCT_LEAD = { kind: 'human', teamId: 'product', label: '상품팀장', userId: 'u-product', identitySource: 'demo_role' };
 const TITLE = '이번 주 재고 위험 상품 정리';
+// 첨부 1건 — 원문(dataUrl)은 팀 메시지 저장소에만 남아야 하고 업무에 복제되면 안 된다.
+const ATTACHMENT = {
+  name: '재고위험목록.csv',
+  size: 128,
+  type: 'text/csv',
+  dataUrl: 'data:text/csv;base64,VEVTVC1BVFRBQ0hNRU5ULUJPRFk='
+};
 
 // ── [1] 지시 1건 → 메시지 1건 + 업무 1건 + 원장 1건 ─────────────────────────
 console.log('\n[1] HQ 지시 한 번 → 메시지·업무·원장');
 
 // App 이 실제로 하는 일과 같은 순서로 부른다.
 const posted = MSG.postTeamMessage({
-  from: HQ, toTeam: 'product', kind: 'info', title: TITLE, body: '', attachments: []
+  from: HQ, toTeam: 'product', kind: 'info', title: TITLE, body: '', attachments: [ATTACHMENT]
 });
 ok('1-1. 팀 메시지 1건 생성', MSG.loadTeamMessages().length === 1, `${MSG.loadTeamMessages().length}건`);
 
@@ -100,7 +107,7 @@ ok('1-3. 저장된 업무 정확히 1건(중복 없음)', storedTasks.length ===
 
 LEDGER.logActivity({
   teamId: 'hq', type: 'message_sent', status: 'info', title: TITLE,
-  detail: '상품관리팀에 지시', actor: HQ, relatedTeam: 'product',
+  detail: '상품관리팀에 지시 · 첨부 1', actor: HQ, relatedTeam: 'product',
   refId: posted.id,
   ...(task ? { taskId: task.ref.taskId, correlationId: task.ref.correlationId } : {})
 });
@@ -126,7 +133,12 @@ ok('3-1. 업무가 원본 메시지 참조 보유(inputRefs)', (task?.inputRefs 
 ok('3-2. 참조 형식은 기존 messageRef 그대로', expectedRef.startsWith('teammsg:'), expectedRef);
 // 첨부·본문을 두 저장소에 복제하지 않는다.
 const taskJson = JSON.stringify(task ?? {});
-ok('3-3. 첨부·본문을 업무에 복제하지 않음', !taskJson.includes('dataUrl') && !(task?.artifactRefs ?? []).length);
+ok('3-3. 첨부·본문을 업무에 복제하지 않음',
+  !taskJson.includes('dataUrl') && !taskJson.includes('TEST-ATTACHMENT-BODY') && !(task?.artifactRefs ?? []).length);
+// 첨부의 정본은 팀 메시지 한 곳이다.
+const storedMsg = MSG.loadTeamMessages()[0];
+ok('3-3a. 첨부는 팀 메시지에 그대로 보존', (storedMsg?.attachments ?? []).length === 1, `${(storedMsg?.attachments ?? []).length}건`);
+ok('3-3b. 팀 메시지가 첨부 원문(dataUrl)을 보유', typeof storedMsg?.attachments?.[0]?.dataUrl === 'string');
 ok('3-4. 원장이 taskId·correlationId·메시지 refId 를 함께 보유',
   ledger[0]?.taskId === task?.ref.taskId && ledger[0]?.correlationId === task?.ref.correlationId && ledger[0]?.refId === posted.id,
   `taskId=${ledger[0]?.taskId} corr=${ledger[0]?.correlationId} refId=${ledger[0]?.refId}`);
@@ -180,6 +192,11 @@ ok('7-1. OfficeView 가 하드코딩 HQ_ACTOR 를 기록 근거로 쓰지 않음
 ok('7-2. HQ 지시 경로가 App 의 세션 actor 를 쓴다', /onSendDirective/.test(OFFICE) && /onSendDirective=\{/.test(APP + OFFICE));
 ok('7-3. App 의 지시 처리기가 createDirectiveTask 를 호출', /handleSendDirective/.test(APP) && /createDirectiveTask\(/.test(APP));
 ok('7-4. 원본 참조를 messageRef 로 연결', /messageRef\(/.test(APP));
+// 업무 상세에서 "원본 자료가 연결돼 있다"는 사실을 확인할 수 있어야 한다.
+const DETAIL = readFileSync(path.join(REPO, 'src', 'components', 'TaskDetailModal.tsx'), 'utf8');
+ok('7-5. 업무 상세가 resultOf.inputRefs 를 읽는다', /resultOf\.inputRefs/.test(DETAIL));
+ok('7-6. 상세가 teammsg 참조를 사용자 문구로 표시', /teammsg:/.test(DETAIL) && /원본 팀 지시 연결됨/.test(DETAIL));
+ok('7-7. 상세가 저장소를 직접 읽지 않음(참조만 표시)', !/localStorage/.test(DETAIL));
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n=== 결과: ${pass} pass / ${fail} fail ===`);

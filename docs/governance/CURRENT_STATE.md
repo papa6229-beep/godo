@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-27 (B-core-2a 재고위험 판정 단일화)
+최종 갱신: 2026-07-27 (B-use-3 HQ 지시 흐름 연결)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -12,13 +12,13 @@
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| local main | `5d8051e362c8849dd69fa63ab9502108046a08be` (B-core-2 까지 fast-forward 통합) | `git rev-parse main` |
-| origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 5커밋 뒤**, 미푸시) | `git rev-parse origin/main` |
+| local main | `7ba257e0ecfdf01a1131d67f3c13c4fda113a437` (B-use-2 까지 fast-forward 통합) | `git rev-parse main` |
+| origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
-| 현재 작업 브랜치 | `codex/b-core-2a-inventory-risk-boundary` (`5d8051e`에서 분기, **main 미통합**) | `git rev-parse --abbrev-ref HEAD` |
+| 현재 작업 브랜치 | `codex/b-use-3-hq-directive-flow` (`7ba257e`에서 분기, **main 미통합**) | `git rev-parse --abbrev-ref HEAD` |
 | 실행 환경 | **Vercel이 유일한 실행 환경** — 개발·검증·Production 모두 담당. 최종 배포 형태는 H단계 미결 | Vercel 대시보드 관측 |
 
-## 2. 검사·빌드 (B-core-2a 브랜치 기준)
+## 2. 검사·빌드 (B-use-3 브랜치 기준)
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
@@ -184,7 +184,8 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 | 원본 메시지와 업무가 연결되지 않음 | `inputRefs: [messageRef(id)]` 참조만. 본문·첨부는 메시지 저장소에만 |
 | 원장에 `refId` 만 | `refId` + `taskId` + `correlationId` 로 역추적 |
 
-권한 판정을 가장 먼저 하여 사람 HQ 가 아니면 **아무것도 만들지 않는다**(부분 생성 금지).
+권한 판정을 **저장보다 먼저** 하여 사람 HQ 가 아니면 셋 중 어느 것도 만들지 않는다.
+**트랜잭션은 아니다** — 저장 도중 장애가 나면 세 저장을 자동 롤백하지 않는다. 저장 실패·트랜잭션은 예정된 서버 기록 작업(B-use-2 서버 기록)에서 다룬다.
 수행자는 `unassigned` 로 두고 담당 팀장이 정한다 — actor 와 executor 를 합치지 않는다.
 
 검사: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` RED 26 pass/6 fail → **GREEN 32/32** (manifest include 123).
@@ -202,7 +203,7 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 
 | 기능 | 코드 | 실무 | 해소 단계 |
 |---|---|---|---|
-| 업무 카드 → 결과 상세 | 모달·핸들러 존재 | **진입 경로 없음** (`OfficeView.tsx:34-35` props 미사용, `<TaskBoard` 렌더 0건) | B-use-3 |
+| 업무 카드 → 결과 상세 | ✅ **B-use-2 에서 복구** | 부서 업무 관장 탭 → `TeamTaskPanel` 카드 [상세] → `TaskDetailModal`. 끝난 업무는 `지난 업무` 접힘에서 진입 | 완료 |
 | CS 답변 발송 | 초안·검수 대기실 동작 | `writeStatus:'not_connected'` — **고객에게 나가지 않음** | G |
 | 예약 실행 | 함수 존재 | **호출자 0건** | E |
 | 마케팅 1팀/2팀 분리 | 없음 (`marketing` 단일) | 리터럴 `'marketing'` **95곳/41파일** | 저장 의미 = B-core-5 / 소비자 이관 = Local migration |
