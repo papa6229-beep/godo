@@ -481,7 +481,17 @@ export function createManualTask(
 
 /** HQ(또는 팀장)가 **팀에게** 지시한다. 수행자는 미정으로 팀장에게 도착한다. */
 export function createDirectiveTask(
-  input: { title: string; targetTeamId: ActorRef['teamId']; instructedBy: ActorRef; dependencyMode?: 'independent' | 'all_required' | 'selection' },
+  input: {
+    title: string;
+    targetTeamId: ActorRef['teamId'];
+    instructedBy: ActorRef;
+    dependencyMode?: 'independent' | 'all_required' | 'selection';
+    /**
+     * B-use-3: 이 지시의 **원본 자료 참조**(예: 팀 메시지). `messageRef(id)` 형식만 넣는다.
+     * 원문·첨부를 여기에 복제하지 않는다 — 내용의 정본은 원본 저장소 한 곳이다.
+     */
+    inputRefs?: string[];
+  },
   ids: IdContext
 ): LifecycleTask {
   const task = createLifecycleTask({
@@ -494,6 +504,7 @@ export function createDirectiveTask(
     createdBy: input.instructedBy,
     approvalRoute: routeFor(input.instructedBy, input.targetTeamId),
     dependencyMode: input.dependencyMode ?? 'independent',
+    ...(input.inputRefs && input.inputRefs.length > 0 ? { inputRefs: input.inputRefs } : {}),
     ...(input.instructedBy.teamId !== input.targetTeamId ? { requestingTeamId: input.instructedBy.teamId } : {})
   }, ids);
   saveLifecycleTask(task);

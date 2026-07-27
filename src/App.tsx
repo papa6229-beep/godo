@@ -34,8 +34,13 @@ import { isSameAgent } from './services/agentIdRegistry';
 import {
   hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
   actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
-  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest
+  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest, messageRef
 } from './services/taskLifecycleAppAdapter';
+// B-use-3: HQ 지시 1건 = 원본 메시지 + lifecycle 업무 + 활동 원장. 저장 경계는 repository 만 쓴다.
+import { postTeamMessage } from './services/repositories/teamMessageRepository';
+import { logActivity } from './services/repositories/activityLedgerRepository';
+import { DEPT_TEAM_META } from './types/teamMessage';
+import type { DeptTeamId, TeamMessageAttachment } from './types/teamMessage';
 import type { ApprovalDecisionKind } from './services/taskLifecycleContract';
 import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
@@ -715,6 +720,59 @@ function App() {
     addLog(`새 업무 "${title}"을 ${roleMeta(teamId).label}에게 전달했습니다. 수행 방식은 담당 팀장이 정합니다.`, 'info', 'SYSTEM');
   };
 
+  /**
+   * B-use-3: 오늘의 운영 화면의 HQ 지시 1건을 **한 흐름**으로 만든다.
+   *   원본 팀 메시지 1건 → lifecycle 업무 1건 → 활동 원장 1건.
+   *
+   * 이전에는 OfficeView 가 하드코딩 HQ_ACTOR 로 메시지·원장만 만들고
+   *   createDirectiveTask 를 부르지 않아 담당 팀의 업무 카드가 생기지 않았다.
+   *
+   * 원칙
+   *   - 행위자는 **App 의 세션 actor** 다. 화면이 만든 값을 실제 actor 로 위장하지 않는다.
+   *   - 사람 HQ 가 아니면 아무것도 만들지 않는다(부분 생성 금지 — 권한 판정을 먼저 한다).
+   *   - 업무에는 원본 메시지 **참조만** 넣는다. 본문·첨부를 두 저장소에 복제하지 않는다.
+   *   - 수행자는 정하지 않는다(unassigned). 수행 방식은 담당 팀장이 고른다.
+   */
+  const handleSendDirective = (
+    toTeam: DeptTeamId,
+    text: string,
+    attachments: TeamMessageAttachment[]
+  ) => {
+    const actor = sessionActor();
+    // 권한 판정을 **가장 먼저** 한다. 실패하면 메시지도 업무도 원장도 만들지 않는다.
+    if (actor.kind !== 'human' || actor.teamId !== 'hq') {
+      addLog('총괄(HQ) 계정만 팀에 지시를 보낼 수 있습니다. 역할을 확인해 주세요.', 'warning', 'SYSTEM');
+      return;
+    }
+    const title = text || (attachments.length ? '자료 전달' : '지시');
+
+    // 1) 원본 팀 메시지 — 본문·첨부의 정본은 여기 한 곳이다.
+    const posted = postTeamMessage({ from: actor, toTeam, kind: 'info', title, body: '', attachments });
+
+    // 2) 담당 팀의 실제 업무 — 원본 메시지 참조만 싣는다.
+    const task = createDirectiveTask(
+      { title, targetTeamId: toTeam, instructedBy: actor, inputRefs: [messageRef(posted.id)] },
+      { newId: newTaskId, nowIso: nowIso() }
+    );
+
+    // 3) 활동 원장 — 같은 흐름을 역추적할 수 있게 세 식별자를 함께 남긴다.
+    logActivity({
+      teamId: 'hq',
+      type: 'message_sent',
+      status: 'info',
+      title,
+      detail: `${DEPT_TEAM_META[toTeam].name}에 지시${attachments.length ? ` · 첨부 ${attachments.length}` : ''}`,
+      actor,
+      relatedTeam: toTeam,
+      refId: posted.id,
+      taskId: task.ref.taskId,
+      correlationId: task.ref.correlationId
+    });
+
+    refreshLifecycleState();
+    addLog(`${DEPT_TEAM_META[toTeam].name}에 지시를 보냈습니다. 담당 팀장이 수행 방식을 정합니다.`, 'info', 'SYSTEM');
+  };
+
   // ── RC-2 D-1.3: 팀장 화면 실배선 ──────────────────────────────────────────
   //   화면은 결정하지 않는다. 계약 함수가 거부하면 그 이유를 그대로 보여 준다.
 
@@ -1015,6 +1073,7 @@ function App() {
           onClearLogs={handleClearLogs}
           onApprove={handleApprove}
           onReject={handleReject}
+          onSendDirective={handleSendDirective}
           onSelectTask={(task) => setSelectedTaskForResult(task)}
           onSelectApproval={(appr) => setSelectedApprovalDetail(appr)}
           brainKnowledge={brainKnowledge}

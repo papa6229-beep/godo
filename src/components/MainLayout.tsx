@@ -18,6 +18,7 @@ import { ApiBridgePanel } from './ApiBridgePanel';
 import { DepartmentWorkspacePanel } from './DepartmentWorkspacePanel';
 import type { DepartmentWorkspaceLifecycle } from './DepartmentWorkspacePanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
+import type { DeptTeamId, TeamMessageAttachment } from '../types/teamMessage';
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
 import { loadRole, saveRole, subscribeRole, VIEWER_ROLES, isHqRole, type ViewerRole } from '../services/sessionRole';
@@ -66,6 +67,8 @@ interface MainLayoutProps {
   onReject: (id: string) => void;
   onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
+  /** B-use-3: HQ 지시 1건 처리(App 소유). 화면은 고른 팀·문구·첨부만 넘긴다. */
+  onSendDirective: (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => void;
   
   
   // Brain 관련 props
@@ -145,6 +148,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onReject,
   onSelectTask,
   onSelectApproval,
+  onSendDirective,
   brainKnowledge,
   onUpdateKnowledge,
   onAddLog,
@@ -384,6 +388,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               onReject={onReject}
               onSelectTask={onSelectTask}
               onSelectApproval={onSelectApproval}
+              onSendDirective={onSendDirective}
               activeOperationsData={activeOperationsData}
               onUpdateAgents={onUpdateAgents}
               onAddLog={onAddLog}

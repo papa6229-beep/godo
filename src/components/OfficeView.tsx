@@ -12,15 +12,12 @@ import { TeamOperationsBoard } from './TeamOperationsBoard';
 import { DeptActivityModal } from './DeptActivityModal';
 import { OperationBriefingModal } from './OperationBriefingModal';
 import { defaultDepartments, defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
-import { postTeamMessage } from '../services/repositories/teamMessageRepository';
-import { logActivity } from '../services/repositories/activityLedgerRepository';
 import { fetchRevenue, type RevenueOrderLite } from '../services/departmentDataService';
-import { DEPT_TEAM_META, type DeptTeamId, type TeamMessageAttachment } from '../types/teamMessage';
+import { type DeptTeamId, type TeamMessageAttachment } from '../types/teamMessage';
 import './OfficeView.css';
 
 // 부서 카드 id → 활동 원장 팀 id (manager=총괄→hq)
 const DEPT_TO_TEAM: Record<string, DeptTeamId> = { manager: 'hq', product: 'product', cs: 'cs', marketing: 'marketing', design: 'design' };
-const HQ_ACTOR = { kind: 'human' as const, teamId: 'hq' as DeptTeamId, label: '최고관리자' };
 
 interface OfficeViewProps {
   agents: Agent[];
@@ -33,6 +30,12 @@ interface OfficeViewProps {
   onReject: (id: string) => void;
   onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
+  /**
+   * B-use-3: HQ 지시 1건 처리. **App 이 소유한다.**
+   *   화면은 고른 팀·문구·첨부만 넘기고, 행위자(actor)·업무 생성·원장 기록은 App 이 한다.
+   *   화면이 actor 를 만들면 실제 로그인 신원이 아닌 값이 기록에 남는다.
+   */
+  onSendDirective: (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => void;
   activeOperationsData: OperationsDataSnapshot;
   onUpdateAgents: (items: Agent[]) => void;
   onAddLog: (text: string, type: 'info' | 'success' | 'warning' | 'error' | 'agent', agentName?: string) => void;
@@ -54,6 +57,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
   approvalQueue,
   onStartSimulation,
   onAddTask,
+  onSendDirective,
   onApprove,
   onReject,
   activeOperationsData,
@@ -76,13 +80,6 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
       .catch(() => { /* 데이터 없음 — 콘솔 기본 경로 */ });
     return () => { alive = false; };
   }, []);
-
-  // 최고관리자 → 팀 지시(메시지+파일). 팀 inbox로 발송 + 활동 원장 기록.
-  const sendDirective = (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => {
-    const title = text || (attachments.length ? '자료 전달' : '지시');
-    const posted = postTeamMessage({ from: HQ_ACTOR, toTeam, kind: 'info', title, body: '', attachments });
-    logActivity({ teamId: 'hq', type: 'message_sent', status: 'info', title, detail: `${DEPT_TEAM_META[toTeam].name}에 지시${attachments.length ? ` · 첨부 ${attachments.length}` : ''}`, actor: HQ_ACTOR, relatedTeam: toTeam, refId: posted.id });
-  };
 
   const scenarioDescriptions: Record<ValidationScenarioType, string> = {
     normal: '정상 운영: 재고 수량 양호, 고객 미답변 문의 없음, 평점 5점 만족',
@@ -130,7 +127,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           onUpdateAgents={onUpdateAgents}
           isLarge={true}
           isSimulating={isSimulating}
-          quickBarSlot={<HqDirectiveComposer onSend={sendDirective} />}
+          quickBarSlot={<HqDirectiveComposer onSend={onSendDirective} />}
           commerceData={commerceData}
         />
       </div>
