@@ -59,25 +59,37 @@ try {
   record('유효 주문 수', RM.countValidOrders(A.orders), RM.countValidOrders(B.lite));
   record('전체 주문 수', RM.countAllOrders(A.orders), RM.countAllOrders(B.lite));
 
+  // A 투영의 원본 사실은 중첩 orderFacts 에 보존된다(B-core: 평탄 필드로는 유실됐다).
+  const facts = A.orders.map((o) => o.orderFacts);
+  record('원본 주문 사실 보존(orderFacts 존재)', A.orders.length, facts.filter(Boolean).length,
+    'A 투영이 취소·라인·배송비·금액·결제근거를 실어 나르는가');
+
   // ── 3. 취소 판정 ──────────────────────────────────────────────────────────
-  const aCanceled = A.orders.map((o) => o.canceled === true);
+  const aCanceled = facts.map((f) => f?.canceled === true);
   const bCanceled = B.lite.map((o) => o.canceled === true);
-  record('취소 주문 판정(주문별)', aCanceled, bCanceled,
-    'StandardOrder 에 canceled 필드가 존재하는지 자체가 쟁점');
+  record('취소 주문 판정(주문별)', aCanceled, bCanceled, 'A=orderFacts.canceled / B=state.canceled');
 
   // ── 4. 결제 판정 ──────────────────────────────────────────────────────────
-  const aPaid = A.orders.map((o) => o.paymentStatus === '결제완료');
+  // **정본 미확정 축.** A 는 두 근거를 모두 보존하므로 여기서는 "B 와 같은 근거"끼리 비교하고,
+  // 두 근거가 갈리는 주문이 있다는 사실 자체를 별도 축으로 드러낸다.
+  const aPaidByDate = facts.map((f) => f?.paymentEvidence.paymentDateValid === true);
   const bPaid = B.lite.map((o) => o.paid === true);
-  record('결제완료 판정(주문별)', aPaid, bPaid,
-    'A=interpretOrderRecord.paid → 문자열 / B=deriveOrderState.paid');
+  record('결제완료 — 결제일시 근거끼리 비교', aPaidByDate, bPaid,
+    'A.orderFacts.paymentEvidence.paymentDateValid ↔ B.state.paid (같은 근거)');
+  const conflicted = facts.map((f, i) => (f?.paymentEvidence.conflicted ? RAW_ORDERS[i].__case : null)).filter(Boolean);
+  record('결제 정본 미확정 — 두 근거가 갈리는 주문', [], conflicted,
+    '**정본 선택 전까지 RED 로 남는 것이 정상**(C단계 상태코드 확정 선행)');
 
   // ── 5. 상품 라인 매출 ─────────────────────────────────────────────────────
-  record('상품 라인 매출(gross)', RM.computeGrossProductRevenue(A.orders), RM.computeGrossProductRevenue(B.lite));
+  const aGross = facts.reduce((s, f) => s + (f?.lines ?? []).reduce((t, l) => t + l.lineRevenue, 0), 0);
+  record('상품 라인 매출(gross)', aGross, RM.computeGrossProductRevenue(B.lite));
 
   // ── 6. 배송비 합계 ────────────────────────────────────────────────────────
-  const aDeliveryFee = A.orders.reduce((s, o) => s + (Number(o.deliveryFee) || 0), 0);
+  const aDeliveryFee = facts.reduce((s, f) => s + (f?.deliveryFee ?? 0), 0);
   const bDeliveryFee = B.lite.reduce((s, o) => s + o.deliveryFee, 0);
-  record('배송비 합계', aDeliveryFee, bDeliveryFee, 'StandardOrder 에 deliveryFee 필드가 있는지 자체가 쟁점');
+  record('배송비 합계', aDeliveryFee, bDeliveryFee, 'A=orderFacts.deliveryFee / B=deliveryFee');
+  record('주문 총액 합계', facts.reduce((s, f) => s + (f?.totalAmount ?? 0), 0),
+    B.lite.reduce((s, o) => s + o.totalAmount, 0));
 
   // ── 7. 회사 공통 운영매출(유효 주문 결제금액) ─────────────────────────────
   record('운영매출(유효 주문 결제금액)', RM.computeOperationalRevenue(A.orders), RM.computeOperationalRevenue(B.lite));

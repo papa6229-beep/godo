@@ -9,6 +9,9 @@
 // 임의 endpoint는 만들지 않으며, 매핑 후보만 점진 보정하는 것이 안전하다.
 
 import { normalizeOrderData } from './godomallOrderNormalize.js';
+// B-core: 취소·발송·배송완료·구매확정 판정을 두 경로가 각자 구현하지 않도록 revenue 경로의 함수를 재사용한다.
+//   (godomallRevenue → godomallMapper 는 type-only import 이므로 런타임 순환이 생기지 않는다.)
+import { deriveOrderState, normalizeLines } from './godomallRevenue.js';
 
 type Raw = Record<string, unknown>;
 
@@ -130,7 +133,53 @@ export const mapGoodsToProducts = (goods: Raw[]): StandardProduct[] => {
 
 // ---- 주문(Order_Search) ----
 // 출력: mockProxyData 주문 구조와 동일 (PII 원문 포함 -> 이후 maskRecordsList가 마스킹)
-export interface OrderIntermediate extends Record<string, string> {
+//
+// B-core: 평탄 문자열 필드만으로는 **원본에 있던 사실이 유실**된다.
+//   취소 여부 · 상품 라인 · 배송비 · 상품금액/결제금액 분리가 전부 여기서 떨어져 나갔다.
+//   그래서 `orderFacts` 중첩 필드로 원본 사실을 함께 싣는다(기존 평탄 필드는 그대로 보존 — 하위호환).
+//   PII 마스킹(maskRecordsList)은 지정된 키만 건드리므로 이 중첩 필드는 영향받지 않는다.
+export interface OrderLineFact {
+  goodsNo: string;
+  goodsCd: string;
+  goodsName: string;
+  quantity: number;
+  lineRevenue: number;
+}
+
+/**
+ * 결제 완료 판정의 **두 근거를 모두 보존**한다.
+ *
+ * 고도몰 `orderStatus` 코드의 공식 의미가 아직 확정되지 않아(마스터 계획 C단계),
+ * 두 생산 경로가 서로 다른 식을 쓰고 있었다.
+ *   paymentDateValid : `paymentDt` 가 유효한 날짜인가            (godomallRevenue.deriveOrderState 근거)
+ *   statusHintPaid   : `orderStatus`/상태 텍스트가 결제 이후 단계인가 (interpretOrderRecord 근거)
+ * **어느 쪽도 정본으로 고르지 않는다.** 두 값이 갈리는 주문은 `conflicted: true` 로 표시해
+ * 소비자가 "아직 정해지지 않았다"는 사실을 볼 수 있게 한다.
+ */
+export interface PaymentEvidenceFact {
+  paymentDateValid: boolean;
+  statusHintPaid: boolean;
+  orderStatusRaw: string;
+  /** 두 근거가 다르면 true. 이 주문의 결제 여부는 **미확정**이다. */
+  conflicted: boolean;
+}
+
+export interface OrderFacts {
+  productAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  hasAmountBasis: boolean;
+  lines: OrderLineFact[];
+  canceled: boolean;
+  shipped: boolean;
+  delivered: boolean;
+  confirmed: boolean;
+  paymentEvidence: PaymentEvidenceFact;
+}
+
+// 서버 Record<string,unknown> 파이프라인 할당 호환을 위해 index signature 를 유지한다.
+//   (평탄 문자열 + 중첩 orderFacts 를 함께 담으므로 값 타입은 unknown 이다.)
+export interface OrderIntermediate extends Record<string, unknown> {
   orderNo: string;
   orderDate: string;
   customerName: string;
@@ -144,6 +193,7 @@ export interface OrderIntermediate extends Record<string, string> {
   deliveryStatus: string;
   invoiceNo: string;
   amount: string;
+  orderFacts: OrderFacts;
 }
 
 // GODO-ORDER-MAPPING-01 (GREEN):
@@ -175,9 +225,50 @@ export const mapOrderList = (orders: Raw[]): OrderIntermediate[] => {
       deliveryStatus: v.hasDeliveryBasis ? v.deliveryStatus : '',
       invoiceNo: v.invoiceNo,
       // 상류에 금액 근거가 있으면 그대로(0원도 보존), 근거 자체가 없으면 '' (0 단정 금지)
-      amount: v.hasAmountBasis ? String(v.totalAmount) : ''
+      amount: v.hasAmountBasis ? String(v.totalAmount) : '',
+      // B-core: 평탄 필드에서 떨어져 나가던 원본 사실을 함께 싣는다.
+      orderFacts: buildOrderFacts(o, v)
     };
   });
+};
+
+// 주문 raw 1건 → 보존해야 할 원본 사실. 상태는 revenue 경로와 **같은 함수**(deriveOrderState)를 쓴다.
+//   두 경로가 상태 판정을 각자 구현하지 않게 하려는 것이다(취소·발송·배송완료·구매확정).
+//   결제만은 정본이 미확정이라 양쪽 근거를 그대로 싣는다.
+const buildOrderFacts = (o: Raw, v: OrderRecordView): OrderFacts => {
+  const state = deriveOrderState(o);
+  const lineRecords = normalizeLines(o['orderGoodsData']);
+  const lines: OrderLineFact[] = (lineRecords.length > 0 ? lineRecords : [o]).map((g) => {
+    const quantity = toInt(pick(g, ['goodsCnt', 'quantity', 'ea'], '')) || 1;
+    const unitPrice = toNumber(pick(g, ['goodsPrice', 'amount'], '0'));
+    return {
+      goodsNo: pick(g, ['goodsNo']),
+      goodsCd: pick(g, ['goodsCd']),
+      goodsName: pick(g, ['goodsNm', 'goodsName', 'productName']),
+      quantity,
+      lineRevenue: unitPrice * quantity
+    };
+  });
+  const orderStatusRaw = pick(o, ['orderStatus', 'orderStatusText', 'orderStep'], '');
+  const paymentDateValid = state.paid;
+  const statusHintPaid = v.hasStatusBasis ? v.paid : false;
+  return {
+    productAmount: v.productAmount,
+    deliveryFee: v.deliveryFee,
+    totalAmount: v.totalAmount,
+    hasAmountBasis: v.hasAmountBasis,
+    lines,
+    canceled: state.canceled,
+    shipped: state.shipped,
+    delivered: state.delivered,
+    confirmed: state.confirmed,
+    paymentEvidence: {
+      paymentDateValid,
+      statusHintPaid,
+      orderStatusRaw,
+      conflicted: paymentDateValid !== statusHintPaid
+    }
+  };
 };
 
 // ---- 주문 관리자 화면용 매퍼 (Orders READ v0) ----

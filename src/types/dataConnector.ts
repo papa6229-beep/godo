@@ -17,6 +17,48 @@ export type DataSourceType =
 
 export type DataImportStatus = 'idle' | 'parsing' | 'success' | 'warning' | 'error';
 
+// ── B-core: 주문 원본 사실 보존 ──────────────────────────────────────────────
+// 평탄 필드(quantity/amount/paymentStatus/deliveryStatus)만으로는 원본에 있던 사실이 유실된다.
+// 취소 여부·상품 라인·배송비·금액 분리를 `orderFacts` 로 함께 보존한다.
+//
+// ⚠️ 최상위에 평탄 `paid`/`canceled`/`totalAmount` 를 두지 않는다.
+//    `revenueMetricContract.isValidOrder` 는 state → 평탄 paid/canceled → totalAmount 순으로 폴백한다.
+//    `canceled` 만 정의되고 `paid` 가 없으면 **전 주문이 무효**로 판정된다.
+//    결제 정본이 확정되기 전(C단계)에 그 상태를 만들면 "미확정"이 "전부 무효"라는 오답으로 바뀐다.
+//    → 사실은 중첩으로 보존하고, 결제 판정은 아래 두 근거를 모두 남긴다.
+export interface StandardOrderLine {
+  goodsNo: string;
+  goodsCd: string;
+  goodsName: string;
+  quantity: number;
+  lineRevenue: number;
+}
+
+/**
+ * 결제 완료 판정의 두 근거. **어느 쪽도 정본이 아니다.**
+ * 고도몰 `orderStatus` 코드의 공식 의미 확정(C단계) 전까지 한쪽을 조용히 정본으로 삼지 않는다.
+ * `conflicted === true` 인 주문은 결제 여부가 **미확정**이며, 소비자는 이를 표시해야 한다.
+ */
+export interface StandardPaymentEvidence {
+  paymentDateValid: boolean;
+  statusHintPaid: boolean;
+  orderStatusRaw: string;
+  conflicted: boolean;
+}
+
+export interface StandardOrderFacts {
+  productAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  hasAmountBasis: boolean;
+  lines: StandardOrderLine[];
+  canceled: boolean;
+  shipped: boolean;
+  delivered: boolean;
+  confirmed: boolean;
+  paymentEvidence: StandardPaymentEvidence;
+}
+
 export interface StandardOrder {
   id: string;
   orderNo: string;
@@ -38,6 +80,12 @@ export interface StandardOrder {
    */
   quantityKnown?: boolean;
   amountKnown?: boolean;
+  /**
+   * 원본 주문 사실(취소·라인·배송비·금액·결제 근거).
+   * 상류가 실어 보낸 경우에만 존재한다 — CSV/JSON 업로드나 구버전 저장분에는 없다(undefined).
+   * **없다는 것과 false 는 다르다.** 소비자는 undefined 를 "사실 없음"으로 단정하지 않는다.
+   */
+  orderFacts?: StandardOrderFacts;
 }
 
 export interface StandardInquiry {

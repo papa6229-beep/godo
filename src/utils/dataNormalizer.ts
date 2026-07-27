@@ -4,6 +4,7 @@ import type {
   StandardReview,
   StandardInventoryItem,
   StandardSalesSummary,
+  StandardOrderFacts,
   DataQualityReport,
   OperationsDataSnapshot
 } from '../types/dataConnector';
@@ -97,12 +98,21 @@ const columnMapping: Record<string, string> = {
 /**
  * 로우 객체(CSV 파싱 결과물 등)의 컬럼명을 한국어 매핑 딕셔너리에 기반하여 영문 표준 키로 변환
  */
-export const normalizeRawObject = (raw: Record<string, string>): Record<string, string> => {
+// B-core: 상류 레코드는 평탄 문자열 + 중첩 사실(orderFacts)이 섞여 있다.
+//   컬럼명 매핑은 문자열 값만 대상으로 하고, 문자열이 아닌 값(중첩 객체)은 **키 매핑만 하고 그대로 통과**시킨다.
+//   (기존 호출부는 전부 문자열 레코드를 넘기므로 동작이 바뀌지 않는다.)
+export const normalizeRawObject = (raw: Record<string, unknown>): Record<string, string> => {
   const normalized: Record<string, string> = {};
   Object.keys(raw).forEach(key => {
     const trimmedKey = key.trim();
     const standardKey = columnMapping[trimmedKey] || trimmedKey;
-    normalized[standardKey] = raw[key];
+    const value = raw[key];
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      normalized[standardKey] = String(value);
+    } else if (value !== undefined && value !== null) {
+      // 중첩 사실은 여기서 문자열로 뭉개지 않는다 — 호출부가 raw 에서 직접 읽는다.
+      return;
+    }
   });
   return normalized;
 };
@@ -111,7 +121,7 @@ export const normalizeRawObject = (raw: Record<string, string>): Record<string, 
  * 주문 데이터 정규화 및 유효성 체크
  */
 export const normalizeOrder = (
-  raw: Record<string, string>,
+  raw: Record<string, unknown>,
   index: number,
   warnings: string[],
   errors: string[],
@@ -184,6 +194,10 @@ export const normalizeOrder = (
     // warnings read
   }
 
+  // B-core: 상류가 원본 사실을 실어 보냈으면 그대로 보존한다(형태 검증 후 통과).
+  //   없으면 만들어내지 않는다 — undefined 는 "사실 없음"이 아니라 "상류가 주지 않았다"이다.
+  const orderFacts = readOrderFacts(raw.orderFacts);
+
   return {
     id,
     orderNo,
@@ -198,7 +212,46 @@ export const normalizeOrder = (
     amount,
     riskFlags,
     quantityKnown,
-    amountKnown
+    amountKnown,
+    ...(orderFacts ? { orderFacts } : {})
+  };
+};
+
+// 상류 orderFacts 형태 검증. 최소 형태를 만족할 때만 통과시키고, 아니면 undefined.
+//   (JSON 왕복·구버전 저장분·CSV 업로드에서 형태가 다를 수 있다 — 추측해서 채우지 않는다.)
+const readOrderFacts = (v: unknown): StandardOrderFacts | undefined => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const f = v as Record<string, unknown>;
+  const ev = f.paymentEvidence;
+  if (!ev || typeof ev !== 'object') return undefined;
+  const e = ev as Record<string, unknown>;
+  const num = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) ? x : 0);
+  const flag = (x: unknown): boolean => x === true;
+  const lines = Array.isArray(f.lines)
+    ? (f.lines as Record<string, unknown>[]).map((l) => ({
+        goodsNo: String(l?.goodsNo ?? ''),
+        goodsCd: String(l?.goodsCd ?? ''),
+        goodsName: String(l?.goodsName ?? ''),
+        quantity: num(l?.quantity),
+        lineRevenue: num(l?.lineRevenue)
+      }))
+    : [];
+  return {
+    productAmount: num(f.productAmount),
+    deliveryFee: num(f.deliveryFee),
+    totalAmount: num(f.totalAmount),
+    hasAmountBasis: flag(f.hasAmountBasis),
+    lines,
+    canceled: flag(f.canceled),
+    shipped: flag(f.shipped),
+    delivered: flag(f.delivered),
+    confirmed: flag(f.confirmed),
+    paymentEvidence: {
+      paymentDateValid: flag(e.paymentDateValid),
+      statusHintPaid: flag(e.statusHintPaid),
+      orderStatusRaw: String(e.orderStatusRaw ?? ''),
+      conflicted: flag(e.conflicted)
+    }
   };
 };
 
@@ -216,7 +269,7 @@ export const displayOrderAmount = (order: Pick<StandardOrder, 'amount' | 'amount
  * CS 문의 데이터 정규화
  */
 export const normalizeInquiry = (
-  raw: Record<string, string>,
+  raw: Record<string, unknown>,
   index: number,
   warnings: string[],
   errors: string[],
@@ -295,7 +348,7 @@ export const normalizeInquiry = (
  * 리뷰 데이터 정규화
  */
 export const normalizeReview = (
-  raw: Record<string, string>,
+  raw: Record<string, unknown>,
   index: number,
   warnings: string[],
   errors: string[],
@@ -361,7 +414,7 @@ export const normalizeReview = (
  * 재고 데이터 정규화
  */
 export const normalizeInventoryItem = (
-  raw: Record<string, string>,
+  raw: Record<string, unknown>,
   index: number,
   warnings: string[],
   errors: string[]
@@ -435,7 +488,7 @@ export const normalizeInventoryItem = (
  * 매출 요약 데이터 정규화
  */
 export const normalizeSalesSummary = (
-  raw: Record<string, string>,
+  raw: Record<string, unknown>,
   index: number,
   warnings: string[],
   errors: string[]
@@ -483,7 +536,7 @@ export const normalizeSalesSummary = (
  */
 export const buildOperationsSnapshot = (
   domain: string,
-  rawItems: Record<string, string>[],
+  rawItems: Record<string, unknown>[],
   existingSnapshot: OperationsDataSnapshot
 ): OperationsDataSnapshot => {
   const warnings: string[] = [];
