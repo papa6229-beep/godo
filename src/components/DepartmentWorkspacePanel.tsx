@@ -40,7 +40,7 @@ import {
   unreadCountFor, type CreateTeamMessageInput
 } from '../services/teamMessageCenter';
 import type { TeamMessage, TeamMessageStatus } from '../types/teamMessage';
-import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META } from '../types/teamMessage';
+import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, type DeptTeamId } from '../types/teamMessage';
 import { logActivity } from '../services/activityLedger';
 import { screenStateFromRevenue, resolveRealOrdersDisplay, realOrdersPhrase } from '../services/revenueScreenState';
 
@@ -61,7 +61,8 @@ import { screenStateFromRevenue, resolveRealOrdersDisplay, realOrdersPhrase } fr
 //   총괄팀      → 모든 팀 요약 + Approval Queue
 // ────────────────────────────────────────────────────────────────────────────
 
-type TeamId = 'hq' | 'product' | 'cs' | 'marketing' | 'design';
+// B-core: 로컬 유니온을 두지 않고 정본을 쓴다(기존 값 불변).
+type TeamId = DeptTeamId;
 
 interface TeamConfig {
   id: TeamId;

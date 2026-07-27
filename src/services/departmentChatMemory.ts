@@ -4,7 +4,9 @@
 // HQ 채팅(hqChatMemory)과는 별도 저장소를 사용한다.
 // 탭 이동/새로고침 후에도 각 팀 대화가 유지되며, 팀 간 대화가 섞이지 않는다.
 
-export type DeptTeamId = 'hq' | 'product' | 'cs' | 'marketing' | 'design';
+// B-core: 정본은 teamIdContract. 기존 import 경로 보존을 위해 재수출한다.
+export type { DeptTeamId } from './teamIdContract';
+import type { DeptTeamId } from './teamIdContract';
 
 export interface DeptChatMessage {
   role: 'user' | 'system';

@@ -100,12 +100,23 @@ export const finalApprover = (task: LifecycleTask): ApprovalStage =>
   task.approvalRoute.stages[task.approvalRoute.stages.length - 1];
 
 // ── 행위자 ───────────────────────────────────────────────────────────────────
+/**
+ * B-core actor/executor 경계: 이 actor 의 신원이 **어디서 왔는가**.
+ *   session_login — 실제 로그인 세션에서 온 신원
+ *   demo_role     — 역할 전환기(데모)에서 파생된 신원. **실제 로그인이 아니다.**
+ *   unlinked      — 신원이 아직 연결되지 않았다(미연결을 명시적으로 유지)
+ * 실제 로그인 배선이 준비되지 않은 곳을 조용히 실제 사용자처럼 보이게 하지 않기 위한 표식이다.
+ */
+export type ActorIdentitySource = 'session_login' | 'demo_role' | 'unlinked';
+
 export interface ActorRef {
   kind: 'human' | 'agent';
   teamId: DeptTeamId;
   label: string;
   userId?: string;
   agentId?: string;
+  /** 구버전 저장분에는 없다(undefined). 없다고 해서 실제 로그인으로 단정하지 않는다. */
+  identitySource?: ActorIdentitySource;
 }
 
 // ── 업무 ─────────────────────────────────────────────────────────────────────
@@ -132,6 +143,12 @@ export interface ExecutorHistoryEntry {
   at: string;
   byLabel: string;
   reason?: string;
+  /**
+   * B-core actor/executor 경계: 수행자를 따로 지정하지 않아 **지시한 사람이 그대로 수행자**가 된 경우 true.
+   * 지시(actor)와 수행(executor)이 실제로 같은 사람인지, 아니면 지정을 생략한 결과인지를 구분한다.
+   * (구버전 저장분에는 없다 — undefined 를 false 로 단정하지 않는다.)
+   */
+  assignedByActorDefault?: boolean;
 }
 
 export interface LifecycleTask {

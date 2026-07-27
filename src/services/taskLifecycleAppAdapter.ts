@@ -160,7 +160,16 @@ export function approvalActorDisplay(item: ApprovalItem): { emoji: string; name:
 /** App 세션 역할 → 계약 ActorRef. App 이 권한 규칙을 재구현하지 않게 한다. */
 export function toActorRef(session: { role?: string; teamId?: string; label?: string; userId?: string }): ActorRef {
   const teamId = (session.teamId ?? 'hq') as ActorRef['teamId'];
-  return { kind: 'human', teamId, label: session.label ?? '운영자', userId: session.userId ?? `u-${teamId}` };
+  // B-core: 실제 로그인 userId 가 주어졌을 때만 session_login 이다.
+  //   없으면 팀에서 파생한 대체 id 를 쓰되 **미연결(unlinked)** 임을 숨기지 않는다.
+  const hasLoginIdentity = typeof session.userId === 'string' && session.userId.trim().length > 0;
+  return {
+    kind: 'human',
+    teamId,
+    label: session.label ?? '운영자',
+    userId: hasLoginIdentity ? session.userId : `u-${teamId}`,
+    identitySource: hasLoginIdentity ? 'session_login' : 'unlinked'
+  };
 }
 
 /**
@@ -169,7 +178,15 @@ export function toActorRef(session: { role?: string; teamId?: string; label?: st
  */
 export function actorForRole(role: ViewerRole): ActorRef {
   const meta = roleMeta(role);
-  return { kind: 'human', teamId: role as ActorRef['teamId'], label: meta.label, userId: `u-${role}` };
+  // B-core: 역할 전환기에서 파생한 신원이다. **실제 로그인이 아니라는 사실을 값에 남긴다.**
+  //   (인증 브랜치가 통합되면 여기가 session_login 으로 바뀐다 — 그전까지 미연결을 숨기지 않는다.)
+  return {
+    kind: 'human',
+    teamId: role as ActorRef['teamId'],
+    label: meta.label,
+    userId: `u-${role}`,
+    identitySource: 'demo_role'
+  };
 }
 
 // ── 에이전트 소속 팀(단일 근거) ──────────────────────────────────────────────
@@ -525,8 +542,14 @@ export function assignExecutor(
     if (teamOfAgent(canonical) !== task.ownerTeamId) return failResult('다른 팀 담당자에게는 배정할 수 없습니다.');
     executorId = canonical;
   } else {
-    executorId = input.actor.userId;
+    // B-core actor/executor 경계: **지시한 사람(actor)을 수행자(executor)로 자동 덮어쓰지 않는다.**
+    //   이전에는 무조건 `input.actor.userId` 를 넣어, 팀장이 다른 팀원을 지정할 방법 자체가 없었고
+    //   "누가 시켰는가"와 "누가 했는가"가 같은 값으로 뭉개졌다.
+    //   명시된 수행자가 있으면 그것을 쓰고, **비어 있을 때만** 행위자를 기본 제안값으로 쓴다.
+    executorId = input.executorId?.trim() || input.actor.userId;
   }
+  // 수행자가 행위자 자신인지(=기본 제안값이 그대로 쓰였는지)를 이력에 남긴다.
+  const executorIsActor = input.kind === 'human' && executorId === input.actor.userId;
 
   const next: LifecycleTask = {
     ...task,
@@ -535,7 +558,9 @@ export function assignExecutor(
     assignedAgentId: input.kind === 'agent' ? (executorId ?? '') : '',
     status: 'in_progress',
     executorHistory: [...task.executorHistory, {
-      kind: input.kind, id: executorId, at: ctx.nowIso, byLabel: input.actor.label, reason: input.reason
+      kind: input.kind, id: executorId, at: ctx.nowIso, byLabel: input.actor.label, reason: input.reason,
+      // 지시한 사람과 수행자가 같은 값이 된 경우를 이력에서 구분할 수 있게 한다.
+      assignedByActorDefault: executorIsActor
     }]
   };
   const parent = syncParentFromChild(next, all);

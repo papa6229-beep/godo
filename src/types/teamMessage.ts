@@ -9,7 +9,10 @@
 //  - 지금은 localStorage(단일 브라우저·데모). 데이터 모델은 백엔드(공용 DB+실시간)로
 //    그대로 이관 가능하게 설계(2단계에서 스토어 구현만 교체).
 
-export type DeptTeamId = 'hq' | 'product' | 'cs' | 'marketing' | 'design';
+// B-core: 팀 식별자 정본은 services/teamIdContract.ts 다. 여기서는 재수출만 한다
+// (기존 import 경로를 깨지 않기 위함 — 값·의미 불변).
+export type { DeptTeamId, TeamId, MarketingTeamId, TeamScope } from '../services/teamIdContract';
+import type { DeptTeamId } from '../services/teamIdContract';
 
 // 요청 유형 — 지원요청 / 확인요청 / 일반전달
 export type TeamMessageKind = 'support' | 'confirm' | 'info';
