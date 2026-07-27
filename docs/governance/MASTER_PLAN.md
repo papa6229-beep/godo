@@ -87,7 +87,7 @@
 ## 2. 현재 단계와 다음 한 작업
 
 > **현재 단계: B-core — 이후 변경에도 무너지지 않을 최소 경계 구축**
-> **다음 한 작업: B-core-2 provider — 읽기 전용 canonical snapshot provider 신설. 종료조건은 `node scripts/audit-b-core-2-ab-parity.mjs` 가 exit 0 이 되는 것(현재 exit 1, 10/20축 불일치). 범위는 `MASTER_PLAN §5-1 B-core-2` 와 `evidence/B-CORE-2_AB_PARITY_AUDIT.md §8` 로 한정한다.**
+> **다음 한 작업: B-core-2b — 주문 canonical snapshot provider 신설. 종료조건은 `node scripts/audit-b-core-2-ab-parity.mjs` 의 `[주문]` 그룹이 RED 0축이 되는 것(현재 7축). 결제완료 판정의 정본 선택은 고도몰 `orderStatus` 코드 의미 확정(C단계) 이전까지 유예하고, 두 값이 다르다는 사실은 기준선 검사가 붙잡아 둔다. 범위는 `evidence/B-CORE-2_AB_PARITY_AUDIT.md §8` 로 한정한다.**
 
 ---
 
@@ -145,7 +145,7 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 ### B-core-1. 회귀 게이트 — **완료 (A2)**
 
-`npm test` = smoke(manifest **121**) + build(`tsc -b` + `typecheck:api` + `vite build`) + lint. exit 0.
+`npm test` = smoke(manifest **122**) + build(`tsc -b` + `typecheck:api` + `vite build`) + lint. exit 0.
 
 ### B-core-2. 공통 데이터 입구
 
@@ -161,13 +161,23 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
   RED 보존: `scripts/audit-b-core-2-ab-parity.mjs`(exit 1, **정식 manifest 밖** — main 게이트 미파손)
   기준선 검사: `scripts/smoke-b-core-2-ab-data-world-parity-v0.mjs`(38 pass, manifest 등록)
   증거: `docs/governance/evidence/B-CORE-2_AB_PARITY_AUDIT.md`
-- **읽기 전용 canonical snapshot provider 신설 — 다음 한 작업.** 최소 범위(증거문서 §8):
+- **B-core-2a 실제 사용자 경로의 재고위험 판정 단일화** — **완료 (2026-07-27)**
+  판정 정본을 `inventoryRiskContract` 하나로 모았다. 같은 상품의 재고위험 여부가 A 화면과 B 화면에서 갈리지 않는다.
+  방법: api 계층(`godomallInventoryDerive`)이 **판정을 하지 않게** 만들어 공유할 것 자체를 없앴다
+  (자체 기본 안전재고 3 과 `computeInventoryStatus` 제거 — 전자는 계약의 전역 기본값 5 가 적용될 여지를 없앴고, 후자는 소비자 0건 dead output 이었다).
+  `dataNormalizer` 의 2갈래 분기(임계 `<=` vs `<`)와 `agentExecutor` 의 직접 비교를 계약 호출로 교체했다(계약 우회 3건 중 1건 해소).
+  `StandardInventoryItem.status` 에 `'unknown'` 을 추가해 해석 불가 재고를 정상으로 숨기지 않는다.
+  행동 변경(의도된 교정): 파생 재고 안전재고 3→5 · CSV 경계 `<`→`<=` · 비수치 재고 `ok`→`unknown` · `unknown` 은 자동 발주 대상 제외.
+  검사: `scripts/smoke-b-core-2a-inventory-risk-single-source-v0.mjs` RED 26 fail → **GREEN 43/43** · audit `[재고]` RED 4축 → **0축**(`[주문]` 7축은 의도적으로 유지)
+  증거: `docs/governance/evidence/B-CORE-2_AB_PARITY_AUDIT.md §11`
+- **B-core-2b 주문 canonical snapshot provider — 다음 한 작업.** 최소 범위(증거문서 §8):
   ① 공통 주문 형태 확정(새 형태 발명 금지 — `RevenueOrderLite`가 이미 조건을 만족하므로 이것을 입구 출력으로 삼는 안을 1순위 검토)
   ② 결제완료 판정을 한 곳으로 모은다(**정본 선택은 C단계 상태코드 확정 이후로 미룰 수 있다** — 그때까지 차이는 기준선 검사가 붙잡는다)
   ③ 기본 안전재고 상수를 하나로(`godomallInventoryDerive` → `inventoryRiskContract` 참조)
   ④ 재고 계약의 **입력** 보강(`soldOut`·`stockEnabled`) — 계약 판정 규칙은 바꾸지 않는다
   ⑤ 실제 데이터 경로에도 재고위험 입력 생성(현재 `stockImpact`는 합성 전용)
-  종료조건: `node scripts/audit-b-core-2-ab-parity.mjs` **exit 0**
+  종료조건: `node scripts/audit-b-core-2-ab-parity.mjs` 의 **`[주문]` 그룹 RED 0축**
+  (`[재고]`·`[출처]` 는 이미 RED 없음. 전체 exit 0 은 `[주문]` 해소 시점에 달성된다)
   범위 밖(하지 않는다): A 소비자 14파일 일괄 이관(→ Local migration) · `OperationsDataSnapshot` 타입 삭제 · 문의·리뷰 라이브 연결
 - **공통 데이터 입구와 오픈 대표 업무가 쓰는 소비 경로는 오픈 전에 canonical snapshot으로 통일한다**
 - `departmentDataSourceOfTruth`는 조합 역할 유지, 입력만 canonical로 변경, **자체 fetch/cache 금지**

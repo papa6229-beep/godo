@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-27 (A2 local main 통합 완료)
+최종 갱신: 2026-07-27 (B-core-2a 재고위험 판정 단일화)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -12,23 +12,25 @@
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| local main의 A2 통합 기준 | `22f86b5be331990010ae424a1219df3911cc6905` (A2 커밋 2개 fast-forward 통합) | `git rev-parse main` |
-| origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 2커밋 뒤**, 미푸시) | `git rev-parse origin/main` |
+| local main | `5d8051e362c8849dd69fa63ab9502108046a08be` (B-core-2 까지 fast-forward 통합) | `git rev-parse main` |
+| origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 5커밋 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
-| A2 작업 브랜치 | `codex/a2-governance-wiring` (`5190f685`에서 분기) | `git rev-parse --abbrev-ref HEAD` |
+| 현재 작업 브랜치 | `codex/b-core-2a-inventory-risk-boundary` (`5d8051e`에서 분기, **main 미통합**) | `git rev-parse --abbrev-ref HEAD` |
 | 실행 환경 | **Vercel이 유일한 실행 환경** — 개발·검증·Production 모두 담당. 최종 배포 형태는 H단계 미결 | Vercel 대시보드 관측 |
 
-## 2. 검사·빌드 (A2 브랜치 기준)
+## 2. 검사·빌드 (B-core-2a 브랜치 기준)
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| smoke 파일 수 | **121개** (B-core-2 parity 기준선 1개 추가. 인증 브랜치에 3개 추가분 있음) | `ls scripts/smoke-*.mjs \| wc -l` |
-| manifest include | **121** / exclude **0** | `node scripts/run-regression.mjs --discover` |
+| smoke 파일 수 | **122개** (B-core-2 parity 기준선 + B-core-2a 재고 단일화. 인증 브랜치에 3개 추가분 있음) | `ls scripts/smoke-*.mjs \| wc -l` |
+| manifest include | **122** / exclude **0** | `node scripts/run-regression.mjs --discover` |
 | lint | **0 errors** (`scripts/flowRouteSmoke.ts:49` 수정 후) | `npx eslint .` |
 | build | 통과 (`tsc -b` + `typecheck:api` + `vite build`) | `npm run build` |
-| `npm test` 실제 소요 | **130초** (smoke 111.5s + build + lint), exit 0 | `npm test` 1회 실행 |
+| `npm test` 실제 소요 | **약 130초** (smoke 113.5s + build + lint), exit 0 | `npm test` 실행 |
 
-A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·lint 통과, exit 0. 원격 push·Production 배포는 하지 않았다.
+B-core-2a 커밋 후 재검증: smoke **122/122**·build·`typecheck:api`·lint 통과, exit 0. 원격 push·Production 배포는 하지 않았다.
+
+주의: 과거 과제의 스모크 8건이 `git status --porcelain`으로 **미커밋 작업 트리**를 검사한다. 제품 파일을 고친 뒤 커밋 전에 `npm test`를 돌리면 그 8건이 실패한다(결함 아님, 커밋 후 통과).
 
 ## 3. 고도몰 연결
 
@@ -62,6 +64,34 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 - → **501번째부터 오래된 이력이 경고 없이 사라짐** (헌법 §5 위반 상태, B5에서 해소)
 - 데이터 세계가 둘: `activeOperationsData`(적재 스냅샷, 소비자 12파일 + `src/engine` 2파일) / `fetchRevenue`(라이브 읽기, 호출자 3곳, **공유 캐시 없음·인자 상이**)
 
+### 재고위험 판정 — **단일화 완료 (B-core-2a, 2026-07-27)**
+
+**판정 정본은 `src/services/inventoryRiskContract.ts` 하나다.** 같은 상품의 재고위험 여부가 A 화면과 B 화면에서 갈리지 않는다.
+
+- 추가: `classifyStockRiskWithSaleState(input)` — 우선순위 ① `soldOut===true` → `out_of_stock` ② `stockEnabled===false` → `ok`(무제한) ③ 그 외(신호 없음 포함) → 기존 `classifyStockRisk`
+  → 신호 없는 CSV/JSON 업로드는 ③으로 떨어져 **기존 계약과 동일**
+- `StockRiskBasis`(`sold_out_flag`/`unlimited_stock`/`stock_number`)로 판정 근거 보존
+- 제거: `godomallInventoryDerive.DEFAULT_SAFETY_STOCK = 3` · `computeInventoryStatus`
+  → Goods_Search 응답에 상품별 안전재고 필드가 없는데 `'3'`을 실으면 계약의 `resolveSafetyStock`이 이를 **유효한 상품별 값**으로 받아 정본 기본값 5가 적용될 여지를 없앤다. 근거 없으면 빈 문자열로 보존
+  → `computeInventoryStatus`의 `status` 출력은 **소비자 0건**(전수 검색)인 dead output이면서 판정 규칙만 한 벌 더 존재했다
+  → api 번들이 브라우저 계층을 import 하지 않도록, **계약을 끌어오는 대신 판정을 걷어냈다**(api→src import 선례 0건 유지)
+- `dataNormalizer.normalizeInventoryItem`: 자체 2갈래 분기(임계 `<=` vs `<`) 제거 → 계약 호출
+- `agentExecutor.ts`: `item.stock <= item.safetyStock` 직접 비교 제거(**계약 우회 3건 중 1건 해소**)
+- `StandardInventoryItem.status`에 **`'unknown'` 추가** — 해석 불가 재고를 정상으로 숨기지 않는다
+  → `AiBriefing.tsx:35`(`warning||danger` 판정)와 `DataPanel.tsx:899`(초록 `success` 배지)에서 unknown이 조용히 정상으로 보이던 것 보정
+
+**재고 임계 직접 비교 전수 재검색**(`src/` + `api/`, 계약 파일 제외, 정규식 `stock\s*[<>]=?\s*(\w+\.)*(safetyStock|0)`): **0건**
+
+**행동이 바뀐 지점**(의도된 교정)
+| 대상 | 이전 | 이후 | 이유 |
+|---|---|---|---|
+| 고도몰 파생 재고의 안전재고 | 3 (조작된 값) | 정본 5 (전역 기본값) | 근거 없는 값을 만들어내지 않는다 |
+| CSV/JSON 업로드 경계값 | `stock < safetyStock` | `stock <= safetyStock` | 계약 기준. `stock === safetyStock`이 이제 위험 |
+| 경고 문구(비파생 경로) | "…보다 적습니다" | "…이하입니다" | 계약이 `<=`이므로 이전 문구가 부정확했다 |
+| 비수치·누락 재고 | `status='ok'` (숨김) | `status='unknown'` | 헌법 §10 — 확인 못한 것을 정상으로 단정하지 않는다 |
+
+검사: `scripts/smoke-b-core-2a-inventory-risk-single-source-v0.mjs` **43/43** · `audit-b-core-2-ab-parity.mjs` **[재고] RED 없음**
+
 ### A/B 데이터 세계 차이 — **실측 (B-core-2, 2026-07-27)**
 
 동일 raw fixture(주문 10건·상품 6건)를 A·B로 투영해 **기존 공통 계약으로** 계산한 결과, 비교 20축 중 **10축 일치 / 10축 불일치**.
@@ -71,6 +101,10 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 
 **불일치한 축** (분류: 구조=A에 필드 없음 · 계산=같은 이름 다른 식 · 입력=계약은 옳으나 입력 부족)
 
+> **갱신 (B-core-2a, 2026-07-27)**: 아래 불일치 중 **재고 관련 축은 해소**됐다(위 절 참조). 남은 RED는 **주문 7축**이며 출처 8축은 계속 일치한다.
+> 현재 audit 결과: **전체 14/21 축 일치 · [재고] RED 없음 · [주문] RED 7축 · [출처] RED 없음**.
+> 아래 표는 B-core-2 시점의 최초 실측 기록이다. **과거에도 일치했던 것처럼 고치지 않는다.**
+
 | 축 | A | B | 분류 |
 |---|---|---|---|
 | 유효 주문 수 | 0 | 5 | 구조 (`StandardOrder`에 `paid`/`canceled`/`totalAmount` 없음) |
@@ -79,19 +113,19 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 | 배송비 합계 | 0 | 5,500 | 구조 (`deliveryFee`가 `mapOrderList` 출력에서 탈락) |
 | 운영매출 | 0 | 210,500 | 구조 |
 | 결제완료 건수 | 9 | 7 | **계산** — `godomallMapper.ts:328` `hasPaymentDate \|\| isPaidStatus` vs `godomallRevenue.ts:199` `isValidDate && orderStatus!=='o1'` |
-| 기본 안전재고 상수 | **3** (`godomallInventoryDerive.ts:17`) | **5** (`inventoryRiskContract.ts:24`) | **계산** — 같은 이름 상수의 두 값 |
-| 재고위험 건수 | 3 | 4 | 계산 + 입력 (`soldOut`·`stockEnabled`를 계약이 모름 — 두 건은 A 판정이 옳다) |
+| ~~기본 안전재고 상수~~ | ~~**3**~~ | ~~**5**~~ | **B-core-2a 해소** |
+| ~~재고위험 건수~~ | ~~3~~ | ~~4~~ | **B-core-2a 해소** |
 
 - **`isValidOrder`·`classifyStockRisk` 계약의 소비자는 전부 B 세계다. A 세계 소비자는 0건.**
   → 위 `A: 0`은 "지금 화면에 0원이 나온다"가 아니라 "A 투영은 공통 계약에 넣을 수 없다"는 뜻
-- **지금 화면에서 실제로 다른 값**: **재고위험 건수**. A(`DataPanel:609`·`AiBriefing:35`·`reportComposer:35,80`·`controlChatService:158,415`·`dailySummaryBuilder:101`)와 B(`CalendarPanel:102`·`ProductTeamDashboard:582`·`departmentDataSourceOfTruth:172`·`productTeamChatFacts:431`)가 다른 기준을 쓴다
-- 재고 임계 구현이 **네 곳**으로 갈라져 있음: `inventoryRiskContract:70`(`<=`) · `godomallInventoryDerive:34`(`<=`) · `dataNormalizer:410`(**`<`**) · `agentExecutor:70`(`<=`, 계약 우회)
+- ~~**지금 화면에서 실제로 다른 값**: **재고위험 건수**~~ → **B-core-2a 에서 해소.** 아래는 당시 관측 기록이다. A(`DataPanel:609`·`AiBriefing:35`·`reportComposer:35,80`·`controlChatService:158,415`·`dailySummaryBuilder:101`)와 B(`CalendarPanel:102`·`ProductTeamDashboard:582`·`departmentDataSourceOfTruth:172`·`productTeamChatFacts:431`)가 다른 기준을 쓴다
+- ~~재고 임계 구현이 **네 곳**으로 갈라져 있음~~ → **B-core-2a 에서 계약 한 곳으로 통합**(직접 비교 전수 0건)
 - 실제 데이터 경로에는 `stockImpact`가 **아예 생성되지 않는다**(`godomallResource.ts:490` 합성 전용)
 - `CalendarPanel.tsx:14`는 `activeOperationsData`를 prop으로 받지만 **본문 참조 0건** — 그 화면은 B만 소비
 - `OfficeView.tsx:75`는 `.catch(() => {})`로 실패를 무시하고 `orders.length>0`일 때만 상태를 세팅 → **실패와 "실제 0건"이 화면에서 구분되지 않음**
 
 증거·재현 명령·전체 차이표: `docs/governance/evidence/B-CORE-2_AB_PARITY_AUDIT.md`
-검사: `scripts/audit-b-core-2-ab-parity.mjs`(RED 재현, **exit 1**, 정식 manifest 밖) / `scripts/smoke-b-core-2-ab-data-world-parity-v0.mjs`(특성화 기준선, **38 pass**, manifest 등록)
+검사: `scripts/audit-b-core-2-ab-parity.mjs`(RED 재현, **exit 1** — 주문 축만 남음, 정식 manifest 밖) / `scripts/smoke-b-core-2-ab-data-world-parity-v0.mjs`(특성화 기준선, **37 pass**, manifest 등록)
 
 ## 5. 실행 방식
 

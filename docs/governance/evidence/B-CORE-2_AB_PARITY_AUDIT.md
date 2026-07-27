@@ -323,3 +323,107 @@ npm test
 ```
 
 두 스크립트 모두 네트워크·Vercel·localStorage 에 접근하지 않는다. `tsc` 로 제품 모듈을 임시 디렉터리에 컴파일해 실행하며, 종료 시 임시 디렉터리를 지운다.
+
+---
+
+## 11. 후속 — B-core-2a 에서 재고 축 해소 (2026-07-27)
+
+**§0~§10 은 B-core-2 시점의 최초 실측 기록이다. 지우거나 "과거에도 일치했다"로 고치지 않는다.**
+아래는 그 뒤 `codex/b-core-2a-inventory-risk-boundary` 에서 재고 축만 닫은 결과다.
+
+### 11-1. 무엇이 원인이었나 — §4-2 의 진단 보정
+
+§4-2 는 원인을 "안전재고 기본 상수 3 vs 5"로 적었다. 구현 단계에서 더 정확한 원인이 드러났다.
+
+**`godomallInventoryDerive` 가 근거 없는 안전재고를 만들어내는 것**이 실제 원인이다.
+같은 파일 `:15-16` 이 *"Goods_Search 응답에는 상품별 안전재고 필드가 없으므로"* 라고 적어 놓고
+`safetyStock: String(3)` 을 문자열로 실어 보냈다. 그러면 하류 계약의 `resolveSafetyStock` 이 이를
+**유효한 상품별 값(`source: 'product'`)** 으로 받아들여, 정본 전역 기본값 5 가 적용될 여지 자체를 없앤다.
+
+→ 그래서 상수를 3→5 로 바꾸는 것이 아니라 **아예 싣지 않는 것**이 맞다. 근거가 없으면 빈 문자열이다.
+
+추가로 `computeInventoryStatus` 가 만든 `status` 필드는 **소비자가 0건**이었다(전수 검색:
+`normalizeInventoryItem` 은 `norm.status` 를 읽지 않고 재계산한다). 즉 dead output 이면서
+판정 규칙만 한 벌 더 존재해, 같은 상품이 화면마다 다르게 보이는 원인을 유지시켰다.
+
+### 11-2. 왜 api→src 크로스 임포트를 하지 않았나
+
+`api/` 에서 `src/` 를 import 하는 선례는 **0건**이다(전수 검색). `api/tsconfig.json` 은 `strict: false`,
+`src` 는 `tsconfig.app.json` 소속이라 계약 파일이 두 프로그램에서 서로 다른 엄격도로 검사된다.
+Vercel 번들 경계도 바뀐다.
+
+계약을 옮기는 것도(소비자 import 경로 다수 변경) 새 공용 계층을 만드는 것도 이번 범위에서 과했다.
+**api 계층이 판정을 하지 않게 만들면 공유할 것 자체가 없어진다** — 그래서 판정을 걷어냈다.
+api 는 신호(`stock`·`stockEnabled`·`soldOut`)만 전달하고, 판정은 `inventoryRiskContract` 한 곳에서만 한다.
+
+### 11-3. 계약 최종 진리표
+
+`classifyStockRiskWithSaleState({ stock, safetyStock?, soldOut?, stockEnabled? })`
+
+| 순위 | 조건 | level | basis |
+|---|---|---|---|
+| 1 | `soldOut === true` | `out_of_stock` | `sold_out_flag` |
+| 2 | `stockEnabled === false` | `ok` | `unlimited_stock` |
+| 3 | 그 외 — `stock` 해석 불가 | `unknown` | `stock_number` |
+| 3 | 그 외 — `stock <= 0` | `out_of_stock` | `stock_number` |
+| 3 | 그 외 — `0 < stock <= resolvedSafetyStock` | `low_stock` | `stock_number` |
+| 3 | 그 외 — `stock > resolvedSafetyStock` | `ok` | `stock_number` |
+
+- `resolvedSafetyStock`: 유효한 상품별 값 우선(0 은 유효) / 누락·NaN·음수 → `DEFAULT_SAFETY_STOCK = 5`
+- `soldOut`·`stockEnabled` 는 3상태(`true`/`false`/미지정)로 해석한다. `'y'`·`'n'`·`'true'`·`'0'` 등 문자열도 받는다.
+  **해석할 수 없는 신호는 추측하지 않고 "없는 것"으로 본다** → 순위 3 으로 떨어진다.
+- 신호가 전혀 없는 입력(CSV/JSON 업로드)은 순위 3 뿐이므로 **기존 `classifyStockRisk` 와 완전히 동일**하다.
+- `soldOut` 이 `stockEnabled=false` 보다 우선한다(무제한 재고여도 품절 표시면 팔 수 없다).
+
+`StandardInventoryItem.status` 변환:
+
+| level / basis | status | riskFlags |
+|---|---|---|
+| basis `sold_out_flag` | `danger` | `sold_out` |
+| `out_of_stock` | `danger` | `out_of_stock` |
+| `low_stock` | `warning` | `low_stock`, `below_safety_stock` |
+| `unknown` | **`unknown`** (신규) | `stock_unknown` |
+| `ok` | `ok` | (없음) |
+
+### 11-4. 행동이 바뀐 지점 (의도된 교정)
+
+| 대상 | 이전 | 이후 | 근거 |
+|---|---|---|---|
+| 고도몰 파생 재고의 안전재고 | 3 (조작된 값) | 정본 5 (전역 기본값) | 상류에 근거가 없으면 값을 만들어내지 않는다 |
+| CSV/JSON 업로드 경계 | `stock < safetyStock` | `stock <= safetyStock` | 계약 기준. `stock === safetyStock` 이 이제 위험 |
+| 경고 문구(비파생 경로) | "…보다 적습니다" | "…이하입니다" | 계약이 `<=` 이므로 이전 문구가 부정확했다 |
+| 비수치·누락 재고 | `status='ok'` (숨김) | `status='unknown'` | §4-3 에서 지적한 결함. 헌법 §10 |
+| `agentExecutor` 발주 대상 | `stock <= safetyStock` 전부 | 위험(품절·안전재고 이하)만. `unknown` 은 '확인 필요' 로 분리 | 근거 없는 발주 제안 방지 |
+| `AiBriefing` 재고 이슈 | `warning \|\| danger` | `!== 'ok'` | `unknown` 이 조용히 정상으로 잡히던 것 |
+| `DataPanel` 재고 배지 | danger 아니고 warning 아니면 초록 `success` | `ok` 일 때만 초록 | 상동 |
+
+### 11-5. 검사 결과
+
+| 명령 | RED (구현 전) | GREEN (구현 후) |
+|---|---|---|
+| `node scripts/smoke-b-core-2a-inventory-risk-single-source-v0.mjs` | 17 pass / **26 fail** | **43 pass / 0 fail** |
+| `node scripts/audit-b-core-2-ab-parity.mjs` | [재고] RED **4축** | [재고] **RED 없음** |
+| 〃 | [주문] RED 7축 | [주문] RED **7축 유지**(의도) |
+| 〃 | [출처] RED 없음 | [출처] RED 없음 |
+| `npm test` | — | smoke **122/122** · build · typecheck:api · lint · exit 0 |
+
+`smoke-b-core-2-ab-data-world-parity-v0.mjs` 의 재고 축은 **DIVERGENCE → PARITY 로 이동**했다(1-6~1-10).
+이전 기준선(A 3건 / B 4건, 상수 3 vs 5, P3·P5·P6 갈림)은 의미가 바뀌었으므로 근거와 함께 갱신했다.
+숫자를 억지로 유지하지 않았다.
+
+### 11-6. 재고 관련 우회 전수 재검색
+
+확인 범위: `src/` + `api/` 전체, `src/services/inventoryRiskContract.ts` 제외.
+정규식 `\bstock\s*[<>]=?\s*(\w+\.)*(safetyStock|0)\b` → **0건**.
+
+### 11-7. 이번에도 남는 것 (미확인·범위 밖)
+
+1. **`stockImpact` 는 여전히 합성 전용**(`godomallResource.ts:490`). 실제 데이터 경로에는 재고위험 입력이 없다.
+   B 소비자(`CalendarPanel`·`ProductTeamDashboard`·`departmentDataSourceOfTruth`·`productTeamChatFacts`)는
+   `syntheticProjectedStock` 을 보므로 `soldOut`/`stockEnabled` 를 아직 전달받지 않는다
+   (`StockImpactItem` 에 `sourceStockEnabled` 는 있으나 위험 판정에 쓰이지 않는다). → B-core-2 provider 범위.
+2. **`godomallMapper.ts:57` `mapGoodsList` 가 `safetyStock` 기본값 `'5'` 을 만들어낸다.** 다만
+   `mapGoodsToInventory` → `mapGoodsList` 사슬은 **호출자 0건인 dead code** 다(전수 검색). 이번 작업에서
+   건드리지 않았다(헌법 §8 — 한 번에 하나). 후속 대장 후보.
+3. **실제 고도몰 응답에서 `totalStock` 이 비수치로 오는지** 는 여전히 미확인이다(Production 상품 13건 기준 미검증).
+4. **브라우저 눈검증 없음.** `unknown` 배지가 화면에서 어떻게 보이는지는 코드로만 확인했다(작업지시 §5·§7).
