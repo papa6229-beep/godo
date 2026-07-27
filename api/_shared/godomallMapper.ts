@@ -147,20 +147,26 @@ export interface OrderLineFact {
 }
 
 /**
- * 결제 완료 판정의 **두 근거를 모두 보존**한다.
+ * 결제 완료 판정에 대한 **두 규칙의 결과를 모두 보존**한다.
  *
  * 고도몰 `orderStatus` 코드의 공식 의미가 아직 확정되지 않아(마스터 계획 C단계),
- * 두 생산 경로가 서로 다른 식을 쓰고 있었다.
- *   paymentDateValid : `paymentDt` 가 유효한 날짜인가            (godomallRevenue.deriveOrderState 근거)
- *   statusHintPaid   : `orderStatus`/상태 텍스트가 결제 이후 단계인가 (interpretOrderRecord 근거)
- * **어느 쪽도 정본으로 고르지 않는다.** 두 값이 갈리는 주문은 `conflicted: true` 로 표시해
- * 소비자가 "아직 정해지지 않았다"는 사실을 볼 수 있게 한다.
+ * 두 생산 경로가 서로 다른 규칙을 쓰고 있었다. 아래 두 값은 **각 규칙이 내린 판정 결과**이며,
+ * 원시 신호(결제일시가 있는가 / 상태코드가 무엇인가)가 아니다.
+ *
+ *   revenueRulePaid : `godomallRevenue.deriveOrderState` 규칙의 결과
+ *                     — `isValidDate(paymentDt) && orderStatus !== 'o1'`
+ *   mapperRulePaid  : `interpretOrderRecord` 규칙의 결과
+ *                     — `hasPaymentDate(paymentDt) || isPaidStatus(orderStatus/상태텍스트)`
+ *
+ * **어느 쪽도 고도몰 공식 정답이 아니다.** 둘 다 우리 코드가 추정으로 만든 규칙이며,
+ * 공식 의미가 확정될 때까지 정본을 고르지 않는다.
+ * 두 결과가 갈리는 주문은 `conflicted: true` 로 표시해 미확정 상태를 드러낸다.
  */
 export interface PaymentEvidenceFact {
-  paymentDateValid: boolean;
-  statusHintPaid: boolean;
+  revenueRulePaid: boolean;
+  mapperRulePaid: boolean;
   orderStatusRaw: string;
-  /** 두 근거가 다르면 true. 이 주문의 결제 여부는 **미확정**이다. */
+  /** 두 규칙의 결과가 다르면 true. 이 주문의 결제 여부는 **미확정**이다. */
   conflicted: boolean;
 }
 
@@ -250,8 +256,9 @@ const buildOrderFacts = (o: Raw, v: OrderRecordView): OrderFacts => {
     };
   });
   const orderStatusRaw = pick(o, ['orderStatus', 'orderStatusText', 'orderStep'], '');
-  const paymentDateValid = state.paid;
-  const statusHintPaid = v.hasStatusBasis ? v.paid : false;
+  // 두 규칙의 **판정 결과**를 그대로 옮긴다. 새 규칙을 만들지 않고, 한쪽을 정본으로 고르지도 않는다.
+  const revenueRulePaid = state.paid;                        // deriveOrderState 규칙
+  const mapperRulePaid = v.hasStatusBasis ? v.paid : false;  // interpretOrderRecord 규칙(근거 없으면 false)
   return {
     productAmount: v.productAmount,
     deliveryFee: v.deliveryFee,
@@ -263,10 +270,10 @@ const buildOrderFacts = (o: Raw, v: OrderRecordView): OrderFacts => {
     delivered: state.delivered,
     confirmed: state.confirmed,
     paymentEvidence: {
-      paymentDateValid,
-      statusHintPaid,
+      revenueRulePaid,
+      mapperRulePaid,
       orderStatusRaw,
-      conflicted: paymentDateValid !== statusHintPaid
+      conflicted: revenueRulePaid !== mapperRulePaid
     }
   };
 };

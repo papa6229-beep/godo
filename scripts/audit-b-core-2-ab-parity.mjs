@@ -70,14 +70,15 @@ try {
   record('취소 주문 판정(주문별)', aCanceled, bCanceled, 'A=orderFacts.canceled / B=state.canceled');
 
   // ── 4. 결제 판정 ──────────────────────────────────────────────────────────
-  // **정본 미확정 축.** A 는 두 근거를 모두 보존하므로 여기서는 "B 와 같은 근거"끼리 비교하고,
-  // 두 근거가 갈리는 주문이 있다는 사실 자체를 별도 축으로 드러낸다.
-  const aPaidByDate = facts.map((f) => f?.paymentEvidence.paymentDateValid === true);
+  // **정본 미확정 축.** A 는 두 규칙의 결과를 모두 보존하므로 여기서는 "B 와 같은 규칙"끼리 비교하고,
+  // 두 규칙의 결과가 갈리는 주문이 있다는 사실 자체를 별도 축으로 드러낸다.
+  // 두 값 모두 우리 코드의 추정 규칙이며 고도몰 공식 정답이 아니다.
+  const aRevenueRulePaid = facts.map((f) => f?.paymentEvidence.revenueRulePaid === true);
   const bPaid = B.lite.map((o) => o.paid === true);
-  record('결제완료 — 결제일시 근거끼리 비교', aPaidByDate, bPaid,
-    'A.orderFacts.paymentEvidence.paymentDateValid ↔ B.state.paid (같은 근거)');
+  record('결제완료 — 같은 규칙(deriveOrderState)끼리 비교', aRevenueRulePaid, bPaid,
+    'A.orderFacts.paymentEvidence.revenueRulePaid ↔ B.state.paid (동일 규칙의 결과)');
   const conflicted = facts.map((f, i) => (f?.paymentEvidence.conflicted ? RAW_ORDERS[i].__case : null)).filter(Boolean);
-  record('결제 정본 미확정 — 두 근거가 갈리는 주문', [], conflicted,
+  record('결제 정본 미확정 — 두 규칙의 결과가 갈리는 주문', [], conflicted,
     '**정본 선택 전까지 RED 로 남는 것이 정상**(C단계 상태코드 확정 선행)');
 
   // ── 5. 상품 라인 매출 ─────────────────────────────────────────────────────

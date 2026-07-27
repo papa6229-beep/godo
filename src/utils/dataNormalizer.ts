@@ -5,6 +5,8 @@ import type {
   StandardInventoryItem,
   StandardSalesSummary,
   StandardOrderFacts,
+  StandardOrderLine,
+  StandardPaymentEvidence,
   DataQualityReport,
   OperationsDataSnapshot
 } from '../types/dataConnector';
@@ -217,41 +219,76 @@ export const normalizeOrder = (
   };
 };
 
-// 상류 orderFacts 형태 검증. 최소 형태를 만족할 때만 통과시키고, 아니면 undefined.
+// 상류 orderFacts 최소 형태 검사.
+//   **손상된 값을 정상값으로 바꾸지 않는다.** 필수 필드가 없거나 타입이 다르면 orderFacts 전체를 거부한다.
+//   이유: 손상을 0 / false 로 정상화하면 "취소 아님 · 결제 아님 · 0원"이라는 **거짓 사실**이 만들어진다.
+//   거부하면 `orderFacts === undefined` 가 되고, 그것은 "사실 없음"이 아니라 "상류가 주지 않았다"로 읽힌다.
 //   (JSON 왕복·구버전 저장분·CSV 업로드에서 형태가 다를 수 있다 — 추측해서 채우지 않는다.)
+const isRecord = (x: unknown): x is Record<string, unknown> =>
+  !!x && typeof x === 'object' && !Array.isArray(x);
+const finiteNum = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+const strictBool = (x: unknown): boolean | null => (typeof x === 'boolean' ? x : null);
+const strictStr = (x: unknown): string | null => (typeof x === 'string' ? x : null);
+
+const readOrderLine = (v: unknown): StandardOrderLine | null => {
+  if (!isRecord(v)) return null;
+  const goodsNo = strictStr(v.goodsNo);
+  const goodsCd = strictStr(v.goodsCd);
+  const goodsName = strictStr(v.goodsName);
+  const quantity = finiteNum(v.quantity);
+  const lineRevenue = finiteNum(v.lineRevenue);
+  if (goodsNo === null || goodsCd === null || goodsName === null || quantity === null || lineRevenue === null) {
+    return null;
+  }
+  return { goodsNo, goodsCd, goodsName, quantity, lineRevenue };
+};
+
+const readPaymentEvidence = (v: unknown): StandardPaymentEvidence | null => {
+  if (!isRecord(v)) return null;
+  const revenueRulePaid = strictBool(v.revenueRulePaid);
+  const mapperRulePaid = strictBool(v.mapperRulePaid);
+  const orderStatusRaw = strictStr(v.orderStatusRaw);
+  const conflicted = strictBool(v.conflicted);
+  if (revenueRulePaid === null || mapperRulePaid === null || orderStatusRaw === null || conflicted === null) {
+    return null;
+  }
+  return { revenueRulePaid, mapperRulePaid, orderStatusRaw, conflicted };
+};
+
 const readOrderFacts = (v: unknown): StandardOrderFacts | undefined => {
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
-  const f = v as Record<string, unknown>;
-  const ev = f.paymentEvidence;
-  if (!ev || typeof ev !== 'object') return undefined;
-  const e = ev as Record<string, unknown>;
-  const num = (x: unknown): number => (typeof x === 'number' && Number.isFinite(x) ? x : 0);
-  const flag = (x: unknown): boolean => x === true;
-  const lines = Array.isArray(f.lines)
-    ? (f.lines as Record<string, unknown>[]).map((l) => ({
-        goodsNo: String(l?.goodsNo ?? ''),
-        goodsCd: String(l?.goodsCd ?? ''),
-        goodsName: String(l?.goodsName ?? ''),
-        quantity: num(l?.quantity),
-        lineRevenue: num(l?.lineRevenue)
-      }))
-    : [];
+  if (!isRecord(v)) return undefined;
+
+  const productAmount = finiteNum(v.productAmount);
+  const deliveryFee = finiteNum(v.deliveryFee);
+  const totalAmount = finiteNum(v.totalAmount);
+  const hasAmountBasis = strictBool(v.hasAmountBasis);
+  const canceled = strictBool(v.canceled);
+  const shipped = strictBool(v.shipped);
+  const delivered = strictBool(v.delivered);
+  const confirmed = strictBool(v.confirmed);
+  const paymentEvidence = readPaymentEvidence(v.paymentEvidence);
+
+  if (
+    productAmount === null || deliveryFee === null || totalAmount === null ||
+    hasAmountBasis === null || canceled === null || shipped === null ||
+    delivered === null || confirmed === null || paymentEvidence === null
+  ) {
+    return undefined;
+  }
+
+  // 라인은 배열이어야 하고, 한 항목이라도 형태가 깨지면 전체를 거부한다.
+  //   깨진 라인만 버리면 상품 라인 매출이 조용히 줄어든 채 "정상"으로 보인다.
+  if (!Array.isArray(v.lines)) return undefined;
+  const lines: StandardOrderLine[] = [];
+  for (const raw of v.lines) {
+    const line = readOrderLine(raw);
+    if (line === null) return undefined;
+    lines.push(line);
+  }
+
   return {
-    productAmount: num(f.productAmount),
-    deliveryFee: num(f.deliveryFee),
-    totalAmount: num(f.totalAmount),
-    hasAmountBasis: flag(f.hasAmountBasis),
-    lines,
-    canceled: flag(f.canceled),
-    shipped: flag(f.shipped),
-    delivered: flag(f.delivered),
-    confirmed: flag(f.confirmed),
-    paymentEvidence: {
-      paymentDateValid: flag(e.paymentDateValid),
-      statusHintPaid: flag(e.statusHintPaid),
-      orderStatusRaw: String(e.orderStatusRaw ?? ''),
-      conflicted: flag(e.conflicted)
-    }
+    productAmount, deliveryFee, totalAmount, hasAmountBasis,
+    lines, canceled, shipped, delivered, confirmed, paymentEvidence
   };
 };
 

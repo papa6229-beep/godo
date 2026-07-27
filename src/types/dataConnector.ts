@@ -25,7 +25,7 @@ export type DataImportStatus = 'idle' | 'parsing' | 'success' | 'warning' | 'err
 //    `revenueMetricContract.isValidOrder` 는 state → 평탄 paid/canceled → totalAmount 순으로 폴백한다.
 //    `canceled` 만 정의되고 `paid` 가 없으면 **전 주문이 무효**로 판정된다.
 //    결제 정본이 확정되기 전(C단계)에 그 상태를 만들면 "미확정"이 "전부 무효"라는 오답으로 바뀐다.
-//    → 사실은 중첩으로 보존하고, 결제 판정은 아래 두 근거를 모두 남긴다.
+//    → 사실은 중첩으로 보존하고, 결제 판정은 아래 두 규칙의 결과를 모두 남긴다.
 export interface StandardOrderLine {
   goodsNo: string;
   goodsCd: string;
@@ -35,13 +35,17 @@ export interface StandardOrderLine {
 }
 
 /**
- * 결제 완료 판정의 두 근거. **어느 쪽도 정본이 아니다.**
- * 고도몰 `orderStatus` 코드의 공식 의미 확정(C단계) 전까지 한쪽을 조용히 정본으로 삼지 않는다.
+ * 결제 완료 판정에 대한 **두 규칙의 결과**. 원시 신호가 아니라 각 규칙이 내린 판정이다.
+ *   revenueRulePaid : `deriveOrderState` 규칙 — `isValidDate(paymentDt) && orderStatus !== 'o1'`
+ *   mapperRulePaid  : `interpretOrderRecord` 규칙 — `hasPaymentDate(paymentDt) || isPaidStatus(상태)`
+ *
+ * **어느 쪽도 고도몰 공식 정답이 아니다.** 둘 다 우리 코드의 추정 규칙이며,
+ * 공식 `orderStatus` 의미 확정(C단계) 전까지 한쪽을 조용히 정본으로 삼지 않는다.
  * `conflicted === true` 인 주문은 결제 여부가 **미확정**이며, 소비자는 이를 표시해야 한다.
  */
 export interface StandardPaymentEvidence {
-  paymentDateValid: boolean;
-  statusHintPaid: boolean;
+  revenueRulePaid: boolean;
+  mapperRulePaid: boolean;
   orderStatusRaw: string;
   conflicted: boolean;
 }

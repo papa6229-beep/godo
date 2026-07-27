@@ -138,7 +138,9 @@ B-core-2a 커밋 후 재검증: smoke **122/122**·build·`typecheck:api`·lint 
 | actor/executor | `assignExecutor` 가 행위자를 수행자로 자동 덮어쓰던 것 교정. `ActorRef.identitySource` 로 로그인 미연결 명시 | 두 필드 모두 optional. 구버전 저장분 `undefined` 를 단정하지 않음 |
 | TeamId 정본 | `teamIdContract.ts` 신설. 3곳 중복 정의 통합. 마케팅 두 팀의 저장 의미·scope 비교 규칙 고정 | **소비자 저장 값 0건 변경** |
 
-**결제완료 정본은 고르지 않았다.** `paymentEvidence` 가 두 근거(`paymentDateValid`/`statusHintPaid`)와 `conflicted` 를 모두 보존한다.
+**결제완료 정본은 고르지 않았다.** `paymentEvidence` 가 **두 규칙의 결과**와 `conflicted` 를 모두 보존한다.
+`revenueRulePaid` = `deriveOrderState` 규칙(`isValidDate(paymentDt) && orderStatus !== 'o1'`) · `mapperRulePaid` = `interpretOrderRecord` 규칙(`hasPaymentDate || isPaidStatus`).
+**두 값 모두 우리 코드의 추정 규칙이며 고도몰 공식 정답이 아니다.**
 최상위 평탄 `paid`/`canceled` 를 두지 않은 이유: `isValidOrder` 폴백 순서상 `canceled` 만 정의되면 **전 주문이 무효**로 판정되어 "미확정"이 "전부 무효"라는 오답이 된다.
 
 audit `[주문]` RED **7축 → 4축**(사실 유실 해소). 남은 4축은 전부 결제 정본 미확정에서 파생된다 — C단계 선행.
