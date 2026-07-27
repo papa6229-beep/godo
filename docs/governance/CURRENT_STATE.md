@@ -32,11 +32,27 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 
 ## 3. 고도몰 연결
 
-- 기존 **시험몰은 만료**됨 (사용자 확인)
+- 기존 시험몰: 사용자는 **계정 만료**로 알고 있으나, **2026-07-27 07:24~07:25 GMT 관측 시점에 Open API는 정상 응답했다**(아래). 계정 만료와 API 차단 시점이 다를 수 있음 → **사용자 확인 필요**
 - 새 판매몰 계정 생성 완료, **개발자 등록·API 키 발급 대기 중**
 - 키는 채팅으로 전달받지 않는다. **Preview 환경변수 등록 → 검증 → Production 등록** 순서
-- 서버 기본 모드: `GODOMALL_API_MODE` 미설정 시 **`mock`** (`api/_shared/secretGuard.ts:25`)
-- **미확인**: 2026-07-27 Preview에서 `/api/godomall/products`가 `sourceType: api_proxy_real`로 **13건**을 반환. 시뮬레이션 카탈로그도 13개이므로 **실제 출처 미확정** → B1-0에서 확인
+- 서버 기본 모드: `GODOMALL_API_MODE` 미설정 시 **`mock`** (`api/_shared/secretGuard.ts:25`). **현재 Production은 `real`**, partner/user 키 present (`/api/godomall/health` 관측 — 값 미확인)
+
+### 상품 13건의 출처 — **확정 (B1-0, 2026-07-27)**
+
+**출처 = 기존 시험몰의 실제 외부 Open API 응답. `sourceType: api_proxy_real`은 정확하다.**
+
+- 확인 대상: **Production** `godo-psi.vercel.app` / Source `5190f68` / branch `main`
+  (최초 13건 관측은 Preview `838e2c4`였고, 두 배포의 조사 대상 코드 경로는 동일)
+- `api_proxy_real`은 `godomallResource.ts:187` 한 곳에서만 할당되며 **외부 호출 성공 후**에만 붙는다. 실패 시 mock으로 떨어지는 경로가 **없다**(실패 = `unavailable` + 0건)
+- 시뮬레이션 카탈로그는 이 경로에 진입하지 않는다 — `loadSimCatalogV1`은 `resolveResource`가 아니라 Sync All 합성 경로(`:465`)에서만 사용
+- **지문 일치의 방향**: `simCatalogV1.data.ts` 매니페스트가 `capturedFrom: '/api/godomall/products (Production, sourceType api_proxy_real)'`라고 스스로 기록한다. 카탈로그가 **이 응답에서 떠 온 사본**이므로 13건이 같은 것이 당연하다(주입이 아님)
+- mock fixture는 **4건**이고 productId 체계가 다르다 → 후보 탈락
+- 캐시 아님: `x-vercel-cache: MISS` · `age: 0` · 왕복 **1832 ms**
+- 라벨이 상태를 구분함(같은 시점 관측): products/inventory **api_proxy_real 13건** · orders **api_proxy_real 0건**(실제 0) · inquiries/reviews **unavailable 0건**(미연결). 소요도 각각 600~3000 ms vs ~220 ms로 갈린다
+
+증거·재현 명령: `docs/governance/evidence/B1-0_PRODUCT_SOURCE_AUDIT.md`
+
+**미확인**: Vercel 함수 런타임 로그 원문 · 시험몰 계정의 실제 만료 상태 · 최초 Preview 관측 시점의 응답 원본(미보존)
 
 ## 4. 데이터·저장
 
@@ -77,7 +93,8 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 
 ## 9. 미확인 항목
 
-- Preview `products` 13건의 실제 출처 (§3)
+- ~~Preview `products` 13건의 실제 출처~~ → **B1-0에서 확정**(§3): 기존 시험몰 실제 응답
+- **시험몰 계정이 실제로 만료됐는지** — Open API는 응답 중. 고도몰 관리자 확인 필요(사용자)
 - 실제 운영 데이터량 (B4의 DB 사이징 입력 — 상한 가정으로 대체 예정)
 - 기존 localStorage에 쌓인 시험 자료의 양과 보존 가치 (B5에서 JSON 백업 후 확인)
 - 새 세션에서 시작 잠금(첫 줄 인용)이 실제로 작동하는지 — **다음 세션 첫 응답으로만 검증 가능**
