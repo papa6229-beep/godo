@@ -46,8 +46,8 @@ for (const f of files) {
       String(d.optionImageCount).padStart(5), String(d.tailCombineCount).padStart(4),
       ' ' + d.reason,
     );
-  } catch (e: any) {
-    console.log(f.padEnd(28), 'ERROR', String(e?.message || e));
+  } catch (e: unknown) {
+    console.log(f.padEnd(28), 'ERROR', e instanceof Error ? e.message : String(e));
     if (EXPECT[f]) fail++;
   }
 }

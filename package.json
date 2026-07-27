@@ -8,6 +8,8 @@
     "typecheck:api": "tsc -p api/tsconfig.json",
     "build": "tsc -b && npm run typecheck:api && vite build",
     "lint": "eslint .",
+    "smoke": "node scripts/run-regression.mjs",
+    "test": "npm run smoke && npm run build && npm run lint",
     "preview": "vite preview"
   },
   "dependencies": {
