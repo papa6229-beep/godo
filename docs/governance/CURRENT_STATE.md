@@ -173,6 +173,23 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 **Claude 최소 확인만**: `tsc -b` 0 · `typecheck:api` 0 · lint 0 · 인접 기존 스모크 10건 PASS · 4개 데이터 상태 동작 확인 · 트리 clean · 비밀값 0.
 **수행하지 않음**: 전체 `npm test` · Vercel/Preview/Production · 화면 눈검증. → Codex 검증 범위.
 
+### B-use-3 HQ 지시 흐름 — **구현 완료, Codex 검증 대기 (2026-07-27)**
+
+브랜치 `codex/b-use-3-hq-directive-flow` (`7ba257e` 에서 분기). local main = `7ba257e`, origin/main = `5190f685`(미푸시).
+
+| 이전 | 이후 |
+|---|---|
+| `OfficeView.sendDirective` 가 메시지·원장만 생성 → **업무 카드 없음** | `App.handleSendDirective` 가 메시지 1 + 업무 1 + 원장 1 을 한 흐름으로 생성 |
+| 하드코딩 `HQ_ACTOR`(userId·identitySource 없음) | App 의 `sessionActor()` — 실제 로그인 미연결이 `identitySource` 로 드러남 |
+| 원본 메시지와 업무가 연결되지 않음 | `inputRefs: [messageRef(id)]` 참조만. 본문·첨부는 메시지 저장소에만 |
+| 원장에 `refId` 만 | `refId` + `taskId` + `correlationId` 로 역추적 |
+
+권한 판정을 가장 먼저 하여 사람 HQ 가 아니면 **아무것도 만들지 않는다**(부분 생성 금지).
+수행자는 `unassigned` 로 두고 담당 팀장이 정한다 — actor 와 executor 를 합치지 않는다.
+
+검사: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` RED 26 pass/6 fail → **GREEN 32/32** (manifest include 123).
+**Claude 최소 확인만**: tsc·lint·diff --check·비밀값·지정 스모크 4건. 전체 `npm test`·화면 눈검증은 B-use 묶음 인수검사에서 Codex 수행.
+
 ## 5. 실행 방식
 
 - **사실상 수동 실행 기반**. `runScheduledAgentTask`(`src/services/agentTaskRunner.ts:169`)는 정의만 있고 **제품 코드 내 호출자 0건**
