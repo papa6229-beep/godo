@@ -164,20 +164,32 @@ console.log('\n  --- [G] 4. api/auth 메서드 405·레코드 불변·역할 위
   G('B4. POST me / POST pending-approvals → 405(GET 전용)', (await call('POST', 'leadP', 'me', {})).status === 405 && (await call('POST', 'leadP', 'pending-approvals', {})).status === 405);
   // 승인 정상 경로(서버 규칙)
   G('B5. 같은 팀장 member 승인 → 200 active', (await call('POST', 'leadP', 'approve', { targetUserId: 'newU', approveAsRole: 'member' })).status === 200 && (await dir.getAccount('newU')).status === 'active');
-  // 비번 정책
+  // 최종 채택 최소화(2026-07-27): reset-password·suspend 는 앱 경로에서 닫혔다.
+  // "거부되었다"만 보지 않고, 거부 후 저장소가 실제로 그대로인지(비번·잠금·이력·스냅샷)를 관측한다.
   const TEMP = 'Temp-Pw-3x!aQ9';
-  G('B6. member self-reset → 403(정책: 팀장/HQ 발급만)', (await call('POST', 'memP2', 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP })).status === 403);
-  G('B7. 타 팀장 초기화 → 403', (await call('POST', 'leadC', 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP })).status === 403);
-  const rp = await call('POST', 'leadP', 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP });
-  G('B8. 같은 팀장 초기화 → 200 + 다음 로그인 변경 강제 계약(_forcedChange)', rp.status === 200 && dir._passwords.get('memP2') === TEMP && dir._forcedChange.has('memP2'));
-  G('B9. HQ 초기화 → 200(전체 범위)', (await call('POST', 'hq1', 'reset-password', { targetUserId: 'memC2', tempPassword: TEMP })).status === 200);
-  // 정지(삭제 아님)
-  const sp = await call('POST', 'leadP', 'suspend', { targetUserId: 'memP2' });
-  const target = await dir.getAccount('memP2');
-  G('B10. 정지 → suspended·계정 존재·이력 증가·잠금 호출', sp.status === 200 && target.status === 'suspended' && target.history.length >= 2 && dir._locked.has('memP2'));
+  const snapP2 = JSON.stringify(await dir.getAccount('memP2'));
+  const snapC2 = JSON.stringify(await dir.getAccount('memC2'));
+  const rpLead = await call('POST', 'leadP', 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP });
+  const rpHq = await call('POST', 'hq1', 'reset-password', { targetUserId: 'memC2', tempPassword: TEMP });
+  G('B6. reset-password → 팀장·HQ 누가 호출해도 503 FEATURE_NOT_AVAILABLE(권한 있어도 미제공)',
+    rpLead.status === 503 && rpHq.status === 503 && rpLead.body?.errorCode === 'FEATURE_NOT_AVAILABLE' && rpHq.body?.errorCode === 'FEATURE_NOT_AVAILABLE');
+  G('B7. reset-password 거부 후 상태 변경 0(비번 미설정·강제변경 미표시·대상 스냅샷 동일)',
+    dir._passwords.size === 0 && dir._forcedChange.size === 0
+    && JSON.stringify(await dir.getAccount('memP2')) === snapP2 && JSON.stringify(await dir.getAccount('memC2')) === snapC2);
+  const spLead = await call('POST', 'leadP', 'suspend', { targetUserId: 'memP2' });
+  const spHq = await call('POST', 'hq1', 'suspend', { targetUserId: 'memC2' });
+  G('B8. suspend → 팀장·HQ 누가 호출해도 503 FEATURE_NOT_AVAILABLE',
+    spLead.status === 503 && spHq.status === 503 && spLead.body?.errorCode === 'FEATURE_NOT_AVAILABLE' && spHq.body?.errorCode === 'FEATURE_NOT_AVAILABLE');
+  const p2After = await dir.getAccount('memP2');
+  G('B9. suspend 거부 후 상태 변경 0(active 유지·잠금 0·이력 증가 0·스냅샷 동일)',
+    p2After.status === 'active' && dir._locked.size === 0 && p2After.history.length === 1 && JSON.stringify(p2After) === snapP2);
+  // 차단 지점이 세션 검증보다 앞인가: 무인증 호출이 401 이 아니라 503 이면 계정 조회조차 없었다는 뜻.
+  const anonRp = await call('POST', null, 'reset-password', { targetUserId: 'memP2', tempPassword: TEMP });
+  const anonSp = await call('POST', null, 'suspend', { targetUserId: 'memP2' });
+  G('B10. 차단은 세션 검증 이전 — 무인증 호출도 503(401 아님) = 계정 조회 0', anonRp.status === 503 && anonSp.status === 503);
   // 비번 미노출: 전 계정 직렬화 + 전 응답 직렬화(빈 배열 단언 금지 — 실데이터 검사)
   const allAccounts = JSON.stringify(await dir.listAccounts());
-  const allResponses = JSON.stringify([su, del, get2, put3, rp, sp].map((r) => r.body));
+  const allResponses = JSON.stringify([su, del, get2, put3, rpLead, rpHq, spLead, spHq, anonRp].map((r) => r.body));
   G('B11. 전 계정 직렬화에 임시비번 0(계정 수>0 확인 포함)', (await dir.listAccounts()).length >= 5 && !allAccounts.includes(TEMP));
   G('B12. 전 응답 직렬화에 임시비번 0', !allResponses.includes(TEMP));
   // pending-approvals 응답에 managed 스코프 포함(내용 검사)
@@ -186,6 +198,35 @@ console.log('\n  --- [G] 4. api/auth 메서드 405·레코드 불변·역할 위
   G('B13. 팀장 managed = 자기 팀 member 만(타 팀 미포함)', pa.status === 200 && managedIds.includes('memC2') && !managedIds.includes('memP2'), `leadC managed=[${managedIds}]`);
   // Clerk 어댑터의 실제 초기화 구현이 공식 2단계(교체+강제변경)를 모두 호출하는지(소스 계약)
   G('B14. Clerk setPassword = updateUser(signOutOfOtherSessions)+setPasswordCompromised(revokeAllSessions)', /updateUser\([^)]*signOutOfOtherSessions: true/.test(src('api/_shared/clerkAuthAdapter.ts')) && /setPasswordCompromised\([^)]*revokeAllSessions: true/.test(src('api/_shared/clerkAuthAdapter.ts')));
+}
+
+// ── 4-1. HQ 부트스트랩 실계약(문서 4절 5번 절차의 근거를 실행으로 고정) ────────
+{
+  const savedBoot = process.env.AUTH_BOOTSTRAP_HQ_USER_ID;
+  const signup = async (d, uid, body) => {
+    const res = makeRes();
+    await AUTHROUTE.runAuthAction({ method: 'POST', headers: {}, url: '/api/auth/signup-metadata', body, __uid: uid },
+      res, { session: stubSession, directory: d });
+    return res._get();
+  };
+  const BODY = { name: '사장', team: 'product', position: '대표' };
+  // (가) 문서가 지시하는 순서: Clerk 에서 사용자 선생성 → env 지정 → 앱에서 가입 정보 제출(레코드 없음)
+  const dirOk = AD.createInMemoryDirectory([]);
+  process.env.AUTH_BOOTSTRAP_HQ_USER_ID = 'user_boss';
+  const boot = await signup(dirOk, 'user_boss', BODY);
+  const bootAcct = await dirOk.getAccount('user_boss');
+  G('B15. 계정 레코드 없을 때만 env 지정 사용자 1회 HQ 승격(hq·active·bootstrapped)',
+    boot.status === 200 && boot.body?.bootstrapped === true && bootAcct.role === 'hq' && bootAcct.status === 'active');
+  // (나) 반례: 앱에서 먼저 가입해 레코드가 생긴 뒤에는 env 를 넣어도 승격되지 않는다(문서에서 제거한 순서)
+  const dirNo = AD.createInMemoryDirectory([]);
+  delete process.env.AUTH_BOOTSTRAP_HQ_USER_ID;
+  await signup(dirNo, 'user_boss', BODY);
+  process.env.AUTH_BOOTSTRAP_HQ_USER_ID = 'user_boss';
+  const again = await signup(dirNo, 'user_boss', BODY);
+  const stillMember = await dirNo.getAccount('user_boss');
+  G('B16. 앱 가입 후 env 설정 → 승격 안 됨(already-registered·member/pending 유지) = 문서 순서 근거',
+    again.body?.note === 'already-registered' && stillMember.role === 'member' && stillMember.status === 'pending');
+  if (savedBoot === undefined) delete process.env.AUTH_BOOTSTRAP_HQ_USER_ID; else process.env.AUTH_BOOTSTRAP_HQ_USER_ID = savedBoot;
 }
 
 // ── 5. 클라이언트 실배선(실소비자·실행 검사) ──────────────────────────────────
@@ -227,8 +268,23 @@ const signupInputs = (screen.match(/id="su-(name|team|position|username|password
 G('C9. 가입 화면: 정확히 5입력(이름·팀·직책·아이디·비번) + signUp.password 실호출', signupInputs === 5 && /signUp\.password\(\{ username/.test(screen));
 G('C10. 이메일·전화 입력 없음(가입/로그인 화면)', !/type="email"|emailAddress|전화번호|phoneNumber/.test(screen));
 G('C11. pending/suspended: 로그아웃(signOut)·상태 재확인(refreshAuthStatus) 실배선', (screen.match(/signOut\(\)/g) || []).length >= 2 && (screen.match(/refreshAuthStatus\(\)/g) || []).length >= 3);
-G('C12. 관리패널: 승인(역할 선택은 HQ만)·정지·임시비번 발급 배선', /approveAsRole: 'member'/.test(src('src/components/auth/AccountAdminPanel.tsx')) && /approveAsRole: 'team_lead'/.test(src('src/components/auth/AccountAdminPanel.tsx')) && /isHq &&/.test(src('src/components/auth/AccountAdminPanel.tsx')));
+const panel = codeLines('src/components/auth/AccountAdminPanel.tsx').join('\n');
+G('C12. 관리패널: 승인만 배선(/api/auth/approve · member 기본 · team_lead 은 isHq 조건)',
+  /authorizedFetch\('\/api\/auth\/approve'/.test(panel) && /approve\(a\.userId, 'member'/.test(panel)
+  && /approve\(a\.userId, 'team_lead'/.test(panel) && /isHq &&/.test(panel));
 G('C13. 클라 소스에 비번 localStorage/콘솔 기록 0', !['src/components/AuthGateScreen.tsx', 'src/components/auth/AccountAdminPanel.tsx', 'src/components/auth/ClerkAuthBridge.tsx', 'src/services/authorizedFetch.ts'].some((f) => /localStorage\.[a-z]+\([^)]*[Pp]assword|console\.[a-z]+\([^)]*[Pp]assword/.test(src(f))));
+// 미채택 기능 비노출(앱 전체 소스 스캔). 같은 스캔이 approve 는 실제로 찾아내는지로 스캐너 유효성을 함께 확인한다.
+{
+  const walk = (d) => readdirSync(d, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : (/\.(ts|tsx)$/.test(e.name) ? [path.join(d, e.name)] : [])));
+  const srcCode = walk(path.join(REPO, 'src')).map((f) => codeLines(path.relative(REPO, f).replace(/\\/g, '/')).join('\n'));
+  const hits = (needle) => srcCode.filter((c) => c.includes(needle)).length;
+  const nReset = hits('/api/auth/reset-password'), nSusp = hits('/api/auth/suspend'), nAppr = hits('/api/auth/approve');
+  G('C14. 앱 전체(src)에 reset-password·suspend 호출 경로 0 (같은 스캔이 approve 는 발견 = 스캐너 유효)',
+    nReset === 0 && nSusp === 0 && nAppr >= 1, `파일수 ${srcCode.length} · reset=${nReset} suspend=${nSusp} approve=${nAppr}`);
+}
+G('C15. 관리패널 UI 에 정지·임시비번 버튼/입력/상태 0', !/임시 비번|tempPassword|resetTarget|'suspend'|>정지</.test(panel));
+G('C16. 로그인 화면에 임시 비밀번호 요청 안내 0(관리자 문의로 대체)', !/임시 비밀번호/.test(screen));
 
 // ── 6. 게이트: 미로그인 시 회사 데이터 로드 0 ─────────────────────────────────
 console.log('\n  --- [G] 6. 게이트 판정(순수 실행) + 미로그인 fetch 차단 ---');
