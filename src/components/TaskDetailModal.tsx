@@ -1,7 +1,7 @@
 import React from 'react';
 import type { LifecycleTask, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import { userStatusLabel } from '../services/taskLifecycleContract';
-import { currentStageLabel, executorDisplayLabel, executorDisplayName } from '../services/taskLifecycleAppAdapter';
+import { COLLAB_MIRROR_STAGE_LABEL, currentStageLabel, executorDisplayLabel, executorDisplayName } from '../services/taskLifecycleAppAdapter';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
 
@@ -62,9 +62,21 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ flow, onClose 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // 결과·수행자는 실제로 일이 일어난 업무에서 읽는다(추적 카드면 자식).
+  // 결과·수행자·중단·결정 이력은 **모두 같은 정본 선택 규칙**을 쓴다:
+  //   실제로 일이 일어난 업무(추적 카드면 자식)에서 읽는다.
   const resultOf = worked ?? t;
   const hasResult = !!resultOf.resultSummary || (resultOf.artifactRefs ?? []).length > 0;
+
+  // 승인·수정 요청·중단 결정 이력의 정본.
+  //   부모(요청팀 추적 카드)에는 syncParentFromChild 가 **상태 전이마다 요약 1건**만 남긴다.
+  //   중간 승인·수정 요청처럼 부모 상태를 바꾸지 않는 결정은 부모에 아예 없다.
+  //   따라서 tracking 일 때 t.decisions 를 쓰면 실제 이력이 빠진다.
+  const decisions = resultOf.decisions;
+
+  // 요청팀 카드 **자신에게** 일어난 결정(자식에서 복제된 요약은 제외 — 중복 표시 금지).
+  const requesterDecisions = worked
+    ? t.decisions.filter((d) => d.stageLabel !== COLLAB_MIRROR_STAGE_LABEL)
+    : [];
 
   return (
     <div className="tdetail-overlay" onClick={onClose} role="presentation">
@@ -79,10 +91,15 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ flow, onClose 
           <div>
             <h3 className="tdetail-title">{t.title}</h3>
             <p className="tdetail-sub">
-              {userStatusLabel(t.status)}
-              {currentStageLabel(t) ? ` · 다음 확인: ${currentStageLabel(t)}` : ''}
+              {/* tracking 이면 두 카드의 상태가 다를 수 있다. 어느 쪽 상태인지 반드시 밝힌다. */}
+              {worked
+                ? `요청팀 카드: ${userStatusLabel(t.status)} · 수행팀(${teamName(worked.ownerTeamId)}): ${userStatusLabel(worked.status)}`
+                : userStatusLabel(t.status)}
+              {currentStageLabel(resultOf)
+                ? ` · 다음 확인: ${currentStageLabel(resultOf)}${worked ? '(수행팀 기준)' : ''}`
+                : ''}
               {isReviewOnly ? ' · 확인 요청' : ''}
-              {isTracking ? ' · 진행 상황 보기' : ''}
+              {isTracking && !worked ? ' · 진행 상황 보기' : ''}
             </p>
           </div>
           <button type="button" className="tdetail-close" onClick={onClose} aria-label="닫기">×</button>
@@ -141,10 +158,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ flow, onClose 
           </section>
 
           <section className="tdetail-section">
-            <h4 className="tdetail-section-title">승인 · 수정 요청 · 중단 이력</h4>
-            {t.decisions.length > 0 ? (
+            <h4 className="tdetail-section-title">
+              승인 · 수정 요청 · 중단 이력{worked ? ` (수행: ${teamName(worked.ownerTeamId)})` : ''}
+            </h4>
+            {decisions.length > 0 ? (
               <ul className="tdetail-history">
-                {t.decisions.map((d, i) => (
+                {decisions.map((d, i) => (
                   <li key={i}>
                     <span className="tdetail-hist-kind">{DECISION_LABEL[d.kind] ?? d.kind}</span>
                     <span className="tdetail-hist-who">{d.actorLabel} · {teamName(d.actorTeamId)}</span>
@@ -156,6 +175,23 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ flow, onClose 
               </ul>
             ) : (
               <p className="tdetail-empty">아직 결정 기록이 없습니다.</p>
+            )}
+
+            {requesterDecisions.length > 0 && (
+              <>
+                <h5 className="tdetail-sub-title">요청팀 추적 기록</h5>
+                <ul className="tdetail-history">
+                  {requesterDecisions.map((d, i) => (
+                    <li key={i}>
+                      <span className="tdetail-hist-kind">{DECISION_LABEL[d.kind] ?? d.kind}</span>
+                      <span className="tdetail-hist-who">{d.actorLabel} · {teamName(d.actorTeamId)}</span>
+                      <span className="tdetail-hist-at">{when(d.at)}</span>
+                      {d.stageLabel && <span className="tdetail-hist-stage">{d.stageLabel}</span>}
+                      {d.reason && <span className="tdetail-hist-reason">— {d.reason}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
 
             {(resultOf.stopRequests ?? []).length > 0 && (

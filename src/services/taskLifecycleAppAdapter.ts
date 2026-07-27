@@ -374,6 +374,13 @@ export function applyDecision(
  *   자식이 진행되면 부모도 진행 중, 자식이 반송·중단되면 부모도 같은 결말과 사유를 보여 준다.
  *   기록은 어느 쪽도 지우지 않는다.
  */
+/**
+ * 협업 부모(요청팀 추적 카드)에 복제되는 **요약 결정**의 단계 표식.
+ * 부모에는 자식의 전체 결정 이력이 아니라 상태 전이마다 요약 1건만 쌓인다.
+ * 화면이 "부모 자신의 결정"과 "자식에서 넘어온 요약"을 구분할 수 있도록 이 상수를 공유한다.
+ */
+export const COLLAB_MIRROR_STAGE_LABEL = '협업 회신';
+
 function syncParentFromChild(child: LifecycleTask, all: LifecycleTask[]): LifecycleTask | null {
   const parentId = child.ref.parentTaskId;
   if (!parentId) return null;
@@ -400,7 +407,7 @@ function syncParentFromChild(child: LifecycleTask, all: LifecycleTask[]): Lifecy
       actorTeamId: child.ownerTeamId,
       reason: last?.reason ? `수행팀 회신: ${last.reason}` : `수행팀 진행 상태: ${userStatusLabel(child.status)}`,
       at: last?.at ?? child.createdAt,
-      stageLabel: '협업 회신'
+      stageLabel: COLLAB_MIRROR_STAGE_LABEL
     }]
   };
 }
