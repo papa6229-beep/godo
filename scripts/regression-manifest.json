@@ -8,6 +8,7 @@
     "smoke-analytics-query-engine.mjs",
     "smoke-b-core-2-ab-data-world-parity-v0.mjs",
     "smoke-b-core-2a-inventory-risk-single-source-v0.mjs",
+    "smoke-b-use-3-hq-directive-flow-v0.mjs",
     "smoke-build-typecheck-api-green-v0.mjs",
     "smoke-build-typecheck-api-red-v0.mjs",
     "smoke-build-typecheck-api-red2-v0.mjs",
