@@ -127,6 +127,25 @@ B-core-2a 커밋 후 재검증: smoke **122/122**·build·`typecheck:api`·lint 
 증거·재현 명령·전체 차이표: `docs/governance/evidence/B-CORE-2_AB_PARITY_AUDIT.md`
 검사: `scripts/audit-b-core-2-ab-parity.mjs`(RED 재현, **exit 1** — 주문 축만 남음, 정식 manifest 밖) / `scripts/smoke-b-core-2-ab-data-world-parity-v0.mjs`(특성화 기준선, **37 pass**, manifest 등록)
 
+### B-core 독립 구현 묶음 — **구현 완료, Codex 검증 대기 (2026-07-27)**
+
+브랜치 `codex/b-core-independent-foundation` (`ca95a5e` 에서 분기). **Claude 는 완료·무회귀 판정을 하지 않았다.**
+
+| 경계 | 변경 | 보존 근거 |
+|---|---|---|
+| 주문 공통 입구 | `OrderIntermediate`·`StandardOrder` 에 중첩 `orderFacts` 추가(취소·라인·배송비·금액·결제근거). 취소·발송·배송완료·구매확정은 `deriveOrderState` **재사용** | 기존 평탄 필드 전부 유지. `orderFacts` 는 optional — 상류가 줄 때만 존재 |
+| 저장 경계 | `src/services/repositories/` 6 facade 신설. 화면의 저장소 직접 결합 **15지점 → 0건** | 저장키 6개·저장 형식·함수 동작 불변. facade 는 재수출만 함 |
+| actor/executor | `assignExecutor` 가 행위자를 수행자로 자동 덮어쓰던 것 교정. `ActorRef.identitySource` 로 로그인 미연결 명시 | 두 필드 모두 optional. 구버전 저장분 `undefined` 를 단정하지 않음 |
+| TeamId 정본 | `teamIdContract.ts` 신설. 3곳 중복 정의 통합. 마케팅 두 팀의 저장 의미·scope 비교 규칙 고정 | **소비자 저장 값 0건 변경** |
+
+**결제완료 정본은 고르지 않았다.** `paymentEvidence` 가 두 근거(`paymentDateValid`/`statusHintPaid`)와 `conflicted` 를 모두 보존한다.
+최상위 평탄 `paid`/`canceled` 를 두지 않은 이유: `isValidOrder` 폴백 순서상 `canceled` 만 정의되면 **전 주문이 무효**로 판정되어 "미확정"이 "전부 무효"라는 오답이 된다.
+
+audit `[주문]` RED **7축 → 4축**(사실 유실 해소). 남은 4축은 전부 결제 정본 미확정에서 파생된다 — C단계 선행.
+
+**Claude 가 수행한 최소 확인만**: `tsc -b` 0 · `typecheck:api` 0 · `eslint`(변경 영역) 0 · 인접 기존 스모크 8건 PASS · 작업 트리 clean · 비밀값 0.
+**수행하지 않음**: 전체 `npm test` · 전체 회귀 · Vercel/Preview/Production · 눈검증. → Codex 검증 범위.
+
 ## 5. 실행 방식
 
 - **사실상 수동 실행 기반**. `runScheduledAgentTask`(`src/services/agentTaskRunner.ts:169`)는 정의만 있고 **제품 코드 내 호출자 0건**

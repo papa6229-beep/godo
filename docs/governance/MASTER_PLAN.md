@@ -87,7 +87,8 @@
 ## 2. 현재 단계와 다음 한 작업
 
 > **현재 단계: B-core — 이후 변경에도 무너지지 않을 최소 경계 구축**
-> **다음 한 작업: B-core-2b — 주문 canonical snapshot provider 신설. 종료조건은 `node scripts/audit-b-core-2-ab-parity.mjs` 의 `[주문]` 그룹이 RED 0축이 되는 것(현재 7축). 결제완료 판정의 정본 선택은 고도몰 `orderStatus` 코드 의미 확정(C단계) 이전까지 유예하고, 두 값이 다르다는 사실은 기준선 검사가 붙잡아 둔다. 범위는 `evidence/B-CORE-2_AB_PARITY_AUDIT.md §8` 로 한정한다.**
+> **다음 한 작업: Codex 독립검증 — `codex/b-core-independent-foundation` 묶음(4경계) 검증 후 완료 판정.**
+> 그 뒤 후보: 결제완료 정본 선택은 **C단계(고도몰 `orderStatus` 공식 의미 확인) 선행**이므로, C단계 착수 또는 B-use-1(대표 경로 데이터 연결) 중 Codex가 선택한다.
 
 ---
 
@@ -185,7 +186,11 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 종료: 공통 입구가 하나이고, 오픈 범위 화면·보고서·AI가 그 입구를 통해 같은 사실을 본다.
 
-### B-core-3. 저장 경계 (DB 결정 불필요)
+### B-core-3. 저장 경계 (DB 결정 불필요) — **구현 완료, 검증 대기 (2026-07-27)**
+
+화면의 저장소 직접 결합 **15지점 → 0건**. `src/services/repositories/` 6개 facade 신설, 화면 10개 이관.
+저장키 6개·저장 형식·함수 동작 불변. DB·서버 어댑터는 만들지 않았다. `taskLifecycleStore` 는 이미 adapter 뒤라 대상 아님.
+
 
 - 공통 metadata + persistence port
 - **localStorage 어댑터로 실동작**할 것 — 이 단계에서 DB를 고르지 않는다
@@ -196,7 +201,13 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 종료: 화면이 스토어가 아니라 repository/facade만 import하고, 저장소 교체가 화면 코드를 건드리지 않는다.
 
-### B-core-4. actor / executor 분리
+### B-core-4. actor / executor 분리 — **구현 완료, 검증 대기 (2026-07-27)**
+
+`assignExecutor` 가 `kind:'human'` 일 때 행위자를 무조건 수행자로 덮어쓰던 것을 교정(명시 지정 우선, 비었을 때만 기본 제안값).
+`ExecutorHistoryEntry.assignedByActorDefault` 로 어느 쪽이었는지 이력 보존.
+`ActorRef.identitySource`(`session_login`/`demo_role`/`unlinked`)로 **실제 로그인 미연결 지점을 숨기지 않는다**.
+하드코딩 라벨(`'운영자'`)을 실제 계정으로 연결하는 것은 인증 브랜치 통합(B-use-4) 이후다.
+
 
 - 로그인 actor와 기존 수행자 분리 유지
 - 사람 하드코딩 라벨(`'운영자'`·`'최고관리자'`)을 실제 actor로 연결
@@ -205,7 +216,13 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 종료: 누가 시켰는지(actor)와 누가 했는지(executor)가 분리되어 기록된다.
 
-### B-core-5. TeamId 정본
+### B-core-5. TeamId 정본 — **계약 고정 완료, 값 이관 미착수 (2026-07-27)**
+
+`src/services/teamIdContract.ts` 신설. 3곳에 복사돼 있던 유니온을 정본으로 모았다(기존 import 경로·값 불변).
+`marketing_internal`/`marketing_external` 의 저장 의미를 `TEAM_ID_META` 로 고정하고, 비교 기준으로 `teamScopeOf`/`isSameTeamScope` 를 정의했다.
+`'marketing'`(구분 이전 저장분)은 어느 팀 업무였는지 알 수 없으므로 **자동 승격하지 않는다**.
+**소비자 저장 값은 하나도 바꾸지 않았다** — 승인 라우팅이 `actor.teamId === task.ownerTeamId` 로 판정하므로 값만 바꾸면 기존 업무의 승인이 막힌다(§14 후속 대장).
+
 
 - **TeamId 정본 한 곳** 확정
 - **`marketing_internal`·`marketing_external`의 저장 의미를 서버 기록 전에 고정**
@@ -373,6 +390,12 @@ B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch
 | GitHub Actions CI | REBUILD 논쟁 D5 | 미착수 |
 | 자동 E2E 프레임워크(Playwright 등) | 합의 §9 | 미착수 |
 | 보안 제품화·AI 키 정책 | 원장 §4 | 미착수 |
+| `marketing` → `marketing_internal`/`marketing_external` **저장 값 이관** (계약은 `teamIdContract` 에 고정됨) | B-core 묶음 2026-07-27 | 미착수 · Local migration |
+| 승인 라우팅 비교를 `isSameTeamScope` 로 교체 (마케팅 두 팀이 저장되기 시작하는 시점에 필요) | B-core 묶음 2026-07-27 | 미착수 |
+| `godomallMapper.mapGoodsToInventory`/`mapGoodsList` dead code (호출자 0건, `safetyStock` 기본값 `'5'` 생성) | B-core-2a | 미착수 |
+| `stockImpact` 가 합성 전용 — 실제 데이터 경로에 재고위험 입력 없음 | B-core-2a | 미착수 |
+| `OfficeView.tsx` 가 `fetchRevenue` 실패를 `.catch(()=>{})` 로 무시 — 실패와 '실제 0건'이 화면에서 구분 안 됨 | B-core-2 | 미착수 |
+| `CalendarPanel.tsx` 가 `activeOperationsData` prop 을 받고 본문에서 쓰지 않음 | B-core-2 | 미착수 |
 
 ## 15. 일정 원칙
 
