@@ -41,7 +41,11 @@ import { postTeamMessage } from './services/repositories/teamMessageRepository';
 import { logActivity } from './services/repositories/activityLedgerRepository';
 import { DEPT_TEAM_META } from './types/teamMessage';
 import type { DeptTeamId, TeamMessageAttachment } from './types/teamMessage';
-import type { ApprovalDecisionKind } from './services/taskLifecycleContract';
+import type { ApprovalDecisionKind, LifecycleTask } from './services/taskLifecycleContract';
+
+/** B-use-3: 화면 callback 이 돌려주는 **생성된 업무 식별자**. 활동 원장 연결에만 쓴다. */
+export interface CreatedTaskRef { taskId: string; correlationId: string }
+type LifecycleTaskRefLike = Pick<LifecycleTask, 'ref'>;
 import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
@@ -712,10 +716,25 @@ function App() {
   //   RC-2 D-1.2: 화면에서 AI 를 직접 골라 배정하지 않는다.
   const handleAddTask = (title: string, targetTeamId: string) => {
     const teamId = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
-    createDirectiveTask(
-      { title, targetTeamId: teamId, instructedBy: sessionActor() },
+    const actor = sessionActor();
+    const task = createDirectiveTask(
+      { title, targetTeamId: teamId, instructedBy: actor },
       { newId: newTaskId, nowIso: nowIso() }
     );
+    // B-use-3: 이 경로에는 원본 팀 메시지가 없다. **가짜 inputRefs 를 만들지 않는다.**
+    //   대신 활동 원장에 taskId·correlationId 를 남겨 업무를 역추적할 수 있게 한다.
+    logActivity({
+      teamId: actor.teamId,
+      // 기존 ActivityType 만 쓴다(새 종류를 만들지 않는다). 'note' 는 상태 집계를 왜곡하지 않는다.
+      type: 'note',
+      status: 'info',
+      title,
+      detail: `${roleMeta(teamId).label}에 업무 등록`,
+      actor,
+      relatedTeam: teamId as DeptTeamId,
+      taskId: task.ref.taskId,
+      correlationId: task.ref.correlationId
+    });
     refreshLifecycleState();
     addLog(`새 업무 "${title}"을 ${roleMeta(teamId).label}에게 전달했습니다. 수행 방식은 담당 팀장이 정합니다.`, 'info', 'SYSTEM');
   };
@@ -824,35 +843,52 @@ function App() {
    * 팀이 총괄에게 보낸 '확인 요청' — 총괄이 결정할 카드 1건을 만든다.
    *   총괄에게 일을 시키는 게 아니므로 수행자를 배정하지 않고 협업도 만들지 않는다.
    */
-  const handleHqReview = (message: TeamMessageLike) => {
+  const handleHqReview = (message: TeamMessageLike): CreatedTaskRef | null => {
     const r = createHqReviewRequest({ message, actor: sessionActor() }, { newId: newTaskId, nowIso: nowIso() });
     if (!r.ok) {
       // 메시지는 이미 전달됐다. 카드를 못 만든 사실을 숨기지 않고 그대로 알린다.
       addLog(`메시지는 전달했지만 총괄 확인 카드를 만들지 못했습니다 — ${r.reason}`, 'warning', 'SYSTEM');
-      return;
+      return null;
     }
     refreshLifecycleState();
     addLog(r.created
       ? '총괄에게 확인을 요청했습니다. 총괄이 확인 완료 · 수정 요청 · 이번에는 사용 안 함 중 하나를 정합니다.'
       : '이미 같은 내용으로 확인을 요청해 두었습니다.', 'info', 'SYSTEM');
+    // 같은 메시지를 다시 처리하면 기존 카드를 돌려준다(멱등). 그 식별자를 그대로 원장에 남긴다.
+    return { taskId: r.task.ref.taskId, correlationId: r.task.ref.correlationId };
   };
 
   /** 팀 간 협업 요청 — 요청팀 카드와 수행팀 카드를 함께 남긴다. */
-  const handleCollaborationRequest = (title: string, targetTeamId: string) => {
+  const handleCollaborationRequest = (
+    title: string,
+    targetTeamId: string,
+    /** B-use-3: 이미 저장된 원본 지원요청 메시지의 id. 새로 만들거나 재구성하지 않는다. */
+    sourceMessageId?: string
+  ): CreatedTaskRef | null => {
     const team = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
     // RC-2 D-1.3.2: 협업이 성립하지 않는 경우(총괄 발신·다른 팀 사칭·같은 팀)는 계약이 막는다.
     //   화면은 그 이유를 그대로 보여 주고 아무것도 만들지 않는다.
+    let created: { parent: LifecycleTaskRefLike; child: LifecycleTaskRefLike };
     try {
-      createCollaborationRequest(
-        { title, requestingTeamId: viewerRole, targetTeamId: team, instructedBy: sessionActor() },
+      created = createCollaborationRequest(
+        {
+          title,
+          requestingTeamId: viewerRole,
+          targetTeamId: team,
+          instructedBy: sessionActor(),
+          // 실제 수행 정본인 자식에만 싣는다(계약이 그렇게 처리한다).
+          ...(sourceMessageId ? { inputRefs: [messageRef(sourceMessageId)] } : {})
+        },
         { newId: newTaskId, nowIso: nowIso() }
       );
     } catch (e) {
       addLog(e instanceof Error ? e.message : '협업 요청을 만들 수 없습니다.', 'warning', 'SYSTEM');
-      return;
+      return null;
     }
     refreshLifecycleState();
     addLog(`${roleMeta(team).label}에게 협업을 요청했습니다. 요청팀·수행팀 카드가 함께 생성됩니다.`, 'info', 'SYSTEM');
+    // 원장에는 **실제 수행 정본인 자식**의 식별자를 남긴다(추적 부모가 아니라).
+    return { taskId: created.child.ref.taskId, correlationId: created.child.ref.correlationId };
   };
 
   // 상세 모달에서 개별 지시 내리기

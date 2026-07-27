@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /*
  * scripts/smoke-b-use-3-hq-directive-flow-v0.mjs
- * B-use-3 — HQ 지시 → 업무 카드 → 수행 → 확인 → 완료 (RED→GREEN)
+ * B-use-3 — 네 승인 의미의 실제 경로 마감 검사
+ *   A. HQ 지시 (hq_directive)  B. 팀 내부 (team_internal)
+ *   C. 팀 간 협업 (collaboration)  D. 팀→HQ 확인 요청 (escalation, review-only)
  *
  * 배경(실제 단절): 오늘의 운영 화면의 주 사용 경로는
  *   HqDirectiveComposer → OfficeView.sendDirective 다.
@@ -197,6 +199,143 @@ const DETAIL = readFileSync(path.join(REPO, 'src', 'components', 'TaskDetailModa
 ok('7-5. 업무 상세가 resultOf.inputRefs 를 읽는다', /resultOf\.inputRefs/.test(DETAIL));
 ok('7-6. 상세가 teammsg 참조를 사용자 문구로 표시', /teammsg:/.test(DETAIL) && /원본 팀 지시 연결됨/.test(DETAIL));
 ok('7-7. 상세가 저장소를 직접 읽지 않음(참조만 표시)', !/localStorage/.test(DETAIL));
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// B. 팀 내부 업무 — 원본 메시지가 없는 경로
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[B] 팀 내부 업무 (team_internal)');
+const beforeB = STORE.loadLifecycleTasks().length;
+const internal = A.createDirectiveTask(
+  { title: '상품 상세 오탈자 정리', targetTeamId: 'product', instructedBy: PRODUCT_LEAD },
+  ids
+);
+ok('B-1. 업무 1건만 생성', STORE.loadLifecycleTasks().length === beforeB + 1);
+ok('B-2. 승인 경로 = team_internal(팀장 확인 1단계)',
+  internal.approvalRoute.stages.length === 1 && internal.approvalRoute.stages[0].approverKind === 'owner_team_lead',
+  internal.approvalRoute.stages.map((x) => x.approverKind).join('->'));
+ok('B-3. 수행자 unassigned', internal.executorKind === 'unassigned' && !internal.executorId);
+ok('B-4. 가짜 원본 참조를 만들지 않음', (internal.inputRefs ?? []).length === 0, JSON.stringify(internal.inputRefs ?? []));
+
+LEDGER.logActivity({
+  teamId: 'product', type: 'note', status: 'info', title: internal.title,
+  detail: '상품관리팀에 업무 등록', actor: PRODUCT_LEAD, relatedTeam: 'product',
+  taskId: internal.ref.taskId, correlationId: internal.ref.correlationId
+});
+const bLedger = LEDGER.loadActivity().find((e) => e.taskId === internal.ref.taskId);
+ok('B-5. 활동 원장에서 taskId·correlationId 로 역추적', !!bLedger && bLedger.correlationId === internal.ref.correlationId);
+
+const iid = internal.ref.taskId;
+A.assignExecutor(iid, { kind: 'human', executorId: PRODUCT_LEAD.userId, actor: PRODUCT_LEAD }, ids);
+A.submitResult(iid, { resultSummary: '오탈자 12건 수정', actor: PRODUCT_LEAD }, ids);
+const rB = A.applyDecision(iid, { kind: 'approve', actor: PRODUCT_LEAD }, ids);
+const iStatus = () => STORE.loadLifecycleTasks().find((t) => t.ref.taskId === iid)?.status;
+ok('B-6. 수행->결과->팀장 확인으로 완료', rB?.ok === true && iStatus() === 'completed', iStatus());
+
+// ══════════════════════════════════════════════════════════════════════════
+// C. 팀 간 협업 요청
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[C] 팀 간 협업 (collaboration)');
+const CS_LEAD = { kind: 'human', teamId: 'cs', label: 'CS팀장', userId: 'u-cs', identitySource: 'demo_role' };
+const collabMsg = MSG.postTeamMessage({
+  from: PRODUCT_LEAD, toTeam: 'cs', kind: 'support', title: '반품 문의 응대 지원',
+  body: '', attachments: [ATTACHMENT]
+});
+ok('C-1. 지원요청 메시지 1건', MSG.loadTeamMessages().filter((m) => m.kind === 'support').length === 1);
+
+const beforeC = STORE.loadLifecycleTasks().length;
+const collab = A.createCollaborationRequest(
+  {
+    title: '반품 문의 응대 지원', requestingTeamId: 'product', targetTeamId: 'cs',
+    instructedBy: PRODUCT_LEAD, inputRefs: [A.messageRef(collabMsg.id)]
+  },
+  ids
+);
+ok('C-2. tracking 부모 1건 + 수행 자식 1건', STORE.loadLifecycleTasks().length === beforeC + 2);
+ok('C-3. 부모는 추적 전용', collab.parent.trackingOnly === true);
+ok('C-4. 자식이 실제 수행 정본(수행팀 소유)', collab.child.ownerTeamId === 'cs' && collab.child.requestingTeamId === 'product');
+ok('C-5. 자식에 원본 메시지 참조', (collab.child.inputRefs ?? []).includes(A.messageRef(collabMsg.id)), JSON.stringify(collab.child.inputRefs ?? []));
+const collabJson = JSON.stringify(collab);
+ok('C-6. 첨부 원문을 업무에 복제하지 않음', !collabJson.includes('dataUrl') && !collabJson.includes('TEST-ATTACHMENT-BODY'));
+ok('C-7. 첨부는 메시지에만 보존',
+  (MSG.loadTeamMessages().find((m) => m.id === collabMsg.id)?.attachments ?? []).length === 1);
+ok('C-8. 승인 경로 = 수행 팀장 확인 -> 요청팀 확인',
+  collab.child.approvalRoute.stages.length === 2 &&
+  collab.child.approvalRoute.stages[0].approverKind === 'owner_team_lead' &&
+  collab.child.approvalRoute.stages[1].approverKind === 'requesting_team',
+  collab.child.approvalRoute.stages.map((x) => x.approverKind).join('->'));
+
+// 같은 협업이 팀마다 카드 두 장이 아니라 한 흐름으로 보이는가
+const corr = collab.child.ref.correlationId;
+const csFlows = A.taskFlowsFor(CS_LEAD).filter((f) => f.task.ref.correlationId === corr);
+const prodFlows = A.taskFlowsFor(PRODUCT_LEAD).filter((f) => f.task.ref.correlationId === corr);
+const hqFlows = A.taskFlowsFor(HQ).filter((f) => f.task.ref.correlationId === corr);
+ok('C-9. 수행팀에서 1흐름', csFlows.length === 1, String(csFlows.length));
+ok('C-10. 요청팀에서 1흐름(추적)', prodFlows.length === 1 && !!prodFlows[0].tracking, String(prodFlows.length));
+ok('C-11. 총괄에서 1흐름', hqFlows.length === 1, String(hqFlows.length));
+ok('C-12. 요청팀 상세도 resultOf 규칙으로 같은 원본을 본다',
+  ((prodFlows[0]?.tracking ?? prodFlows[0]?.task)?.inputRefs ?? []).includes(A.messageRef(collabMsg.id)));
+
+LEDGER.logActivity({
+  teamId: 'product', type: 'message_sent', status: 'info', title: '반품 문의 응대 지원',
+  detail: 'CS팀에 지원요청', actor: PRODUCT_LEAD, relatedTeam: 'cs',
+  refId: collabMsg.id, taskId: collab.child.ref.taskId, correlationId: collab.child.ref.correlationId
+});
+const cLedger = LEDGER.loadActivity().filter((e) => e.refId === collabMsg.id);
+ok('C-13. 원장 1건에 메시지·실제 수행 업무가 함께', cLedger.length === 1 && cLedger[0].taskId === collab.child.ref.taskId);
+
+const cid = collab.child.ref.taskId;
+A.assignExecutor(cid, { kind: 'human', executorId: CS_LEAD.userId, actor: CS_LEAD }, ids);
+A.submitResult(cid, { resultSummary: '반품 응대 지원 완료', actor: CS_LEAD }, ids);
+const cStatus = () => STORE.loadLifecycleTasks().find((t) => t.ref.taskId === cid)?.status;
+ok('C-14. 수행팀 확인만으로는 미완료',
+  A.applyDecision(cid, { kind: 'approve', actor: CS_LEAD }, ids)?.ok === true && cStatus() !== 'completed', cStatus());
+ok('C-15. 요청팀 확인으로 완료',
+  A.applyDecision(cid, { kind: 'approve', actor: PRODUCT_LEAD }, ids)?.ok === true && cStatus() === 'completed', cStatus());
+
+// ══════════════════════════════════════════════════════════════════════════
+// D. 팀 -> HQ 확인 요청
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[D] 팀 -> HQ 확인 요청 (review-only)');
+const reviewMsg = MSG.postTeamMessage({
+  from: PRODUCT_LEAD, toTeam: 'hq', kind: 'confirm', title: '가격 인하안 확인',
+  body: '베스트셀러 3종 10% 인하', attachments: [ATTACHMENT]
+});
+ok('D-1. 확인요청 메시지 1건', MSG.loadTeamMessages().filter((m) => m.kind === 'confirm').length === 1);
+
+const beforeD = STORE.loadLifecycleTasks().length;
+const rev1 = A.createHqReviewRequest({ message: reviewMsg, actor: PRODUCT_LEAD }, ids);
+ok('D-2. review-only 카드 1건', rev1.ok === true && STORE.loadLifecycleTasks().length === beforeD + 1);
+ok('D-3. reviewOnly 표식', rev1.task?.reviewOnly === true);
+ok('D-4. 원본 메시지 참조', (rev1.task?.inputRefs ?? []).includes(A.messageRef(reviewMsg.id)));
+ok('D-5. 수행자 없음', rev1.task?.executorKind === 'unassigned' && !rev1.task?.executorId);
+ok('D-6. 첨부 원문을 업무에 복제하지 않음',
+  !JSON.stringify(rev1.task ?? {}).includes('dataUrl') && !JSON.stringify(rev1.task ?? {}).includes('TEST-ATTACHMENT-BODY'));
+ok('D-7. HQ 결정 경로(escalation)',
+  rev1.task?.approvalRoute?.stages?.length === 1 && rev1.task.approvalRoute.stages[0].approverKind === 'hq',
+  (rev1.task?.approvalRoute?.stages ?? []).map((x) => x.approverKind).join('->'));
+
+const rid = rev1.task.ref.taskId;
+ok('D-8. 수행자 선택 불가', A.assignExecutor(rid, { kind: 'human', actor: PRODUCT_LEAD }, ids)?.ok === false);
+const revDecisions = A.availableDecisions(rev1.task, HQ).map((d) => d.kind);
+ok('D-9. HQ 는 확인완료·수정요청·미채택만 가능(중단 없음)',
+  revDecisions.includes('approve') && !revDecisions.includes('stop'), revDecisions.join(','));
+
+LEDGER.logActivity({
+  teamId: 'product', type: 'message_sent', status: 'info', title: '가격 인하안 확인',
+  detail: '총괄에 확인요청', actor: PRODUCT_LEAD, relatedTeam: 'hq',
+  refId: reviewMsg.id, taskId: rev1.task.ref.taskId, correlationId: rev1.task.ref.correlationId
+});
+const dLedger = LEDGER.loadActivity().filter((e) => e.refId === reviewMsg.id);
+ok('D-10. 원장 1건에 메시지·확인 카드가 함께', dLedger.length === 1 && dLedger[0].taskId === rev1.task.ref.taskId);
+
+const beforeIdem = STORE.loadLifecycleTasks().length;
+const rev2 = A.createHqReviewRequest({ message: reviewMsg, actor: PRODUCT_LEAD }, ids);
+ok('D-11. 같은 메시지 재처리 시 업무 미증가', STORE.loadLifecycleTasks().length === beforeIdem);
+ok('D-12. 기존 카드를 그대로 돌려줌', rev2.ok === true && rev2.created === false && rev2.task?.ref.taskId === rid);
+
+const dStatus = () => STORE.loadLifecycleTasks().find((t) => t.ref.taskId === rid)?.status;
+ok('D-13. HQ 결정으로 종료', A.applyDecision(rid, { kind: 'approve', actor: HQ }, ids)?.ok === true && dStatus() === 'completed', dStatus());
 
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n=== 결과: ${pass} pass / ${fail} fail ===`);

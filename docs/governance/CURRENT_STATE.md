@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-27 (B-use-3 HQ 지시 흐름 연결)
+최종 갱신: 2026-07-27 (B-use-3 잔여 3경로 마감)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -12,23 +12,23 @@
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| local main | `7ba257e0ecfdf01a1131d67f3c13c4fda113a437` (B-use-2 까지 fast-forward 통합) | `git rev-parse main` |
+| local main | `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864` (B-use-3 HQ 지시 흐름까지 fast-forward 통합) | `git rev-parse main` |
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
-| 현재 작업 브랜치 | `codex/b-use-3-hq-directive-flow` (`7ba257e`에서 분기, **main 미통합**) | `git rev-parse --abbrev-ref HEAD` |
+| 현재 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) | `git rev-parse --abbrev-ref HEAD` |
 | 실행 환경 | **Vercel이 유일한 실행 환경** — 개발·검증·Production 모두 담당. 최종 배포 형태는 H단계 미결 | Vercel 대시보드 관측 |
 
-## 2. 검사·빌드 (B-use-3 브랜치 기준)
+## 2. 검사·빌드 (B-use-3 잔여 경로 마감 브랜치 기준)
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| smoke 파일 수 | **122개** (B-core-2 parity 기준선 + B-core-2a 재고 단일화. 인증 브랜치에 3개 추가분 있음) | `ls scripts/smoke-*.mjs \| wc -l` |
-| manifest include | **122** / exclude **0** | `node scripts/run-regression.mjs --discover` |
+| smoke 파일 수 | **123개** (인증 브랜치에 3개 추가분 있음) | `ls scripts/smoke-*.mjs \| wc -l` |
+| manifest include | **123** / exclude **0** | `node scripts/run-regression.mjs --discover` |
 | lint | **0 errors** (`scripts/flowRouteSmoke.ts:49` 수정 후) | `npx eslint .` |
 | build | 통과 (`tsc -b` + `typecheck:api` + `vite build`) | `npm run build` |
 | `npm test` 실제 소요 | **약 130초** (smoke 113.5s + build + lint), exit 0 | `npm test` 실행 |
 
-B-core-2a 커밋 후 재검증: smoke **122/122**·build·`typecheck:api`·lint 통과, exit 0. 원격 push·Production 배포는 하지 않았다.
+직전 전체 게이트(Codex 실행, `9e38197`): smoke **123/123**·build·`typecheck:api`·lint 통과. 원격 push·Production 배포는 하지 않았다.
 
 주의: 과거 과제의 스모크 8건이 `git status --porcelain`으로 **미커밋 작업 트리**를 검사한다. 제품 파일을 고친 뒤 커밋 전에 `npm test`를 돌리면 그 8건이 실패한다(결함 아님, 커밋 후 통과).
 
@@ -190,6 +190,25 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 
 검사: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` RED 26 pass/6 fail → **GREEN 32/32** (manifest include 123).
 **Claude 최소 확인만**: tsc·lint·diff --check·비밀값·지정 스모크 4건. 전체 `npm test`·화면 눈검증은 B-use 묶음 인수검사에서 Codex 수행.
+
+### B-use-3 네 승인 의미의 실제 마운트 경로 — **구현 완료, Codex 검증 대기 (2026-07-27)**
+
+| 승인 의미 | 실제 마운트 경로 | 연결 결과 |
+|---|---|---|
+| HQ 지시 (`hq_directive`) | 오늘의 운영 → `HqDirectiveComposer` → `App.handleSendDirective` | 메시지 1 + 업무 1 + 원장 1. 업무에 `messageRef` |
+| 팀 내부 (`team_internal`) | 총괄 콘솔 빠른 업무 추가 → `App.handleAddTask` | 업무 1 + **원장 1 신규**(`taskId`·`correlationId`). 원본 메시지가 없으므로 `inputRefs` 를 만들지 않는다 |
+| 팀 간 협업 (`collaboration`) | 부서 업무 관장 → `TeamMessagePanel` 지원요청 → `App.handleCollaborationRequest` | 추적 부모 1 + 수행 자식 1. **자식에만** `messageRef`. 원장 1건에 자식 `taskId`·`correlationId` |
+| 팀→HQ 확인 (`escalation`) | 부서 업무 관장 → `TeamMessagePanel` 확인요청 → `App.handleHqReview` | review-only 카드 1(멱등). 원장 1건에 카드 `taskId`·`correlationId` |
+
+- 원본 메시지 본문·첨부(`dataUrl`)는 **메시지 저장소에만** 있다. 업무에는 참조만 남는다.
+- 협업 요청팀 상세는 `resultOf`(= 수행 자식) 규칙으로 같은 원본 연결을 본다 — 두 카드에 중복 저장하지 않는다.
+- 같은 사용자 행동으로 활동 원장 이벤트를 중복 생성하지 않는다(경로별 1건).
+- 승인 경로·권한 규칙·업무 생명주기는 **기존 계약 그대로**다(`routeFor`·`routeTeamMessage`·`APPROVAL_ROUTES`).
+
+**확인 범위**: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` **71 pass / 0 fail**(네 경로) · 인접 lifecycle 스모크 5건 · `tsc -b` · `typecheck:api` · 변경 파일 lint · `git diff --check` · 비밀값 0.
+**미수행**: 전체 `npm test` · 브라우저 화면 눈검증 · Vercel/Preview/Production. → B-use-3 묶음 종료 후 Codex 가 한 번 수행.
+
+**남은 한계(숨기지 않음)**: 메시지 저장 후 업무 생성이 실패할 수 있다. 이번에 롤백 계층을 만들지 않았고, 실패는 기존 사용자 로그로 드러난다. 저장 실패·트랜잭션은 서버 기록 작업에서 다룬다.
 
 ## 5. 실행 방식
 

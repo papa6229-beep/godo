@@ -178,9 +178,14 @@ export interface DepartmentWorkspaceLifecycle {
   /** 총괄·요청자가 담당 팀장에게 중단을 요청한다(실제 중단은 팀장이 한다). */
   onRequestStop: (taskId: string, reason: string) => void;
   /** 팀 간 '지원 요청'을 보낼 때 요청팀 부모 + 수행팀 자식 업무로도 남긴다. */
-  onCollaborate: (title: string, targetTeamId: string) => void;
+  /**
+   * B-use-3: 협업 요청. 이미 저장된 원본 지원요청 메시지 id 를 함께 넘기면
+   * 실제 수행 자식 업무에 원본 참조가 남는다. 생성된 업무 식별자를 돌려준다(원장 연결용).
+   */
+  onCollaborate: (title: string, targetTeamId: string, sourceMessageId?: string) => { taskId: string; correlationId: string } | null;
   /** 총괄에게 보낸 '확인 요청' 을 총괄이 결정할 카드 1건으로 남긴다. */
-  onHqReview: (message: TeamMessage) => void;
+  /** B-use-3: 총괄 확인요청. 만들어진(또는 기존 멱등) 확인 카드 식별자를 돌려준다. */
+  onHqReview: (message: TeamMessage) => { taskId: string; correlationId: string } | null;
 }
 
 export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspaceLifecycle }> = ({ lifecycle }) => {
@@ -222,13 +227,23 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
     //   총괄에게 확인요청 → 총괄이 결정할 카드 1건(총괄은 수행팀이 아니다)
     //   그 밖에는 메시지만 남는다.
     const route = routeTeamMessage({ from: { teamId: input.from.teamId }, toTeam: input.toTeam, kind: input.kind });
+    // B-use-3: 만들어진 업무의 식별자를 받아 **같은 원장 기록 한 건**에 함께 남긴다.
+    //   이벤트를 하나 더 만들지 않는다(같은 사용자 행동 = 원장 1건).
+    let createdTask: { taskId: string; correlationId: string } | null = null;
     if (route.createsCollaboration) {
-      lifecycle?.onCollaborate(input.title || '협업 요청', input.toTeam);
+      // 이미 저장된 posted.id 를 그대로 넘긴다 — 메시지를 새로 만들거나 id 를 재구성하지 않는다.
+      createdTask = lifecycle?.onCollaborate(input.title || '협업 요청', input.toTeam, posted.id) ?? null;
     } else if (route.createsHqReview) {
-      lifecycle?.onHqReview(posted);
+      createdTask = lifecycle?.onHqReview(posted) ?? null;
     }
-    // 활동 원장: 팀 간 전달 기록.
-    logActivity({ teamId: input.from.teamId, type: 'message_sent', status: 'info', title: input.title || '팀 간 요청', detail: `${DEPT_TEAM_META[input.toTeam].name}에 ${TEAM_MESSAGE_KIND_META[input.kind].label}`, actor: input.from, relatedTeam: input.toTeam, refId: posted.id });
+    // 활동 원장: 팀 간 전달 기록 + (있으면) 실제 만들어진 업무 연결.
+    logActivity({
+      teamId: input.from.teamId, type: 'message_sent', status: 'info',
+      title: input.title || '팀 간 요청',
+      detail: `${DEPT_TEAM_META[input.toTeam].name}에 ${TEAM_MESSAGE_KIND_META[input.kind].label}`,
+      actor: input.from, relatedTeam: input.toTeam, refId: posted.id,
+      ...(createdTask ? { taskId: createdTask.taskId, correlationId: createdTask.correlationId } : {})
+    });
     refreshTeamMessages();
   };
   const handleResolveTeamMessage = (id: string, status: TeamMessageStatus) => {

@@ -942,7 +942,19 @@ export class CollaborationRequestError extends Error {
 }
 
 export function createCollaborationRequest(
-  input: { title: string; requestingTeamId: ActorRef['teamId']; targetTeamId: ActorRef['teamId']; instructedBy: ActorRef },
+  input: {
+    title: string;
+    requestingTeamId: ActorRef['teamId'];
+    targetTeamId: ActorRef['teamId'];
+    instructedBy: ActorRef;
+    /**
+     * B-use-3: 이 협업을 만든 **원본 자료 참조**(`messageRef(id)` 형식).
+     * **실제 수행 정본인 자식 업무에만** 싣는다 — 요청팀 추적 카드는 `resultOf`(= 자식) 규칙으로
+     * 같은 연결을 보므로 두 카드에 중복 저장하지 않는다.
+     * 원문·첨부는 여기에 복제하지 않는다(정본은 원본 메시지 한 곳).
+     */
+    inputRefs?: string[];
+  },
   ids: IdContext
 ): { parent: LifecycleTask; child: LifecycleTask } {
   // RC-2 D-1.3.2: 협업은 **인간 팀장이 자기 팀 명의로 다른 팀에** 요청하는 것이다.
@@ -980,7 +992,8 @@ export function createCollaborationRequest(
     executorKind: 'unassigned',
     status: 'open',
     createdBy: input.instructedBy,
-    requestingTeamId: input.requestingTeamId
+    requestingTeamId: input.requestingTeamId,
+    ...(input.inputRefs && input.inputRefs.length > 0 ? { inputRefs: input.inputRefs } : {})
   }, ids);
   saveLifecycleTasks([parent, child]);
   return { parent, child };

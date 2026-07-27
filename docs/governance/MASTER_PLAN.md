@@ -89,8 +89,8 @@
 > **현재 단계: 전체 4단계 — B-use(실제 화면과 업무 흐름 연결)**
 > **B-core(전체 3단계)는 완료.** 주문 원본 사실(`orderFacts`) · 재고위험 단일화 · 저장 경계(repository/facade) · actor/executor 분리 · TeamId 정본이 섰다.
 > **결제완료 공식 정본은 전체 5단계(C — 새 고도몰 READ·상태코드 확인)로 명시적 이관한다.** 그전까지 두 규칙의 결과와 `conflicted` 를 함께 보존하며 한쪽을 정본으로 삼지 않는다.
-> **다음 한 작업: B-use-3 인계분(`codex/b-use-3-hq-directive-flow`) Codex 독립검증.**
-> 그 뒤: B-use 묶음 인수검사(전체 `npm test` + 화면 눈검증)를 Codex 가 한 번 수행한다.
+> **다음 한 작업: B-use-3 잔여 경로 마감 인계분(`codex/b-use-3-remaining-route-closure`) Codex 독립검증.**
+> B-use-3 은 네 승인 의미의 화면 연결이 끝났다. 다만 **B-use-2 서버 기록**과 **B-use-4 인증 브랜치 판단**이 남아 있으므로 B-use 전체 인수검사로 넘어가지 않는다.
 
 ---
 
@@ -148,7 +148,7 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 ### B-core-1. 회귀 게이트 — **완료 (A2)**
 
-`npm test` = smoke(manifest **122**) + build(`tsc -b` + `typecheck:api` + `vite build`) + lint. exit 0.
+`npm test` = smoke(manifest **123**) + build(`tsc -b` + `typecheck:api` + `vite build`) + lint. exit 0.
 
 ### B-core-2. 공통 데이터 입구
 
@@ -277,7 +277,17 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 검증: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` RED 6 fail → **GREEN 32/32**.
 지시→수행자 선택→결과 제출→담당 팀장 확인→HQ 최종 확인→완료→지난 업무 상세 열람까지 한 시나리오로 확인.
 
-### B-use-3(잔여). 실제 진입·승인 흐름
+### B-use-3(잔여 3경로 마감) — **구현 완료, 검증 대기 (2026-07-27)**
+
+팀 내부(`team_internal`) · 팀 간 협업(`collaboration`) · 팀→HQ 확인(`escalation`) 세 경로를 실제 마운트 화면 기준으로 닫았다.
+- 팀 내부: `handleAddTask` 가 활동 원장에 `taskId`·`correlationId` 를 남긴다. 원본 메시지가 없으므로 가짜 `inputRefs` 를 만들지 않는다.
+- 협업: 이미 저장된 지원요청 메시지 id 를 화면이 그대로 넘겨 **수행 자식**에 `messageRef` 를 싣는다. 원장 1건에 자식 식별자를 함께 남긴다.
+- HQ 확인: 기존 멱등·review-only 의미를 그대로 두고 원장 1건에 카드 식별자를 연결한다.
+검증: `smoke-b-use-3-hq-directive-flow-v0.mjs` **71/71**(네 경로 통합) · 인접 lifecycle 5건.
+
+**B-use-3 완료로 표시하지 않는다** — 화면 눈검증과 전체 게이트가 남았고, B-use-2 서버 기록·B-use-4 인증 판단이 미착수다.
+
+### B-use-3(원문). 실제 진입·승인 흐름
 
 업무 카드→결과 상세 진입 · 협업 부모 tracking/수행팀 자식 · 원본 메시지 역참조 · 승인 경로 4종 · 팀 내부·HQ 지시·HQ 확인·CS 검토 의미 · 활동 원장 사후 열람
 
