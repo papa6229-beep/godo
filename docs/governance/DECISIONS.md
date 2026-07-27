@@ -133,3 +133,21 @@ B-core에서 **localStorage 어댑터로 실동작**하는 저장 경계를 만�
 - 오픈 최소 구성 8항목이 어느 단계에서 충족되는지 `MASTER_PLAN.md §1` 매핑표에 명시. **B 완료와 오픈 최소 구성 완료를 같은 뜻으로 쓰지 않는다.** 미룬 항목은 완료로 덮지 않고 후속으로 재분류한다.
 
 **변경 범위**: governance 문서 + `AGENTS.md`·`CLAUDE.md` 문구. 제품 코드·검사 로직·manifest·환경변수·배포는 변경하지 않았다.
+
+---
+
+## D-007 · 2026-07-27 · A2 local main 통합과 B-core 전환
+
+**결정자**: 사용자 운영 위임에 따른 Codex·Claude 판단
+
+**결정 내용**
+
+- A2 커밋 `50b0831`·`22f86b5`를 이력 보존을 위해 squash하지 않고 local main에 fast-forward 통합
+- 통합 후 `npm test` 전체 게이트 재검증
+- A2를 완료로 닫고 현재 단계를 B-core로 전환
+- 다음 한 작업은 B-core-2의 선행 관측 B1-0(Preview 상품 13건의 실제 출처 확정)
+- 원격 push·Production 배포·A2 브랜치 삭제는 하지 않음
+
+**이유**: 사용자는 가역적인 작업 기획·코딩·검증·수정·local 통합을 두 AI가 일상적으로 판단해 진행하도록 위임했다. 사용자 확인은 기존 기능·의도와 충돌 가능성이 있거나, 더 나은 방향 제안이 필요하거나, 회사 정책·비용·외부 WRITE·데이터 삭제·Production처럼 중요한 결정이 필요한 경우에 한정한다.
+
+**검증**: local main `22f86b5` 통합 직후 `npm test`에서 smoke 120/120·build·`typecheck:api`·lint 통과, 작업 트리 clean.

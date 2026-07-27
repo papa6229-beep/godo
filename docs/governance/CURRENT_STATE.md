@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-27 (A2 착수 시점)
+최종 갱신: 2026-07-27 (A2 local main 통합 완료)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -12,7 +12,8 @@
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| main = origin/main = Production | `5190f685ebfc0b7bb686817fa9d37216797171e1` | `git rev-parse main origin/main` |
+| local main의 A2 통합 기준 | `22f86b5be331990010ae424a1219df3911cc6905` (A2 커밋 2개 fast-forward 통합) | `git rev-parse main` |
+| origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 2커밋 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
 | A2 작업 브랜치 | `codex/a2-governance-wiring` (`5190f685`에서 분기) | `git rev-parse --abbrev-ref HEAD` |
 | 실행 환경 | **Vercel이 유일한 실행 환경** — 개발·검증·Production 모두 담당. 최종 배포 형태는 H단계 미결 | Vercel 대시보드 관측 |
@@ -26,6 +27,8 @@
 | lint | **0 errors** (`scripts/flowRouteSmoke.ts:49` 수정 후) | `npx eslint .` |
 | build | 통과 (`tsc -b` + `typecheck:api` + `vite build`) | `npm run build` |
 | `npm test` 실제 소요 | **130초** (smoke 111.5s + build + lint), exit 0 | `npm test` 1회 실행 |
+
+A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·lint 통과, exit 0. 원격 push·Production 배포는 하지 않았다.
 
 ## 3. 고도몰 연결
 
