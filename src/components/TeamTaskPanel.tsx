@@ -5,6 +5,7 @@ import { availableDecisions, executorDisplayName, executorDisplayLabel, pendingS
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
+import { TaskDetailModal } from './TaskDetailModal';
 
 // ────────────────────────────────────────────────────────────────────────────
 // RC-2 D-1.3 — 팀장 업무 패널
@@ -64,6 +65,8 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
   const [reasonText, setReasonText] = useState('');
   const [stopReqFor, setStopReqFor] = useState<string | null>(null);
   const [stopReqText, setStopReqText] = useState('');
+  // B-use-2: 업무 상세 진입. 이 패널 안에서만 열고 닫으므로 상위 화면 상태는 그대로 남는다.
+  const [detailFor, setDetailFor] = useState<string | null>(null);
 
   // 이 팀의 흐름만. (열람 범위는 App 이 이미 걸렀고, 여기서는 보고 있는 팀으로 한 번 더 좁힌다.)
   const teamFlows = flows.filter(
@@ -71,6 +74,14 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
   );
   const isOwningLead = actor.kind === 'human' && actor.teamId === teamId;
   const teamAgents = agentsOfTeam(teamId);
+  // 위 세 구간(할 일·진행 중·결과 도착)에 속하지 않는 = 끝난 업무.
+  const doneFlows = teamFlows.filter(
+    (f) => !['open', 'in_progress', 'awaiting_approval'].includes(f.task.status)
+  );
+  // 상세는 **선택한 업무의 흐름 그대로** 넘긴다(추적 카드와 실제 수행 업무를 섞지 않는다).
+  const detailFlow = detailFor
+    ? teamFlows.find((f) => f.task.ref.taskId === detailFor) ?? null
+    : null;
 
   const submitReport = (taskId: string) => {
     const text = reportText.trim();
@@ -114,6 +125,16 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
         <div className="ttask-head">
           <span className="ttask-title">{t.title}</span>
           <span className="ttask-status">{userStatusLabel(t.status)}</span>
+          {/* B-use-2: 상세 진입. 카드 전체를 클릭 대상으로 만들면 기존 승인·제출 버튼 클릭을
+              삼키므로, 명시적 버튼 하나만 둔다(기존 동작 보존). */}
+          <button
+            type="button"
+            className="ttask-detail-btn"
+            onClick={() => setDetailFor(t.ref.taskId)}
+            aria-label={`${t.title} 상세 보기`}
+          >
+            상세
+          </button>
         </div>
         <div className="ttask-meta">
           <span>지시: {t.createdBy.label}</span>
@@ -333,6 +354,32 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
       {teamFlows.filter((f) => ['open', 'in_progress', 'awaiting_approval'].includes(f.task.status)).length === 0 && (
         <p className="ttask-empty">지금 처리할 업무가 없습니다.</p>
       )}
+
+      {/* B-use-2: 끝난 업무는 위 세 구간에서 사라진다. 승인·수정 요청·중단 이력에
+          실제로 도달할 수 있어야 하므로 접힘 목록으로 진입점을 남긴다(기본은 접힘). */}
+      {doneFlows.length > 0 && (
+        <details className="ttask-done">
+          <summary>지난 업무 {doneFlows.length}건 — 승인·수정 요청·중단 이력 보기</summary>
+          <ul className="ttask-done-list">
+            {doneFlows.map((f) => (
+              <li key={f.task.ref.taskId} className="ttask-done-item">
+                <span className="ttask-done-title">{f.task.title}</span>
+                <span className="ttask-done-status">{userStatusLabel(f.task.status)}</span>
+                <button
+                  type="button"
+                  className="ttask-detail-btn"
+                  onClick={() => setDetailFor(f.task.ref.taskId)}
+                  aria-label={`${f.task.title} 상세 보기`}
+                >
+                  상세
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {detailFlow && <TaskDetailModal flow={detailFlow} onClose={() => setDetailFor(null)} />}
     </div>
   );
 };

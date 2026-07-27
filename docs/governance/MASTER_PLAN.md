@@ -90,7 +90,7 @@
 > **현재 단계: 전체 4단계 — B-use(실제 화면과 업무 흐름 연결)**
 > **B-core(전체 3단계)는 완료.** 주문 원본 사실(`orderFacts`) · 재고위험 단일화 · 저장 경계(repository/facade) · actor/executor 분리 · TeamId 정본이 섰다.
 > **결제완료 공식 정본은 전체 5단계(C — 새 고도몰 READ·상태코드 확인)로 명시적 이관한다.** 그전까지 두 규칙의 결과와 `conflicted` 를 함께 보존하며 한쪽을 정본으로 삼지 않는다.
-> **다음 한 작업: B-use-1 인계분(`codex/b-use-1-representative-data-path`) Codex 독립검증.**
+> **다음 한 작업: B-use-2 인계분(`codex/b-use-2-task-result-entry`) Codex 독립검증.**
 
 ---
 
@@ -237,7 +237,7 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 ## 5-2. B-use — 실제 사용 가능하게 만들기
 
-### B-use-1. 대표 경로 데이터 연결 — **1경로 구현 완료, 검증 대기 (2026-07-27)**
+### B-use-1. 대표 경로 데이터 연결 — **완료 · Codex 검증 통과 (2026-07-27)**
 
 공통 화면(통계·재고·운영)과 오픈 대표 경로가 B-core의 입구를 실제로 소비한다.
 
@@ -256,6 +256,13 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 **DB 결정 입력(B-use-2 착수 전 준비)**: 실제 운영량이 없으므로 `직원 수 × 일 업무 건수 × 보존 기간`의 **보수적 상한 가정** · 동시사용·백업·복구 조건 · DB 후보 2~3개 공식 가격·운영 난이도 · **상한 가정이 틀렸을 때 옮기는 비용** · 쉬운 비교표와 추천안 → 사용자 명시적 결정
 
 **시험자료 처리(미결정)**: ① JSON 백업 파일 생성 ② 사용자에게 실물 전달 ③ 보존할 자료 명시 확인 ④ **선택 import 또는 새 운영 시작을 그때 결정** ⑤ **확인 전 localStorage 삭제 금지**
+
+### B-use-2. 업무 카드 → 결과 상세 진입 — **구현 완료, 검증 대기 (2026-07-27)**
+
+실제 마운트 경로: 부서 업무 관장 탭(`MainLayout:402`) → `DepartmentWorkspacePanel:742 <TeamTaskPanel>` → 카드 `상세` 버튼 → `TaskDetailModal`.
+표시값은 저장된 `LifecycleTask` 정본에서만 읽는다(지시자·담당팀·요청팀·실제 수행자·상태·결과·첨부·결정 이력·수행자 변경 이력).
+끝난 업무는 세 구간에서 사라지므로 `지난 업무` 접힘 목록으로 승인·수정 요청·중단 이력 진입점을 남겼다.
+`TaskResultModal`(`App.tsx:1107`)은 재사용하지 않았다 — 화면용 파생 타입(`OperationTask`)만 받고 재고·매출·배송 상세가 하드코딩 데모 문구라 정본을 표시할 수 없다(§14 후속).
 
 ### B-use-3. 실제 진입·승인 흐름
 
@@ -391,6 +398,8 @@ B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch
 |---|---|---|
 | `syntheticCommerceFacts` 계약 우회 3건 (제품 import 0) | REBUILD 논쟁 D2 | 미착수 |
 | `TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리 | 감사 2026-07-27 | 미착수 |
+| `TaskResultModal` 하드코딩 데모 문구(재고 2개·매출 894,000원·송장 박*호 등)가 task 와 무관하게 표시됨. 현재 도달 경로 없음 | B-use-2 | 미착수 |
+| `OfficeView`→`MainLayout`→`App` 의 `onSelectTask` 배선이 `TaskBoard` 미렌더로 끊겨 있음 | B-use-2 | 미착수 |
 | `analyticsQueryEngine:574` 클레임 필터 계약화 | REBUILD 논쟁 D2 | 미착수 |
 | 채팅 원문·마케팅 분석 힌트·API Bridge 로그 서버 이관 | REBUILD 논쟁 D3 | 미착수 |
 | A 세계(`activeOperationsData`) 재설계 | REBUILD 논쟁 D1 | 미착수 |
