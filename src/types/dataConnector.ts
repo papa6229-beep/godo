@@ -75,7 +75,14 @@ export interface StandardInventoryItem {
   optionName: string;
   stock: number;
   safetyStock: number;
-  status: 'ok' | 'warning' | 'danger';
+  /**
+   * B-core-2a: `inventoryRiskContract` 판정을 그대로 반영한다.
+   *   danger  = out_of_stock (재고 소진 또는 판매상태 품절)
+   *   warning = low_stock (안전재고 이하)
+   *   ok      = 정상 (무제한 재고 포함)
+   *   unknown = 재고를 해석할 수 없음 — **정상으로 숨기지 않는다**(관리자 확인 대상)
+   */
+  status: 'ok' | 'warning' | 'danger' | 'unknown';
   riskFlags: string[];
 }
 

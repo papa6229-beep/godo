@@ -63,6 +63,24 @@ try {
     pinned(`1-5. 출처 판정 · ${c.label}`, PV.classifyResource(c.input).kind, c.expected);
   }
 
+  // 1-6~1-9: B-core-2a 에서 DIVERGENCE → PARITY 로 **이동한 축**.
+  //   이전 기준선(A 3건 / B 4건, 상수 3 vs 5, P3·P5·P6 갈림)은 이제 성립하지 않는다.
+  //   근거: api 계층이 근거 없는 안전재고 '3' 과 독립 판정을 만들어내던 것을 걷어냈고,
+  //        계약이 soldOut·stockEnabled 신호를 받게 되어 양쪽이 같은 계약에 같은 신호를 넣는다.
+  //   상세: docs/governance/evidence/B-CORE-2_AB_PARITY_AUDIT.md §11
+  const toRisky = (lv) => lv === 'out_of_stock' || lv === 'low_stock';
+  const riskOf = (p) => IR.classifyStockRiskWithSaleState({ stock: p.stock, soldOut: p.soldOut, stockEnabled: p.stockEnabled });
+  const aRisky = A.inventory.map((i) => i.status !== 'ok');
+  const bRisky = B.products.map((p) => toRisky(riskOf(p).level));
+  same('1-6. 재고위험 — 상품별 위험 여부', aRisky, bRisky);
+  same('1-7. 재고위험 — 건수', aRisky.filter(Boolean).length, bRisky.filter(Boolean).length);
+  pinned('1-8. 기본 안전재고 정본이 하나(api 계층은 보유하지 않음)',
+    [mods.inventoryDerive.DEFAULT_SAFETY_STOCK, IR.DEFAULT_SAFETY_STOCK], [undefined, 5]);
+  pinned('1-9. api 계층에 독립 재고 판정 함수 없음', typeof mods.inventoryDerive.computeInventoryStatus, 'undefined');
+  pinned('1-10. 위험 상품(사건 라벨) — 양쪽 동일',
+    RAW_GOODS.filter((_, i) => aRisky[i]).map((g) => g.__case),
+    ['P2 안전재고 경계(3)', 'P3 안전재고 경계(4)', 'P4 품절(재고0)', 'P5 품절표시']);
+
   // ── 2. DIVERGENCE — 지금 다른 축. 실측값을 고정한다. ────────────────────────
   //  사유 분류(감사 문서 §4 와 동일):
   //    [구조]   A 투영에 해당 사실을 담을 필드 자체가 없다 → provider 가 필드를 실어야 해소
@@ -96,26 +114,12 @@ try {
   pinned('2-12 [계산] A 결제완료 건수', aPaid.filter(Boolean).length, 9);
   pinned('2-13 [계산] B 결제완료 건수', bPaid.filter(Boolean).length, 7);
 
-  // 2-14 [계산] 같은 이름의 기본 안전재고 상수가 두 값이다.
-  pinned('2-14 [계산] godomallInventoryDerive.DEFAULT_SAFETY_STOCK', mods.inventoryDerive.DEFAULT_SAFETY_STOCK, 3);
-  pinned('2-15 [계산] inventoryRiskContract.DEFAULT_SAFETY_STOCK', IR.DEFAULT_SAFETY_STOCK, 5);
-
-  // 2-16 [입력/계산] 재고위험 판정이 상품마다 갈린다.
-  const toRisky = (lv) => lv === 'out_of_stock' || lv === 'low_stock';
-  const aRisky = A.inventory.map((i) => i.status !== 'ok');
-  const bRisky = B.products.map((p) => toRisky(IR.classifyStockRisk(p.stock, undefined).level));
-  const riskDiff = RAW_GOODS.map((g, i) => (aRisky[i] === bRisky[i] ? null : g.__case)).filter(Boolean);
-  pinned('2-16 [입력] 재고위험 판정이 갈리는 상품(사건 라벨)', riskDiff,
-    ['P3 안전재고 경계(4)', 'P5 품절표시', 'P6 무제한재고']);
-  pinned('2-17 A 세계 재고위험 건수', aRisky.filter(Boolean).length, 3);
-  pinned('2-18 B 세계(계약) 재고위험 건수', bRisky.filter(Boolean).length, 4);
-
-  // 2-19 [입력] 계약이 soldOut·stockEnabled 를 모른다는 사실을 명시적으로 고정한다.
-  //    이 두 건은 A 판정이 옳고 계약 입력이 부족한 경우다(계약을 바꿀 게 아니라 입력을 실어야 한다).
-  pinned('2-19 [입력] 품절표시 상품 — A=위험 / 계약(stock만)=정상',
-    [A.inventory[4].status !== 'ok', toRisky(IR.classifyStockRisk(B.products[4].stock, undefined).level)], [true, false]);
-  pinned('2-20 [입력] 무제한재고 상품 — A=정상 / 계약(stock만)=품절',
-    [A.inventory[5].status !== 'ok', toRisky(IR.classifyStockRisk(B.products[5].stock, undefined).level)], [false, true]);
+  // ── 2-재고: B-core-2a 에서 전부 해소됨 → [1] PARITY 로 이동(1-6~1-10). ─────
+  //   재고 신호만 넣으면 계약이 재고 숫자로만 판정한다는 사실은 남겨 둔다
+  //   (판매상태를 실어 주는 책임이 소비자에게 있음을 잊지 않기 위해).
+  pinned('2-14 [주의] 판매상태를 빼면 계약은 재고 숫자로만 판정한다',
+    [IR.classifyStockRisk(B.products[4].stock).level, IR.classifyStockRiskWithSaleState({ stock: B.products[4].stock, soldOut: B.products[4].soldOut }).level],
+    ['ok', 'out_of_stock']);
 
   // ── 3. RED 재현이 보존돼 있는지 ────────────────────────────────────────────
   console.log('\n[3] RED 재현 보존');

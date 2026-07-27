@@ -896,7 +896,8 @@ export const DataPanel: React.FC<DataPanelProps> = ({
                           <td style={{ fontWeight: 700 }}>{iv.stock}개</td>
                           <td>{iv.safetyStock}개</td>
                           <td>
-                            <span className={`flag-badge ${iv.status === 'danger' ? 'danger' : (iv.status === 'warning' ? '' : 'success')}`}>
+                            {/* B-core-2a: unknown(재고 해석 불가)이 초록 success 로 보이지 않게 한다. */}
+                            <span className={`flag-badge ${iv.status === 'danger' ? 'danger' : (iv.status === 'ok' ? 'success' : '')}`}>
                               {iv.status.toUpperCase()}
                             </span>
                           </td>

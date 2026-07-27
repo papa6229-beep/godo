@@ -8,32 +8,19 @@
 // 문자열 값으로 내보내며, 프론트 buildOperationsSnapshot/normalizeInventoryItem
 // 파이프라인을 그대로 재사용한다. (DerivedInventoryItem은 type 별칭 →
 // 서버 Record<string,unknown> 파이프라인 할당 호환)
+//
+// ── B-core-2a: 이 계층은 재고위험을 **판정하지 않는다** ──────────────────────
+// 이전에는 여기서 자체 기본 안전재고(3)를 만들어 싣고 status 까지 계산했다. 두 문제가 있었다.
+//   1) Goods_Search 응답에는 상품별 안전재고 필드가 없다(아래 주석대로). 근거 없는 '3' 을 실으면
+//      하류 계약(resolveSafetyStock)이 그것을 **유효한 상품별 값**으로 받아들여
+//      정본 기본값(inventoryRiskContract.DEFAULT_SAFETY_STOCK)이 적용될 여지를 없앤다.
+//   2) status 는 어느 소비자도 읽지 않는 dead output 이었다(normalizeInventoryItem 은 재계산).
+//      그런데 판정 규칙만 한 벌 더 존재해 같은 상품이 화면마다 다르게 보이는 원인이 됐다.
+// 그래서 이 계층은 **신호만 전달**한다: stock · stockEnabled · soldOut.
+// 판정은 src/services/inventoryRiskContract.ts 한 곳에서만 한다.
+// (api 번들이 브라우저 계층을 import 하지 않도록, 계약을 끌어오는 대신 판정을 걷어냈다.)
 
 import type { StandardProduct } from './godomallMapper.js';
-
-// 안전재고 기본값 — Goods_Search 응답에는 상품별 안전재고 필드가 없으므로
-// 단일 기준값을 사용한다. 하드코딩하되 추후 설정 가능하도록 상수로 분리한다.
-export const DEFAULT_SAFETY_STOCK = 3;
-
-export type InventoryStatus = 'ok' | 'warning' | 'danger';
-
-// 재고 상태 계산 (단일 기준 — 프론트 normalizeInventoryItem과 동일 규칙)
-//   soldOut === true                         -> danger
-//   stockEnabled === true && stock <= 0       -> danger
-//   stockEnabled === true && stock <= safety  -> warning
-//   그 외                                      -> ok
-// stockEnabled === false(무제한 재고)면 stock 값과 무관하게 품절로 보지 않는다.
-export const computeInventoryStatus = (
-  stock: number,
-  stockEnabled: boolean,
-  soldOut: boolean,
-  safetyStock: number = DEFAULT_SAFETY_STOCK
-): InventoryStatus => {
-  if (soldOut) return 'danger';
-  if (stockEnabled && stock <= 0) return 'danger';
-  if (stockEnabled && stock <= safetyStock) return 'warning';
-  return 'ok';
-};
 
 // 재고 스냅샷 중간 구조 (문자열 값 — mock inventory 구조와 호환)
 export type DerivedInventoryItem = {
@@ -42,6 +29,7 @@ export type DerivedInventoryItem = {
   productName: string;
   optionName: string;
   stock: string;
+  /** 상류에 근거가 없으면 빈 문자열. 기본값을 만들어내지 않는다(계약이 전역 기본값을 적용). */
   safetyStock: string;
   stockEnabled: string;   // 'y' | 'n'
   soldOut: string;        // 'y' | 'n'
@@ -49,7 +37,6 @@ export type DerivedInventoryItem = {
   displayMobile: string;  // 'y' | 'n'
   sellPc: string;         // 'y' | 'n'
   sellMobile: string;     // 'y' | 'n'
-  status: InventoryStatus;
 };
 
 const yn = (b: boolean): string => (b ? 'y' : 'n');
@@ -57,21 +44,22 @@ const yn = (b: boolean): string => (b ? 'y' : 'n');
 // StandardProduct[] -> DerivedInventoryItem[] (재고 파생)
 export const deriveInventoryFromProducts = (
   products: StandardProduct[],
-  safetyStock: number = DEFAULT_SAFETY_STOCK
+  /** 상류(고도몰 설정 등)에서 상품별 안전재고를 알게 되면 그때 넘긴다. 기본은 "근거 없음". */
+  safetyStock?: number
 ): DerivedInventoryItem[] => {
+  const safety = safetyStock === undefined ? '' : String(safetyStock);
   return products.map((p) => ({
     productId: p.productId,
     productCode: p.productCode,
     productName: p.productName,
     optionName: p.optionName || '단품',
     stock: String(p.stock),
-    safetyStock: String(safetyStock),
+    safetyStock: safety,
     stockEnabled: yn(p.stockEnabled),
     soldOut: yn(p.soldOut),
     displayPc: yn(p.displayPc),
     displayMobile: yn(p.displayMobile),
     sellPc: yn(p.sellPc),
-    sellMobile: yn(p.sellMobile),
-    status: computeInventoryStatus(p.stock, p.stockEnabled, p.soldOut, safetyStock)
+    sellMobile: yn(p.sellMobile)
   }));
 };

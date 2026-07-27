@@ -8,6 +8,7 @@ import type {
   OperationsDataSnapshot
 } from '../types/dataConnector';
 import { maskName, maskPhone, maskEmail } from './privacyMask';
+import { classifyStockRiskWithSaleState } from '../services/inventoryRiskContract';
 
 /**
  * 날짜 문자열을 YYYY-MM-DD 형식으로 정규화
@@ -370,48 +371,48 @@ export const normalizeInventoryItem = (
   const id = norm.id || `inventory-${Date.now()}-${index}`;
   const productName = norm.productName || '';
   const optionName = norm.optionName || '기본옵션';
-  const stock = parseInt(norm.stock || '0', 10);
-  const safetyStock = parseInt(norm.safetyStock || '5', 10);
 
-  if (!productName || isNaN(stock)) {
+  // B-core-2a: 재고위험 판정은 공통 계약 한 곳에서만 한다.
+  //   이전에는 여기 자체 분기가 있었고(파생 신호 유무로 두 갈래, 임계도 `<=` 와 `<` 로 달랐다)
+  //   같은 상품이 A 화면과 B 화면에서 다른 위험 상태로 나왔다.
+  //   원시 문자열을 그대로 계약에 넘긴다 — 해석(수치·y/n·누락)은 계약이 한다.
+  const risk = classifyStockRiskWithSaleState({
+    stock: norm.stock,
+    safetyStock: norm.safetyStock,
+    soldOut: norm.soldOut,
+    stockEnabled: norm.stockEnabled
+  });
+
+  // 표시용 수치. 계약이 해석하지 못한 재고(unknown)는 0 으로 꾸미지 않고 NaN 을 보존한다.
+  const stock = risk.stock === null ? NaN : risk.stock;
+  const safetyStock = risk.resolvedSafetyStock;
+
+  if (!productName || risk.stock === null) {
     errors.push(`[Row ${index + 1}] 재고 필수값 누락 (상품명, 재고수량 필수)`);
   }
 
-  let status: 'ok' | 'warning' | 'danger' = 'ok';
+  // 계약 판정 → 기존 status·riskFlags 의미로 변환. 문구·플래그 이름은 그대로 보존한다.
+  let status: StandardInventoryItem['status'] = 'ok';
   const riskFlags: string[] = [];
 
-  // Inventory derived v0: Products(REAL READ) 파생 레코드는 soldOut/stockEnabled 신호를 갖는다.
-  // 이 신호가 있으면 고도몰 판매상태를 반영한 기준으로 재고 상태를 계산하고,
-  // 신호가 없는 CSV/JSON 업로드는 기존 로직을 그대로 유지한다.
-  const isYes = (v?: string): boolean => /^(y|1|true)$/i.test((v || '').trim());
-  const hasDerivedSignals = norm.stockEnabled !== undefined || norm.soldOut !== undefined;
-
-  if (hasDerivedSignals) {
-    const stockEnabled = isYes(norm.stockEnabled);
-    const soldOut = isYes(norm.soldOut);
-    if (soldOut) {
-      status = 'danger';
-      riskFlags.push('sold_out');
-      warnings.push(`[Row ${index + 1}] 상품이 품절(soldOut) 상태로 표시되어 있습니다.`);
-    } else if (stockEnabled && stock <= 0) {
-      status = 'danger';
-      riskFlags.push('out_of_stock');
-      warnings.push(`[Row ${index + 1}] 상품 재고가 완전히 소진되어 일시 품절되었습니다.`);
-    } else if (stockEnabled && stock <= safetyStock) {
-      status = 'warning';
-      riskFlags.push('low_stock');
-      riskFlags.push('below_safety_stock');
-      warnings.push(`[Row ${index + 1}] 상품 재고가 안전재고 수량(${safetyStock}개) 이하입니다.`);
-    }
-  } else if (stock === 0) {
+  if (risk.basis === 'sold_out_flag') {
+    status = 'danger';
+    riskFlags.push('sold_out');
+    warnings.push(`[Row ${index + 1}] 상품이 품절(soldOut) 상태로 표시되어 있습니다.`);
+  } else if (risk.level === 'out_of_stock') {
     status = 'danger';
     riskFlags.push('out_of_stock');
     warnings.push(`[Row ${index + 1}] 상품 재고가 완전히 소진되어 일시 품절되었습니다.`);
-  } else if (stock < safetyStock) {
+  } else if (risk.level === 'low_stock') {
     status = 'warning';
     riskFlags.push('low_stock');
     riskFlags.push('below_safety_stock');
-    warnings.push(`[Row ${index + 1}] 상품 재고가 안전재고 수량(${safetyStock}개)보다 적습니다.`);
+    warnings.push(`[Row ${index + 1}] 상품 재고가 안전재고 수량(${safetyStock}개) 이하입니다.`);
+  } else if (risk.level === 'unknown') {
+    // 정상으로 숨기지 않는다 — 관리자 확인 대상으로 분리한다.
+    status = 'unknown';
+    riskFlags.push('stock_unknown');
+    warnings.push(`[Row ${index + 1}] 재고 수량을 해석할 수 없습니다(정상으로 처리하지 않음).`);
   }
 
   // warnings 사용 보장 (TS6133 해결)

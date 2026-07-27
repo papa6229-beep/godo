@@ -1,5 +1,6 @@
 import type { AgentJob, AgentResult, AgentArtifact, AgentResultStatus, DepartmentId } from './types';
 import { isUnanswered } from '../../services/inquiryStatusContract';
+import { classifyStockRiskWithSaleState } from '../../services/inventoryRiskContract';
 import type { OperationsDataSnapshot } from '../../types/dataConnector';
 import type { EngineProvider } from '../../types/engine';
 import { generateCSDrafts } from '../csDraftGenerator';
@@ -67,8 +68,26 @@ export async function executeAgentJob(
 
   // 2. 재고/판매상태 감시 AI (inventory_monitor)
   else if (agentId === 'inventory_monitor') {
-    const lowStockItems = activeSnapshot.inventory.filter(item => item.stock <= item.safetyStock);
-    
+    // B-core-2a: 임계값을 직접 비교하지 않고 공통 계약(inventoryRiskContract)으로 판정한다.
+    //   발주 대상 = 위험(품절·안전재고 이하)만.
+    //   재고를 해석할 수 없는 품목(unknown)은 정상으로도, 자동 발주 대상으로도 취급하지 않고
+    //   **사람 확인 대상으로 따로 보고**한다(근거 없는 발주 제안 방지).
+    const classified = activeSnapshot.inventory.map((item) => ({
+      item,
+      risk: classifyStockRiskWithSaleState({ stock: item.stock, safetyStock: item.safetyStock })
+    }));
+    const lowStockItems = classified
+      .filter(({ risk }) => risk.level === 'out_of_stock' || risk.level === 'low_stock')
+      .map(({ item }) => item);
+    const unknownStockItems = classified.filter(({ risk }) => risk.level === 'unknown').map(({ item }) => item);
+
+    if (unknownStockItems.length > 0) {
+      unknownStockItems.forEach(item => {
+        findings.push(`[${item.productName} - ${item.optionName}] 재고 수량을 해석할 수 없어 위험 여부를 판단하지 못했습니다(확인 필요).`);
+      });
+      riskFlags.push('재고_확인필요');
+    }
+
     if (lowStockItems.length > 0) {
       lowStockItems.forEach(item => {
         findings.push(`[${item.productName} - ${item.optionName}] 실재고 ${item.stock}개 (안전재고 ${item.safetyStock}개 미달).`);
@@ -90,13 +109,16 @@ export async function executeAgentJob(
         approvalRequired: true,
         createdAt: currentTime
       });
-    } else {
+    } else if (unknownStockItems.length === 0) {
       findings.push('모든 활성 상품의 재고 수량이 안전재고 이상을 유지하고 있습니다.');
     }
 
+    const unknownPart = unknownStockItems.length > 0 ? ` 재고 확인 필요 ${unknownStockItems.length}건.` : '';
     summary = lowStockItems.length > 0
-      ? `안전재고 미달 품목 ${lowStockItems.length}건 감지. 긴급 발주 승인 요청 생성.`
-      : '안전재고 수준 양호. 경보 대상 품목 없음.';
+      ? `안전재고 미달 품목 ${lowStockItems.length}건 감지. 긴급 발주 승인 요청 생성.${unknownPart}`
+      : unknownStockItems.length > 0
+        ? `안전재고 미달 품목 없음.${unknownPart} 재고 해석 불가 품목은 자동 발주 대상에서 제외했습니다.`
+        : '안전재고 수준 양호. 경보 대상 품목 없음.';
   }
 
   // 3. 문의 분석 AI (inquiry_analyst)

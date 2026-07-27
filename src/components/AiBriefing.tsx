@@ -32,7 +32,8 @@ export const AiBriefing: React.FC<AiBriefingProps> = ({
   ).length;
 
   const inventoryIssuesCount = activeOperationsData.inventory.filter(
-    (item) => item.status === 'warning' || item.status === 'danger'
+    // B-core-2a: 재고를 해석할 수 없는 품목(unknown)도 확인 대상이다. 정상으로 숨기지 않는다.
+    (item) => item.status !== 'ok'
   ).length;
 
   const lowRatingReviews = activeOperationsData.reviews.filter(
