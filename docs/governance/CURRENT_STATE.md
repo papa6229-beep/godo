@@ -188,7 +188,8 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 **트랜잭션은 아니다** — 저장 도중 장애가 나면 세 저장을 자동 롤백하지 않는다. 저장 실패·트랜잭션은 예정된 서버 기록 작업(B-use-2 서버 기록)에서 다룬다.
 수행자는 `unassigned` 로 두고 담당 팀장이 정한다 — actor 와 executor 를 합치지 않는다.
 
-검사: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` RED 26 pass/6 fail → **GREEN 32/32** (manifest include 123).
+검사: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` — HQ 지시 경로 당시 RED 26 pass/6 fail → GREEN 32/32.
+(같은 파일을 이후 네 경로 마감 검사로 확장해 **현재 71/71** — 아래 절 참조.)
 **Claude 최소 확인만**: tsc·lint·diff --check·비밀값·지정 스모크 4건. 전체 `npm test`·화면 눈검증은 B-use 묶음 인수검사에서 Codex 수행.
 
 ### B-use-3 네 승인 의미의 실제 마운트 경로 — **구현 완료, Codex 검증 대기 (2026-07-27)**
