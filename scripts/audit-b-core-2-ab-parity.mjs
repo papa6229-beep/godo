@@ -20,9 +20,12 @@ import { RAW_ORDERS, RAW_GOODS, REAL_SOURCE_TAG, SYNTHETIC_SOURCE_TAG, PROVENANC
 
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const rows = [];
+// group: '재고' | '주문' | '출처'  — B-core-2a 이후 "어느 영역의 RED 가 남았는지"를 분리해 보여준다.
+let GROUP = '출처';
+const group = (g) => { GROUP = g; };
 const record = (axis, aVal, bVal, note) => {
   const same = eq(aVal, bVal);
-  rows.push({ axis, aVal, bVal, same, note });
+  rows.push({ group: GROUP, axis, aVal, bVal, same, note });
   return same;
 };
 
@@ -41,6 +44,7 @@ try {
   const IR = mods.inventoryRisk;
   const PV = mods.provenance;
 
+  group('주문');
   // ── 1. 유효 주문 식별 결과 ────────────────────────────────────────────────
   // 같은 계약(isValidOrder)에 A 투영·B 투영을 그대로 넣는다.
   const aValidFlags = A.orders.map((o) => RM.isValidOrder(o));
@@ -78,18 +82,29 @@ try {
   // ── 7. 회사 공통 운영매출(유효 주문 결제금액) ─────────────────────────────
   record('운영매출(유효 주문 결제금액)', RM.computeOperationalRevenue(A.orders), RM.computeOperationalRevenue(B.lite));
 
+  group('재고');
   // ── 8. 재고위험 분류 ──────────────────────────────────────────────────────
-  // A: normalizeInventoryItem 이 만든 status('ok'|'warning'|'danger')
-  // B: 같은 상품의 재고·안전재고를 canonical classifyStockRisk 에 투입
+  // 두 세계가 **같은 계약에 같은 신호**를 넣어야 한다.
+  //   A: normalizeInventoryItem 이 만든 status
+  //   B: 같은 상품(StandardProduct)의 stock·soldOut·stockEnabled 를 계약에 투입
+  // B-core-2a 이전에는 계약이 soldOut/stockEnabled 를 받지 못해 재고 숫자만으로 판정했다.
+  const classify = (p) =>
+    (IR.classifyStockRiskWithSaleState
+      ? IR.classifyStockRiskWithSaleState({ stock: p.stock, soldOut: p.soldOut, stockEnabled: p.stockEnabled })
+      : IR.classifyStockRisk(p.stock, undefined));
   const toRisky = (lv) => lv === 'out_of_stock' || lv === 'low_stock';
   const aRisky = A.inventory.map((i) => i.status !== 'ok');
-  const bRisky = B.products.map((p) => toRisky(IR.classifyStockRisk(p.stock, undefined).level));
+  const bRisky = B.products.map((p) => toRisky(classify(p).level));
   record('재고위험(상품별 risky 여부)', aRisky, bRisky,
-    'A=dataNormalizer status / B=inventoryRiskContract.classifyStockRisk');
+    'A=dataNormalizer status / B=inventoryRiskContract');
   record('재고위험 건수', aRisky.filter(Boolean).length, bRisky.filter(Boolean).length);
-  record('기본 안전재고 상수', mods.inventoryDerive.DEFAULT_SAFETY_STOCK, IR.DEFAULT_SAFETY_STOCK,
-    'godomallInventoryDerive.DEFAULT_SAFETY_STOCK ↔ inventoryRiskContract.DEFAULT_SAFETY_STOCK');
+  record('기본 안전재고 정본이 하나', 'inventoryRiskContract 만 보유',
+    mods.inventoryDerive.DEFAULT_SAFETY_STOCK === undefined ? 'inventoryRiskContract 만 보유' : `godomallInventoryDerive 도 ${mods.inventoryDerive.DEFAULT_SAFETY_STOCK} 보유`,
+    'api 계층이 자체 기본 안전재고를 만들어내지 않아야 한다');
+  record('api 계층이 재고 판정을 하지 않음', false, typeof mods.inventoryDerive.computeInventoryStatus === 'function',
+    'computeInventoryStatus 가 남아 있으면 독립 판정이 남은 것');
 
+  group('출처');
   // ── 9. 실제·시험·미연결 판정 ──────────────────────────────────────────────
   const aProv = PV.classifyResource({ sourceType: A.sourceType, records: A.orders }).kind;
   const bProv = PV.classifyResource({ sourceType: B.lite[0]?.sourceType ?? REAL_SOURCE_TAG, records: B.lite }).kind;
@@ -100,23 +115,29 @@ try {
     record(`출처 판정 · ${c.label}`, c.expected, PV.classifyResource(c.input).kind, '계약이 네 상태를 구분하는지');
   }
 
-  // ── 결과 출력 ─────────────────────────────────────────────────────────────
-  console.log('\n--- 비교 결과 ---');
+  // ── 결과 출력 (영역별 분리) ───────────────────────────────────────────────
   const w = 42;
-  for (const r of rows) {
-    console.log(`${r.same ? '  일치  ' : '  불일치'} ${r.axis.padEnd(w)}`);
-    if (!r.same) {
-      console.log(`          A: ${JSON.stringify(r.aVal)}`);
-      console.log(`          B: ${JSON.stringify(r.bVal)}`);
-      if (r.note) console.log(`          ← ${r.note}`);
+  const GROUPS = ['재고', '주문', '출처'];
+  for (const g of GROUPS) {
+    const gr = rows.filter((r) => r.group === g);
+    const bad = gr.filter((r) => !r.same);
+    console.log(`\n--- [${g}] ${gr.length - bad.length}/${gr.length} 축 일치 ${bad.length ? `· 불일치 ${bad.length}축` : '· RED 없음'} ---`);
+    for (const r of gr) {
+      console.log(`${r.same ? '  일치  ' : '  불일치'} ${r.axis.padEnd(w)}`);
+      if (!r.same) {
+        console.log(`          A: ${JSON.stringify(r.aVal)}`);
+        console.log(`          B: ${JSON.stringify(r.bVal)}`);
+        if (r.note) console.log(`          ← ${r.note}`);
+      }
     }
   }
   const diverged = rows.filter((r) => !r.same);
-  console.log(`\n=== ${rows.length - diverged.length}/${rows.length} 축 일치 · 불일치 ${diverged.length}축 ===`);
-  if (diverged.length) {
-    console.log('\n불일치 축 목록(다음 canonical snapshot provider 의 종료조건):');
-    for (const r of diverged) console.log(`  - ${r.axis}`);
+  console.log(`\n=== 전체 ${rows.length - diverged.length}/${rows.length} 축 일치 · 불일치 ${diverged.length}축 ===`);
+  for (const g of GROUPS) {
+    const bad = diverged.filter((r) => r.group === g);
+    console.log(`  [${g}] ${bad.length ? `RED ${bad.length}축 — ${bad.map((r) => r.axis).join(' · ')}` : 'RED 없음'}`);
   }
+  console.log('\n영역별 종료조건: [재고]=B-core-2a · [주문]=B-core-2b(주문 canonical provider, 결제 판정은 C단계 선행)');
   process.exitCode = diverged.length === 0 ? 0 : 1;
 } finally {
   dispose();
