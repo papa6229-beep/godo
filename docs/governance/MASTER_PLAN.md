@@ -87,7 +87,7 @@
 ## 2. 현재 단계와 다음 한 작업
 
 > **현재 단계: B-core — 이후 변경에도 무너지지 않을 최소 경계 구축**
-> **다음 한 작업: B-core-2 본작업 — A(`activeOperationsData`)와 B(`fetchRevenue`) 데이터 세계 차이 실측 + 동일 fixture parity 검사**
+> **다음 한 작업: B-core-2 provider — 읽기 전용 canonical snapshot provider 신설. 종료조건은 `node scripts/audit-b-core-2-ab-parity.mjs` 가 exit 0 이 되는 것(현재 exit 1, 10/20축 불일치). 범위는 `MASTER_PLAN §5-1 B-core-2` 와 `evidence/B-CORE-2_AB_PARITY_AUDIT.md §8` 로 한정한다.**
 
 ---
 
@@ -145,7 +145,7 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 ### B-core-1. 회귀 게이트 — **완료 (A2)**
 
-`npm test` = smoke(manifest 120) + build(`tsc -b` + `typecheck:api` + `vite build`) + lint. 실측 130초, exit 0.
+`npm test` = smoke(manifest **121**) + build(`tsc -b` + `typecheck:api` + `vite build`) + lint. exit 0.
 
 ### B-core-2. 공통 데이터 입구
 
@@ -153,8 +153,22 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
   판정: 13건은 **현재 Production에 설정된 real 모드 고도몰 Open API의 실제 응답**이며 `sourceType: api_proxy_real`은 애플리케이션 실행 경로와 일치한다. 새 판매몰 키가 아직 발급·등록되지 않았고 시뮬레이션 카탈로그가 이 응답을 “시험몰 만료 직전”에 캡처했다고 기록하므로 **기존 시험몰 자료로 판단**한다. 다만 관리자 계정의 실제 만료 상태는 미확인이다.
   부수 발견: **시험몰 Open API가 아직 응답한다** — 계정 만료 여부는 사용자 확인 대기.
   증거: `docs/governance/evidence/B1-0_PRODUCT_SOURCE_AUDIT.md`
-- A `activeOperationsData`와 B `fetchRevenue` 차이 실측 · 동일 fixture parity
-- 읽기 전용 canonical snapshot provider 신설
+- **A `activeOperationsData`와 B `fetchRevenue` 차이 실측 · 동일 fixture parity 기준선** — **완료 (2026-07-27)**
+  판정: **parity 미성립.** 동일 raw fixture(주문 10·상품 6)를 두 세계로 투영해 기존 계약으로 계산한 결과 **20축 중 10축 일치 / 10축 불일치**.
+  일치는 전부 출처 판정(실제/실제 0건/시험/합성/연결 안 됨)과 B 내부 일관성 — **출처 구분은 이미 서 있고 수치 의미가 서지 않았다.**
+  불일치 = 구조(A에 `paid`·`canceled`·`lines`·`deliveryFee` 필드 없음) + 계산(결제완료 판정 2식, 기본 안전재고 상수 3 vs 5) + 입력(계약이 `soldOut`·`stockEnabled` 모름).
+  사용자 영향: **재고위험 건수**가 A 화면과 B 화면에서 실제로 다르다(fixture 기준 3 vs 4). 매출·주문 계약 소비자는 전부 B라 지금 매출 숫자는 충돌하지 않는다.
+  RED 보존: `scripts/audit-b-core-2-ab-parity.mjs`(exit 1, **정식 manifest 밖** — main 게이트 미파손)
+  기준선 검사: `scripts/smoke-b-core-2-ab-data-world-parity-v0.mjs`(38 pass, manifest 등록)
+  증거: `docs/governance/evidence/B-CORE-2_AB_PARITY_AUDIT.md`
+- **읽기 전용 canonical snapshot provider 신설 — 다음 한 작업.** 최소 범위(증거문서 §8):
+  ① 공통 주문 형태 확정(새 형태 발명 금지 — `RevenueOrderLite`가 이미 조건을 만족하므로 이것을 입구 출력으로 삼는 안을 1순위 검토)
+  ② 결제완료 판정을 한 곳으로 모은다(**정본 선택은 C단계 상태코드 확정 이후로 미룰 수 있다** — 그때까지 차이는 기준선 검사가 붙잡는다)
+  ③ 기본 안전재고 상수를 하나로(`godomallInventoryDerive` → `inventoryRiskContract` 참조)
+  ④ 재고 계약의 **입력** 보강(`soldOut`·`stockEnabled`) — 계약 판정 규칙은 바꾸지 않는다
+  ⑤ 실제 데이터 경로에도 재고위험 입력 생성(현재 `stockImpact`는 합성 전용)
+  종료조건: `node scripts/audit-b-core-2-ab-parity.mjs` **exit 0**
+  범위 밖(하지 않는다): A 소비자 14파일 일괄 이관(→ Local migration) · `OperationsDataSnapshot` 타입 삭제 · 문의·리뷰 라이브 연결
 - **공통 데이터 입구와 오픈 대표 업무가 쓰는 소비 경로는 오픈 전에 canonical snapshot으로 통일한다**
 - `departmentDataSourceOfTruth`는 조합 역할 유지, 입력만 canonical로 변경, **자체 fetch/cache 금지**
 - 실제 0건·시험자료·연결 안 됨·사용 불가 구분이 이 입구에서 보존될 것

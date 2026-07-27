@@ -22,8 +22,8 @@
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| smoke 파일 수 | **120개** (main 기준. 인증 브랜치에 3개 추가분 있음) | `ls scripts/smoke-*.mjs \| wc -l` |
-| manifest include | **120** / exclude **0** | `node scripts/run-regression.mjs --discover` |
+| smoke 파일 수 | **121개** (B-core-2 parity 기준선 1개 추가. 인증 브랜치에 3개 추가분 있음) | `ls scripts/smoke-*.mjs \| wc -l` |
+| manifest include | **121** / exclude **0** | `node scripts/run-regression.mjs --discover` |
 | lint | **0 errors** (`scripts/flowRouteSmoke.ts:49` 수정 후) | `npx eslint .` |
 | build | 통과 (`tsc -b` + `typecheck:api` + `vite build`) | `npm run build` |
 | `npm test` 실제 소요 | **130초** (smoke 111.5s + build + lint), exit 0 | `npm test` 1회 실행 |
@@ -62,6 +62,37 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 - → **501번째부터 오래된 이력이 경고 없이 사라짐** (헌법 §5 위반 상태, B5에서 해소)
 - 데이터 세계가 둘: `activeOperationsData`(적재 스냅샷, 소비자 12파일 + `src/engine` 2파일) / `fetchRevenue`(라이브 읽기, 호출자 3곳, **공유 캐시 없음·인자 상이**)
 
+### A/B 데이터 세계 차이 — **실측 (B-core-2, 2026-07-27)**
+
+동일 raw fixture(주문 10건·상품 6건)를 A·B로 투영해 **기존 공통 계약으로** 계산한 결과, 비교 20축 중 **10축 일치 / 10축 불일치**.
+
+**일치한 축**: 전체 주문 수 · B 내부 일관성(중첩 `state` ↔ 평탄 `Lite`) · 출처 판정 6종(실제/실제 0건/시험(시험모드)/시험(실제요청=fail-closed)/합성/연결 안 됨)
+→ **실제·시험·미연결 구분은 이미 하나의 계약으로 서 있다.**
+
+**불일치한 축** (분류: 구조=A에 필드 없음 · 계산=같은 이름 다른 식 · 입력=계약은 옳으나 입력 부족)
+
+| 축 | A | B | 분류 |
+|---|---|---|---|
+| 유효 주문 수 | 0 | 5 | 구조 (`StandardOrder`에 `paid`/`canceled`/`totalAmount` 없음) |
+| 취소 주문 건수 | 표현 불가 | 2 | 구조 |
+| 상품 라인 매출 | 0 | 416,000 | 구조 (`lines` 없음) |
+| 배송비 합계 | 0 | 5,500 | 구조 (`deliveryFee`가 `mapOrderList` 출력에서 탈락) |
+| 운영매출 | 0 | 210,500 | 구조 |
+| 결제완료 건수 | 9 | 7 | **계산** — `godomallMapper.ts:328` `hasPaymentDate \|\| isPaidStatus` vs `godomallRevenue.ts:199` `isValidDate && orderStatus!=='o1'` |
+| 기본 안전재고 상수 | **3** (`godomallInventoryDerive.ts:17`) | **5** (`inventoryRiskContract.ts:24`) | **계산** — 같은 이름 상수의 두 값 |
+| 재고위험 건수 | 3 | 4 | 계산 + 입력 (`soldOut`·`stockEnabled`를 계약이 모름 — 두 건은 A 판정이 옳다) |
+
+- **`isValidOrder`·`classifyStockRisk` 계약의 소비자는 전부 B 세계다. A 세계 소비자는 0건.**
+  → 위 `A: 0`은 "지금 화면에 0원이 나온다"가 아니라 "A 투영은 공통 계약에 넣을 수 없다"는 뜻
+- **지금 화면에서 실제로 다른 값**: **재고위험 건수**. A(`DataPanel:609`·`AiBriefing:35`·`reportComposer:35,80`·`controlChatService:158,415`·`dailySummaryBuilder:101`)와 B(`CalendarPanel:102`·`ProductTeamDashboard:582`·`departmentDataSourceOfTruth:172`·`productTeamChatFacts:431`)가 다른 기준을 쓴다
+- 재고 임계 구현이 **네 곳**으로 갈라져 있음: `inventoryRiskContract:70`(`<=`) · `godomallInventoryDerive:34`(`<=`) · `dataNormalizer:410`(**`<`**) · `agentExecutor:70`(`<=`, 계약 우회)
+- 실제 데이터 경로에는 `stockImpact`가 **아예 생성되지 않는다**(`godomallResource.ts:490` 합성 전용)
+- `CalendarPanel.tsx:14`는 `activeOperationsData`를 prop으로 받지만 **본문 참조 0건** — 그 화면은 B만 소비
+- `OfficeView.tsx:75`는 `.catch(() => {})`로 실패를 무시하고 `orders.length>0`일 때만 상태를 세팅 → **실패와 "실제 0건"이 화면에서 구분되지 않음**
+
+증거·재현 명령·전체 차이표: `docs/governance/evidence/B-CORE-2_AB_PARITY_AUDIT.md`
+검사: `scripts/audit-b-core-2-ab-parity.mjs`(RED 재현, **exit 1**, 정식 manifest 밖) / `scripts/smoke-b-core-2-ab-data-world-parity-v0.mjs`(특성화 기준선, **38 pass**, manifest 등록)
+
 ## 5. 실행 방식
 
 - **사실상 수동 실행 기반**. `runScheduledAgentTask`(`src/services/agentTaskRunner.ts:169`)는 정의만 있고 **제품 코드 내 호출자 0건**
@@ -95,6 +126,9 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 
 - ~~Preview `products` 13건의 실제 출처~~ → **B1-0에서 확정**(§3): 현재 설정된 real 모드 고도몰 Open API의 실제 응답. 새 판매몰 키 미등록과 캡처 매니페스트를 근거로 기존 시험몰 자료로 판단
 - **시험몰 계정이 실제로 만료됐는지** — Open API는 응답 중. 고도몰 관리자 확인 필요(사용자)
+- **고도몰 `orderStatus` 코드의 공식 의미** — `o1`=입금대기만 실측 확정. 나머지(`p/d/g/s/f` 단계)는 코드 내 추정. **결제완료 판정을 어느 쪽으로 통일할지가 여기에 달려 있다**(B-core-2 §4-1) → C단계 입력
+- **A/B 경계 사건이 실제 주문에서 발생하는지** — B-core-2 fixture의 C9·C10·NaN 재고는 코드상 가능한 경로로 만든 것이며 실제 시험몰 주문에서 관측하지 않았다(Production 주문 실제 0건이라 대조 불가)
+- **`claimEventContract` A/B parity** — A 투영에 claim 표현이 전혀 없어 비교 축 자체를 세우지 못했다. provider 이후 별도 축
 - 실제 운영 데이터량 (B4의 DB 사이징 입력 — 상한 가정으로 대체 예정)
 - 기존 localStorage에 쌓인 시험 자료의 양과 보존 가치 (B5에서 JSON 백업 후 확인)
 - 새 세션에서 시작 잠금(첫 줄 인용)이 실제로 작동하는지 — **다음 세션 첫 응답으로만 검증 가능**
