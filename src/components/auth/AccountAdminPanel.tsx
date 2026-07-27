@@ -11,7 +11,7 @@
 // 막다른 상태로 만든다. 서버도 두 액션을 503 으로 닫았다(api/auth/[action].ts DISABLED_ACTIONS).
 // 비밀번호 문제와 계정 중지는 당분간 Clerk 관리자 대시보드에서만 처리한다.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { authorizedFetch } from '../../services/authorizedFetch';
 import { getServerAccount } from '../../services/authGate';
@@ -38,23 +38,42 @@ const SBTN: CSSProperties = {
 };
 const PRIMARY: CSSProperties = { ...SBTN, background: '#2563eb', borderColor: '#2563eb', color: '#fff' };
 
+// 승인 대기 목록 조회. 컴포넌트 상태를 만지지 않는 순수 비동기 함수(호출자가 결과를 반영한다).
+interface PendingLoad { pending?: ServerAccountView[]; error?: string }
+async function fetchPending(): Promise<PendingLoad> {
+  try {
+    const res = await authorizedFetch('/api/auth/pending-approvals');
+    const data = await res.json();
+    if (!res.ok) return { error: String(data.errorMessage ?? '목록을 불러올 수 없습니다.') };
+    return { pending: data.pending ?? [] };
+  } catch {
+    return { error: '목록을 불러올 수 없습니다.' };
+  }
+}
+
 export function AccountAdminPanel({ onClose }: { onClose: () => void }) {
   const me = getServerAccount();
   const isHq = me?.role === 'hq';
   const [pending, setPending] = useState<ServerAccountView[]>([]);
   const [message, setMessage] = useState('');
 
-  const load = useCallback(async () => {
-    try {
-      const res = await authorizedFetch('/api/auth/pending-approvals');
-      const data = await res.json();
-      if (res.ok) setPending(data.pending ?? []);
-      else setMessage(String(data.errorMessage ?? '목록을 불러올 수 없습니다.'));
-    } catch {
-      setMessage('목록을 불러올 수 없습니다.');
-    }
+  // 최초 1회 자동 조회. 조회는 fetchPending(순수 비동기)이 하고, 상태 반영은 응답이 온 뒤에만 한다.
+  // 언마운트 이후 도착한 응답은 버린다(패널을 닫은 뒤 setState 방지).
+  useEffect(() => {
+    let alive = true;
+    void fetchPending().then((r) => {
+      if (!alive) return;
+      if (r.pending) setPending(r.pending);
+      else if (r.error) setMessage(r.error);
+    });
+    return () => { alive = false; };
   }, []);
-  useEffect(() => { void load(); }, [load]);
+
+  const reload = async () => {
+    const r = await fetchPending();
+    if (r.pending) setPending(r.pending);
+    else if (r.error) setMessage(r.error);
+  };
 
   const approve = async (targetUserId: string, approveAsRole: 'member' | 'team_lead', okMsg: string) => {
     setMessage('');
@@ -65,7 +84,7 @@ export function AccountAdminPanel({ onClose }: { onClose: () => void }) {
       });
       const data = await res.json();
       setMessage(res.ok ? okMsg : String(data.errorMessage ?? '요청이 거부되었습니다.'));
-      await load();
+      await reload();
     } catch {
       setMessage('요청에 실패했습니다.');
     }
