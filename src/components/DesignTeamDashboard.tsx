@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import './DesignTeamDashboard.css';
-import { inboxFor } from '../services/teamMessageCenter';
+import { inboxFor } from '../services/repositories/teamMessageRepository';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, TEAM_MESSAGE_STATUS_META, type TeamMessage } from '../types/teamMessage';
 import DetailPageBuilder from './detailBuilder/DetailPageBuilder';
 import { getAgentBrainChoice, setAgentBrainChoice, isBrainConnected, getGlobalBrainSelection, providerLabel } from '../services/aiBrainSettings';

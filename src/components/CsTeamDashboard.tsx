@@ -36,7 +36,7 @@ import {
   type CsApprovalStatus,
   type CsApprovalMethod
 } from '../services/csApprovalQueueBridge';
-import { loadCsPersistedState, saveCsPersistedState, clearCsPersistedState } from '../services/csLocalStatePersistence';
+import { loadCsPersistedState, saveCsPersistedState, clearCsPersistedState } from '../services/repositories/csWorkflowRepository';
 import {
   buildCompletedWorkItem,
   addCompletedWorkItems,

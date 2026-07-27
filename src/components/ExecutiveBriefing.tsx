@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './ExecutiveBriefing.css';
-import { loadActivity, subscribeActivity, activitySince } from '../services/activityLedger';
-import { loadTeamMessages, subscribeTeamMessages } from '../services/teamMessageCenter';
+import { loadActivity, subscribeActivity, activitySince } from '../services/repositories/activityLedgerRepository';
+import { loadTeamMessages, subscribeTeamMessages } from '../services/repositories/teamMessageRepository';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, type DeptTeamId } from '../types/teamMessage';
 import type { ActivityEvent } from '../types/activityLedger';
 import type { TeamMessage } from '../types/teamMessage';

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './DeptActivityModal.css';
-import { loadActivity, subscribeActivity, activityForTeam, teamSummary } from '../services/activityLedger';
+import { loadActivity, subscribeActivity, activityForTeam, teamSummary } from '../services/repositories/activityLedgerRepository';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
 import type { ActivityEvent } from '../types/activityLedger';
 

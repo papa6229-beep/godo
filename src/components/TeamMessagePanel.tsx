@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   inboxFor, outboxFor, unreadCountFor,
   type CreateTeamMessageInput
-} from '../services/teamMessageCenter';
+} from '../services/repositories/teamMessageRepository';
 import {
   DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, TEAM_MESSAGE_STATUS_META,
   type DeptTeamId, type TeamMessage, type TeamMessageKind, type TeamMessageStatus, type TeamMessageAttachment

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import './AgentTaskStudio.css';
 import {
   loadAgentTasks, subscribeAgentTasks, saveUpsertTask, saveRemoveTask, resetAgentTasks, newTaskId
-} from '../services/agentTaskStore';
+} from '../services/repositories/agentTaskRepository';
 import {
   scheduleLabel, APPROVAL_MODE_META, FOCUS_META,
   type AgentTaskSpec, type AgentTaskApprovalMode, type AgentTaskFocus, type AgentTaskScheduleKind

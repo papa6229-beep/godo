@@ -3,7 +3,7 @@ import type { DepartmentDefinition, NativeAgentDefinition, AgentJob, AgentResult
 import type { ApprovalItem } from '../types/approval';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
 import { HandoffDetailModal } from './HandoffDetailModal';
-import { loadActivity, subscribeActivity, teamSummary, activityForTeam } from '../services/activityLedger';
+import { loadActivity, subscribeActivity, teamSummary, activityForTeam } from '../services/repositories/activityLedgerRepository';
 import type { DeptTeamId } from '../types/teamMessage';
 import type { ActivityEvent } from '../types/activityLedger';
 import './TeamOperationsBoard.css';

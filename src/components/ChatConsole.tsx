@@ -11,7 +11,7 @@ import { VIEWER_ROLES } from '../services/sessionRole';
 // 업무를 받을 팀(총괄 자신은 지시 대상이 아니다).
 const TARGET_TEAMS = VIEWER_ROLES.filter((r) => r.id !== 'hq');
 import { getGlobalBrainSelection, providerLabel, isBrainConnected } from '../services/aiBrainSettings';
-import { loadHqMessages, saveHqMessages } from '../services/hqChatMemory';
+import { loadHqMessages, saveHqMessages } from '../services/repositories/chatMemoryRepository';
 import { answerCommerceQuestion } from '../services/commerceDataQueryEngine';
 import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { MarketingChartSpecPanel } from './MarketingAnalysisDashboard';

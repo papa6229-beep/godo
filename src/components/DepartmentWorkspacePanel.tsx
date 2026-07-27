@@ -12,7 +12,7 @@ import { ProductTeamDashboard } from './ProductTeamDashboard';
 import { CsTeamDashboard } from './CsTeamDashboard';
 import { DesignTeamDashboard } from './DesignTeamDashboard';
 import { MarketingAnalysisDashboard, MarketingChartSpecPanel } from './MarketingAnalysisDashboard';
-import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/departmentChatMemory';
+import { loadDeptChatLog, saveDeptChatLog, type DeptChatMessage } from '../services/repositories/chatMemoryRepository';
 import { chatWithTeam } from '../services/departmentChatService';
 import { buildProductTeamChatFacts } from '../services/productTeamChatFacts';
 import { buildDepartmentFactsBundleFromUniverse, type DepartmentFactsBundle } from '../services/departmentFactsRouting';
@@ -33,15 +33,15 @@ import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { routeTeamMessage } from '../services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, isHqRole, roleMeta, type ViewerRole } from '../services/sessionRole';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
-import { loadAgentTasks, subscribeAgentTasks } from '../services/agentTaskStore';
+import { loadAgentTasks, subscribeAgentTasks } from '../services/repositories/agentTaskRepository';
 import type { AgentTaskSpec } from '../types/agentTask';
 import {
   loadTeamMessages, subscribeTeamMessages, postTeamMessage, resolveTeamMessage, markInboxRead,
   unreadCountFor, type CreateTeamMessageInput
-} from '../services/teamMessageCenter';
+} from '../services/repositories/teamMessageRepository';
 import type { TeamMessage, TeamMessageStatus } from '../types/teamMessage';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, type DeptTeamId } from '../types/teamMessage';
-import { logActivity } from '../services/activityLedger';
+import { logActivity } from '../services/repositories/activityLedgerRepository';
 import { screenStateFromRevenue, resolveRealOrdersDisplay, realOrdersPhrase } from '../services/revenueScreenState';
 
 // ────────────────────────────────────────────────────────────────────────────
