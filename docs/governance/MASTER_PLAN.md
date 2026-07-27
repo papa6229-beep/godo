@@ -150,7 +150,7 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 ### B-core-2. 공통 데이터 입구
 
 - **B1-0 현재 데이터 출처 확정(선행)** — **완료 (2026-07-27)**
-  판정: 13건은 **기존 시험몰의 실제 외부 Open API 응답**이며 `sourceType: api_proxy_real`은 **정확**하다. 시뮬레이션 카탈로그는 이 응답에서 떠 온 사본이지 주입원이 아니다(`capturedFrom` 매니페스트 + `loadSimCatalogV1`이 `resolveResource` 미참조).
+  판정: 13건은 **현재 Production에 설정된 real 모드 고도몰 Open API의 실제 응답**이며 `sourceType: api_proxy_real`은 애플리케이션 실행 경로와 일치한다. 새 판매몰 키가 아직 발급·등록되지 않았고 시뮬레이션 카탈로그가 이 응답을 “시험몰 만료 직전”에 캡처했다고 기록하므로 **기존 시험몰 자료로 판단**한다. 다만 관리자 계정의 실제 만료 상태는 미확인이다.
   부수 발견: **시험몰 Open API가 아직 응답한다** — 계정 만료 여부는 사용자 확인 대기.
   증거: `docs/governance/evidence/B1-0_PRODUCT_SOURCE_AUDIT.md`
 - A `activeOperationsData`와 B `fetchRevenue` 차이 실측 · 동일 fixture parity

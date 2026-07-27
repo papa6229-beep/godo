@@ -39,7 +39,7 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 
 ### 상품 13건의 출처 — **확정 (B1-0, 2026-07-27)**
 
-**출처 = 기존 시험몰의 실제 외부 Open API 응답. `sourceType: api_proxy_real`은 정확하다.**
+**출처 = 현재 Production에 설정된 real 모드 고도몰 Open API의 실제 응답. 프로젝트 기록상 기존 시험몰 자료로 판단한다. `sourceType: api_proxy_real`은 애플리케이션 실행 경로와 일치한다.**
 
 - 확인 대상: **Production** `godo-psi.vercel.app` / Source `5190f68` / branch `main`
   (최초 13건 관측은 Preview `838e2c4`였고, 두 배포의 조사 대상 코드 경로는 동일)
@@ -47,7 +47,7 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 - 시뮬레이션 카탈로그는 이 경로에 진입하지 않는다 — `loadSimCatalogV1`은 `resolveResource`가 아니라 Sync All 합성 경로(`:465`)에서만 사용
 - **지문 일치의 방향**: `simCatalogV1.data.ts` 매니페스트가 `capturedFrom: '/api/godomall/products (Production, sourceType api_proxy_real)'`라고 스스로 기록한다. 카탈로그가 **이 응답에서 떠 온 사본**이므로 13건이 같은 것이 당연하다(주입이 아님)
 - mock fixture는 **4건**이고 productId 체계가 다르다 → 후보 탈락
-- 캐시 아님: `x-vercel-cache: MISS` · `age: 0` · 왕복 **1832 ms**
+- CDN 캐시 아님: `x-vercel-cache: MISS` · `age: 0`. 왕복 **1832 ms**는 외부 호출과 양립하는 보조 정황이며, 외부 호출 성공 판정은 코드 분기와 `api_proxy_real` 응답을 함께 근거로 한다
 - 라벨이 상태를 구분함(같은 시점 관측): products/inventory **api_proxy_real 13건** · orders **api_proxy_real 0건**(실제 0) · inquiries/reviews **unavailable 0건**(미연결). 소요도 각각 600~3000 ms vs ~220 ms로 갈린다
 
 증거·재현 명령: `docs/governance/evidence/B1-0_PRODUCT_SOURCE_AUDIT.md`
@@ -93,7 +93,7 @@ A2 local main 통합 후 재검증: smoke **120/120**·build·`typecheck:api`·l
 
 ## 9. 미확인 항목
 
-- ~~Preview `products` 13건의 실제 출처~~ → **B1-0에서 확정**(§3): 기존 시험몰 실제 응답
+- ~~Preview `products` 13건의 실제 출처~~ → **B1-0에서 확정**(§3): 현재 설정된 real 모드 고도몰 Open API의 실제 응답. 새 판매몰 키 미등록과 캡처 매니페스트를 근거로 기존 시험몰 자료로 판단
 - **시험몰 계정이 실제로 만료됐는지** — Open API는 응답 중. 고도몰 관리자 확인 필요(사용자)
 - 실제 운영 데이터량 (B4의 DB 사이징 입력 — 상한 가정으로 대체 예정)
 - 기존 localStorage에 쌓인 시험 자료의 양과 보존 가치 (B5에서 JSON 백업 후 확인)
