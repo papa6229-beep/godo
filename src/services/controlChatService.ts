@@ -3,7 +3,8 @@ import { isUnanswered } from './inquiryStatusContract';
 import { getGlobalBrainSelection, isBrainConnected, providerLabel } from './aiBrainSettings';
 import { getProviderModel } from './aiKeyVault';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
-import { classifyResource, userLabelOf } from './dataSourceProvenanceContract';
+import { migrateResourceProvenance, summarizeScreenStatus } from './dataSourceProvenanceContract';
+import type { ResourceStatusRecord } from './dataSourceProvenanceContract';
 import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import type { 
@@ -26,21 +27,35 @@ import type {
 //   StandardInventoryItem.status — inventoryRiskContract 판정 결과(B-core-2a 에서 단일화)
 // ────────────────────────────────────────────────────────────────────────────
 
-export interface HqOperationsSummary {
+/** 리소스 1종의 신분과 건수. **리소스마다 다를 수 있다** — 하나로 뭉개지 않는다. */
+export interface HqResourceState {
+  resource: string;
+  /** 연결됐는가(success). false 면 '연결 안 됨'이며 수치를 제시하지 않는다. */
+  connected: boolean;
   /** '실제 데이터' | '시험 데이터' | '연결 안 됨' */
   dataLabel: string;
-  /** 실제 자료인데 0건인가(연결 실패와 다르다). */
+  /** 실제 자료로 연결됐는데 0건인가. 미연결 0건과 **다른 사실**이다. */
   isActualZero: boolean;
-  ordersCount: number;
+  /** 연결 안 됨이면 0. 연결됐으면 스냅샷 배열의 실제 건수. */
+  count: number;
+}
+
+export interface HqOperationsSummary {
+  /** 리소스별 신분 — 주문/문의/리뷰/재고가 서로 다를 수 있다. */
+  orders: HqResourceState;
+  inquiries: HqResourceState;
+  reviews: HqResourceState;
+  inventory: HqResourceState;
+  /** 화면 전체 판정과 사유(일부 미연결이면 어느 리소스인지 밝힌다). */
+  screenLabel: string;
+  screenNote: string;
+
+  /** 아래 수치는 **해당 리소스가 연결됐을 때만** 채워진다(미연결이면 0). */
   pendingInquiriesCount: number;
-  reviewsCount: number;
-  /** 재고 위험(품절·안전재고 이하). 계약 판정 결과에서 센다. */
   stockRiskCount: number;
-  /** 재고를 해석할 수 없어 판단 못한 상품. 위험으로도 정상으로도 뭉개지 않는다. */
   stockUnknownCount: number;
-  /** 송장번호 없는 배송 주문(riskFlags 근거). */
   invoiceMissingCount: number;
-  /** 아래 3개는 orderFacts 를 실어 보낸 주문에서만 집계된다. */
+  /** 아래 4개는 orderFacts 를 실어 보낸 주문에서만 집계된다. */
   factsCoveredOrders: number;
   canceledCount: number;
   deliveryFeeTotal: number;
@@ -49,30 +64,66 @@ export interface HqOperationsSummary {
   paymentUndecidedCount: number;
 }
 
+const RESOURCE_LABEL: Record<string, string> = {
+  orders: '주문', inquiries: '문의', reviews: '리뷰', inventory: '재고', sales: '매출'
+};
+
+const toResourceState = (rec: ResourceStatusRecord, liveCount: number): HqResourceState => {
+  const connected = rec.status === 'success';
+  return {
+    resource: rec.resource,
+    connected,
+    dataLabel: rec.userLabel,
+    // 실제 자료로 성공했는데 0건 — 연결 실패와 구분한다.
+    isActualZero: connected && rec.provenance === 'actual' && liveCount === 0,
+    count: connected ? liveCount : 0
+  };
+};
+
 /**
  * 적재된 운영 스냅샷 → 총괄 콘솔이 쓰는 단일 요약.
  * 순수 함수 — 저장소·네트워크를 만지지 않는다.
+ *
+ * 출처는 **리소스별 정본**(`snapshot.resourceProvenance`)을 쓴다.
+ *   전역 `sourceType` 하나로 판정하면, 마지막 동기화가 문의였다는 이유로 주문의 신분이 바뀌거나
+ *   문의가 미연결인데 '실제 0건'으로 보고되는 오답이 생긴다.
+ * 리소스별 기록이 없는 구자료는 `migrateResourceProvenance` 가 보수적으로(fail-closed) 판정한다.
+ * **새 출처 규칙을 만들지 않고 기존 계약을 그대로 쓴다.**
  */
 export function buildHqOperationsSummary(snapshot: OperationsDataSnapshot): HqOperationsSummary {
-  const provenance = classifyResource({
-    sourceType: snapshot.sourceType,
-    records: snapshot.orders
-  });
+  const counts: Record<string, number> = {
+    orders: snapshot.orders.length,
+    inquiries: snapshot.inquiries.length,
+    reviews: snapshot.reviews.length,
+    inventory: snapshot.inventory.length
+  };
+  // 유효한 리소스별 근거는 그대로 유지하고, 없는 것만 보수적으로 채운다(idempotent).
+  const provenance = migrateResourceProvenance(snapshot.sourceType, snapshot.resourceProvenance, counts);
 
-  const orders = snapshot.orders;
-  const facts = orders.map((o) => o.orderFacts).filter((f): f is NonNullable<typeof f> => !!f);
+  const orders = toResourceState(provenance.orders, counts.orders);
+  const inquiries = toResourceState(provenance.inquiries, counts.inquiries);
+  const reviews = toResourceState(provenance.reviews, counts.reviews);
+  const inventory = toResourceState(provenance.inventory, counts.inventory);
+
+  const screen = summarizeScreenStatus([provenance.orders, provenance.inquiries, provenance.reviews, provenance.inventory]);
+
+  // 미연결 리소스의 수치는 만들지 않는다(잔여 배열이 남아 있어도 제시하지 않는다).
+  const orderRows = orders.connected ? snapshot.orders : [];
+  const facts = orderRows.map((o) => o.orderFacts).filter((f): f is NonNullable<typeof f> => !!f);
+  const inventoryRows = inventory.connected ? snapshot.inventory : [];
 
   return {
-    dataLabel: userLabelOf(provenance.kind),
-    isActualZero: provenance.kind === 'actual' && provenance.count === 0,
-    ordersCount: orders.length,
-    pendingInquiriesCount: snapshot.inquiries.filter((i) => isUnanswered(i.status)).length,
-    reviewsCount: snapshot.reviews.length,
+    orders, inquiries, reviews, inventory,
+    screenLabel: screen.userLabel,
+    screenNote: screen.note,
+    pendingInquiriesCount: inquiries.connected
+      ? snapshot.inquiries.filter((i) => isUnanswered(i.status)).length
+      : 0,
     // status 는 이미 inventoryRiskContract 판정 결과다. 다시 판정하지 않고 그대로 센다.
     //   unknown 을 위험에 합치지 않는다 — '확인 필요'와 '위험'은 다른 사실이다.
-    stockRiskCount: snapshot.inventory.filter((i) => i.status === 'danger' || i.status === 'warning').length,
-    stockUnknownCount: snapshot.inventory.filter((i) => i.status === 'unknown').length,
-    invoiceMissingCount: orders.filter((o) => o.riskFlags.includes('invoice_missing')).length,
+    stockRiskCount: inventoryRows.filter((i) => i.status === 'danger' || i.status === 'warning').length,
+    stockUnknownCount: inventoryRows.filter((i) => i.status === 'unknown').length,
+    invoiceMissingCount: orderRows.filter((o) => o.riskFlags.includes('invoice_missing')).length,
     factsCoveredOrders: facts.length,
     canceledCount: facts.filter((f) => f.canceled).length,
     deliveryFeeTotal: facts.reduce((s, f) => s + f.deliveryFee, 0),
@@ -81,6 +132,14 @@ export function buildHqOperationsSummary(snapshot: OperationsDataSnapshot): HqOp
   };
 }
 
+/** 리소스 1종을 사람이 읽는 한 조각으로. 미연결이면 숫자를 말하지 않는다. */
+const describeResource = (r: HqResourceState, detail: string): string => {
+  const name = RESOURCE_LABEL[r.resource] ?? r.resource;
+  if (!r.connected) return `${name} 연결 안 됨`;
+  if (r.isActualZero) return `${name} 실제 0건(연결 실패 아님)`;
+  return `${name} ${r.count}건[${r.dataLabel}]${detail}`;
+};
+
 /**
  * 요약 → 사람이 읽는 한 문장. 확인하지 못한 것을 확인한 것처럼 쓰지 않는다.
  *   - 실제 자료인데 0건이면 '실제 0건'으로 말한다(연결 실패와 구분).
@@ -88,35 +147,43 @@ export function buildHqOperationsSummary(snapshot: OperationsDataSnapshot): HqOp
  *   - 결제 여부가 갈리는 주문은 한쪽으로 단정하지 않고 '미확정'으로 말한다.
  */
 export function describeHqOperationsSummary(s: HqOperationsSummary): string {
-  if (s.dataLabel === '연결 안 됨') {
-    return '운영 데이터가 아직 연결되지 않았습니다(연결 안 됨). 수치를 제시할 수 없습니다.';
-  }
-  if (s.isActualZero) {
-    return `[${s.dataLabel}] 실제 자료를 받았고 주문은 0건입니다(연결 실패가 아님). 문의 ${s.pendingInquiriesCount}건 미답변, 재고 위험 ${s.stockRiskCount}건.`;
-  }
-
-  const parts = [
-    `적재된 주문 ${s.ordersCount}건`,
-    `미답변 문의 ${s.pendingInquiriesCount}건`,
-    `리뷰 ${s.reviewsCount}건`,
-    `재고 위험 ${s.stockRiskCount}건`
-  ];
-  if (s.stockUnknownCount > 0) parts.push(`재고 확인 필요 ${s.stockUnknownCount}건`);
-  if (s.invoiceMissingCount > 0) parts.push(`송장 누락 ${s.invoiceMissingCount}건`);
-
-  if (s.factsCoveredOrders > 0) {
-    parts.push(`취소 ${s.canceledCount}건`);
-    parts.push(`상품 라인 매출 ${s.productLineRevenue.toLocaleString()}원`);
-    parts.push(`배송비 ${s.deliveryFeeTotal.toLocaleString()}원`);
-    if (s.factsCoveredOrders < s.ordersCount) {
-      parts.push(`(취소·매출·배송비는 상세 사실이 있는 ${s.factsCoveredOrders}건 기준)`);
+  // 주문 상세(취소·매출·배송비·결제 미확정)는 주문이 연결됐고 상세 사실이 있을 때만.
+  let orderDetail = '';
+  if (s.orders.connected && s.factsCoveredOrders > 0) {
+    const d = [
+      `취소 ${s.canceledCount}건`,
+      `상품 라인 매출 ${s.productLineRevenue.toLocaleString()}원`,
+      `배송비 ${s.deliveryFeeTotal.toLocaleString()}원`
+    ];
+    if (s.invoiceMissingCount > 0) d.push(`송장 누락 ${s.invoiceMissingCount}건`);
+    if (s.paymentUndecidedCount > 0) {
+      d.push(`결제 여부 미확정 ${s.paymentUndecidedCount}건(고도몰 주문상태 코드 확인 전이라 단정하지 않음)`);
     }
-  }
-  if (s.paymentUndecidedCount > 0) {
-    parts.push(`결제 여부 미확정 ${s.paymentUndecidedCount}건(고도몰 주문상태 코드 확인 전이라 단정하지 않음)`);
+    if (s.factsCoveredOrders < s.orders.count) {
+      d.push(`취소·매출·배송비는 상세 사실이 있는 ${s.factsCoveredOrders}건 기준`);
+    }
+    orderDetail = ` — ${d.join(', ')}`;
+  } else if (s.orders.connected && s.invoiceMissingCount > 0) {
+    orderDetail = ` — 송장 누락 ${s.invoiceMissingCount}건`;
   }
 
-  return `[${s.dataLabel}] ${parts.join(', ')}.`;
+  let inventoryDetail = '';
+  if (s.inventory.connected) {
+    const d = [`위험 ${s.stockRiskCount}건`];
+    if (s.stockUnknownCount > 0) d.push(`확인 필요 ${s.stockUnknownCount}건`);
+    inventoryDetail = ` — ${d.join(', ')}`;
+  }
+
+  const inquiryDetail = s.inquiries.connected ? ` — 미답변 ${s.pendingInquiriesCount}건` : '';
+
+  const lines = [
+    describeResource(s.orders, orderDetail),
+    describeResource(s.inquiries, inquiryDetail),
+    describeResource(s.reviews, ''),
+    describeResource(s.inventory, inventoryDetail)
+  ];
+  // 리소스마다 신분이 다를 수 있다는 사실을 숨기지 않는다.
+  return `${lines.join(' / ')}. (화면 전체: ${s.screenLabel} — ${s.screenNote})`;
 }
 
 /**
@@ -267,8 +334,10 @@ function buildSystemPrompt(
   // C-출처: demo/mock 스냅샷을 실운영으로 오인시키지 않도록 신분(실제/시험/연결 안 됨)을 함께 명시.
   const contextText = `참고용 현재 운영 데이터 (사용자가 운영 현황을 직접 물을 때만 활용): ${describeHqOperationsSummary(ops)} 진행 중 작업 ${pendingTasksCount}건, 승인 대기 ${pendingApprovalsCount}건.
 [수치 사용 규칙]
-- 위 대괄호의 자료 신분(${ops.dataLabel})을 함께 밝히세요. '시험 데이터'면 실제 운영 수치가 아님을 알립니다.
-- '연결 안 됨'이면 수치를 지어내지 말고 연결이 필요하다고 안내하세요.
+- **리소스마다 자료 신분이 다릅니다.** 주문·문의·리뷰·재고를 하나의 신분으로 뭉뚱그리지 마세요.
+- 각 수치를 말할 때 그 리소스의 신분을 함께 밝히세요. '시험 데이터'면 실제 운영 수치가 아님을 알립니다.
+- '연결 안 됨'인 리소스는 수치를 지어내지 말고 그 리소스만 연결이 필요하다고 안내하세요.
+- '실제 0건'은 연결 실패가 아닙니다. 둘을 같은 말로 쓰지 마세요.
 - 결제 여부 미확정 건수가 있으면 결제완료로 단정하지 말고 미확정이라고 그대로 전하세요.
 - 재고 '확인 필요'는 위험과 다릅니다. 합쳐서 말하지 마세요.`;
 
@@ -520,16 +589,15 @@ export async function processControlChat(
     // B-use-1: buildSystemPrompt 와 **같은 공통 요약**을 쓴다(같은 화면에서 다른 숫자가 나오지 않게).
     const ops = buildHqOperationsSummary(activeOperationsData);
     const pendingApprovalsCount = approvalQueue.filter(a => a.status === 'waiting').length;
-    // 연결되지 않은 자료로는 수치를 만들지 않는다.
-    const notConnected = ops.dataLabel === '연결 안 됨';
-    const src = `[${ops.dataLabel}]`;
+    // 질문한 리소스의 신분만 쓴다. 다른 리소스의 신분을 빌려오지 않는다.
+    const reply = (content: string) => ({ role: 'assistant' as const, content, intent, createdAt: currentTimeString });
+    const notConnectedMsg = (name: string) =>
+      `${name} 데이터가 아직 연결되지 않았습니다(연결 안 됨). 고도몰 연동 화면에서 동기화한 뒤 다시 물어봐 주세요.`;
 
     if (normalized.includes('주문') && (normalized.includes('몇건') || normalized.includes('확인'))) {
-      if (notConnected) {
-        return { role: 'assistant', content: '주문 데이터가 아직 연결되지 않았습니다(연결 안 됨). 고도몰 연동 화면에서 동기화한 뒤 다시 물어봐 주세요.', intent, createdAt: currentTimeString };
-      }
-      if (ops.isActualZero) {
-        return { role: 'assistant', content: `${src} 실제 자료를 받았고 주문은 0건입니다. (연결 실패가 아니라 실제로 주문이 없습니다.)`, intent, createdAt: currentTimeString };
+      if (!ops.orders.connected) return reply(notConnectedMsg('주문'));
+      if (ops.orders.isActualZero) {
+        return reply('[실제 데이터] 실제 자료를 받았고 주문은 0건입니다. (연결 실패가 아니라 실제로 주문이 없습니다.)');
       }
       // 확인한 사실만 말한다 — 송장 누락은 riskFlags 근거가 있을 때만.
       const extra: string[] = [];
@@ -538,38 +606,25 @@ export async function processControlChat(
       if (ops.paymentUndecidedCount > 0) {
         extra.push(`결제 여부 미확정 ${ops.paymentUndecidedCount}건(고도몰 주문상태 코드 확인 전이라 결제완료로 단정하지 않습니다)`);
       }
-      return {
-        role: 'assistant',
-        content: `${src} 적재된 주문은 총 ${ops.ordersCount}건입니다.${extra.length ? ` ${extra.join(', ')}.` : ''}`,
-        intent,
-        createdAt: currentTimeString
-      };
+      return reply(`[${ops.orders.dataLabel}] 적재된 주문은 총 ${ops.orders.count}건입니다.${extra.length ? ` ${extra.join(', ')}.` : ''}`);
     }
     if (normalized.includes('문의') && (normalized.includes('몇건') || normalized.includes('미답변'))) {
-      if (notConnected) {
-        return { role: 'assistant', content: '문의 데이터가 아직 연결되지 않았습니다(연결 안 됨).', intent, createdAt: currentTimeString };
+      if (!ops.inquiries.connected) return reply(notConnectedMsg('문의'));
+      if (ops.inquiries.isActualZero) {
+        return reply('[실제 데이터] 실제 자료를 받았고 문의는 0건입니다. (연결 실패가 아닙니다.)');
       }
-      return {
-        role: 'assistant',
-        content: `${src} 답변을 대기 중인 고객 문의는 총 ${ops.pendingInquiriesCount}건입니다.`,
-        intent,
-        createdAt: currentTimeString
-      };
+      return reply(`[${ops.inquiries.dataLabel}] 답변을 대기 중인 고객 문의는 총 ${ops.pendingInquiriesCount}건입니다. (전체 문의 ${ops.inquiries.count}건)`);
     }
     if (normalized.includes('재고') || normalized.includes('품절')) {
-      if (notConnected) {
-        return { role: 'assistant', content: '재고 데이터가 아직 연결되지 않았습니다(연결 안 됨).', intent, createdAt: currentTimeString };
+      if (!ops.inventory.connected) return reply(notConnectedMsg('재고'));
+      if (ops.inventory.isActualZero) {
+        return reply('[실제 데이터] 실제 자료를 받았고 재고 항목은 0건입니다. (연결 실패가 아닙니다.)');
       }
       // '확인 필요'(재고 해석 불가)를 위험에 합치지 않는다.
       const unknownPart = ops.stockUnknownCount > 0
         ? ` 재고 수량을 해석할 수 없어 판단하지 못한 상품이 ${ops.stockUnknownCount}건 있어 확인이 필요합니다.`
         : '';
-      return {
-        role: 'assistant',
-        content: `${src} 품절이거나 안전재고 이하인 위험 상품은 총 ${ops.stockRiskCount}건입니다.${unknownPart}`,
-        intent,
-        createdAt: currentTimeString
-      };
+      return reply(`[${ops.inventory.dataLabel}] 품절이거나 안전재고 이하인 위험 상품은 총 ${ops.stockRiskCount}건입니다.${unknownPart}`);
     }
     if (normalized.includes('승인') || normalized.includes('대기')) {
       return {

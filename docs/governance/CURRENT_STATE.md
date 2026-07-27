@@ -163,9 +163,12 @@ audit `[주문]` RED **7축 → 4축**(사실 유실 해소). 남은 4축은 전
 | 재고 `status !== 'ok'` (unknown 을 위험에 합침) | `danger/warning`(위험)과 `unknown`(확인 필요)을 분리 |
 | "오늘 주문 N건" · "송장 없는 주문이 일부 있으니" (근거 없는 단정) | "적재된 주문 N건" · 송장 누락은 `riskFlags` 근거가 있을 때만 |
 | 실제 0건과 연결 실패가 같은 문장 | `isActualZero` 로 분리, `연결 안 됨` 이면 수치를 만들지 않음 |
+| 주문 배열 하나로 **전역 출처 판정** → 문의·재고에 그대로 사용 | `resourceProvenance` 를 정본으로 **리소스별 판정**. 주문 질문은 주문 신분, 문의 질문은 문의 신분. 구자료는 `migrateResourceProvenance` 가 fail-closed 로 판정 |
 
 fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라인 매출 416,000 · 결제 미확정 2 · 재고 위험 4
 → **B 세계 audit 값과 일치**. 구자료(`orderFacts` 없음)는 취소·매출·배송비를 아예 말하지 않는다(거짓 0 금지).
+
+리소스별 출처 조합 확인: 주문 actual 10 / 문의 unavailable → 문의는 '연결 안 됨'만 · 주문 actual 0 / 문의 actual 0 → 둘 다 '실제 0건(연결 실패 아님)' · 주문 fixture / 재고 actual → 각각 [시험 데이터] / [실제 데이터] · 구자료(리소스별 기록 없음)는 전역 `api_proxy_real` 만으로 actual 을 허용하지 않고 전부 '연결 안 됨'.
 
 **Claude 최소 확인만**: `tsc -b` 0 · `typecheck:api` 0 · lint 0 · 인접 기존 스모크 10건 PASS · 4개 데이터 상태 동작 확인 · 트리 clean · 비밀값 0.
 **수행하지 않음**: 전체 `npm test` · Vercel/Preview/Production · 화면 눈검증. → Codex 검증 범위.
