@@ -13,6 +13,112 @@ import type {
   AgentDelegationResult
 } from '../types/controlChat';
 
+// ────────────────────────────────────────────────────────────────────────────
+// B-use-1: 총괄 콘솔(오늘의 운영)의 운영 요약을 **공통 데이터 입구 하나**에서 만든다.
+//
+// 이전에는 같은 수치를 두 곳(buildSystemPrompt · LEVEL 1 응답)에서 각자 계산했다.
+// 한쪽만 고치면 같은 화면 안에서 다른 숫자가 나온다. 여기 한 곳으로 모은다.
+//
+// 사용하는 공통 계약:
+//   dataSourceProvenanceContract — 실제 / 시험 / 연결 안 됨 · 실제 0건 구분
+//   inquiryStatusContract        — 미답변 판정
+//   StandardOrder.orderFacts     — 취소·배송비·상품라인·결제 근거(B-core 에서 보존한 사실)
+//   StandardInventoryItem.status — inventoryRiskContract 판정 결과(B-core-2a 에서 단일화)
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface HqOperationsSummary {
+  /** '실제 데이터' | '시험 데이터' | '연결 안 됨' */
+  dataLabel: string;
+  /** 실제 자료인데 0건인가(연결 실패와 다르다). */
+  isActualZero: boolean;
+  ordersCount: number;
+  pendingInquiriesCount: number;
+  reviewsCount: number;
+  /** 재고 위험(품절·안전재고 이하). 계약 판정 결과에서 센다. */
+  stockRiskCount: number;
+  /** 재고를 해석할 수 없어 판단 못한 상품. 위험으로도 정상으로도 뭉개지 않는다. */
+  stockUnknownCount: number;
+  /** 송장번호 없는 배송 주문(riskFlags 근거). */
+  invoiceMissingCount: number;
+  /** 아래 3개는 orderFacts 를 실어 보낸 주문에서만 집계된다. */
+  factsCoveredOrders: number;
+  canceledCount: number;
+  deliveryFeeTotal: number;
+  productLineRevenue: number;
+  /** 두 결제 규칙의 결과가 갈려 결제 여부를 단정할 수 없는 주문 수. */
+  paymentUndecidedCount: number;
+}
+
+/**
+ * 적재된 운영 스냅샷 → 총괄 콘솔이 쓰는 단일 요약.
+ * 순수 함수 — 저장소·네트워크를 만지지 않는다.
+ */
+export function buildHqOperationsSummary(snapshot: OperationsDataSnapshot): HqOperationsSummary {
+  const provenance = classifyResource({
+    sourceType: snapshot.sourceType,
+    records: snapshot.orders
+  });
+
+  const orders = snapshot.orders;
+  const facts = orders.map((o) => o.orderFacts).filter((f): f is NonNullable<typeof f> => !!f);
+
+  return {
+    dataLabel: userLabelOf(provenance.kind),
+    isActualZero: provenance.kind === 'actual' && provenance.count === 0,
+    ordersCount: orders.length,
+    pendingInquiriesCount: snapshot.inquiries.filter((i) => isUnanswered(i.status)).length,
+    reviewsCount: snapshot.reviews.length,
+    // status 는 이미 inventoryRiskContract 판정 결과다. 다시 판정하지 않고 그대로 센다.
+    //   unknown 을 위험에 합치지 않는다 — '확인 필요'와 '위험'은 다른 사실이다.
+    stockRiskCount: snapshot.inventory.filter((i) => i.status === 'danger' || i.status === 'warning').length,
+    stockUnknownCount: snapshot.inventory.filter((i) => i.status === 'unknown').length,
+    invoiceMissingCount: orders.filter((o) => o.riskFlags.includes('invoice_missing')).length,
+    factsCoveredOrders: facts.length,
+    canceledCount: facts.filter((f) => f.canceled).length,
+    deliveryFeeTotal: facts.reduce((s, f) => s + f.deliveryFee, 0),
+    productLineRevenue: facts.reduce((s, f) => s + f.lines.reduce((t, l) => t + l.lineRevenue, 0), 0),
+    paymentUndecidedCount: facts.filter((f) => f.paymentEvidence.conflicted).length
+  };
+}
+
+/**
+ * 요약 → 사람이 읽는 한 문장. 확인하지 못한 것을 확인한 것처럼 쓰지 않는다.
+ *   - 실제 자료인데 0건이면 '실제 0건'으로 말한다(연결 실패와 구분).
+ *   - orderFacts 가 없는 주문은 취소·배송비 집계에서 빠졌다는 사실을 밝힌다.
+ *   - 결제 여부가 갈리는 주문은 한쪽으로 단정하지 않고 '미확정'으로 말한다.
+ */
+export function describeHqOperationsSummary(s: HqOperationsSummary): string {
+  if (s.dataLabel === '연결 안 됨') {
+    return '운영 데이터가 아직 연결되지 않았습니다(연결 안 됨). 수치를 제시할 수 없습니다.';
+  }
+  if (s.isActualZero) {
+    return `[${s.dataLabel}] 실제 자료를 받았고 주문은 0건입니다(연결 실패가 아님). 문의 ${s.pendingInquiriesCount}건 미답변, 재고 위험 ${s.stockRiskCount}건.`;
+  }
+
+  const parts = [
+    `적재된 주문 ${s.ordersCount}건`,
+    `미답변 문의 ${s.pendingInquiriesCount}건`,
+    `리뷰 ${s.reviewsCount}건`,
+    `재고 위험 ${s.stockRiskCount}건`
+  ];
+  if (s.stockUnknownCount > 0) parts.push(`재고 확인 필요 ${s.stockUnknownCount}건`);
+  if (s.invoiceMissingCount > 0) parts.push(`송장 누락 ${s.invoiceMissingCount}건`);
+
+  if (s.factsCoveredOrders > 0) {
+    parts.push(`취소 ${s.canceledCount}건`);
+    parts.push(`상품 라인 매출 ${s.productLineRevenue.toLocaleString()}원`);
+    parts.push(`배송비 ${s.deliveryFeeTotal.toLocaleString()}원`);
+    if (s.factsCoveredOrders < s.ordersCount) {
+      parts.push(`(취소·매출·배송비는 상세 사실이 있는 ${s.factsCoveredOrders}건 기준)`);
+    }
+  }
+  if (s.paymentUndecidedCount > 0) {
+    parts.push(`결제 여부 미확정 ${s.paymentUndecidedCount}건(고도몰 주문상태 코드 확인 전이라 단정하지 않음)`);
+  }
+
+  return `[${s.dataLabel}] ${parts.join(', ')}.`;
+}
+
 /**
  * 룰 기반 1차 의도(Intent) 분석 및 분류
  */
@@ -152,17 +258,19 @@ function buildSystemPrompt(
   brainLabel: string,
   brainModel: string
 ): string {
-  const ordersCount = activeOperationsData.orders.length;
-  const pendingInquiriesCount = activeOperationsData.inquiries.filter(i => isUnanswered(i.status)).length;
-  const reviewsCount = activeOperationsData.reviews.length;
-  const lowStockCount = activeOperationsData.inventory.filter(i => i.status !== 'ok').length;
+  // B-use-1: 운영 수치는 공통 요약 하나에서만 만든다(LEVEL 1 응답과 같은 함수).
+  const ops = buildHqOperationsSummary(activeOperationsData);
   const pendingApprovalsCount = approvalQueue.filter(a => a.status === 'waiting').length;
   const pendingTasksCount = tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
 
   // 참고용 운영 데이터 — 사용자가 운영 현황을 "직접 물을 때만" 활용한다(평소엔 먼저 꺼내지 않음).
-  // C-출처: demo/mock 스냅샷을 실운영으로 오인시키지 않도록 신분(실제/시험/연결 안 됨)을 함께 명시. 수치는 불변.
-  const dataLabel = userLabelOf(classifyResource({ sourceType: activeOperationsData.sourceType }).kind);
-  const contextText = `참고용 현재 운영 데이터[${dataLabel}] (사용자가 운영 현황을 직접 물을 때만 활용): 오늘 주문 ${ordersCount}건, 미답변 문의 ${pendingInquiriesCount}건, 리뷰 ${reviewsCount}건, 재고 위험 상품 ${lowStockCount}건, 진행 중 작업 ${pendingTasksCount}건, 승인 대기 ${pendingApprovalsCount}건. (${dataLabel}: 실제 운영 수치가 아닐 수 있음)`;
+  // C-출처: demo/mock 스냅샷을 실운영으로 오인시키지 않도록 신분(실제/시험/연결 안 됨)을 함께 명시.
+  const contextText = `참고용 현재 운영 데이터 (사용자가 운영 현황을 직접 물을 때만 활용): ${describeHqOperationsSummary(ops)} 진행 중 작업 ${pendingTasksCount}건, 승인 대기 ${pendingApprovalsCount}건.
+[수치 사용 규칙]
+- 위 대괄호의 자료 신분(${ops.dataLabel})을 함께 밝히세요. '시험 데이터'면 실제 운영 수치가 아님을 알립니다.
+- '연결 안 됨'이면 수치를 지어내지 말고 연결이 필요하다고 안내하세요.
+- 결제 여부 미확정 건수가 있으면 결제완료로 단정하지 말고 미확정이라고 그대로 전하세요.
+- 재고 '확인 필요'는 위험과 다릅니다. 합쳐서 말하지 마세요.`;
 
   return `당신은 GODO AI OS의 HQ 매니저 비서입니다. 사용자(쇼핑몰 운영자)를 돕는 총괄 비서로서 한국어 존댓말로 자연스럽게 대화합니다.
 
@@ -409,31 +517,56 @@ export async function processControlChat(
 
   // LEVEL 1: 간단한 조회용 운영 수치 질문 응답 (Gemma 호출 안함)
   if (intent === 'operation_question') {
-    const ordersCount = activeOperationsData.orders.length;
-    const pendingInquiries = activeOperationsData.inquiries.filter(i => isUnanswered(i.status));
+    // B-use-1: buildSystemPrompt 와 **같은 공통 요약**을 쓴다(같은 화면에서 다른 숫자가 나오지 않게).
+    const ops = buildHqOperationsSummary(activeOperationsData);
     const pendingApprovalsCount = approvalQueue.filter(a => a.status === 'waiting').length;
-    const lowStockCount = activeOperationsData.inventory.filter(i => i.status !== 'ok').length;
+    // 연결되지 않은 자료로는 수치를 만들지 않는다.
+    const notConnected = ops.dataLabel === '연결 안 됨';
+    const src = `[${ops.dataLabel}]`;
 
     if (normalized.includes('주문') && (normalized.includes('몇건') || normalized.includes('확인'))) {
+      if (notConnected) {
+        return { role: 'assistant', content: '주문 데이터가 아직 연결되지 않았습니다(연결 안 됨). 고도몰 연동 화면에서 동기화한 뒤 다시 물어봐 주세요.', intent, createdAt: currentTimeString };
+      }
+      if (ops.isActualZero) {
+        return { role: 'assistant', content: `${src} 실제 자료를 받았고 주문은 0건입니다. (연결 실패가 아니라 실제로 주문이 없습니다.)`, intent, createdAt: currentTimeString };
+      }
+      // 확인한 사실만 말한다 — 송장 누락은 riskFlags 근거가 있을 때만.
+      const extra: string[] = [];
+      if (ops.invoiceMissingCount > 0) extra.push(`송장번호가 없는 배송 주문 ${ops.invoiceMissingCount}건`);
+      if (ops.factsCoveredOrders > 0) extra.push(`취소 ${ops.canceledCount}건`);
+      if (ops.paymentUndecidedCount > 0) {
+        extra.push(`결제 여부 미확정 ${ops.paymentUndecidedCount}건(고도몰 주문상태 코드 확인 전이라 결제완료로 단정하지 않습니다)`);
+      }
       return {
         role: 'assistant',
-        content: `오늘 들어온 신규 주문은 총 ${ordersCount}건입니다. 이 중 송장번호가 없는 주문이 일부 있으니 우측 대시보드나 상세 보기에서 확인해 주세요.`,
+        content: `${src} 적재된 주문은 총 ${ops.ordersCount}건입니다.${extra.length ? ` ${extra.join(', ')}.` : ''}`,
         intent,
         createdAt: currentTimeString
       };
     }
     if (normalized.includes('문의') && (normalized.includes('몇건') || normalized.includes('미답변'))) {
+      if (notConnected) {
+        return { role: 'assistant', content: '문의 데이터가 아직 연결되지 않았습니다(연결 안 됨).', intent, createdAt: currentTimeString };
+      }
       return {
         role: 'assistant',
-        content: `답변을 대기 중인 고객 문의는 총 ${pendingInquiries.length}건입니다. 교환/환불 요청이 포함되어 있어 먼저 처리가 권장됩니다.`,
+        content: `${src} 답변을 대기 중인 고객 문의는 총 ${ops.pendingInquiriesCount}건입니다.`,
         intent,
         createdAt: currentTimeString
       };
     }
     if (normalized.includes('재고') || normalized.includes('품절')) {
+      if (notConnected) {
+        return { role: 'assistant', content: '재고 데이터가 아직 연결되지 않았습니다(연결 안 됨).', intent, createdAt: currentTimeString };
+      }
+      // '확인 필요'(재고 해석 불가)를 위험에 합치지 않는다.
+      const unknownPart = ops.stockUnknownCount > 0
+        ? ` 재고 수량을 해석할 수 없어 판단하지 못한 상품이 ${ops.stockUnknownCount}건 있어 확인이 필요합니다.`
+        : '';
       return {
         role: 'assistant',
-        content: `현재 안전재고 수량보다 적은 품절 위험 상품은 총 ${lowStockCount}건입니다. 특히 마사지 오일의 재고 상태 점검이 시급합니다.`,
+        content: `${src} 품절이거나 안전재고 이하인 위험 상품은 총 ${ops.stockRiskCount}건입니다.${unknownPart}`,
         intent,
         createdAt: currentTimeString
       };

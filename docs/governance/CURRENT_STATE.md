@@ -148,6 +148,28 @@ audit `[주문]` RED **7축 → 4축**(사실 유실 해소). 남은 4축은 전
 **Claude 가 수행한 최소 확인만**: `tsc -b` 0 · `typecheck:api` 0 · `eslint`(변경 영역) 0 · 인접 기존 스모크 8건 PASS · 작업 트리 clean · 비밀값 0.
 **수행하지 않음**: 전체 `npm test` · 전체 회귀 · Vercel/Preview/Production · 눈검증. → Codex 검증 범위.
 
+### B-use-1 대표 경로 연결 — **1경로 구현 완료, Codex 검증 대기 (2026-07-27)**
+
+브랜치 `codex/b-use-1-representative-data-path` (`5dcb703` 에서 분기).
+
+선택 경로: **오늘의 운영(OfficeView) → 총괄 콘솔(ChatConsole) 운영 요약 = `controlChatService`**
+근거: 마운트된 A 세계 운영 요약 경로가 이곳뿐이다. `AiBriefing`·`ReportModal` 은 렌더 호출자 0건, `CalendarPanel` 은 `activeOperationsData` 를 받고 본문에서 쓰지 않으며, `ProductTeamDashboard` 는 B 세계만 본다.
+
+| 이전 | 이후 |
+|---|---|
+| `buildSystemPrompt` 와 LEVEL 1 응답이 **같은 수치를 각자 계산** | `buildHqOperationsSummary` **한 곳**에서 생성 |
+| `orders.length` 만 — 취소·배송비·라인매출 표현 없음 | `orderFacts` 소비: 취소·배송비·상품 라인 매출 |
+| 결제 상태를 한 규칙 결과로 단정 | `conflicted` 건수를 **결제 미확정**으로 보고, 한쪽을 정답으로 표시하지 않음 |
+| 재고 `status !== 'ok'` (unknown 을 위험에 합침) | `danger/warning`(위험)과 `unknown`(확인 필요)을 분리 |
+| "오늘 주문 N건" · "송장 없는 주문이 일부 있으니" (근거 없는 단정) | "적재된 주문 N건" · 송장 누락은 `riskFlags` 근거가 있을 때만 |
+| 실제 0건과 연결 실패가 같은 문장 | `isActualZero` 로 분리, `연결 안 됨` 이면 수치를 만들지 않음 |
+
+fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라인 매출 416,000 · 결제 미확정 2 · 재고 위험 4
+→ **B 세계 audit 값과 일치**. 구자료(`orderFacts` 없음)는 취소·매출·배송비를 아예 말하지 않는다(거짓 0 금지).
+
+**Claude 최소 확인만**: `tsc -b` 0 · `typecheck:api` 0 · lint 0 · 인접 기존 스모크 10건 PASS · 4개 데이터 상태 동작 확인 · 트리 clean · 비밀값 0.
+**수행하지 않음**: 전체 `npm test` · Vercel/Preview/Production · 화면 눈검증. → Codex 검증 범위.
+
 ## 5. 실행 방식
 
 - **사실상 수동 실행 기반**. `runScheduledAgentTask`(`src/services/agentTaskRunner.ts:169`)는 정의만 있고 **제품 코드 내 호출자 0건**

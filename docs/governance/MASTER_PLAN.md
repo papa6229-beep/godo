@@ -87,8 +87,10 @@
 ## 2. 현재 단계와 다음 한 작업
 
 > **현재 단계: B-core — 이후 변경에도 무너지지 않을 최소 경계 구축**
-> **다음 한 작업: Codex 독립검증 — `codex/b-core-independent-foundation` 묶음(4경계) 검증 후 완료 판정.**
-> 그 뒤 후보: 결제완료 정본 선택은 **C단계(고도몰 `orderStatus` 공식 의미 확인) 선행**이므로, C단계 착수 또는 B-use-1(대표 경로 데이터 연결) 중 Codex가 선택한다.
+> **현재 단계: 전체 4단계 — B-use(실제 화면과 업무 흐름 연결)**
+> **B-core(전체 3단계)는 완료.** 주문 원본 사실(`orderFacts`) · 재고위험 단일화 · 저장 경계(repository/facade) · actor/executor 분리 · TeamId 정본이 섰다.
+> **결제완료 공식 정본은 전체 5단계(C — 새 고도몰 READ·상태코드 확인)로 명시적 이관한다.** 그전까지 두 규칙의 결과와 `conflicted` 를 함께 보존하며 한쪽을 정본으로 삼지 않는다.
+> **다음 한 작업: B-use-1 인계분(`codex/b-use-1-representative-data-path`) Codex 독립검증.**
 
 ---
 
@@ -235,9 +237,14 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 ## 5-2. B-use — 실제 사용 가능하게 만들기
 
-### B-use-1. 대표 경로 데이터 연결
+### B-use-1. 대표 경로 데이터 연결 — **1경로 구현 완료, 검증 대기 (2026-07-27)**
 
-공통 화면(통계·재고·운영)과 오픈 대표 경로가 B-core-2의 입구를 실제로 소비한다.
+공통 화면(통계·재고·운영)과 오픈 대표 경로가 B-core의 입구를 실제로 소비한다.
+
+선택한 경로: **오늘의 운영(OfficeView) → 총괄 콘솔(ChatConsole) 운영 요약** = `controlChatService`.
+마운트된 A 세계 운영 요약 경로가 이곳뿐이고(`AiBriefing` 은 렌더 호출자 0건), 같은 수치를 두 곳에서 각자 계산하고 있었다.
+→ `buildHqOperationsSummary` 하나로 모으고 `orderFacts`(취소·배송비·라인매출·결제 근거) · 출처 계약 · 재고 계약 판정을 소비한다.
+남은 화면 이관은 이번 범위 밖(Local migration·후속 B-use).
 
 ### B-use-2. 서버 기록 (DB 결정 후)
 
