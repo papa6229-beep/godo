@@ -64,8 +64,9 @@ function LoginForm() {
       await signIn.finalize();
       await refreshAuthStatus();
     } else {
-      // 임시 비밀번호 강제 변경 등 세션 태스크/추가 단계 — Preview 실증 대상.
-      setError(`추가 확인이 필요합니다(${signIn.status}). 관리자에게 문의하세요.`);
+      // 세션 태스크(강제 비밀번호 변경 등) 추가 단계는 이번 채택 범위에 없다 — 새로 구현하지 않는다.
+      // 그런 상태가 나오면 여기서 멈추고 관리자(Clerk 대시보드)로 넘긴다.
+      setError(`추가 확인이 필요합니다(${signIn.status}). 총괄 관리자에게 문의하세요.`);
     }
   };
 
@@ -84,7 +85,7 @@ function LoginForm() {
       <button type="submit" style={BTN} disabled={busy}>{busy ? '확인 중…' : '로그인'}</button>
       {error && <p style={ERR}>{error}</p>}
       <p style={{ fontSize: 12, color: '#9ca3af', marginTop: 12 }}>
-        비밀번호를 잊으셨나요? 회사 메신저로 팀장 또는 총괄 관리자에게 임시 비밀번호를 요청하세요.
+        비밀번호를 잊으셨나요? 총괄 관리자에게 문의하세요(Clerk 관리자 대시보드에서 처리합니다).
       </p>
     </form>
   );

@@ -6,8 +6,8 @@
 //   GET  /api/auth/pending-approvals   내가 승인할 수 있는 신청 + 관리 대상 목록
 //   POST /api/auth/signup-metadata     가입 직후 이름·팀·직책 메타 생성(항상 member·pending)
 //   POST /api/auth/approve             승인(역할은 승인 시점 결정: member|team_lead=HQ만)
-//   POST /api/auth/suspend             정지(삭제 아님·이력 보존)
-//   POST /api/auth/reset-password      임시 비번 발급(같은 팀장/HQ만; 세션종료+다음 로그인 변경 강제)
+//   POST /api/auth/suspend             ✖ 미채택 — 503(아래 DISABLED_ACTIONS)
+//   POST /api/auth/reset-password      ✖ 미채택 — 503(아래 DISABLED_ACTIONS)
 //
 // 규칙:
 //   - 행위자 userId 는 검증된 세션에서만(body 의 actor/role/team 불신).
@@ -21,7 +21,7 @@ import type { AuthSessionPort } from '../_shared/authActor.js';
 import { resolveServerAuthConfig } from '../_shared/authActor.js';
 import type { ApprovalDirectoryPort } from '../_shared/accountDirectory.js';
 import {
-  approveApplication, suspendAccount, resetPassword, listApprovableFor, listManagedFor
+  approveApplication, listApprovableFor, listManagedFor
 } from '../_shared/accountDirectory.js';
 import {
   createSignupAccount, toPublicView, shouldBootstrapHq, bootstrapHqAccount, isApproveAsRole
@@ -48,6 +48,19 @@ const ACTION_METHODS: Record<string, 'GET' | 'POST'> = {
   'reset-password': 'POST'
 };
 
+// 최종 채택 최소화(2026-07-27): 필수 4흐름(가입·member/pending 생성·승인·로그인 후 이용) 밖의 액션.
+// 이 두 기능은 제품 안에 복구 경로가 없어 호출되면 사용자를 막다른 상태로 만든다:
+//   - reset-password: Clerk 이 임시 비번 발급 후 '다음 로그인 시 변경'을 세션 태스크로 요구하는데
+//     우리 앱에는 그 태스크를 처리할 화면이 없다 → 대상자가 다시 로그인할 수 없다.
+//   - suspend      : 앱에 정지 해제(복구) 경로가 없다 → 되돌릴 수 없다.
+// 따라서 앱 경로에서 fail-closed 로 닫는다. 비밀번호 문제와 계정 중지는 당분간
+// Clerk 관리자 대시보드에서만 처리한다. 계정 계약·과거 이력·서비스 함수는 삭제하지 않는다
+// (accountContract/accountDirectory 그대로 — 재개 시 이 표에서 빼면 된다).
+export const DISABLED_ACTIONS: Record<string, string> = {
+  'suspend': '계정 정지는 앱에서 제공하지 않습니다. 총괄 관리자가 Clerk 관리자 대시보드에서 처리합니다.',
+  'reset-password': '임시 비밀번호 발급은 앱에서 제공하지 않습니다. 총괄 관리자가 Clerk 관리자 대시보드에서 처리합니다.'
+};
+
 // ── 테스트·런타임 공용 코어(deps 주입) ────────────────────────────────────────
 export async function runAuthAction(req: ExtendedRequest, res: VercelResponse, deps: AuthActionDeps): Promise<void> {
   const action = actionOf(req);
@@ -56,6 +69,11 @@ export async function runAuthAction(req: ExtendedRequest, res: VercelResponse, d
   if ((req.method || '') !== allowed) {
     // 상태를 바꾸기 전에 차단한다(세션 검증조차 하지 않음 — 부작용 0).
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', `Only ${allowed} is accepted for ${action}.`, 405);
+  }
+  const disabled = DISABLED_ACTIONS[action];
+  if (disabled) {
+    // 미채택 기능: 세션 검증·디렉터리 조회 이전에 닫는다 → 어떤 계정도 읽거나 바꾸지 않는다.
+    return sendErrorResponse(res, 'FEATURE_NOT_AVAILABLE', disabled, 503);
   }
 
   const now = new Date().toISOString();
@@ -122,25 +140,8 @@ export async function runAuthAction(req: ExtendedRequest, res: VercelResponse, d
     return sendOkResponse(res, { account: toPublicView(r.account!) });
   }
 
-  // POST /api/auth/suspend — 계정 정지(삭제 아님, 과거 기록 보존).
-  if (action === 'suspend') {
-    const targetUserId = String(body.targetUserId ?? '');
-    if (!targetUserId) return sendErrorResponse(res, 'INVALID_INPUT', 'targetUserId 가 필요합니다.', 400);
-    const r = await suspendAccount(deps.directory, actorUserId, targetUserId, now);
-    if (!r.ok) return sendErrorResponse(res, r.errorCode!, '정지할 수 없습니다.', errStatus(r.errorCode!));
-    return sendOkResponse(res, { account: toPublicView(r.account!) });
-  }
-
-  // POST /api/auth/reset-password — 같은 팀장/HQ 가 임시 비번 발급(세션 전부 종료 + 다음 로그인 변경 강제).
-  // 값은 Clerk 에 전달만 하고 응답/이력/로그에 포함하지 않는다.
-  if (action === 'reset-password') {
-    const targetUserId = String(body.targetUserId ?? '');
-    const tempPassword = typeof body.tempPassword === 'string' ? body.tempPassword : '';
-    if (!targetUserId) return sendErrorResponse(res, 'INVALID_INPUT', 'targetUserId 가 필요합니다.', 400);
-    const r = await resetPassword(deps.directory, actorUserId, targetUserId, tempPassword, now);
-    if (!r.ok) return sendErrorResponse(res, r.errorCode!, '비밀번호를 초기화할 수 없습니다.', errStatus(r.errorCode!));
-    return sendOkResponse(res, { ok: true, targetUserId });
-  }
+  // suspend·reset-password 는 위 DISABLED_ACTIONS 에서 이미 닫혔다(여기에 실행 경로가 없다).
+  // 서비스 함수(suspendAccount/resetPassword)와 판정 규칙은 accountDirectory·accountContract 에 그대로 남아 있다.
 
   return sendErrorResponse(res, 'UNKNOWN_ACTION', `Unknown auth action: ${action}`, 404);
 }
