@@ -7,7 +7,6 @@ interface TaskResultModalProps {
   onClose: () => void;
   approvalQueue: ApprovalItem[];
   onApprove?: (id: string) => void;
-  onReject?: (id: string) => void;
   /** RC-2: 작업 중단(선택). 기록은 삭제하지 않고 대기열에서만 내린다. */
   onCancel?: (id: string) => void;
 }
@@ -17,7 +16,6 @@ export const TaskResultModal: React.FC<TaskResultModalProps> = ({
   onClose,
   approvalQueue,
   onApprove,
-  onReject,
   onCancel
 }) => {
   const [showTechDetails, setShowTechDetails] = useState(false);
@@ -350,16 +348,14 @@ export const TaskResultModal: React.FC<TaskResultModalProps> = ({
                         {appr.status === 'waiting' ? '승인 대기 중' : appr.status === 'approved' ? '승인 완료' : '반려됨'}
                       </span>
                     </div>
-                    {appr.status === 'waiting' && onApprove && onReject && (
+                    {appr.status === 'waiting' && onApprove && (
                       <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'flex-end' }}>
                         {onCancel && (
                           <button onClick={() => onCancel(appr.id)} style={{ ...modalRejectBtnStyle, background: 'transparent' }}>
                             작업 중단
                           </button>
                         )}
-                        <button onClick={() => onReject(appr.id)} style={modalRejectBtnStyle}>
-                          이번 결과 사용 안 함
-                        </button>
+                        {/* B-use-5 교정: 사유 없는 즉시 미채택 제거. '승인하지 않음' 은 승인 상세에서 사유를 적어야 가능하다. */}
                         <button onClick={() => onApprove(appr.id)} style={modalApproveBtnStyle}>
                           승인 (Approve)
                         </button>

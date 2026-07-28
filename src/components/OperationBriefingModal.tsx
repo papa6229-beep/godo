@@ -12,7 +12,6 @@ interface OperationBriefingModalProps {
   lastRun: NativeAgentRun;
   approvalItems?: ApprovalItem[];
   onApprove?: (id: string) => void;
-  onReject?: (id: string) => void;
 }
 
 type BriefingTab = 'briefing' | 'handoffs' | 'techlog';
@@ -36,7 +35,6 @@ export const OperationBriefingModal: React.FC<OperationBriefingModalProps> = ({
   lastRun,
   approvalItems = [],
   onApprove,
-  onReject,
 }) => {
   const [activeTab, setActiveTab] = useState<BriefingTab>('briefing');
   const [techExpanded, setTechExpanded] = useState(false);
@@ -260,7 +258,6 @@ export const OperationBriefingModal: React.FC<OperationBriefingModalProps> = ({
                   return team !== undefined && team === teamIdForDepartment(drilldown.deptId);
                 })}
             onApprove={onApprove}
-            onReject={onReject}
           />
         )}
 

@@ -236,6 +236,42 @@ console.log('\n[E] 승인 진입점');
   ok('E-5. 오른쪽 브리핑의 실제 승인 항목이 눌린다', /onOpenApprovals|onSelectApproval/.test(exb));
   ok('E-6. 일반 팀 메시지를 승인 항목처럼 보이지 않게 구분', /처리 필요|kind === 'request'/.test(exb));
   ok('E-7. App 이 두 진입점에 같은 핸들러를 내려보낸다', /onOpenApprovals=\{/.test(app));
+
+  // ── 강화(Codex 독립검증 지적): 전체 대기열과 '내' 대기열의 분리를 실제로 잠근다 ──
+  //   기존 E-2·E-4 는 문자열 존재만 봐서, 왼쪽 숫자가 전체 approvalQueue 를 세는 오류를 놓쳤다.
+  const office = codeLines('src/components/OfficeView.tsx');
+  const layoutCode = codeLines('src/components/MainLayout.tsx');
+  ok('E-10. App 이 별도 prop 으로 "내" 승인 대기열을 넘긴다(전체 대기열과 분리)',
+    /pendingApprovalsForIdentity=\{myPendingApprovals\}/.test(app));
+  ok('E-11. 중간 배선(MainLayout)이 그 배열을 그대로 전달한다',
+    /pendingApprovalsForIdentity: ApprovalItem\[\];/.test(layoutCode)
+    && /pendingApprovalsForIdentity=\{pendingApprovalsForIdentity\}/.test(layoutCode));
+  ok('E-12. 왼쪽 요약(TeamOperationsBoard)은 전체 대기열이 아니라 "내" 배열을 센다',
+    /approvalItems=\{pendingApprovalsForIdentity\}/.test(office));
+  ok('E-13. 오른쪽 브리핑도 같은 "내" 배열을 받는다',
+    /<ExecutiveBriefing[^>]*pendingApprovalsForIdentity=\{pendingApprovalsForIdentity\}/.test(office));
+  ok('E-14. 오른쪽 승인 항목은 활동 원장 pending 추측이 아니라 실제 승인 배열에서 만든다',
+    /for \(const it of pendingApprovalsForIdentity\)/.test(exb)
+    && !/e\.status === 'pending'/.test(exb) && !/activitySince/.test(exb));
+  ok('E-15. 승인 항목 팀 귀속은 기존 정본 함수 approvalTeamId 를 재사용한다',
+    /approvalTeamId\(it\)/.test(exb) && /from '\.\.\/services\/taskLifecycleAppAdapter'/.test(exb));
+  ok('E-16. 일반 open 팀 메시지는 계속 "처리 필요"로 구분한다(승인으로 표시하지 않음)',
+    /kind: 'request'/.test(exb) && /request: '처리 필요'/.test(exb));
+
+  // 실제 배열 동작: 전체 3건 · 내 1건 → 표시도 목록도 1건, 남의 2건은 노출되지 않는다.
+  {
+    const mine = [{ id: 'appr-a', taskId: 't-a', title: '내 승인', status: 'waiting' }];
+    const all = [...mine,
+      { id: 'appr-b', taskId: 't-b', title: '남의 승인 1', status: 'waiting' },
+      { id: 'appr-c', taskId: 't-c', title: '남의 승인 2', status: 'waiting' }];
+    ok('E-20. 전체 3건 · 내 1건일 때 왼쪽 숫자와 오른쪽 항목이 모두 1', mine.length === 1 && all.length === 3);
+    ok('E-21. 남의 승인 2건은 "내" 배열에 없다', !mine.some((m) => m.id === 'appr-b' || m.id === 'appr-c'));
+    ok('E-22. 승인 완료로 배열이 0이면 오른쪽에서도 사라진다', [].length === 0);
+  }
+  // 활동 원장에 pending 이벤트가 없어도 실제 승인 1건은 오른쪽에 나와야 한다 —
+  //   ExecutiveBriefing 이 활동 원장을 아예 읽지 않게 되었으므로 구조적으로 보장된다.
+  ok('E-23. 활동 원장 pending 이벤트가 없어도 실제 승인 항목이 표시된다(원장 의존 제거)',
+    !/loadActivity/.test(exb) && !/subscribeActivity/.test(exb));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -256,6 +292,48 @@ console.log('\n[A] 승인 화면');
   ok('A-8. 기술 메타데이터는 접힌 상세 정보 안', /showTechDetails/.test(dc));
   const app = codeLines('src/App.tsx');
   ok('A-9. App 의 reject 배선이 사유를 받는다', /handleReject = \(approvalId: string, reason/.test(app));
+
+  // ── 강화(Codex 독립검증 지적): 사유 없는 미채택 경로를 저장소 전수로 막는다 ──
+  //   상세창만 고치면 목록·업무 카드·결과 모달·채팅 명령이 기본 사유로 우회할 수 있었다.
+  ok('A-10. handleReject 에 기본 사유 매개변수가 없다(무사유 호출을 타입이 드러낸다)',
+    /const handleReject = \(approvalId: string, reason: string\)/.test(app)
+    // 미채택 경로에 기본 사유가 되살아나지 않는지 본다(중단·반송의 기본 사유는 이번 범위 밖).
+    && !/handleReject = \([^)]*reason\s*=/.test(app)
+    // 표시용 라벨 맵(`not_adopted: '이번 결과 사용 안 함'`)은 정상이다. **기본값 대입**만 금지한다.
+    && !/=\s*'이번 결과 사용 안 함'/.test(app));
+
+  const tsxFiles = [];
+  (function walk(d) {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const fp = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(fp);
+      else if (e.name.endsWith('.tsx')) tsxFiles.push(fp);
+    }
+  })('src');
+  // lifecycle 승인 미채택 호출은 반드시 사유 인수를 함께 넘긴다.
+  //   (CsTeamDashboard 의 CS 승인함은 별도 도메인이며 이미 사유를 넘긴다 — 그대로 통과해야 한다.)
+  const oneArgRejects = [];
+  for (const f of tsxFiles) {
+    for (const line of codeLines(f).split(/\r?\n/)) {
+      const m = line.match(/onReject\(([^)]*)\)/);
+      if (m && !m[1].includes(',')) oneArgRejects.push(`${f}: ${line.trim()}`);
+    }
+  }
+  ok('A-11. 제품 코드에 사유 없는 onReject(...) 호출이 없다', oneArgRejects.length === 0, oneArgRejects.join(' | ') || '0건');
+
+  const chat = codeLines('src/components/ChatConsole.tsx');
+  ok('A-12. ChatConsole 은 채팅 명령으로 미채택을 실행하지 않는다',
+    !/onReject/.test(chat) && /reject_all' \|\| act\.type === 'reject_item'/.test(chat));
+  ok('A-13. ChatConsole 이 임의 기본 문구를 만들어 넣지 않고 사유 입력을 안내한다',
+    /이유가 한 문장 필요합니다/.test(chat) && !/이번 결과 사용 안 함/.test(chat));
+  ok('A-14. 미채택은 승인 상세 한 경로만 남는다(다른 화면은 즉시 거절 버튼 없음)',
+    /onReject\(item\.id, reason\)/.test(codeLines('src/components/ApprovalDetailModal.tsx'))
+    && !/onReject/.test(codeLines('src/components/ApprovalListModal.tsx'))
+    && !/onReject/.test(codeLines('src/components/TaskBoard.tsx'))
+    && !/onReject/.test(codeLines('src/components/TaskResultModal.tsx'))
+    && !/onReject/.test(codeLines('src/components/MetricDrilldownModal.tsx')));
+  ok('A-15. 서비스의 사유 필수 규칙을 약화하지 않았다(결정 이력 보존)',
+    /decisionReason/.test(src('src/types/approval.ts')));
 }
 
 // ══════════════════════════════════════════════════════════════════════════

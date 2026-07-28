@@ -281,7 +281,11 @@ red('V13. 승인 상세·결과 모달이 확인 카드에 작업 중단을 노�
     const appGates = /reviewOnly/.test(appSource)
       && /onCancel=\{[^}]*reviewOnly[^}]*\}|onCancel=\{cancelHandlerFor\(/.test(appSource);
     // 일반 업무의 중단 버튼은 그대로 남아 있어야 한다(전역 삭제 금지).
-    const keepsGeneralCancel = /onCancel && \(/.test(apprDetail) && /onCancel/.test(taskResult);
+    //   B-use-5 교정: JSX 의 유효한 두 형태를 모두 받는다.
+    //     `onCancel && (`  … 괄호로 감싼 형태
+    //     `onCancel && <`  … 엘리먼트를 바로 쓴 형태
+    //   확인하는 정책은 그대로다 — 일반 업무에는 중단이 남아 있어야 한다.
+    const keepsGeneralCancel = /onCancel && [(<]/.test(apprDetail) && /onCancel/.test(taskResult);
     return appGates && keepsGeneralCancel;
   })(), 'App 이 모든 항목에 같은 onCancel 을 넘겨 확인 카드에도 작업 중단이 뜸',
   '확인 카드만 onCancel 비움 · 일반 업무는 유지');

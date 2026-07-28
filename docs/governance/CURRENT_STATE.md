@@ -468,9 +468,29 @@ Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜
 | manifest | include **125** / exclude 0 (신규 검사 등록) | `scripts/regression-manifest.json` |
 | 비밀·키 유출 · 외부 WRITE 추가 | 변경분 검색 **0건** | `git diff` 검색 |
 
+**Codex 1차 독립검증(2026-07-28) 결과와 교정** — 위 커밋 `2bd80a2` 는 **무회귀 완료로 인정되지 않았다.**
+Codex 실행 결과: 신규 집중검사 54/54 · build · typecheck:api · lint 통과, 그러나 **전체 `npm test` 실패**(smoke 123/125).
+지적 4건을 모두 재현하고 마감했다.
+
+| 지적 | 무엇이 문제였나(직접 재현) | 교정 |
+|---|---|---|
+| 1. 승인 대기열 배선 | `App.tsx` 가 `MainLayout` 에 **전체** `approvalQueue` 를 넘겼고 `OfficeView` 가 그대로 `TeamOperationsBoard.approvalItems` 로 전달했다. 전체 3건·내 1건이면 **왼쪽 숫자 3 / 열린 목록 1** 로 다시 어긋난다. `ExecutiveBriefing` 은 실제 승인 배열이 아니라 활동 원장 `status === 'pending'` 을 승인으로 **추측**했다 | 별도 prop `pendingApprovalsForIdentity` 신설(전체 `approvalQueue` 는 다른 화면용으로 보존). App 이 `myPendingApprovals` 를 넘기고, 왼쪽 요약·오른쪽 브리핑이 **이 배열 하나만** 쓴다. 브리핑은 활동 원장 의존을 제거하고 팀 귀속은 기존 정본 `approvalTeamId` 재사용 |
+| 2. 무사유 미채택 | `handleReject` 의 기본값 `'이번 결과 사용 안 함'` 때문에 목록·업무 카드·결과 모달·채팅 명령이 **사유 없이** 미채택할 수 있었다. Codex 목록 외 1건(`OperationBriefingModal → MetricDrilldownModal`)도 발견 | 기본 사유 제거 → TypeScript 가 무사유 호출을 전부 드러냈다. 즉시 거절 버튼을 5개 화면에서 제거하고 **승인 상세 한 경로**로 모았다. ChatConsole 의 `reject_item`·`reject_all` 은 실행하지 않고 사유 입력을 안내한다 |
+| 3. 전체검사 실패 2건 | 제품 수정이 맞고 **검사가 낡았다**. `smoke-cs-popup-ux-layout-polish` 는 옛 `@media (prefers-color-scheme: light)` 를 강제했고, `smoke-rc2-d1331-review-only-card-red-v0` 의 V13 은 `onCancel && (` 형태만 찾아 `onCancel && <button` 을 놓쳤다 | 앞은 새 정본 `[data-theme='light']` + 진한 amber 로 교정하고 `prefers-color-scheme` 잔존 시 실패하는 12a 를 **추가**했다(느슨하게 하지 않음). 뒤는 JSX 두 유효 형태 `onCancel && [(<]` 를 받되 정책 확인은 그대로 |
+| 4. 문서 브랜치명 오기 | `MASTER_PLAN.md` 가 결함 마감 브랜치를 `codex/b-use-3-remaining-route-closure` 로 적었다 | `codex/b-use-5-preview-acceptance` 로 교정 |
+
+**검사 강화**(기존 E-2·E-4 는 문자열 존재만 봐서 지적 1을 놓쳤다): E-10~E-16·E-20~E-23·A-10~A-15 를 추가해 54 → **71건**.
+음성 변형 2회로 검사가 실제 결함을 잡는지 확인했다 — 왼쪽 숫자를 전체 대기열로 되돌리면 **E-12 실패**, 기본 사유를 되살리면 **A-10 실패**.
+
+**전송 성공 표시의 주장 범위(제한)** — 과장하지 않는다.
+
+- 보장: **권한·신원 검사에서 거부되면** 실패 이유를 표시하고 입력을 보존한다. 정상 경로에서는 성공 안내를 표시한다.
+- 미보장: `postTeamMessage` 는 `saveTeamMessages` 의 반환값을 사용하지 않고, lifecycle 저장소도 localStorage 실패를 조용히 무시한다. **localStorage 다중 저장은 트랜잭션이 아니며 저장소 실패 전체를 원자적으로 판정하지 못한다.**
+- 이 제한은 **서버 저장 경계 작업 전까지 미검증·제약으로 남긴다.** 이번에 저장소 구조를 확대하지 않았다.
+
 **아직 확인하지 않은 것 (완료로 주장하지 않는다)**
 
-- **전체 `npm test`** — 이번 지시가 반복 실행을 금지해 실행하지 않았다. 집중검사·인접검사·타입검사·lint 까지만 확인했다.
+- **실제 브라우저 화면** — 아래 참조. 자동검사는 배선과 계약을 증명할 뿐 화면 관측이 아니다.
 - **실제 브라우저 화면** — 7건이 사용자 눈에 실제로 고쳐져 보이는지는 **다음 Preview 재확인에서만 판정**한다. 자동검사는 배선과 계약을 증명할 뿐 화면 관측이 아니다.
 - **Codex 독립검증** 미수행. **Preview 재배포** 미수행. main 미통합·미푸시.
 - **범위 밖 잔여**: 업무 보드의 승인 칩 목록(`TaskBoard` → `ApprovalListModal`)에는 **사유 없이 누르는 `거절` 버튼이 그대로 남아 있다.** 이번 7건 밖이라 건드리지 않았다. 사용자가 인수검사에서 쓴 주 진입점(왼쪽 요약·오른쪽 브리핑)은 `onReject` 를 넘기지 않아 이 경로가 없다.

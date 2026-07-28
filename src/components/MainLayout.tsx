@@ -76,13 +76,18 @@ interface MainLayoutProps {
   /** 요청된 탭. 실제로 렌더하는 것은 권한 정본으로 제한한 `resolveActiveTab` 결과다. */
   activeTab: AppTab;
   approvalQueue: ApprovalItem[];
+  /**
+   * B-use-5 교정: **지금 이 사용자가 결정할 수 있는 승인 항목만**(App 의 `myPendingApprovals`).
+   * 전체 `approvalQueue`(모든 사용자의 대기열)와 **의도적으로 분리**한다.
+   * 왼쪽 요약 숫자·오른쪽 승인 항목·눌러서 열리는 목록이 모두 이 배열 하나를 근거로 삼는다.
+   */
+  pendingApprovalsForIdentity: ApprovalItem[];
   setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department') => void;
   onStartSimulation: () => void;
   onAddTask: (title: string, agentId: string) => void;
   onSelectAgent: (agent: Agent) => void;
   onClearLogs: () => void;
   onApprove: (id: string) => void;
-  onReject: (id: string) => void;
   onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
   /** B-use-3: HQ 지시 1건 처리(App 소유). 화면은 고른 팀·문구·첨부만 넘긴다. */
@@ -157,6 +162,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   isSimulating,
   activeTab,
   approvalQueue,
+  pendingApprovalsForIdentity,
   setActiveTab,
   onStartSimulation,
   onAddTask,
@@ -168,7 +174,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onSelectAgent,
   onClearLogs,
   onApprove,
-  onReject,
   onSelectTask,
   onSelectApproval,
   onSendDirective,
@@ -412,7 +417,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               onAddTask={onAddTask}
               onStartSimulation={onStartSimulation}
               onApprove={onApprove}
-              onReject={onReject}
               agents={agents}
               onUpdateAgents={onUpdateAgents}
               isSimulating={isSimulating}
@@ -432,10 +436,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               tasks={tasks}
               isSimulating={isSimulating}
               approvalQueue={approvalQueue}
+              pendingApprovalsForIdentity={pendingApprovalsForIdentity}
               onStartSimulation={onStartSimulation}
               onAddTask={onAddTask}
               onApprove={onApprove}
-              onReject={onReject}
               onSelectTask={onSelectTask}
               onSelectApproval={onSelectApproval}
               onSendDirective={onSendDirective}

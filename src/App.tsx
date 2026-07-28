@@ -1145,7 +1145,11 @@ function App() {
   };
 
   const handleApprove = (approvalId: string) => handleDecision(approvalId, 'approve');
-  const handleReject = (approvalId: string, reason = '이번 결과 사용 안 함') => handleDecision(approvalId, 'not_adopted', reason);
+  // B-use-5 교정: **기본 사유를 만들지 않는다.**
+  //   이전에는 기본값 '이번 결과 사용 안 함' 이 있어서, 사용자가 아무 이유도 쓰지 않아도
+  //   시스템이 임의 문장을 넣어 미채택 처리할 수 있었다("승인하지 않으면 이유 한 문장" 정책 우회).
+  //   기본값을 없애면 TypeScript 가 무사유 호출 지점을 전부 컴파일 오류로 드러낸다.
+  const handleReject = (approvalId: string, reason: string) => handleDecision(approvalId, 'not_adopted', reason);
   const handleRequestRevision = (approvalId: string, reason: string) => handleDecision(approvalId, 'request_revision', reason);
   const handleCancel = (approvalId: string, reason = '운영자 작업 중단') => handleDecision(approvalId, 'stop', reason);
   const handleReturn = (approvalId: string, reason = '수행 불가로 반송') => handleDecision(approvalId, 'return', reason);
@@ -1267,6 +1271,7 @@ function App() {
           isSimulating={isSimulating}
           activeTab={activeTab}
           approvalQueue={approvalQueue}
+          pendingApprovalsForIdentity={myPendingApprovals}
           setActiveTab={setActiveTab}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -1289,7 +1294,6 @@ function App() {
           onSelectAgent={(agent) => setSelectedAgent(agent)}
           onClearLogs={handleClearLogs}
           onApprove={handleApprove}
-          onReject={handleReject}
           onSendDirective={handleSendDirective}
           onSelectTask={(task) => setSelectedTaskForResult(task)}
           onSelectApproval={(appr) => setSelectedApprovalDetail(appr)}
@@ -1388,7 +1392,6 @@ function App() {
           // RC-2 D-1: 결과 화면에는 이력 전체를 넘긴다(승인·미채택·중단도 계속 조회 가능).
           approvalQueue={approvalHistory}
           onApprove={handleApprove}
-          onReject={handleReject}
           onCancel={cancelHandlerFor(visibleTaskDetail.reviewOnly)}
         />
       )}

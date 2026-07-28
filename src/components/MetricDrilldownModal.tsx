@@ -17,7 +17,6 @@ interface MetricDrilldownModalProps {
   handoffs: AgentHandoff[];
   approvalItems: ApprovalItem[];
   onApprove?: (id: string) => void;
-  onReject?: (id: string) => void;
 }
 
 const METRIC_LABELS: Record<MetricType, { title: string; icon: string; color: string }> = {
@@ -45,7 +44,6 @@ export const MetricDrilldownModal: React.FC<MetricDrilldownModalProps> = ({
   handoffs,
   approvalItems,
   onApprove,
-  onReject,
 }) => {
   // ESC 닫기
   React.useEffect(() => {
@@ -206,13 +204,9 @@ export const MetricDrilldownModal: React.FC<MetricDrilldownModalProps> = ({
                       <p>{item.proposedAction.substring(0, 120)}{item.proposedAction.length > 120 ? '...' : ''}</p>
                     </div>
                   )}
-                  {(onApprove || onReject) && (
+                  {onApprove && (
                     <div className="metric-approval-actions">
-                      {onReject && (
-                        <button className="metric-reject-btn" onClick={() => { onReject(item.id); onClose(); }}>
-                          거절
-                        </button>
-                      )}
+                      {/* B-use-5 교정: 사유 없는 즉시 미채택 제거. '승인하지 않음' 은 승인 상세에서 사유를 적어야 가능하다. */}
                       {onApprove && (
                         <button className="metric-approve-btn" onClick={() => { onApprove(item.id); onClose(); }}>
                           승인

@@ -1,13 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import './ExecutiveBriefing.css';
-import { loadActivity, subscribeActivity, activitySince } from '../services/repositories/activityLedgerRepository';
 import { loadTeamMessages, subscribeTeamMessages } from '../services/repositories/teamMessageRepository';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, type DeptTeamId } from '../types/teamMessage';
-import type { ActivityEvent } from '../types/activityLedger';
 import type { TeamMessage } from '../types/teamMessage';
+import type { ApprovalItem } from '../types/approval';
+import { approvalTeamId } from '../services/taskLifecycleAppAdapter';
 
 // 오늘의 운영 우측 — 팀별 "오늘 크리티컬(승인·확인 필요)" 업무만. 최고관리자 읽기 전용.
-//  크리티컬 = ① 승인 대기/진행 중 활동(원장) ② 미처리 팀 간 요청(팀 메시지).
+//  크리티컬 = ① **지금 이 사용자가 결정해야 하는 실제 승인 항목** ② 미처리 팀 간 요청(팀 메시지).
+//
+// B-use-5 교정: 이전에는 활동 원장의 `status === 'pending'` 이벤트를 승인으로 **추측**했다.
+//   그래서 (a) 실제 승인 대기가 있어도 활동 이벤트가 없으면 오른쪽에 안 보이고,
+//   (b) 눌러서 열린 목록과 카드가 서로 다른 업무일 수 있었다.
+//   이제 App 의 `myPendingApprovals` 를 그대로 받아서 만든다. 추측하지 않는다.
 
 const TEAMS: DeptTeamId[] = ['product', 'cs', 'marketing', 'design', 'hq'];
 
@@ -21,14 +26,17 @@ interface CriticalItem { id: string; team: DeptTeamId; kind: 'approval' | 'reque
 const KIND_LABEL: Record<CriticalItem['kind'], string> = { approval: '승인 필요', request: '처리 필요' };
 
 interface Props {
+  /**
+   * B-use-5 교정: **지금 이 사용자가 결정할 수 있는 승인 항목만**(App 의 `myPendingApprovals`).
+   * 전체 `approvalQueue` 를 넘기면 왼쪽 숫자·오른쪽 항목이 다시 어긋난다.
+   */
+  pendingApprovalsForIdentity?: ApprovalItem[];
   /** B-use-5: 실제 승인 항목을 누르면 **같은 승인 대기열**을 연다(우측 하단 플로팅 대체). */
   onOpenApprovals?: () => void;
 }
 
-export const ExecutiveBriefing: React.FC<Props> = ({ onOpenApprovals }) => {
-  const [activity, setActivity] = useState<ActivityEvent[]>(() => loadActivity());
+export const ExecutiveBriefing: React.FC<Props> = ({ pendingApprovalsForIdentity = [], onOpenApprovals }) => {
   const [messages, setMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
-  useEffect(() => subscribeActivity(() => setActivity(loadActivity())), []);
   useEffect(() => subscribeTeamMessages(() => setMessages(loadTeamMessages())), []);
   const since = useMemo(() => localMidnightIso(), []);
 
@@ -36,11 +44,15 @@ export const ExecutiveBriefing: React.FC<Props> = ({ onOpenApprovals }) => {
   const byTeam = useMemo(() => {
     const map: Record<string, CriticalItem[]> = {};
     for (const t of TEAMS) map[t] = [];
-    // ① 승인 대기 자동업무(진행 중은 이미 처리 중이므로 제외)
-    for (const e of activitySince(activity, since)) {
-      if (e.status === 'pending') {
-        (map[e.teamId] ||= []).push({ id: e.id, team: e.teamId, kind: 'approval', title: e.title, note: '승인 대기', at: e.at });
-      }
+    // ① 실제 승인 항목 — 활동 원장 추측이 아니라 **정본 승인 배열**에서 만든다.
+    //    팀 귀속은 기존 정본 함수 approvalTeamId 를 재사용한다(새 규칙을 만들지 않는다).
+    for (const it of pendingApprovalsForIdentity) {
+      const team = approvalTeamId(it) ?? 'hq';
+      (map[team] ||= []).push({
+        id: it.id, team, kind: 'approval', title: it.title,
+        // ApprovalItem 에는 시각 필드가 없다. 없는 값을 지어내지 않고 오늘 기준시각으로 묶는다.
+        note: '승인 대기', at: since
+      });
     }
     // ② 아직 손대지 않은(open) 받은 메시지 — 진행 중/완료는 제외(중복·처리중 제거)
     for (const m of messages) {
@@ -50,7 +62,7 @@ export const ExecutiveBriefing: React.FC<Props> = ({ onOpenApprovals }) => {
     }
     for (const t of TEAMS) map[t].sort((a, b) => (a.at < b.at ? 1 : -1));
     return map;
-  }, [activity, messages, since]);
+  }, [pendingApprovalsForIdentity, messages, since]);
 
   const total = useMemo(() => TEAMS.reduce((n, t) => n + byTeam[t].length, 0), [byTeam]);
   const activeTeams = TEAMS.filter((t) => byTeam[t].length > 0);

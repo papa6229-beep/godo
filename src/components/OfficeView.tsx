@@ -25,10 +25,15 @@ interface OfficeViewProps {
   tasks: OperationTask[];
   isSimulating: boolean;
   approvalQueue: ApprovalItem[];
+  /**
+   * B-use-5 교정: **지금 이 사용자가 결정할 수 있는 승인 항목만**(App 의 `myPendingApprovals`).
+   * 전체 `approvalQueue`(모든 사용자의 대기열)와 **의도적으로 분리**한다.
+   * 왼쪽 요약 숫자·오른쪽 승인 항목·눌러서 열리는 목록이 모두 이 배열 하나를 근거로 삼는다.
+   */
+  pendingApprovalsForIdentity: ApprovalItem[];
   onStartSimulation: () => void;
   onAddTask: (title: string, agentId: string) => void;
   onApprove: (id: string) => void;
-  onReject: (id: string) => void;
   onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
   /**
@@ -59,12 +64,12 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
   tasks,
   isSimulating,
   approvalQueue,
+  pendingApprovalsForIdentity,
   onStartSimulation,
   onAddTask,
   onSendDirective,
   onOpenApprovals,
   onApprove,
-  onReject,
   activeOperationsData,
   onUpdateAgents,
   onAddLog,
@@ -111,9 +116,8 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           isSimulating={isSimulating}
           managerBriefing={lastNativeAgentRun?.managerBriefing ?? null}
           onOpenBriefingModal={() => setBriefingModalOpen(true)}
-          approvalItems={approvalQueue}
+          approvalItems={pendingApprovalsForIdentity}
           onApprove={onApprove}
-          onReject={onReject}
           onOpenApprovals={onOpenApprovals}
         />
       </div>
@@ -128,7 +132,6 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           onAddTask={onAddTask}
           onStartSimulation={onStartSimulation}
           onApprove={onApprove}
-          onReject={onReject}
           agents={agents}
           onUpdateAgents={onUpdateAgents}
           isLarge={true}
@@ -140,7 +143,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
 
       {/* 3열 (우측): 전사 브리핑(활동 원장 기반, 읽기 전용) — 오늘의할일/승인대기 대체 */}
       <div className="office-right-column">
-        <ExecutiveBriefing onOpenApprovals={onOpenApprovals} />
+        <ExecutiveBriefing pendingApprovalsForIdentity={pendingApprovalsForIdentity} onOpenApprovals={onOpenApprovals} />
       </div>
 
       {/* 부서 업무 확인 — 활동 원장 기반(읽기 전용) */}
@@ -159,7 +162,6 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           lastRun={lastNativeAgentRun}
           approvalItems={approvalQueue}
           onApprove={onApprove}
-          onReject={onReject}
         />
       )}
     </div>

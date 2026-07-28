@@ -32,7 +32,6 @@ interface ChatConsoleProps {
   onAddTask: (title: string, targetTeamId: string) => void;
   onStartSimulation: () => void;
   onApprove: (id: string) => void;
-  onReject: (id: string) => void;
   agents: Agent[];
   onUpdateAgents: (items: Agent[]) => void;
   isLarge?: boolean;
@@ -51,7 +50,6 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   onAddTask,
   onStartSimulation,
   onApprove,
-  onReject,
   agents,
   onUpdateAgents,
   isLarge = false,
@@ -440,15 +438,16 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
         } else if (act.type === 'approve_item' && act.targetId) {
           onApprove(act.targetId);
           onAddLog(`운영자가 채팅 명령을 통해 대기 작업(ID: ${act.targetId})을 승인했습니다.`, 'success', 'CEO');
-        } else if (act.type === 'reject_all') {
-          const pendingWaiting = approvalQueue.filter(a => a.status === 'waiting');
-          pendingWaiting.forEach(item => {
-            onReject(item.id);
-          });
-          onAddLog(`운영자가 채팅 명령을 통해 모든 대기 작업(${pendingWaiting.length}건)을 반려(거절)했습니다.`, 'error', 'CEO');
-        } else if (act.type === 'reject_item' && act.targetId) {
-          onReject(act.targetId);
-          onAddLog(`운영자가 채팅 명령을 통해 대기 작업(ID: ${act.targetId})을 반려(거절)했습니다.`, 'error', 'CEO');
+        } else if (act.type === 'reject_all' || act.type === 'reject_item') {
+          // B-use-5 교정: **사유 없는 미채택을 실행하지 않는다.**
+          //   채팅 명령에는 사용자가 쓴 한 문장 사유가 없다. 임의 기본 문구를 지어내지 않고,
+          //   승인 상세에서 사유를 적도록 안내만 한다(승인 경로는 그대로 둔다).
+          const waitingCount = approvalQueue.filter(a => a.status === 'waiting').length;
+          onAddLog(
+            `승인하지 않으려면 이유가 한 문장 필요합니다. 채팅 명령으로는 미채택 처리하지 않습니다. `
+            + `승인 대기 ${waitingCount}건은 승인 상세 화면에서 "승인하지 않음"을 눌러 이유를 적어 주세요.`,
+            'info', 'CEO'
+          );
         } else if (act.type === 'update_agent_name' && act.targetId && act.payload?.newName) {
           const newName = act.payload.newName as string;
           const updated = agents.map(a => 

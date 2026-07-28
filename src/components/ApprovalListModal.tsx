@@ -15,7 +15,6 @@ interface ApprovalListModalProps {
   title: string;
   onSelectApproval?: (item: ApprovalItem) => void;
   onApprove?: (id: string) => void;
-  onReject?: (id: string) => void;
 }
 
 const STATUS_LABEL: Record<ApprovalItem['status'], string> = {
@@ -36,7 +35,6 @@ export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
   title,
   onSelectApproval,
   onApprove,
-  onReject,
 }) => {
   React.useEffect(() => {
     if (!isOpen) return;
@@ -124,17 +122,11 @@ export const ApprovalListModal: React.FC<ApprovalListModalProps> = ({
                       <span className="approval-list-card-hint">상세 보기 →</span>
                     </button>
 
-                    {item.status === 'waiting' && (onApprove || onReject) && (
+                    {item.status === 'waiting' && onApprove && (
                       <div className="approval-list-card-actions">
-                        {onReject && (
-                          <button
-                            type="button"
-                            className="approval-list-reject"
-                            onClick={() => onReject(item.id)}
-                          >
-                            거절
-                          </button>
-                        )}
+                        {/* B-use-5 교정: 사유 없는 즉시 미채택을 없앴다.
+                            '승인하지 않음' 은 승인 상세에서 한 줄 사유를 적어야 가능하다.
+                            카드를 누르면 그 상세가 열린다. */}
                         {onApprove && (
                           <button
                             type="button"

@@ -22,7 +22,6 @@ interface TaskBoardProps {
   /** RC-2 D-1.2: 업무는 **팀에게** 보낸다. 두 번째 인자는 팀 id(수행 방식은 담당 팀장이 고른다). */
   onAddTask: (title: string, targetTeamId: string) => void;
   onApprove: (id: string) => void;
-  onReject: (id: string) => void;
   onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
   hideAddTask?: boolean;
@@ -50,7 +49,6 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   onStartSimulation,
   onAddTask,
   onApprove,
-  onReject,
   onSelectTask,
   onSelectApproval,
   hideAddTask = false
@@ -428,15 +426,9 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
                         >
                           승인 (Approve)
                         </button>
-                        <button 
-                          className="appr-btn reject" 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onReject(item.id);
-                          }}
-                        >
-                          이번 결과 사용 안 함
-                        </button>
+                        {/* B-use-5 교정: 사유 없는 즉시 미채택을 없앴다.
+                            '승인하지 않음' 은 승인 상세에서 한 줄 사유를 적어야 가능하다.
+                            카드를 누르면 그 상세가 열린다. */}
                       </>
                     ) : (
                       <span className={`approval-result-status ${item.status}`}>
@@ -475,7 +467,6 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
           title={approvalListFilter.title}
           onSelectApproval={onSelectApproval}
           onApprove={onApprove}
-          onReject={onReject}
         />
       )}
     </div>

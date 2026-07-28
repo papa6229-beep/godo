@@ -73,7 +73,12 @@ ok('10. AI함 상세 AI 초안 미리보기 존재', /AI 초안 미리보기/.te
 ok('11. AI함 처리완료 트리거 + 고도몰 등록은 WRITE 연결 후 안내 유지(승인큐 의미)', /선택 처리완료/.test(TSX) && /전체 처리완료/.test(TSX) && /WRITE 연결 후/.test(TSX));
 
 // 라이트모드 가독성
-ok('12. 라이트 모드 가독성 미디어쿼리 + 진한 amber', /@media \(prefers-color-scheme: light\)/.test(CSS) && /#92600A|#8A5A00|#B8860B/.test(CSS));
+// B-use-5 교정: 앱 테마 정본은 **[data-theme='light'] 속성**이다(index.css).
+//   OS 설정(prefers-color-scheme)을 따르면 OS 라이트 + 앱 다크 조합에서 라이트용 짙은 색이
+//   어두운 배경 위에 찍혀 읽히지 않는다. 검사를 새 정본에 맞추되 조건은 느슨하게 하지 않는다.
+ok('12. 라이트 모드 가독성: 앱 테마(data-theme) 범위 + 진한 amber',
+  /\[data-theme='light'\]/.test(CSS) && /#92600A|#8A5A00|#B8860B/.test(CSS));
+ok('12a. OS 설정(prefers-color-scheme)으로 테마 색을 정하지 않는다', !/prefers-color-scheme/.test(CSS));
 ok('13. 유형별 색상/배지 유지', /csTypeColorClass/.test(TSX) && /type-pay|type-claim|type-delivery|type-review/.test(CSS));
 
 // 고객관리 무변경(컴포넌트/팝업 존재 유지)
