@@ -29,6 +29,8 @@ interface TeamOperationsBoardProps {
   approvalItems?: ApprovalItem[];
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
+  /** B-use-5: 승인 대기 요약을 누르면 **실제 승인 대기열**을 연다(보이는 곳이 눌려야 한다). */
+  onOpenApprovals?: () => void;
 }
 
 const DEPT_ICONS: Record<string, string> = {
@@ -59,6 +61,7 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
   managerBriefing,
   onOpenBriefingModal,
   approvalItems = [],
+  onOpenApprovals,
 }) => {
   const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [selectedHandoff, setSelectedHandoff] = useState<AgentHandoff | null>(null);
@@ -97,7 +100,9 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
 
   const totalDepts   = departments.filter(d => d.enabled).length;
   const totalHandoffs = lastRunHandoffs.length;
-  const totalApproval = lastRunResults.filter(r => r.approvalRequired).length + approvalItems.length;
+  // B-use-5: 이 숫자는 **실제 승인 대기열(myPendingApprovals)** 과 같은 값이어야 한다.
+  //   예전에는 시뮬레이션 결과 건수를 더해서, 눌러서 열리는 목록과 숫자가 어긋났다.
+  const totalApproval = approvalItems.length;
 
   const recentHandoffs = lastRunHandoffs.slice(-3).reverse();
 
@@ -127,10 +132,16 @@ export const TeamOperationsBoard: React.FC<TeamOperationsBoardProps> = ({
           <span className="summary-lbl">협업 진행</span>
         </div>
         <div className="summary-divider" />
-        <div className={`summary-stat ${totalApproval > 0 ? 'alert' : ''}`}>
+        <button
+          type="button"
+          className={`summary-stat summary-stat-btn ${totalApproval > 0 ? 'alert' : ''}`}
+          onClick={() => onOpenApprovals?.()}
+          disabled={!onOpenApprovals}
+          title="내가 지금 확인할 수 있는 업무를 엽니다."
+        >
           <span className="summary-num">{totalApproval}</span>
           <span className="summary-lbl">승인 대기</span>
-        </div>
+        </button>
       </div>
 
       {/* 부서 팀장 카드 */}

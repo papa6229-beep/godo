@@ -8,6 +8,14 @@ import type { DeptTeamId, TeamMessageActor } from '../types/teamMessage';
 
 const STORAGE_KEY = 'godo_activity_ledger_v0';
 const MAX_EVENTS = 500;
+/**
+ * B-use-5: **같은 탭** 저장 알림 이벤트.
+ *   브라우저의 `storage` 이벤트는 **쓴 탭 자신에게는 발생하지 않는다.**
+ *   그래서 저장은 성공했는데 같은 탭의 구독자(오늘의 운영 관제 보드·전사 브리핑·부서 화면)가
+ *   다시 읽지 못했다 — 새로고침해야 보였다.
+ *   `sessionRole.ts` 의 검증된 CustomEvent 패턴을 그대로 따른다.
+ */
+const LOCAL_CHANGE_EVENT = 'godo-activity-change';
 
 let _seq = 0;
 export function newActivityId(): string {
@@ -31,20 +39,33 @@ export function loadActivity(): ActivityEvent[] {
   }
 }
 
-export function saveActivity(list: ActivityEvent[]): void {
-  if (typeof window === 'undefined') return;
+/**
+ * 저장. **성공했을 때만** 같은 탭 구독자에게 알린다(실패에 성공 통지를 보내지 않는다).
+ * @returns 저장 성공 여부
+ */
+export function saveActivity(list: ActivityEvent[]): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-MAX_EVENTS)));
   } catch {
-    /* 저장 실패는 조용히 무시 */
+    /* 저장 실패(용량 등)는 조용히 무시 — 성공 알림도 보내지 않는다 */
+    return false;
   }
+  try { window.dispatchEvent(new CustomEvent(LOCAL_CHANGE_EVENT)); } catch { /* 알림 실패가 저장을 되돌리지 않는다 */ }
+  return true;
 }
 
+/** 다른 탭(`storage`)과 **같은 탭**(local change) 쓰기를 모두 듣는다. 해제 시 둘 다 제거한다. */
 export function subscribeActivity(cb: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
-  const handler = (e: StorageEvent) => { if (e.key === STORAGE_KEY) cb(); };
-  window.addEventListener('storage', handler);
-  return () => window.removeEventListener('storage', handler);
+  const onStorage = (e: StorageEvent) => { if (e.key === STORAGE_KEY) cb(); };
+  const onLocal = () => cb();
+  window.addEventListener('storage', onStorage);
+  window.addEventListener(LOCAL_CHANGE_EVENT, onLocal);
+  return () => {
+    window.removeEventListener('storage', onStorage);
+    window.removeEventListener(LOCAL_CHANGE_EVENT, onLocal);
+  };
 }
 
 // ── 순수 함수 ──

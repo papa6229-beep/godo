@@ -477,3 +477,6 @@
 .auth-signout-btn { margin-left: 6px; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 1px solid var(--line-subtle, #2a3441); background: rgba(255,255,255,0.03); color: var(--text-secondary, #9fb0c0); cursor: pointer; transition: all 0.14s ease; }
 .auth-signout-btn:hover:not(:disabled) { color: var(--text-primary, #e6edf3); border-color: var(--accent-primary, #31D6C4); }
 .auth-signout-btn:disabled { opacity: 0.6; cursor: default; }
+/* B-use-5: 계정 관리 — 신원 배지·로그아웃과 같은 줄. 왼쪽 아래 fixed 버튼을 대체한다. */
+.auth-account-btn { margin-left: 6px; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 1px solid var(--line-subtle, #2a3441); background: rgba(255,255,255,0.03); color: var(--text-secondary, #9fb0c0); cursor: pointer; transition: all 0.14s ease; }
+.auth-account-btn:hover { color: var(--text-primary, #e6edf3); border-color: var(--accent-primary, #31D6C4); }

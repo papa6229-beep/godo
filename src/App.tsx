@@ -56,6 +56,9 @@ import {
   computeEffectiveIdentity, isTaskVisibleToIdentity, isApprovalVisibleToIdentity, isReportOwnedBy
 } from './services/effectiveIdentity';
 import type { EffectiveIdentity } from './services/effectiveIdentity';
+// B-use-5: lifecycle 업무 상태를 **원본 팀 메시지**에 반영한다(화면이 추측하지 않는다).
+import { syncLinkedMessageForTask } from './services/linkedMessageSync';
+import type { DirectiveSendResult } from './components/HqDirectiveComposer';
 import AuthGateScreen from './components/AuthGateScreen';
 import AccountAdminPanel from './components/auth/AccountAdminPanel';
 import './App.css';
@@ -840,14 +843,16 @@ function App() {
     toTeam: DeptTeamId,
     text: string,
     attachments: TeamMessageAttachment[]
-  ) => {
+  ): DirectiveSendResult => {
+    // B-use-5: 성공·실패를 **화면이 알 수 있게** 돌려준다. 실패하면 입력을 지우지 않는다.
     const actor = requireActor();
-    if (!actor) return;
+    if (!actor) return { ok: false, message: '로그인 계정을 확인하기 전에는 지시를 보낼 수 없습니다.' };
     // 권한 판정을 **가장 먼저** 한다. 실패하면 메시지도 업무도 원장도 만들지 않는다.
     //   B-use-4 보완: 팀만 'hq' 인 계정을 HQ 로 보지 않는다(계정 역할이 있으면 hq 만).
     if (actor.kind !== 'human' || !identity.isHq) {
-      addLog('총괄(HQ) 계정만 팀에 지시를 보낼 수 있습니다. 역할을 확인해 주세요.', 'warning', 'SYSTEM');
-      return;
+      const reason = '총괄(HQ) 계정만 팀에 지시를 보낼 수 있습니다. 역할을 확인해 주세요.';
+      addLog(reason, 'warning', 'SYSTEM');
+      return { ok: false, message: reason };
     }
     const title = text || (attachments.length ? '자료 전달' : '지시');
 
@@ -875,7 +880,9 @@ function App() {
     });
 
     refreshLifecycleState();
-    addLog(`${DEPT_TEAM_META[toTeam].name}에 지시를 보냈습니다. 담당 팀장이 수행 방식을 정합니다.`, 'info', 'SYSTEM');
+    const done = `${DEPT_TEAM_META[toTeam].name}에 지시를 보냈습니다. 담당 팀장이 수행 방식을 정합니다.`;
+    addLog(done, 'info', 'SYSTEM');
+    return { ok: true, message: done };
   };
 
   // ── RC-2 D-1.3: 팀장 화면 실배선 ──────────────────────────────────────────
@@ -891,6 +898,8 @@ function App() {
   const handleAssignExecutor = (taskId: string, kind: 'agent' | 'human', executorId?: string) => {
     const actor = requireActor(); if (!actor) return;
     const r = assignExecutor(taskId, { kind, executorId, actor }, { nowIso: nowIso() });
+    // B-use-5: 수행자가 정해졌으면 원본 지시 메시지도 '진행중'으로 따라간다(성공했을 때만).
+    if (r.ok) syncLinkedMessageForTask(r.task, actor);
     reportOutcome(r, kind === 'agent' ? '담당 AI에게 업무를 맡겼습니다.' : '직접 처리로 지정했습니다.');
   };
 
@@ -912,6 +921,9 @@ function App() {
   const handleTaskDecision = (taskId: string, kind: ApprovalDecisionKind, reason?: string) => {
     const actor = requireActor(); if (!actor) return;
     const r = applyDecision(taskId, { kind, actor, reason }, { nowIso: nowIso(), newId: newTaskId });
+    // B-use-5: 결정 뒤 **저장소 정본**에서 다시 읽어 원본 메시지 상태를 맞춘다.
+    //   판정 규칙은 linkedMessageSync 한 곳에 있다 — 수정 요청·반송은 완료로 닫지 않는다.
+    if (r.ok) syncLinkedMessageForTask(r.state.source.find((t) => t.ref.taskId === taskId), actor);
     reportOutcome(r, '처리했습니다.');
   };
 
@@ -1107,6 +1119,8 @@ function App() {
       return;
     }
 
+    // B-use-5: 승인 화면에서 내린 결정도 원본 메시지에 반영한다(같은 판정 계약).
+    syncLinkedMessageForTask(result.state.source.find((t) => t.ref.taskId === item.taskId), decisionActor);
     refreshLifecycleState(result.state);
     // 이력은 남고 대기열에서만 빠졌음을 사용자에게 알린다(영구 삭제 아님).
     addLog(`[Approval] 승인 대기 ${result.state.approvalQueue.length}건 · 처리 완료 이력 ${Math.max(0, result.state.history.length - result.state.approvalQueue.length)}건`, 'info', 'Approval');
@@ -1221,19 +1235,8 @@ function App() {
 
   return (
     <>
-      {canManageAccounts && (
-        <button
-          type="button"
-          onClick={() => setShowAccountAdmin(true)}
-          style={{
-            position: 'fixed', bottom: 16, left: 16, zIndex: 8900, padding: '8px 14px',
-            borderRadius: 999, border: '1px solid #d1d5db', background: '#ffffff',
-            fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.12)'
-          }}
-        >
-          🔐 계정 관리
-        </button>
-      )}
+      {/* B-use-5: 왼쪽 아래 fixed 버튼을 없애고 상단 헤더(신원·로그아웃 옆)로 옮겼다.
+          권한 판정(canManageAccounts)과 패널 내부 기능은 그대로다. */}
       {showAccountAdmin && canManageAccounts && (
         <AccountAdminPanel onClose={() => setShowAccountAdmin(false)} />
       )}
@@ -1241,22 +1244,8 @@ function App() {
         <OpeningScreen onFinished={() => setShowOpening(false)} />
       ) : (
         <>
-        {/* RC-2 D-1.1: 역할별 '내 확인 대기' 진입로. 팀장은 본인이 결정할 수 있는 업무만 본다. */}
-        {myPendingApprovals.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowMyApprovals(true)}
-            style={{
-              position: 'fixed', right: 18, bottom: 18, zIndex: 60, padding: '10px 16px', borderRadius: 999,
-              border: '1px solid var(--border, #444)', background: 'var(--accent, #2df5a2)', color: '#04241a',
-              fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.25)'
-            }}
-            title={`${identity.label}이 지금 확인할 수 있는 업무`}
-          >
-            ✅ 내 확인 대기 {myPendingApprovals.length}건
-          </button>
-        )}
-
+        {/* B-use-5: 우측 하단 고정 플로팅 진입로를 제거했다.
+            사용자가 먼저 보는 곳(왼쪽 승인 대기 요약 · 오른쪽 승인 필요 항목)이 직접 이 목록을 연다. */}
         <ApprovalListModal
           isOpen={showMyApprovals}
           onClose={() => setShowMyApprovals(false)}
@@ -1269,6 +1258,9 @@ function App() {
 
         <MainLayout
           identity={identity}
+          onOpenApprovals={() => setShowMyApprovals(true)}
+          canManageAccounts={canManageAccounts}
+          onOpenAccountAdmin={() => setShowAccountAdmin(true)}
           agents={agents}
           tasks={tasks}
           logs={logs}

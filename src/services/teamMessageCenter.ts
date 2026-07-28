@@ -12,6 +12,12 @@ import type {
 
 const STORAGE_KEY = 'godo_team_messages_v0';
 const MAX_MESSAGES = 300;
+/**
+ * B-use-5: **같은 탭** 저장 알림 이벤트. `storage` 이벤트는 쓴 탭 자신에게 발생하지 않으므로
+ *   HQ 가 지시를 보낸 직후 같은 화면의 전달 수·메시지가 갱신되지 않았다.
+ *   `sessionRole.ts` 의 검증된 CustomEvent 패턴을 따른다.
+ */
+const LOCAL_CHANGE_EVENT = 'godo-teammsg-change';
 // 첨부 base64 보관 상한(데모): 개별 1.5MB. 초과 시 메타만 보관(omitted).
 const ATTACH_INLINE_LIMIT = 1_500_000;
 
@@ -38,22 +44,34 @@ export function loadTeamMessages(): TeamMessage[] {
   }
 }
 
-export function saveTeamMessages(list: TeamMessage[]): void {
-  if (typeof window === 'undefined') return;
+/**
+ * 저장. **성공했을 때만** 같은 탭 구독자에게 알린다(실패에 성공 통지를 보내지 않는다).
+ * @returns 저장 성공 여부
+ */
+export function saveTeamMessages(list: TeamMessage[]): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     const trimmed = list.slice(-MAX_MESSAGES);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
   } catch {
-    // 저장 실패(용량 등)는 조용히 무시
+    // 저장 실패(용량 등)는 조용히 무시 — 성공 알림도 보내지 않는다
+    return false;
   }
+  try { window.dispatchEvent(new CustomEvent(LOCAL_CHANGE_EVENT)); } catch { /* 알림 실패가 저장을 되돌리지 않는다 */ }
+  return true;
 }
 
-// 다른 탭/런타임의 쓰기를 UI가 반영하도록 구독(현재 STORAGE_KEY만).
+// 다른 탭(`storage`)과 **같은 탭**(local change) 쓰기를 모두 반영한다. 해제 시 둘 다 제거한다.
 export function subscribeTeamMessages(cb: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
-  const handler = (e: StorageEvent) => { if (e.key === STORAGE_KEY) cb(); };
-  window.addEventListener('storage', handler);
-  return () => window.removeEventListener('storage', handler);
+  const onStorage = (e: StorageEvent) => { if (e.key === STORAGE_KEY) cb(); };
+  const onLocal = () => cb();
+  window.addEventListener('storage', onStorage);
+  window.addEventListener(LOCAL_CHANGE_EVENT, onLocal);
+  return () => {
+    window.removeEventListener('storage', onStorage);
+    window.removeEventListener(LOCAL_CHANGE_EVENT, onLocal);
+  };
 }
 
 // ── 첨부 정규화(용량 상한 적용) ──

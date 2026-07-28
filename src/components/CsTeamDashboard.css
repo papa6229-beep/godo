@@ -21,7 +21,7 @@
 .cs-dash-custom-sep { color: var(--text-secondary); }
 .cs-dash-date { background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 7px; color: var(--text-muted); padding: 5px 8px; font-size: 12px; }
 .cs-dash-custom-error { font-size: 12px; color: #FB7185; }
-@media (prefers-color-scheme: light) { .cs-dash-custom-error { color: #c0344c; } }
+[data-theme='light'] .cs-dash-custom-error { color: #c0344c; }
 
 /* 클릭 가능한 통계 항목 */
 .cs-stat-clickable { cursor: pointer; transition: background 0.12s, border-color 0.12s; }
@@ -195,7 +195,7 @@
 .cs-dash-noterow-btns { display: flex; gap: 8px; flex: 0 0 auto; }
 .cs-dash-clear-btn { font-size: 11px; color: var(--text-secondary); background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
 .cs-dash-clear-btn:hover { color: #FB7185; border-color: rgba(251, 113, 133, 0.4); }
-@media (prefers-color-scheme: light) { .cs-dash-approval-btn { color: #0E7C70; } }
+[data-theme='light'] .cs-dash-approval-btn { color: #0E7C70; }
 .cs-dash-kpi-note b { color: var(--text-muted); }
 .cs-dash-section-desc { font-size: 11px; color: var(--text-secondary); margin: -6px 0 8px; }
 
@@ -275,7 +275,8 @@
 .dept-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .cs-pop-complete-btn { border-color: rgba(49, 214, 196, 0.5) !important; color: #31D6C4 !important; font-weight: 600; }
 .cs-pop-done-note { font-size: 12px; color: #31D6C4; }
-@media (prefers-color-scheme: light) { .cs-pop-done-note, .cs-pop-complete-btn { color: #0E7C70 !important; } }
+[data-theme='light'] .cs-pop-done-note,
+[data-theme='light'] .cs-pop-complete-btn { color: #0E7C70 !important; }
 
 /* ── 고객관리 프로필 허브 ── */
 .cs-pop-search { width: 100%; box-sizing: border-box; background: var(--bg-app); border: 1px solid var(--line-subtle); border-radius: 7px; color: var(--text-muted); padding: 7px 10px; font-size: 12px; }
@@ -312,16 +313,17 @@
 }
 
 /* 라이트 모드 가독성: 연한 노랑/시안 텍스트 → 진한 amber/teal + 연배경·선명 테두리 */
-@media (prefers-color-scheme: light) {
-  .cs-badge.warn { color: #92600A; border-color: rgba(146, 96, 10, 0.45); background: rgba(251, 191, 36, 0.14); }
-  .cs-badge.risk-medium { color: #92600A; border-color: rgba(146, 96, 10, 0.45); }
-  .cs-badge.type-review { color: #8A5A00; border-color: rgba(138, 90, 0, 0.5); background: rgba(251, 191, 36, 0.12); }
-  .cs-badge.type-delivery { color: #0B72A6; border-color: rgba(11, 114, 166, 0.5); }
-  .cs-badge.type-customer { color: #0F766E; border-color: rgba(15, 118, 110, 0.5); }
-  .cs-dash-rev-rating { color: #B8860B; }
-  .cs-dash-kpi-more, .cs-dash-hint-chip { color: #0E7C70; }
-  .cs-pop-sec-title { color: #0E7C70; }
-}
+/* B-use-5 4.6: OS 설정이 아니라 **앱이 정한 테마**를 따른다.
+   OS 라이트 + 앱 다크 조합에서 짙은 초록 본문이 어두운 배경 위에 찍혀 읽히지 않던 결함. */
+[data-theme='light'] .cs-badge.warn { color: #92600A; border-color: rgba(146, 96, 10, 0.45); background: rgba(251, 191, 36, 0.14); }
+[data-theme='light'] .cs-badge.risk-medium { color: #92600A; border-color: rgba(146, 96, 10, 0.45); }
+[data-theme='light'] .cs-badge.type-review { color: #8A5A00; border-color: rgba(138, 90, 0, 0.5); background: rgba(251, 191, 36, 0.12); }
+[data-theme='light'] .cs-badge.type-delivery { color: #0B72A6; border-color: rgba(11, 114, 166, 0.5); }
+[data-theme='light'] .cs-badge.type-customer { color: #0F766E; border-color: rgba(15, 118, 110, 0.5); }
+[data-theme='light'] .cs-dash-rev-rating { color: #B8860B; }
+[data-theme='light'] .cs-dash-kpi-more,
+[data-theme='light'] .cs-dash-hint-chip { color: #0E7C70; }
+[data-theme='light'] .cs-pop-sec-title { color: #0E7C70; }
 
 @media (max-width: 1100px) {
   .cs-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }

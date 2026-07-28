@@ -4,6 +4,7 @@ import type { OperationTask } from '../types/task';
 import type { ApprovalItem } from '../types/approval';
 import { ChatConsole } from './ChatConsole';
 import { ExecutiveBriefing } from './ExecutiveBriefing';
+import type { DirectiveSendResult } from './HqDirectiveComposer';
 import { HqDirectiveComposer } from './HqDirectiveComposer';
 import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { NativeAgentRun, DepartmentDefinition } from '../engine/nativeAgentRuntime/types';
@@ -35,7 +36,10 @@ interface OfficeViewProps {
    *   화면은 고른 팀·문구·첨부만 넘기고, 행위자(actor)·업무 생성·원장 기록은 App 이 한다.
    *   화면이 actor 를 만들면 실제 로그인 신원이 아닌 값이 기록에 남는다.
    */
-  onSendDirective: (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => void;
+  /** B-use-5: 전송 결과를 그대로 통과시킨다(중간 배선이 성공 여부를 삼키지 않는다). */
+  onSendDirective: (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => DirectiveSendResult;
+  /** B-use-5: 관제 보드 승인 요약·브리핑 승인 항목 → 실제 승인 대기열. */
+  onOpenApprovals?: () => void;
   activeOperationsData: OperationsDataSnapshot;
   onUpdateAgents: (items: Agent[]) => void;
   onAddLog: (text: string, type: 'info' | 'success' | 'warning' | 'error' | 'agent', agentName?: string) => void;
@@ -58,6 +62,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
   onStartSimulation,
   onAddTask,
   onSendDirective,
+  onOpenApprovals,
   onApprove,
   onReject,
   activeOperationsData,
@@ -109,6 +114,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           approvalItems={approvalQueue}
           onApprove={onApprove}
           onReject={onReject}
+          onOpenApprovals={onOpenApprovals}
         />
       </div>
 
@@ -134,7 +140,7 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
 
       {/* 3열 (우측): 전사 브리핑(활동 원장 기반, 읽기 전용) — 오늘의할일/승인대기 대체 */}
       <div className="office-right-column">
-        <ExecutiveBriefing />
+        <ExecutiveBriefing onOpenApprovals={onOpenApprovals} />
       </div>
 
       {/* 부서 업무 확인 — 활동 원장 기반(읽기 전용) */}

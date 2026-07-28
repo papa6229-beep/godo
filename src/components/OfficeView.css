@@ -81,6 +81,10 @@
 .office-directive-btn { font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 7px; border: none; background: var(--accent-primary, #31D6C4); color: #08221f; cursor: pointer; white-space: nowrap; }
 .office-directive-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .office-directive-files { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px; }
+/* B-use-5: 지시 전송 결과를 입력창 바로 아래에서 알린다(성공/실패 모두 화면에서 보이게). */
+.office-directive-note { margin-top: 6px; padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; line-height: 1.45; word-break: keep-all; }
+.office-directive-note.ok { color: var(--text-primary); background: var(--accent-soft); border: 1px solid var(--line-subtle); }
+.office-directive-note.fail { color: var(--text-primary); background: rgba(224, 168, 0, 0.14); border: 1px solid var(--warn, #E0A800); }
 .office-directive-reading { font-size: 11px; color: var(--text-muted); }
 .office-directive-file { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-subtle); background: var(--bg-surface); color: var(--text-secondary); }
 .office-directive-file-size { color: var(--text-muted); font-size: 10px; }

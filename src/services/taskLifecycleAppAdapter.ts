@@ -938,7 +938,9 @@ export type HqReviewResult =
   | { ok: false; reason: string };
 
 /** 원본 팀 메시지 참조 키(내용 복제 없이 역추적만). */
-export const messageRef = (messageId: string): string => `teammsg:${messageId}`;
+/** 원본 팀 메시지 참조 접두사. 참조 규칙을 두 벌로 만들지 않기 위해 여기서만 정의한다. */
+export const MESSAGE_REF_PREFIX = 'teammsg:';
+export const messageRef = (messageId: string): string => `${MESSAGE_REF_PREFIX}${messageId}`;
 
 /**
  * 메시지 하나로 총괄 결정 카드 1건을 만든다.

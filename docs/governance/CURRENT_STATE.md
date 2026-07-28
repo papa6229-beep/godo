@@ -17,7 +17,8 @@
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
 | 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과 → `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기) HEAD `61296fb`, 문서 조사만 | `git rev-parse` |
 | B-use-4 구현 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) · HEAD **`e599ce2`** — 인증 선별 통합 + 권한 정본 단일화 + 계정 전환 잔여 경로 마감 · **Codex 독립검증 통과** | `git rev-parse` |
-| 현재 작업 브랜치 | `codex/b-use-2-db-options-research` (`e599ce2`에서 분기, **main 미통합**) — DB 후보 조사(문서 전용, 제품 코드 0변경) | `git rev-parse --abbrev-ref HEAD` |
+| DB 조사 브랜치 | `codex/b-use-2-db-options-research` (`e599ce2`에서 분기, **main 미통합**) — DB 후보 조사(문서 전용, 제품 코드 0변경) | `git rev-parse` |
+| 현재 작업 브랜치 | `codex/b-use-5-preview-acceptance` · HEAD **`0075ece`** (**main 미통합·미푸시**) — B-use-5 Preview 인수검사에서 사용자가 관측한 화면 결함 7건 마감 | 2026-07-28 직접 관측 (`git rev-parse --abbrev-ref HEAD` / `git rev-parse HEAD`) |
 | 실행 장소 | **최종 미확정.** 유력 방향 = 회사가 관리하는 서버 또는 고도몰 전용 서버. **개인 데스크톱은 운영 서버로 쓰지 않는다.** 지금은 사용자 컴퓨터·기존 개발환경에서 개발·검사하고, 최종 서버 선택과 시험 이식은 11월 실작동 시험 전에 한다 | 사용자 확정 방향 (2026-07-28) |
 | DB | **미결정.** Supabase·Neon·Prisma 중 어떤 것도 채택하지 않았다. 특정 DB·클라우드 어댑터는 지금 구현하지 않는다 | `MASTER_PLAN §11` |
 | 실행 환경 | **현재** Vercel 이 개발·검증·Production 을 담당한다. **최종 배포처로 확정된 것은 아니다**(위 '실행 장소' 행 참조) | Vercel 대시보드 관측 |
@@ -39,6 +40,9 @@
 | 원격 push·배포·환경변수 | **변경 없음** | — |
 
 **과거 기록(삭제하지 않는다)**: 직전 전체 게이트(Codex 실행, `9e38197`)는 smoke **123/123** 이었다. smoke 파일이 124개가 된 것은 B-use-4 통합검사 1건이 추가된 결과다.
+
+**위 기준선 이후 변화(2026-07-28, 브랜치 `codex/b-use-5-preview-acceptance`)**: B-use-5 결함 마감 검사 1건이 추가되어 **manifest include 124 → 125 / exclude 0** 이다.
+**이 브랜치에서 전체 `npm test` 는 실행하지 않았다**(이번 지시가 반복 실행을 금지). 위 표의 전체 smoke·build·`npm test` 수치는 여전히 `e599ce2` 기준선이며 **125개 기준으로 다시 확인되지 않았다.**
 
 주의: 과거 과제의 스모크 8건이 `git status --porcelain`으로 **미커밋 작업 트리**를 검사한다. 제품 파일을 고친 뒤 커밋 전에 `npm test`를 돌리면 그 8건이 실패한다(결함 아님, 커밋 후 통과).
 
@@ -424,6 +428,52 @@ Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜
 `visibleTasksFor` 는 팀만 보므로(`taskLifecycleAppAdapter.ts:859-865`) **같은 팀 일반 팀원도 업무를 열람**하는데, 승인 담당자 판정은 `pendingForActor` → `canDecide` → `hasLeadAuthority` 를 거친다(`:311-315`). 그래서 팀장이 연 승인 상세가 같은 팀 팀원 계정 전환 후에도 남았다.
 교정: `isApprovalVisibleToIdentity(approvalId, decidableApprovalIds)` 신설 — **지금 결정할 수 있는 승인 항목의 고유 `id`** 로만 판정한다(승인 항목은 `appr-<taskId>` 로 업무 단위라 `taskId` 대조는 부정확). 업무 상세는 기존 열람 범위 기준 유지 · `applyDecision` 도메인 검사 유지 · 저장 자료 삭제 없음.
 검사(이 시점 기준): 집중검사 **188 → 206/206**(`[Y]` 21건 신규, X-32 삭제).
+
+---
+
+### B-use-5 Preview 인수검사 — **사용자 실제 화면 1회 수행 · 결함 7건 마감분 구현됨 · Codex 미검증 · Preview 재확인 전 (브랜치 `codex/b-use-5-preview-acceptance`, 2026-07-28)**
+
+> **이것은 완료 선언이 아니다.** 아래는 *구현되고 자동검사를 통과한 상태*이며, **Codex 독립검증과 사용자 Preview 재확인이 아직 남아 있다.**
+
+**사용자가 실제 화면으로 확인한 것**(사용자 관측, 2026-07-28)
+
+핵심 흐름 **HQ 지시 → 상품팀장 직접 처리 → 결과 제출 → 팀장 확인 → HQ 최종 확인** 이 끊기지 않고 이어졌다.
+같은 검사에서 화면 결함 **7건**이 관측됐다.
+
+**이번에 마감한 7건**
+
+| # | 사용자가 본 증상 | 원인(직접 확인) | 조치 |
+|---|---|---|---|
+| 1 | HQ 지시 직후 같은 화면이 갱신되지 않고, 브라우저를 다시 접속해야 `전달 1`·메시지·업무가 보였다 | 브라우저 `storage` 이벤트는 **쓴 탭 자신에게는 발생하지 않는다**. 저장은 성공했는데 같은 탭 구독자가 다시 읽지 못했다 | `activityLedger`·`teamMessageCenter` 가 저장 **성공 시에만** 같은 탭 CustomEvent 를 발생시킨다(`sessionRole` 선례). 저장 함수는 `boolean` 을 돌려주고 실패 시 알리지 않는다 |
+| 2 | HQ 최종 확인 뒤에도 오른쪽 `승인·확인 필요`에 원래 지시 메시지가 계속 남았다 | 업무 상태와 그 업무를 만든 **원본 팀 메시지 상태가 연결되어 있지 않았다** | `src/services/linkedMessageSync.ts` 신설 — 업무의 `inputRefs`(`teammsg:<id>`)를 따라 원본 메시지 상태를 맞춘다. **비종료 결정(수정 요청·반송·중단 후속)과 같은 메시지를 참조하는 열린 업무가 남아 있으면 닫지 않는다.** 트랜잭션이 아니다 |
+| 3 | 왼쪽 요약 `승인 대기`와 오른쪽 항목이 눌리지 않고 우측 하단 플로팅 버튼만 승인창을 열었다 | 진입점이 플로팅 버튼 하나였다 | 플로팅 버튼 **제거**. 사용자가 먼저 보는 왼쪽 요약 숫자와 오른쪽 승인 항목이 같은 목록을 연다(승인 정본 `myPendingApprovals` 는 그대로) |
+| 4 | 승인 상세 화면이 지나치게 복잡했다 | 기술 메타데이터·원본/마스킹·5개 동작이 한 화면에 평평하게 놓여 있었다 | 기본 화면은 **제출된 결과 · 확인이 필요한 이유 · 담당팀/수행자/상태**만. 주 버튼 `확인 완료`, 보조 `승인하지 않음`(한 줄 사유 필수 · 사유 기록 전 창을 닫지 않음). 수정 요청·작업 중단·협업 반송은 **삭제하지 않고** 접힌 `다른 처리` 안에 둔다 |
+| 5 | 다크모드에서 일부 본문이 짙은 초록색이라 읽을 수 없었다 | 앱 테마는 `[data-theme]` 속성인데 `CsTeamDashboard.css` 4곳만 **OS 설정(`prefers-color-scheme`)** 을 따랐다. OS 라이트 + 앱 다크 조합에서 라이트용 짙은 초록이 어두운 배경 위에 찍혔다 | 4곳을 `[data-theme='light']` 로 교정(저장소 전체 `prefers-color-scheme` **0건**). 승인 화면의 고정 연파랑 `#93c5fd`(라이트 배경에서 안 읽힘)도 테마 변수로 교체 |
+| 6 | `계정 관리` 버튼이 화면 왼쪽 아래에 fixed 로 붙어 있었다 | 임시 배치 | 상단 헤더의 신원·로그아웃 옆으로 이동. **권한 판정은 그대로**(인증 모드 + `hq`/`team_lead`) |
+| 7 | HQ 지시 입력창이 성공 여부와 무관하게 입력을 지웠고 성공 여부가 화면에 안 보였다 | `onSend` 가 결과를 돌려주지 않았다 | `DirectiveSendResult { ok, message }` 계약 신설. **성공해야 입력을 지우고**, 실패하면 입력을 보존한 채 같은 자리에서 이유를 보여준다 |
+
+**부수 교정**: `createRevisionTask` 가 원본 `inputRefs` 를 물려받지 않아 수정 요청 후속 업무가 원본 메시지와의 연결을 잃었다(신규 검사 L-11 이 잡았다).
+
+**검증 범위**(이 브랜치에서 직접 실행)
+
+| 대상 | 결과 | 명령 |
+|---|---|---|
+| B-use-5 집중검사(신규) | **54/54 통과** | `node scripts/smoke-b-use-5-preview-defects-v0.mjs` |
+| B-use-3 집중검사 | 103/103 통과 | `node scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` |
+| B-use-4 집중검사 | 210/210 통과 | `node scripts/smoke-b-use-4-auth-integration-v0.mjs` |
+| 앱 타입검사 | 오류 0 | `npx tsc -b` |
+| api 타입검사 | 오류 0 | `npx tsc -p api/tsconfig.json --noEmit` |
+| 변경 파일 lint | 오류 0 | `npx eslint <변경 12파일>` |
+| 공백 오류 | 0 | `git diff --check` |
+| manifest | include **125** / exclude 0 (신규 검사 등록) | `scripts/regression-manifest.json` |
+| 비밀·키 유출 · 외부 WRITE 추가 | 변경분 검색 **0건** | `git diff` 검색 |
+
+**아직 확인하지 않은 것 (완료로 주장하지 않는다)**
+
+- **전체 `npm test`** — 이번 지시가 반복 실행을 금지해 실행하지 않았다. 집중검사·인접검사·타입검사·lint 까지만 확인했다.
+- **실제 브라우저 화면** — 7건이 사용자 눈에 실제로 고쳐져 보이는지는 **다음 Preview 재확인에서만 판정**한다. 자동검사는 배선과 계약을 증명할 뿐 화면 관측이 아니다.
+- **Codex 독립검증** 미수행. **Preview 재배포** 미수행. main 미통합·미푸시.
+- **범위 밖 잔여**: 업무 보드의 승인 칩 목록(`TaskBoard` → `ApprovalListModal`)에는 **사유 없이 누르는 `거절` 버튼이 그대로 남아 있다.** 이번 7건 밖이라 건드리지 않았다. 사용자가 인수검사에서 쓴 주 진입점(왼쪽 요약·오른쪽 브리핑)은 `onReject` 를 넘기지 않아 이 경로가 없다.
 
 ---
 

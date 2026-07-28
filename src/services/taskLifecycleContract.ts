@@ -361,7 +361,11 @@ export function createRevisionTask(
     createdBy: input.createdBy,
     approvalRoute: { ...original.approvalRoute, currentStageIndex: 0 },
     dependencyMode: original.dependencyMode,
-    requestingTeamId: original.requestingTeamId
+    requestingTeamId: original.requestingTeamId,
+    // B-use-5: **원본 자료 참조를 물려받는다.** 수정본도 같은 지시를 고치는 일이므로
+    //   원본 팀 메시지와의 연결이 끊기면, 수정본을 끝내도 그 메시지가 영영 '처리 안 됨'으로 남는다.
+    //   참조만 복사한다 — 본문·첨부는 원본 저장소 한 곳에 그대로 있다(결과물 artifactRefs 는 물려받지 않는다).
+    ...(original.inputRefs && original.inputRefs.length > 0 ? { inputRefs: [...original.inputRefs] } : {})
   }, ids);
 
   const superseded: LifecycleTask = {

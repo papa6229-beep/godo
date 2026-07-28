@@ -16,7 +16,16 @@ const shortTime = (iso: string): string => { const d = new Date(iso); return Num
 
 interface CriticalItem { id: string; team: DeptTeamId; kind: 'approval' | 'request'; title: string; note: string; at: string; }
 
-export const ExecutiveBriefing: React.FC = () => {
+// B-use-5: 일반 팀 메시지를 '승인'처럼 보이게 하지 않는다.
+//   승인 = 내가 결정해야 하는 것 / 처리 필요 = 해당 부서 업무 화면에서 처리하는 것.
+const KIND_LABEL: Record<CriticalItem['kind'], string> = { approval: '승인 필요', request: '처리 필요' };
+
+interface Props {
+  /** B-use-5: 실제 승인 항목을 누르면 **같은 승인 대기열**을 연다(우측 하단 플로팅 대체). */
+  onOpenApprovals?: () => void;
+}
+
+export const ExecutiveBriefing: React.FC<Props> = ({ onOpenApprovals }) => {
   const [activity, setActivity] = useState<ActivityEvent[]>(() => loadActivity());
   const [messages, setMessages] = useState<TeamMessage[]>(() => loadTeamMessages());
   useEffect(() => subscribeActivity(() => setActivity(loadActivity())), []);
@@ -49,10 +58,13 @@ export const ExecutiveBriefing: React.FC = () => {
   return (
     <div className="exb">
       <div className="exb-head">
-        <h3 className="exb-title">🔔 승인·확인 필요</h3>
+        <h3 className="exb-title">🔔 승인·처리 필요</h3>
         <span className={`exb-count ${total > 0 ? 'warn' : ''}`}>{total}건</span>
       </div>
-      <p className="exb-lead">오늘 각 팀에서 <b>승인·확인이 필요한</b> 업무만 모았습니다. (읽기 전용 · 처리는 부서 업무 관장에서)</p>
+      <p className="exb-lead">
+        오늘 각 팀에서 손이 필요한 업무입니다. <b>승인 필요</b>는 눌러서 바로 확인하고,
+        <b>처리 필요</b>는 부서 업무 관장에서 처리합니다.
+      </p>
 
       {total === 0 ? (
         <div className="exb-clear">✅ 지금 승인·확인이 필요한 업무가 없습니다.</div>
@@ -64,16 +76,30 @@ export const ExecutiveBriefing: React.FC = () => {
                 {DEPT_TEAM_META[t].emoji} {DEPT_TEAM_META[t].name}
                 <span className="exb-crit-team-n">{byTeam[t].length}</span>
               </div>
-              {byTeam[t].map((it) => (
-                <div key={it.id} className={`exb-crit-item kind-${it.kind}`}>
-                  <span className="exb-crit-dot" />
-                  <div className="exb-crit-body">
-                    <div className="exb-crit-title">{it.title}</div>
-                    <div className="exb-crit-note">{it.kind === 'approval' ? '🤖 자동업무' : '📨 팀 간 메시지'} · {it.note}</div>
-                  </div>
-                  <span className="exb-crit-time">{shortTime(it.at)}</span>
-                </div>
-              ))}
+              {byTeam[t].map((it) => {
+                const openable = it.kind === 'approval' && !!onOpenApprovals;
+                const body = (
+                  <>
+                    <span className="exb-crit-dot" />
+                    <div className="exb-crit-body">
+                      <div className="exb-crit-title">{it.title}</div>
+                      <div className="exb-crit-note">
+                        <span className={`exb-crit-kind kind-${it.kind}`}>{KIND_LABEL[it.kind]}</span>
+                        {' · '}{it.kind === 'approval' ? '🤖 자동업무' : '📨 팀 간 메시지'} · {it.note}
+                      </div>
+                    </div>
+                    <span className="exb-crit-time">{shortTime(it.at)}</span>
+                  </>
+                );
+                return openable ? (
+                  <button key={it.id} type="button" className={`exb-crit-item kind-${it.kind} clickable`}
+                    onClick={() => onOpenApprovals?.()} title="확인 대기 목록을 엽니다.">
+                    {body}
+                  </button>
+                ) : (
+                  <div key={it.id} className={`exb-crit-item kind-${it.kind}`}>{body}</div>
+                );
+              })}
             </div>
           ))}
         </div>

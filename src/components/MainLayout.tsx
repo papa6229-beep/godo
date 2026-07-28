@@ -18,6 +18,7 @@ import { ApiBridgePanel } from './ApiBridgePanel';
 import { DepartmentWorkspacePanel } from './DepartmentWorkspacePanel';
 import type { DepartmentWorkspaceLifecycle } from './DepartmentWorkspacePanel';
 import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataConnector';
+import type { DirectiveSendResult } from './HqDirectiveComposer';
 import type { DeptTeamId, TeamMessageAttachment } from '../types/teamMessage';
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
@@ -63,6 +64,11 @@ interface MainLayoutProps {
    * HQ 여부를 판정하지 않는다(로그인 계정과 시험 역할이 갈라지던 원인).
    */
   identity: EffectiveIdentity;
+  /** B-use-5: 보이는 곳(왼쪽 요약·오른쪽 브리핑)에서 실제 승인 대기열을 연다. */
+  onOpenApprovals?: () => void;
+  /** B-use-5: 계정 관리 진입을 왼쪽 아래 fixed 버튼에서 상단 헤더로 옮겼다. 권한 판정은 App 그대로. */
+  canManageAccounts?: boolean;
+  onOpenAccountAdmin?: () => void;
   agents: Agent[];
   tasks: OperationTask[];
   logs: LogEntry[];
@@ -80,7 +86,8 @@ interface MainLayoutProps {
   onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
   /** B-use-3: HQ 지시 1건 처리(App 소유). 화면은 고른 팀·문구·첨부만 넘긴다. */
-  onSendDirective: (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => void;
+  /** B-use-5: 전송 결과를 그대로 통과시킨다(중간 배선이 성공 여부를 삼키지 않는다). */
+  onSendDirective: (toTeam: DeptTeamId, text: string, attachments: TeamMessageAttachment[]) => DirectiveSendResult;
   
   
   // Brain 관련 props
@@ -155,6 +162,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onAddTask,
   departmentLifecycle,
   identity,
+  onOpenApprovals,
+  canManageAccounts,
+  onOpenAccountAdmin,
   onSelectAgent,
   onClearLogs,
   onApprove,
@@ -290,6 +300,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           )}
           {/* B-use-5: 로그인한 계정만 로그아웃할 수 있다.
               시험 역할 모드(roleSwitcherEnabled)에는 Clerk 세션이 없으므로 만들지 않는다. */}
+          {/* B-use-5: 계정 관리 → 신원·로그아웃 근처(상단 헤더). 팀원에게는 보이지 않는다. */}
+          {canManageAccounts && (
+            <button type="button" className="auth-account-btn" onClick={() => onOpenAccountAdmin?.()}
+              title="가입 승인 등 계정 관리">
+              🔐 계정 관리
+            </button>
+          )}
           {identity.mode === 'authenticated' && <SignOutButton />}
         </div>
 
@@ -422,6 +439,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               onSelectTask={onSelectTask}
               onSelectApproval={onSelectApproval}
               onSendDirective={onSendDirective}
+              onOpenApprovals={onOpenApprovals}
               activeOperationsData={activeOperationsData}
               onUpdateAgents={onUpdateAgents}
               onAddLog={onAddLog}

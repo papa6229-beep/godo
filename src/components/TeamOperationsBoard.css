@@ -109,6 +109,23 @@
   color: #f59e0b;
 }
 
+/* B-use-5: 승인 대기 요약은 실제 승인 대기열을 여는 버튼이다(보이는 곳이 눌려야 한다). */
+.summary-stat-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 10px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: all 0.14s ease;
+}
+.summary-stat-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary, #31D6C4);
+  background: var(--accent-soft, rgba(49, 214, 196, 0.08));
+}
+.summary-stat-btn:disabled { cursor: default; }
+
 .summary-num {
   font-size: 18px;
   font-weight: 800;
