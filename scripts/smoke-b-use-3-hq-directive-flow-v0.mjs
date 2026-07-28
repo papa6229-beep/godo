@@ -337,6 +337,128 @@ ok('D-12. 기존 카드를 그대로 돌려줌', rev2.ok === true && rev2.create
 const dStatus = () => STORE.loadLifecycleTasks().find((t) => t.ref.taskId === rid)?.status;
 ok('D-13. HQ 결정으로 종료', A.applyDecision(rid, { kind: 'approve', actor: HQ }, ids)?.ok === true && dStatus() === 'completed', dStatus());
 
+// ══════════════════════════════════════════════════════════════════════════
+// E. 팀 내부 업무의 **실제 팀장 화면 진입점**
+//
+// 배경(실제 단절): [B] 는 계약(createDirectiveTask)만 확인했다. 화면 경로는 달랐다.
+//   - MainLayout.tsx:209 — 비HQ 사용자는 항상 'department' 탭으로 강제 이동한다.
+//   - MainLayout.tsx:355 — ChatConsole 은 'office'·'department' 가 아닐 때만 렌더된다.
+//   → 총괄 콘솔의 빠른 업무 추가 바(onAddTask)는 **팀장 화면에 아예 존재하지 않는다.**
+//   따라서 "총괄 콘솔 빠른 업무 추가가 팀 내부 실제 경로"라는 주장은 성립하지 않는다.
+//
+// 이 구간은 팀장이 실제로 들어가는 경로(부서 업무 관장 → 업무 탭 → TeamTaskPanel)에서
+//   팀 내부 업무를 만들 수 있는지를 **계약 함수 실호출**로 확인하고,
+//   그 입력이 화면에 실제로 배선됐는지를 배선 가드로 함께 잠근다.
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[E] 팀 내부 업무 — 팀장 화면 진입점 (team_internal)');
+
+const AI_ACTOR = { kind: 'agent', teamId: 'product', label: '상품 관리 AI', userId: 'a-product' };
+
+ok('E-0. 팀 내부 업무 생성 계약이 존재', typeof A.createTeamInternalTask === 'function',
+  typeof A.createTeamInternalTask);
+
+const mk = (title, teamId, actor) =>
+  (typeof A.createTeamInternalTask === 'function'
+    ? A.createTeamInternalTask({ title, teamId, actor }, ids)
+    : { ok: false, reason: '계약 없음' });
+
+// ── 권한: 사람 팀장이 자기 팀에만 ──
+const beforeE = STORE.loadLifecycleTasks().length;
+const denyHq = mk('총괄이 만든 팀 내부 업무', 'product', HQ);
+ok('E-1. 총괄(HQ) actor 차단', denyHq.ok === false, denyHq.reason ?? '통과함');
+const denyOther = mk('CS팀장이 상품팀 업무 생성', 'product', CS_LEAD);
+ok('E-2. 다른 팀 팀장 차단', denyOther.ok === false, denyOther.reason ?? '통과함');
+const denyAgent = mk('AI 가 만든 팀 업무', 'product', AI_ACTOR);
+ok('E-3. AI actor 차단', denyAgent.ok === false, denyAgent.reason ?? '통과함');
+const denyEmpty = mk('   ', 'product', PRODUCT_LEAD);
+ok('E-4. 빈 제목 차단', denyEmpty.ok === false, denyEmpty.reason ?? '통과함');
+const denyHqTeam = mk('총괄팀 내부 업무', 'hq', PRODUCT_LEAD);
+ok('E-5. 총괄팀 대상 차단(그건 확인 요청 경로다)', denyHqTeam.ok === false, denyHqTeam.reason ?? '통과함');
+ok('E-6. 거부된 5건은 업무를 하나도 만들지 않음', STORE.loadLifecycleTasks().length === beforeE,
+  `${STORE.loadLifecycleTasks().length - beforeE}건 증가`);
+
+// ── 허용: 담당 팀장 본인 ──
+const okRes = mk('  이번 주 품절 상품 재입고 확인  ', 'product', PRODUCT_LEAD);
+ok('E-7. 담당 팀장 본인은 생성 가능', okRes.ok === true, okRes.reason ?? '');
+const eTask = okRes.ok ? okRes.task : null;
+ok('E-8. 업무 정확히 1건만 생성', STORE.loadLifecycleTasks().length === beforeE + 1,
+  `${STORE.loadLifecycleTasks().length - beforeE}건`);
+ok('E-9. 제목 앞뒤 공백 정리', eTask?.title === '이번 주 품절 상품 재입고 확인', JSON.stringify(eTask?.title));
+ok('E-10. 담당 팀 = 팀장 본인 팀', eTask?.ownerTeamId === 'product', eTask?.ownerTeamId);
+ok('E-11. 승인 경로 = team_internal(담당 팀장 확인 1단계)',
+  eTask?.approvalRoute?.stages?.length === 1 && eTask.approvalRoute.stages[0].approverKind === 'owner_team_lead',
+  (eTask?.approvalRoute?.stages ?? []).map((s) => s.approverKind).join('->'));
+ok('E-12. 수행자 unassigned (actor 를 수행자로 덮어쓰지 않음)',
+  eTask?.executorKind === 'unassigned' && !eTask?.executorId, eTask?.executorKind);
+ok('E-13. 가짜 원본 참조를 만들지 않음', (eTask?.inputRefs ?? []).length === 0, JSON.stringify(eTask?.inputRefs ?? []));
+ok('E-14. 요청팀 표기 없음(팀 안의 일이다)', !eTask?.requestingTeamId, eTask?.requestingTeamId ?? '없음');
+ok('E-15. 행위자 = 세션 팀장, 신원 출처 보존',
+  eTask?.createdBy?.userId === 'u-product' && eTask?.createdBy?.identitySource === 'demo_role',
+  `${eTask?.createdBy?.userId}/${eTask?.createdBy?.identitySource}`);
+
+// ── 활동 원장: 같은 행동에 1건, taskId·correlationId 로 역추적 ──
+const ledgerBeforeE = LEDGER.loadActivity().length;
+if (eTask) {
+  LEDGER.logActivity({
+    teamId: 'product', type: 'note', status: 'info', title: eTask.title,
+    detail: '상품관리팀 팀 내부 업무 등록', actor: PRODUCT_LEAD, relatedTeam: 'product',
+    taskId: eTask.ref.taskId, correlationId: eTask.ref.correlationId
+  });
+}
+ok('E-16. 활동 원장 정확히 1건 추가', LEDGER.loadActivity().length === ledgerBeforeE + 1,
+  `${LEDGER.loadActivity().length - ledgerBeforeE}건`);
+const eLedger = LEDGER.loadActivity().find((x) => x.taskId === eTask?.ref.taskId);
+ok('E-17. 원장이 taskId·correlationId 로 업무를 가리킴',
+  !!eLedger && eLedger.correlationId === eTask?.ref.correlationId, eLedger?.correlationId ?? '없음');
+ok('E-18. 원본 메시지가 없으므로 refId 를 지어내지 않음', !eLedger?.refId, eLedger?.refId ?? '없음');
+
+// ── 만든 업무가 실제로 팀장 화면 목록에 도착하는가 ──
+const eFlows = eTask ? A.taskFlowsFor(PRODUCT_LEAD).filter((f) => f.task.ref.taskId === eTask.ref.taskId) : [];
+ok('E-19. 팀장 화면 흐름 목록에 1건으로 도착', eFlows.length === 1, String(eFlows.length));
+ok('E-20. 팀장이 바로 처리할 수 있는 상태(할 일)',
+  eFlows[0]?.task.status === 'open' && eFlows[0]?.actionable === true, eFlows[0]?.task.status ?? '없음');
+const eCsFlows = eTask ? A.taskFlowsFor(CS_LEAD).filter((f) => f.task.ref.taskId === eTask.ref.taskId) : [];
+ok('E-21. 다른 팀 팀장에게는 보이지 않음', eCsFlows.length === 0, String(eCsFlows.length));
+
+// ── 하류: 수행 → 결과 → 팀장 확인 1단계로 완료 ──
+if (eTask) {
+  const eid = eTask.ref.taskId;
+  A.assignExecutor(eid, { kind: 'human', executorId: PRODUCT_LEAD.userId, actor: PRODUCT_LEAD }, ids);
+  A.submitResult(eid, { resultSummary: '재입고 요청 3건 전달', actor: PRODUCT_LEAD }, ids);
+  const eStatus = () => STORE.loadLifecycleTasks().find((t) => t.ref.taskId === eid)?.status;
+  ok('E-22. 담당 팀장 확인 1단계로 완료(총괄 확인 불필요)',
+    A.applyDecision(eid, { kind: 'approve', actor: PRODUCT_LEAD }, ids)?.ok === true && eStatus() === 'completed',
+    eStatus());
+} else {
+  ok('E-22. 담당 팀장 확인 1단계로 완료(총괄 확인 불필요)', false, '업무 생성 실패');
+}
+
+// ── [E-배선] 팀장이 실제로 들어가는 화면에 입력이 있는가 ──────────────────
+console.log('\n[E-배선] 팀장 화면 진입점 배선');
+const LAYOUT = readFileSync(path.join(REPO, 'src', 'components', 'MainLayout.tsx'), 'utf8');
+const DEPT = readFileSync(path.join(REPO, 'src', 'components', 'DepartmentWorkspacePanel.tsx'), 'utf8');
+const TPANEL = readFileSync(path.join(REPO, 'src', 'components', 'TeamTaskPanel.tsx'), 'utf8');
+
+// 회귀 가드: 이 두 사실이 바뀌면 "총괄 콘솔이 팀장 경로"라는 오판이 다시 생긴다.
+ok('E-30. 비HQ 사용자는 부서 업무 관장 탭으로 강제 이동한다(사실 고정)',
+  /!hq\s*&&\s*activeTab\s*!==\s*'department'/.test(LAYOUT));
+ok('E-31. 총괄 콘솔(ChatConsole)은 부서 업무 관장 탭에 렌더되지 않는다(사실 고정)',
+  /activeTab\s*!==\s*'office'\s*&&\s*activeTab\s*!==\s*'department'/.test(LAYOUT));
+
+ok('E-32. App 이 팀 내부 업무 계약을 호출', /createTeamInternalTask/.test(APP));
+ok('E-33. App 이 팀장 화면에 생성 핸들러를 내려보냄', /onCreateTeamTask/.test(APP));
+ok('E-34. 부서 워크스페이스가 그 핸들러를 업무 패널로 전달',
+  /onCreateTeamTask/.test(DEPT) && /onCreateTask=\{/.test(DEPT));
+ok('E-35. 업무 패널에 팀 내부 업무 추가 입력이 있다',
+  /onCreateTask/.test(TPANEL) && /ttask-new/.test(TPANEL));
+ok('E-36. 입력은 담당 팀장에게만 보인다(HQ·타 팀 차단)',
+  /isOwningLead/.test(TPANEL) && /canCreateTeamTask/.test(TPANEL));
+// 주석에도 'localStorage' 라는 낱말이 나오므로 **실제 사용 형태**만 본다.
+ok('E-37. 업무 패널이 저장소를 직접 만지지 않는다(App 이 소유)',
+  !/localStorage\s*\./.test(TPANEL) && !/createDirectiveTask\(/.test(TPANEL) && !/saveLifecycleTask/.test(TPANEL));
+ok('E-38. 새 승인 규칙을 만들지 않았다(기존 routeFor 재사용)',
+  /routeFor\(/.test(readFileSync(path.join(REPO, 'src', 'services', 'taskLifecycleAppAdapter.ts'), 'utf8')));
+
 rmSync(tmp, { recursive: true, force: true });
 console.log(`\n=== 결과: ${pass} pass / ${fail} fail ===`);
 process.exit(fail === 0 ? 0 : 1);
