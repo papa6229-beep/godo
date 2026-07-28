@@ -13,7 +13,8 @@ import { TeamOperationsBoard } from './TeamOperationsBoard';
 import { DeptActivityModal } from './DeptActivityModal';
 import { OperationBriefingModal } from './OperationBriefingModal';
 import { defaultDepartments, defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
-import { fetchRevenue, type RevenueOrderLite } from '../services/departmentDataService';
+import { fetchRevenue, type RevenueResult } from '../services/departmentDataService';
+import { screenStateFromRevenue } from '../services/revenueScreenState';
 import { type DeptTeamId, type TeamMessageAttachment } from '../types/teamMessage';
 import './OfficeView.css';
 
@@ -81,15 +82,35 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
   const [selectedDept, setSelectedDept] = useState<DepartmentDefinition | null>(null);
   const [briefingModalOpen, setBriefingModalOpen] = useState(false);
 
-  // HQ 채팅 통계/그래프용 커머스 데이터(부서 채팅과 동일 소스). 로컬 dev엔 API 없을 수 있음(그땐 콘솔 기본 응답).
-  const [commerceData, setCommerceData] = useState<{ orders: RevenueOrderLite[]; reviews?: unknown[]; inquiries?: unknown[] } | null>(null);
+  // HQ 채팅 통계/그래프용 매출 응답(부서 채팅과 **동일 소스**).
+  //
+  // Local migration: 이전에는 `rev.orders.length` 가 있을 때만 얇은 복사본을 저장해서
+  //   ① 실제 성공 0건 ② 실제 주문 연결 실패 ③ 아직 불러오는 중 이 전부 `null` 로 합쳐졌다.
+  //   `fetchRevenue` 는 네트워크·HTTP 실패를 **throw 하지 않고** source:'unavailable' 을
+  //   반환하므로 `.catch(() => {})` 는 일반 실패 경로도 아니었다.
+  // 이제 **RevenueResult 전체를 그대로 보존**하고, 화면 판정은 공통 계약
+  //   `screenStateFromRevenue` 하나가 한다(새 규칙을 만들지 않는다).
+  //
+  // `null` 은 **'아직 불러오는 중'** 이라는 뜻으로만 쓴다.
+  const [revenue, setRevenue] = useState<RevenueResult | null>(null);
   useEffect(() => {
     let alive = true;
     fetchRevenue(true, 'commerce_universe_v1', { includeUniverseAux: true })
-      .then((rev) => { if (alive && rev?.orders?.length) setCommerceData({ orders: rev.orders, reviews: rev.universeAux?.reviews, inquiries: rev.universeAux?.inquiries }); })
-      .catch(() => { /* 데이터 없음 — 콘솔 기본 경로 */ });
+      .then((rev) => { if (alive) setRevenue(rev); })
+      // 계약상 여기로는 오지 않는다(실패는 반환값). 그래도 오면 상태를 지어내지 않고
+      // 정본 판정이 fail-closed 로 '연결 안 됨' 을 내도록 unavailable 응답을 만들어 넣는다.
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setRevenue({
+          count: 0, source: 'unavailable', live: false, summary: null, stockImpact: [], orders: [],
+          errorMessage: err instanceof Error ? err.message : String(err)
+        });
+      });
     return () => { alive = false; };
   }, []);
+
+  // 공통 판정 계약 재사용 — OfficeView 는 상태를 추측하지 않는다.
+  const revenueScreenState = revenue ? screenStateFromRevenue(revenue) : null;
 
   const scenarioDescriptions: Record<ValidationScenarioType, string> = {
     normal: '정상 운영: 재고 수량 양호, 고객 미답변 문의 없음, 평점 5점 만족',
@@ -137,7 +158,8 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           isLarge={true}
           isSimulating={isSimulating}
           quickBarSlot={<HqDirectiveComposer onSend={onSendDirective} />}
-          commerceData={commerceData}
+          revenue={revenue}
+          revenueScreenState={revenueScreenState}
         />
       </div>
 

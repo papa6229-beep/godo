@@ -113,7 +113,8 @@
 > 집계: 공식 출처 21 → 28 → **28** · 확정 사실 20 → 27 → **27** · 조건부 3 → 4 → **5** · 미확인 21 → 17 → **16**(개별 6 + 회사 서버 확인표 10).
 > **결론은 바뀌지 않았다**: DB **미결정** · 회사·고도몰 서버 조건을 받기 전 공급자 미확정 · **특정 DB 서버 어댑터 미구현** · PostgreSQL 공통분모로 이전 가능성 보존 · 첨부는 DB 내부 base64 가 아니라 object storage 참조 우선 · 최종 선택은 11월 실서버 시험 준비 전.
 > **DB 결정을 `DECISIONS.md` 에 추가하지 않았다.**
-> **다음 한 작업: Codex 가 DB·고도몰 키에 독립적인 제품 후속 작업을 선정한다.**
+> **Local migration 1건 완료(2026-07-28)**: 오늘의 운영 주문 통계 출처 상태 연결(§14 후속 대장 `OfficeView fetchRevenue 실패 무시` 항목). `불러오는 중 / 실제 주문 0건 / 시험 데이터 / 연결 안 됨` 이 기존 정본 계약으로 구분되고, 연결 실패가 `activeOperationsData` 로 조용히 대체되지 않는다. **제품 코드 2개 + 기존 검사 1개 확장.** 전체 `npm test` 는 이 묶음 경계 또는 통합 직전에 한 번 실행한다 — **이번 건으로 무회귀 전체를 주장하지 않는다.**
+> **다음 한 작업: Codex 가 이 Local migration 을 독립검증하고, 이어서 다음 후속 대장 항목을 선정한다.**
 > **DB 공급자 선택이나 서버 어댑터 구현을 다음 작업으로 만들지 않는다.**
 > **DB 가 정해지기 전에는 서버 어댑터를 구현하지 않는다. B-use-2 는 기술 입력·결정자료 준비까지만 끝났고 서버 기록 완료가 아니다.**
 > **시험자료(현재 localStorage 에 쌓인 업무·메시지·승인 기록)를 서버 이관 시 보존할지 버릴지도 미결정이다.** 지금 삭제하거나 변환하지 않는다.
@@ -545,7 +546,7 @@ B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch
 | 승인 라우팅 비교를 `isSameTeamScope` 로 교체 (마케팅 두 팀이 저장되기 시작하는 시점에 필요) | B-core 묶음 2026-07-27 | 미착수 |
 | `godomallMapper.mapGoodsToInventory`/`mapGoodsList` dead code (호출자 0건, `safetyStock` 기본값 `'5'` 생성) | B-core-2a | 미착수 |
 | `stockImpact` 가 합성 전용 — 실제 데이터 경로에 재고위험 입력 없음 | B-core-2a | 미착수 |
-| `OfficeView.tsx` 가 `fetchRevenue` 실패를 `.catch(()=>{})` 로 무시 — 실패와 '실제 0건'이 화면에서 구분 안 됨 | B-core-2 | 미착수 |
+| ~~`OfficeView.tsx` 가 `fetchRevenue` 실패를 `.catch(()=>{})` 로 무시 — 실패와 '실제 0건'이 화면에서 구분 안 됨~~ | B-core-2 | **완료 (2026-07-28, Local migration)** — 실제 원인은 `.catch` 가 아니었다. `fetchRevenue` 는 네트워크·HTTP 실패를 **throw 하지 않고** `source:'unavailable'` 을 **반환**하므로 빈 `.catch` 는 일반 실패 경로도 아니었다. 진짜 원인은 ① `OfficeView` 가 `rev.orders.length` 가 있을 때만 얇은 복사본을 저장해 **실제 0건·연결 실패·미로딩을 전부 `null` 로 합친 것**, ② `ChatConsole` 이 `orders.length` 로만 분기해 **안내 없이 `activeOperationsData` 관제 채팅으로 조용히 내려간 것**. `RevenueResult` 전체 보존 + 공통 계약(`screenStateFromRevenue`·`resolveRealOrdersDisplay`·`realOrdersPhrase`) 재사용 + 통계 질문 분류(`understandCommerceQuery`) 로 마감. 검사 `smoke-data-source-server-01-green-f-screen-state-v0.mjs` 에 G1~G10 추가(24/24) |
 | `CalendarPanel.tsx` 가 `activeOperationsData` prop 을 받고 본문에서 쓰지 않음 | B-core-2 | 미착수 |
 
 ## 15. 일정 원칙

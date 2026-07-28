@@ -13,10 +13,12 @@ const TARGET_TEAMS = VIEWER_ROLES.filter((r) => r.id !== 'hq');
 import { getGlobalBrainSelection, providerLabel, isBrainConnected } from '../services/aiBrainSettings';
 import { loadHqMessages, saveHqMessages } from '../services/repositories/chatMemoryRepository';
 import { answerCommerceQuestion } from '../services/commerceDataQueryEngine';
+import { understandCommerceQuery } from '../services/marketingAnalyticsQueryCompilerLlm';
+import { resolveRealOrdersDisplay, realOrdersPhrase, type RevenueScreenState } from '../services/revenueScreenState';
 import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { MarketingChartSpecPanel } from './MarketingAnalysisDashboard';
 import type { MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
-import type { RevenueOrderLite } from '../services/departmentDataService';
+import type { RevenueResult } from '../services/departmentDataService';
 import './ChatConsole.css';
 
 function generateMessageId(prefix: string): string {
@@ -39,7 +41,15 @@ interface ChatConsoleProps {
   // 있으면 하단 Quick Task Add 바를 이 슬롯으로 대체(오늘의 운영: 팀 지시+파일 바).
   quickBarSlot?: React.ReactNode;
   // 있으면 통계/그래프 질문을 부서 채팅과 동일한 Commerce Query 엔진으로 답한다(오늘의 운영 HQ 채팅).
-  commerceData?: { orders: RevenueOrderLite[]; reviews?: unknown[]; inquiries?: unknown[] } | null;
+  /**
+   * Local migration: 얇은 복사본 대신 **매출 응답 전체**를 받는다.
+   *   `undefined` = 이 prop 을 쓰지 않는 기존 화면(오늘의 운영 전용 통계 기능 미사용).
+   *   `null`      = 오늘의 운영에서 **아직 불러오는 중**.
+   *   객체        = 요청 완료(성공·0건·연결 실패가 slice 상태로 구분돼 있다).
+   */
+  revenue?: RevenueResult | null;
+  /** 위 응답의 공통 판정 결과(`screenStateFromRevenue`). 화면이 규칙을 다시 만들지 않는다. */
+  revenueScreenState?: RevenueScreenState | null;
 }
 
 export const ChatConsole: React.FC<ChatConsoleProps> = ({
@@ -55,7 +65,8 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
   isLarge = false,
   isSimulating = false,
   quickBarSlot,
-  commerceData
+  revenue,
+  revenueScreenState
 }) => {
   // 커머스 질의 결과 차트(오늘의 운영 HQ 채팅). 비영속.
   const [commerceChart, setCommerceChart] = useState<MarketingChatChartArtifact | null>(null);
@@ -380,24 +391,52 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
     setInputValue('');
     setIsTyping(true);
 
-    // 통계/그래프 질문이면 부서 채팅과 동일한 Commerce Query 엔진으로 먼저 답한다(데이터 있을 때).
-    if (commerceData?.orders?.length) {
-      try {
-        const eng = await answerCommerceQuestion(
-          text,
-          { orders: commerceData.orders, reviews: commerceData.reviews as never, inquiries: commerceData.inquiries as never },
-          { callLlm: callMarketingPlannerLlm, team: 'hq' }
-        );
-        if (eng && eng.handled) {
-          const aiMsg: ControlChatMessage = {
-            id: generateMessageId('msg-ai'), role: 'assistant', content: eng.reply, createdAt: getFormattedTime()
-          };
-          setMessages((prev) => [...prev, aiMsg]);
-          setCommerceChart(eng.suppressChart ? null : (eng.artifact ?? null));
+    // ── 주문 통계 질문 처리 ──────────────────────────────────────────────────
+    // Local migration: 이전에는 `commerceData.orders.length` 로만 분기해서, 0건이거나
+    //   연결 실패면 **안내 없이** activeOperationsData 관제 채팅으로 내려갔다. 그래서
+    //   '실제 0건' · '주문 연결 실패' · '아직 미로딩' 이 사용자에게 구분되지 않았다.
+    //   이제 통계 질문이면 출처 상태를 그대로 답하고, 관제 숫자로 조용히 대체하지 않는다.
+    //   질문 분류는 기존 `understandCommerceQuery` 를 재사용한다(키워드 목록을 새로 만들지 않는다).
+    if (revenue !== undefined) {
+      const orders = revenue?.orders ?? [];
+      if (orders.length > 0) {
+        try {
+          const eng = await answerCommerceQuestion(
+            text,
+            { orders, reviews: revenue?.universeAux?.reviews as never, inquiries: revenue?.universeAux?.inquiries as never },
+            { callLlm: callMarketingPlannerLlm, team: 'hq' }
+          );
+          if (eng && eng.handled) {
+            const aiMsg: ControlChatMessage = {
+              id: generateMessageId('msg-ai'), role: 'assistant', content: eng.reply, createdAt: getFormattedTime()
+            };
+            setMessages((prev) => [...prev, aiMsg]);
+            setCommerceChart(eng.suppressChart ? null : (eng.artifact ?? null));
+            setIsTyping(false);
+            return;
+          }
+        } catch { /* 커머스 질의 실패 시 기존 콘솔 경로로 폴백 */ }
+      } else {
+        // 쓸 주문이 없다. **통계 질문일 때만** 출처 상태를 답한다.
+        //   통계와 무관한 지시·승인·에이전트 질문은 기존 processControlChat 경로 그대로.
+        const plan = await understandCommerceQuery(text, { callLlm: callMarketingPlannerLlm, team: 'hq' });
+        if (plan) {
+          const reply = revenue === null
+            ? '주문 통계를 아직 불러오는 중입니다. 잠시 후 다시 물어봐 주세요.'
+            : revenueScreenState?.usable
+              // 시험 주문이 살아 있으면 사용을 막지 않는다(엔진이 답하지 못한 경우만 여기 온다).
+              ? '지금 쓸 수 있는 주문 자료로는 이 질문에 답할 수 없습니다. 질문을 조금 더 구체적으로 적어 주세요.'
+              : realOrdersPhrase(resolveRealOrdersDisplay(revenue.realOrdersStatus, revenue.summary?.realOrderCount)) === '실제 주문 연결 안 됨'
+                ? '주문 통계가 연결되지 않아 답할 수 없습니다. 지금 화면의 다른 운영 숫자를 주문 통계로 대신 쓰지 않습니다.'
+                : '실제 주문이 0건입니다(연결 실패가 아닙니다). 집계할 주문 자료가 아직 없습니다.';
+          setMessages((prev) => [...prev, {
+            id: generateMessageId('msg-ai'), role: 'assistant', content: reply, createdAt: getFormattedTime()
+          }]);
+          setCommerceChart(null);
           setIsTyping(false);
           return;
         }
-      } catch { /* 커머스 질의 실패 시 기존 콘솔 경로로 폴백 */ }
+      }
     }
 
     try {
@@ -532,6 +571,34 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
           <span className="chat-header-subtitle" style={{ fontSize: '0.72rem', color: 'var(--text-secondary, #a0aec0)' }}>
             총괄 매니저 콘솔 | 운영 지시, 승인, 에이전트 호출을 이곳에서 처리합니다.
           </span>
+          {/* Local migration: 새 패널을 만들지 않고 기존 부제 자리에 **주문 통계 출처 상태**만 짧게 붙인다.
+              문구는 정본(screenStateFromRevenue · resolveRealOrdersDisplay · realOrdersPhrase)에서 온다.
+              내부 오류 원문·URL·키·응답 전문은 표시하지 않는다.
+              이 prop 을 쓰지 않는 기존 화면(revenue === undefined)에서는 아무것도 그리지 않는다. */}
+          {revenue !== undefined && (() => {
+            const notLoaded = revenue === null;
+            const real = notLoaded ? null : resolveRealOrdersDisplay(revenue.realOrdersStatus, revenue.summary?.realOrderCount);
+            const usable = !!revenueScreenState?.usable;
+            const label = notLoaded
+              ? '주문 통계: 불러오는 중'
+              : usable
+                // 사용 가능 — 정본 사용자 라벨을 그대로 쓴다.
+                //   실제 주문만 실패하고 시험 데이터가 살아 있으면 두 가지를 함께 보여 준다.
+                ? `주문 통계: ${revenueScreenState?.userLabel ?? '연결 안 됨'}`
+                  + (revenueScreenState?.realOrdersNotice ? ' · 실제 주문 연결 안 됨' : '')
+                : real?.kind === 'known'
+                  ? `주문 통계: ${realOrdersPhrase(real)}`
+                  : '주문 통계: 연결 안 됨';
+            const warn = notLoaded ? false : (!usable || !!revenueScreenState?.realOrdersNotice);
+            return (
+              <span
+                className="chat-header-source"
+                style={{ fontSize: '0.68rem', fontWeight: 700, color: warn ? 'var(--warning, #fbbf24)' : 'var(--text-secondary, #a0aec0)' }}
+              >
+                {label}
+              </span>
+            );
+          })()}
         </div>
         {(() => {
           const b = getGlobalBrainSelection();

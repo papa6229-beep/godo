@@ -435,6 +435,42 @@ Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜
 
 ---
 
+### Local migration — 오늘의 운영 주문 통계 출처 상태 연결 (2026-07-28, 브랜치 `codex/b-use-5-preview-acceptance`)
+
+**분류**: Local migration (`MASTER_PLAN §14` 후속 대장 기존 항목). Patch 도 구조 패치도 아니다 — 핵심 데이터 경계를 바꾸지 않고 **소비자 한 곳을 기존 정본 계약에 연결**했다.
+
+**종료조건**: 오늘의 운영 화면에서 주문 통계 조회의 `불러오는 중 / 실제 데이터 0건 / 시험 데이터 / 연결 안 됨` 이 **기존 정본 계약으로** 구분되고, 연결 실패가 다른 데이터 경로로 **조용히 대체되지 않는다.**
+
+**직접 확인한 근본 원인 3가지**
+
+| # | 원인 | 근거(직접 확인) |
+|---|---|---|
+| 1 | 후속 대장에 적힌 `.catch(()=>{})` 는 **일반 실패 경로가 아니었다** | `departmentDataService.fetchRevenue` 의 `catch` 블록이 throw 하지 않고 `{ source:'unavailable', orders:[], summary:null, errorMessage }` 를 **반환**한다 |
+| 2 | `OfficeView` 가 **상태를 버렸다** | `rev.orders.length` 가 있을 때만 `{orders, reviews, inquiries}` 얇은 복사본을 저장 → **실제 성공 0건 · 연결 실패 · 아직 불러오는 중이 전부 `commerceData === null`** 로 합쳐졌다. 출처·slice 상태·오류 사유·요약을 전부 유실 |
+| 3 | `ChatConsole` 이 **조용히 다른 경로로 넘어갔다** | `commerceData.orders.length` 가 있을 때만 Commerce Query 엔진 사용 → 0건·연결 실패면 **안내 없이** `activeOperationsData` 관제 채팅으로 폴백 |
+
+**조치 (새 판정 규칙을 만들지 않았다)**
+
+- `OfficeView`: `RevenueResult` **전체를 보존**한다(0건도 저장). `null` 은 **'아직 불러오는 중'** 의미로만 쓴다. 화면 판정은 공통 계약 `screenStateFromRevenue` 가 한다. 계약상 오지 않는 `catch` 는 상태를 지어내지 않고 fail-closed `unavailable` 응답을 만들어 넣는다. 언마운트 가드(`alive`)는 유지.
+- `ChatConsole`: prop 을 얇은 `commerceData` → **`revenue: RevenueResult | null` + `revenueScreenState`** 로 바꿨다. **`undefined` = 이 기능을 쓰지 않는 기존 화면**(MainLayout 의 다른 호출은 그대로). 헤더 부제 자리에 짧은 상태만 표시(새 패널·경고창 없음, 내부 오류 원문·URL·키 미노출).
+- 통계 질문 분기: 쓸 주문이 없을 때 **기존 `understandCommerceQuery` 로 분류**해 통계 질문이면 출처 상태를 답하고, 통계와 무관한 지시·승인·에이전트 질문은 **기존 `processControlChat` 경로 유지**. 별도 키워드 목록을 만들지 않았다.
+
+**네 가지 상태별 실제 결과**
+
+| 상태 | 헤더 | 통계 질문 답변 |
+|---|---|---|
+| 요청 완료 전(`revenue === null`) | `주문 통계: 불러오는 중` | "아직 불러오는 중입니다" |
+| 실제 성공 0건 | `주문 통계: 실제 주문 0건` | **"실제 주문이 0건입니다(연결 실패가 아닙니다)"** |
+| 사용 가능(실제/시험) | `주문 통계: <정본 사용자 라벨>` · 실제 주문만 실패면 ` · 실제 주문 연결 안 됨` 병기 | Commerce Query 엔진 사용(시험 데이터 사용을 막지 않는다) |
+| 전부 불가 | `주문 통계: 연결 안 됨` | **"연결되지 않아 답할 수 없습니다. 다른 운영 숫자를 주문 통계로 대신 쓰지 않습니다"** |
+
+**검사**: 새 파일을 만들지 않고 **기존 `smoke-data-source-server-01-green-f-screen-state-v0.mjs` 를 확장**했다(소비자 전수 구조가 이미 있었다). G1~G10 추가 → BASE 5/5 · RED **24/24**. RED 단계에서 **8건이 예상한 이유로 실패**하는 것을 먼저 확인했다.
+**음성 변형 2회로 검사 실효성을 확인했고, 그 과정에서 검사 자체의 결함 2건을 찾아 보강했다** — ① G2 정규식이 옵셔널 체이닝(`rev?.orders?.length`)을 놓쳤고, 작성 중 삽입된 **제어문자(0x08)** 때문에 항상 참이 되고 있었다(제거 후 변경 3파일 제어문자 0 확인) ② G5·G6 이 import 줄만으로 매칭돼 호출 삭제를 놓쳤다(`await understandCommerceQuery(` 요구로 보강). 보강 후 두 변형 모두 정확히 실패한다.
+
+**이번에 확인하지 않은 것**: 전체 `npm test` **미실행**(다음 Local migration 묶음 경계 또는 통합 직전에 한 번) · **무회귀 전체를 주장하지 않는다** · Preview·Vercel·브라우저 확인 **미수행**(관련 UI 수정이 모였을 때 한 번).
+
+---
+
 ### B-use-5 Preview 인수검사 — **완료 · 실제 Preview 화면 재확인 통과 (브랜치 `codex/b-use-5-preview-acceptance`, 제품 기준 `bcf91a4`, 2026-07-28)**
 
 > **B-use-5 Preview 인수검사는 완료했다.** 사용자가 관측했던 화면 결함 7건이 실제 Preview 화면에서 재확인됐다.
@@ -603,6 +639,7 @@ main 병합·push·배포·환경변수 변경·인증 보존 브랜치 변경�
 | CS 답변 발송 | 초안·검수 대기실 동작 | `writeStatus:'not_connected'` — **고객에게 나가지 않음** | G |
 | 예약 실행 | 함수 존재 | **호출자 0건** | E |
 | 마케팅 1팀/2팀 분리 | 없음 (`marketing` 단일) | 리터럴 `'marketing'` **95곳/41파일** | 저장 의미 = B-core-5 / 소비자 이관 = Local migration |
+| 오늘의 운영 주문 통계 출처 표시 | ✅ **2026-07-28 Local migration 으로 해소** | 관제 채팅 헤더에 `주문 통계: 불러오는 중 / 실제 주문 N건 / 시험 데이터(+실제 주문 연결 안 됨) / 연결 안 됨` 표시. 통계 질문이 연결 실패·0건일 때 `activeOperationsData` 로 조용히 대체되지 않음 | 완료(자동검사 기준) |
 
 ## 7. 팀별 기능 — 존재 상태
 

@@ -187,6 +187,82 @@ for (const f of CONSUMERS) {
     "source === 'unavailable' 잔존", '복붙 판정 잔존 0건');
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// [G] Local migration — 오늘의 운영(OfficeView → ChatConsole) 주문 통계 출처 상태
+//
+// 원인(직접 확인):
+//   ① fetchRevenue 는 네트워크·HTTP 실패를 throw 하지 않고 source:'unavailable' 을
+//      **반환**한다. 따라서 OfficeView 의 `.catch(() => {})` 는 일반 실패 경로가 아니다.
+//   ② OfficeView 가 RevenueResult 중 orders/reviews/inquiries 만 얇게 복사하고
+//      `rev.orders.length` 가 있을 때만 저장해, **실제 성공 0건·연결 실패·미로딩**을
+//      전부 `commerceData === null` 로 합쳤다.
+//   ③ ChatConsole 이 `commerceData.orders.length` 로만 분기해, 0건·연결 실패면
+//      안내 없이 activeOperationsData 관제 채팅으로 **조용히 내려갔다**.
+//
+// 새 판정 규칙을 만들지 않는다 — screenStateFromRevenue / resolveRealOrdersDisplay /
+// realOrdersPhrase 를 그대로 재사용하고, 질문 분류는 understandCommerceQuery 를 쓴다.
+// ══════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- [G] 오늘의 운영 주문 통계 출처 상태 ---');
+{
+  const officeSrc = readFileSync(path.join(REPO, 'src', 'components', 'OfficeView.tsx'), 'utf8');
+  const chatSrc = readFileSync(path.join(REPO, 'src', 'components', 'ChatConsole.tsx'), 'utf8');
+  const codeOnly = (t) => t.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const office = codeOnly(officeSrc);
+  const chat = codeOnly(chatSrc);
+
+  red('G1. OfficeView 가 공통 판정 계약(screenStateFromRevenue)을 사용한다',
+    /screenStateFromRevenue|resolveRevenueScreenState/.test(office),
+    '공통 판정 미사용 — 상태를 자체 추측', '공통 판정 함수 사용');
+
+  red('G2. 주문 배열이 비어도 RevenueResult 전체를 보존한다(orders.length 로 응답을 버리지 않음)',
+    // 옵셔널 체이닝(`rev?.orders?.length`)도 같은 결함이다 — 음성 변형으로 확인해 보강했다.
+    !/(?:^|[^A-Za-z0-9_])(rev|revenue|r)\??\.orders\??\.length/.test(office)
+    && /RevenueResult/.test(office)
+    && /setRevenue\(rev\)/.test(office),
+    'orders.length 조건으로 응답 전체를 버림 · 얇은 복사본만 저장',
+    'RevenueResult 전체 보존 · 0건도 저장');
+
+  red('G3. 일반 연결 실패를 빈 .catch 로 숨기지 않는다',
+    !/\.catch\(\(\)\s*=>\s*\{\s*\/\*[^}]*\*\/\s*\}\)/.test(office)
+    && !/\.catch\(\(\)\s*=>\s*\{\s*\}\)/.test(office),
+    '빈 .catch 가 남아 있음(실제 실패는 반환값으로 오므로 의미도 없음)',
+    '빈 .catch 없음');
+
+  red('G4. 실제 성공 0건과 unavailable 이 같은 사용자 문구로 합쳐지지 않는다',
+    /resolveRealOrdersDisplay/.test(chat) && /realOrdersPhrase/.test(chat),
+    '두 상태를 구분하는 공통 문구 계약(resolveRealOrdersDisplay/realOrdersPhrase) 미사용',
+    '실제 0건 ≠ 연결 안 됨 을 정본 문구로 구분');
+
+  red('G5. 연결 실패 상태의 통계 질문이 activeOperationsData 로 조용히 내려가지 않는다',
+    /await understandCommerceQuery\(/.test(chat)
+    && /(연결 안 됨|연결되지 않)/.test(chatSrc),
+    '통계 질문 분류 없이 곧바로 processControlChat 으로 폴백',
+    '통계 질문이면 출처 상태를 답하고 관제 경로로 대체하지 않음');
+
+  red('G6. 실제 성공 0건은 "실제 주문 0건"으로 답한다(연결 실패로 표시하지 않음)',
+    /realOrdersPhrase\(/.test(chat) && /await understandCommerceQuery\(/.test(chat),
+    '0건 응답 경로 없음', '정본 문구 realOrdersPhrase 로 0건 응답');
+
+  red('G7. 시험 주문이 살아 있으면 시험 데이터 사용을 막지 않는다',
+    /usable/.test(chat) && /screenStateFromRevenue|revenue/.test(chat),
+    '시험 데이터 사용 가능 여부(usable)를 보지 않음',
+    'screenState.usable 로 시험 데이터 사용 허용');
+
+  red('G8. ChatConsole 의 통계 prop 이 없으면(다른 화면) 기존 동작 유지',
+    /revenue\?:|revenue\s*\?/.test(chat) || /RevenueResult \| null/.test(chat),
+    '선택적 prop 이 아님 — 다른 화면 동작이 바뀔 수 있음',
+    '선택적 prop · undefined 면 기존 경로');
+
+  red('G9. 새 판정 규칙·키워드 목록을 복사해 만들지 않았다',
+    !/const\s+\w*(KEYWORD|STAT_RE|COMMERCE_RE)\w*\s*=/.test(chat),
+    '별도 키워드 목록 신설', '기존 understandCommerceQuery 재사용');
+
+  red('G10. 내부 오류 원문·URL·키를 화면에 표시하지 않는다',
+    !/errorMessage\}/.test(chat) && !/realOrdersErrorMessage\}/.test(chat),
+    '오류 원문을 그대로 렌더', '내부 사유 미노출');
+}
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (서버 계산 결과 — fail>0이면 회귀)`);
