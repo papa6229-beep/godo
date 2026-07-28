@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-27 (B-use-3 잔여 3경로 마감)
+최종 갱신: 2026-07-28 (B-use-3 팀 내부 업무 진입점 교정)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -15,7 +15,7 @@
 | local main | `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864` (B-use-3 HQ 지시 흐름까지 fast-forward 통합) | `git rev-parse main` |
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
-| 현재 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) | `git rev-parse --abbrev-ref HEAD` |
+| 현재 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `37343e4` (2026-07-28 관측) | `git rev-parse --abbrev-ref HEAD` / `git rev-parse HEAD` |
 | 실행 환경 | **Vercel이 유일한 실행 환경** — 개발·검증·Production 모두 담당. 최종 배포 형태는 H단계 미결 | Vercel 대시보드 관측 |
 
 ## 2. 검사·빌드 (B-use-3 잔여 경로 마감 브랜치 기준)
@@ -197,7 +197,7 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 | 승인 의미 | 실제 마운트 경로 | 연결 결과 |
 |---|---|---|
 | HQ 지시 (`hq_directive`) | 오늘의 운영 → `HqDirectiveComposer` → `App.handleSendDirective` | 메시지 1 + 업무 1 + 원장 1. 업무에 `messageRef` |
-| 팀 내부 (`team_internal`) | 총괄 콘솔 빠른 업무 추가 → `App.handleAddTask` | 업무 1 + **원장 1 신규**(`taskId`·`correlationId`). 원본 메시지가 없으므로 `inputRefs` 를 만들지 않는다 |
+| 팀 내부 (`team_internal`) | ~~총괄 콘솔 빠른 업무 추가~~ → **아래 절에서 교정됨** | 업무 1 + **원장 1 신규**(`taskId`·`correlationId`). 원본 메시지가 없으므로 `inputRefs` 를 만들지 않는다 |
 | 팀 간 협업 (`collaboration`) | 부서 업무 관장 → `TeamMessagePanel` 지원요청 → `App.handleCollaborationRequest` | 추적 부모 1 + 수행 자식 1. **자식에만** `messageRef`. 원장 1건에 자식 `taskId`·`correlationId` |
 | 팀→HQ 확인 (`escalation`) | 부서 업무 관장 → `TeamMessagePanel` 확인요청 → `App.handleHqReview` | review-only 카드 1(멱등). 원장 1건에 카드 `taskId`·`correlationId` |
 
@@ -210,6 +210,35 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 **미수행**: 전체 `npm test` · 브라우저 화면 눈검증 · Vercel/Preview/Production. → B-use-3 묶음 종료 후 Codex 가 한 번 수행.
 
 **남은 한계(숨기지 않음)**: 메시지 저장 후 업무 생성이 실패할 수 있다. 이번에 롤백 계층을 만들지 않았고, 실패는 기존 사용자 로그로 드러난다. 저장 실패·트랜잭션은 서버 기록 작업에서 다룬다.
+
+### B-use-3 팀 내부 업무 진입점 교정 — **구현 완료, Codex 검증 대기 (2026-07-28)**
+
+**이전 주장의 오류(범위 오류로 기록, 헌법 §10)**: 위 표는 팀 내부 경로의 실제 마운트 경로를 "총괄 콘솔 빠른 업무 추가 → `App.handleAddTask`" 로 적었다. **틀렸다.** 확인 범위가 계약(어댑터 함수)에만 있었고 화면 진입 경로를 열어 보지 않았다.
+
+관측한 사실(파일:행 직접 확인):
+
+- `src/components/MainLayout.tsx:209` — `if (!hq && activeTab !== 'department') setActiveTab('department')` : 비HQ 사용자는 **항상 부서 업무 관장 탭으로 강제 이동**한다.
+- `src/components/MainLayout.tsx:355` — `activeTab !== 'office' && activeTab !== 'department'` 일 때만 `ChatConsole` 을 렌더한다.
+- → **총괄 콘솔의 빠른 업무 추가 바는 팀장 화면에 존재하지 않는다.** 팀 내부 업무에는 실제 진입점이 없었다(헌법 §6).
+- 남은 `ChatConsole` 렌더 위치는 `OfficeView.tsx:117`(오늘의 운영 = **총괄 전용 탭**, `MainLayout.tsx:276`)뿐이고, 거기서도 `quickBarSlot` 이 빠른 업무 추가 바를 `HqDirectiveComposer` 로 대체한다.
+
+교정 내용(기존 화면 안에서만):
+
+| 항목 | 값 |
+|---|---|
+| 실제 마운트 경로 | 부서 업무 관장 탭(`MainLayout.tsx:407`) → `DepartmentWorkspacePanel` 우측 **업무 탭** → `TeamTaskPanel` 상단 한 줄 입력 |
+| 권한 판정 | `taskLifecycleAppAdapter.createTeamInternalTask` 한 곳. **사람 팀장이 자기 팀에만.** AI actor·총괄(HQ)·다른 팀·총괄팀 대상·빈 제목 거부 |
+| 화면 노출 조건 | `TeamTaskPanel` 의 `canCreateTeamTask = onCreateTask && isOwningLead && teamId !== 'hq'` — 총괄이 남의 팀 화면을 볼 때는 보이지 않는다 |
+| 승인 경로 | **새로 만들지 않았다.** 기존 `createDirectiveTask` 안의 `routeFor` 가 `creator.teamId === ownerTeamId` 를 보고 `team_internal`(담당 팀장 확인 1단계) 로 판정 |
+| 생성 결과 | 업무 1건 · 수행자 `unassigned` · `inputRefs` 0건(가짜 원본 참조 없음) · `requestingTeamId` 없음 |
+| 활동 원장 | 1건. `taskId`·`correlationId` 보유, 원본 메시지가 없으므로 `refId` 를 지어내지 않는다 |
+
+새 화면·새 모달·새 승인 규칙은 만들지 않았다. **협업·HQ 확인 경로는 재설계하지 않았다**(해당 파일의 그 경로 코드 무변경).
+
+**확인 범위**: `scripts/smoke-b-use-3-hq-directive-flow-v0.mjs` **RED 18 fail → GREEN 103/103**(다섯 경로) · 인접 lifecycle 스모크 5건 PASS · `tsc -b` 0 · `typecheck:api` 0 · 변경 파일 lint 0 · `git diff --check` 0 · 비밀값 0 · **음성 변형 2회로 검사가 실제 결함을 잡는지 확인**(권한 가드 4개 제거 → 6 fail / 가짜 `inputRefs`+수행자 덮어쓰기 → 2 fail, 이후 원상복구·재실행 103/103).
+**미수행**: 전체 `npm test` · 브라우저 화면 눈검증 · Vercel/Preview/Production. → Codex 최종 검증 범위.
+
+**주의 기록**: `node scripts/run-regression.mjs --discover` 는 manifest 파일을 **덮어쓴다**. 미커밋 작업 트리 상태에서 실행하면 §2에 적힌 "작업 트리를 검사하는 스모크"들이 실패로 잡혀 `exclude` 로 자동 이동한다(이번에 11건 발생, `git checkout` 으로 즉시 복원해 include **123**/exclude **0** 유지). 게이트 축소는 D-003상 사용자 승인 사항이므로 `--discover` 는 트리 clean 상태에서만 쓴다.
 
 ## 5. 실행 방식
 

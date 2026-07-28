@@ -89,7 +89,8 @@
 > **현재 단계: 전체 4단계 — B-use(실제 화면과 업무 흐름 연결)**
 > **B-core(전체 3단계)는 완료.** 주문 원본 사실(`orderFacts`) · 재고위험 단일화 · 저장 경계(repository/facade) · actor/executor 분리 · TeamId 정본이 섰다.
 > **결제완료 공식 정본은 전체 5단계(C — 새 고도몰 READ·상태코드 확인)로 명시적 이관한다.** 그전까지 두 규칙의 결과와 `conflicted` 를 함께 보존하며 한쪽을 정본으로 삼지 않는다.
-> **다음 한 작업: B-use-3 잔여 경로 마감 인계분(`codex/b-use-3-remaining-route-closure`) Codex 독립검증.**
+> **다음 한 작업: B-use-3 팀 내부 업무 진입점 교정분(`codex/b-use-3-remaining-route-closure`, HEAD `37343e4`) Codex 독립검증.**
+> 직전 검증에서 "팀 내부 업무의 실제 팀장 화면 진입점 없음"이 확인돼 그 한 건만 교정했다(2026-07-28).
 > B-use-3 은 네 승인 의미의 화면 연결이 끝났다. 다만 **B-use-2 서버 기록**과 **B-use-4 인증 브랜치 판단**이 남아 있으므로 B-use 전체 인수검사로 넘어가지 않는다.
 
 ---
@@ -286,6 +287,20 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 검증: `smoke-b-use-3-hq-directive-flow-v0.mjs` **71/71**(네 경로 통합) · 인접 lifecycle 5건.
 
 **B-use-3 완료로 표시하지 않는다** — 화면 눈검증과 전체 게이트가 남았고, B-use-2 서버 기록·B-use-4 인증 판단이 미착수다.
+
+### B-use-3(팀 내부 업무 진입점 교정) — **구현 완료, 검증 대기 (2026-07-28)**
+
+Codex 독립검증에서 발견: 팀 내부 업무는 **계약만 통과**했고 팀장 화면에 진입점이 없었다.
+비HQ 사용자는 `department` 탭으로 강제 이동하고(`MainLayout.tsx:209`) 그 탭에서 `ChatConsole` 이 렌더되지 않으므로(`:355`), "총괄 콘솔 빠른 업무 추가가 팀 내부 실제 경로"라는 이전 기록은 **범위 오류**였다(헌법 §10 — 새 사실이 아니라 이전 주장의 범위 오류로 기록).
+
+교정: 기존 `부서 업무 관장 → 업무 탭 → TeamTaskPanel` 안에 **팀 내부 업무 추가 입력 한 줄**만 연결했다.
+권한 판정은 새 계약 함수 `createTeamInternalTask` 한 곳(사람 팀장이 자기 팀에만 · HQ·타 팀·AI actor 차단)이고,
+승인 경로는 기존 `createDirectiveTask` → `routeFor` 가 `team_internal` 로 판정한다(새 규칙 없음).
+결과는 업무 1건(수행자 `unassigned`, 가짜 `inputRefs` 없음) + 활동 원장 1건(`taskId`·`correlationId`).
+**새 화면·새 모달·새 승인 규칙 없음. 협업·HQ 확인 경로는 재설계하지 않았다.**
+
+검증: 같은 집중검사 **RED 18 fail → GREEN 103/103**(다섯 구간) · 인접 lifecycle 5건 · `tsc -b` · `typecheck:api` · 변경 파일 lint · 음성 변형 2회.
+**미수행**: 전체 `npm test` · 화면 눈검증 · Vercel/Preview/Production → Codex 최종 검증.
 
 ### B-use-3(원문). 실제 진입·승인 흐름
 
