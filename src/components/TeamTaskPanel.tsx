@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
-import { userStatusLabel } from '../services/taskLifecycleContract';
+import { userStatusLabel, hasLeadAuthority } from '../services/taskLifecycleContract';
 import { availableDecisions, executorDisplayName, executorDisplayLabel, pendingStopRequest, revisionReasonOf } from '../services/taskLifecycleAppAdapter';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { defaultNativeAgents } from '../data/defaultNativeAgentRuntime';
@@ -81,7 +81,9 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
   const teamFlows = flows.filter(
     (f) => f.task.ownerTeamId === teamId || f.task.requestingTeamId === teamId
   );
-  const isOwningLead = actor.kind === 'human' && actor.teamId === teamId;
+  // B-use-4: 로그인 계정 역할이 있으면 같은 팀이어도 팀원(member)에게는 팀장 행동을 보여 주지 않는다.
+  //   계정 역할이 없으면(데모 역할·구형 저장분) 기존 판정 그대로다. 최종 경계는 계약이 다시 막는다.
+  const isOwningLead = actor.kind === 'human' && actor.teamId === teamId && hasLeadAuthority(actor);
   const teamAgents = agentsOfTeam(teamId);
   // 위 세 구간(할 일·진행 중·결과 도착)에 속하지 않는 = 끝난 업무.
   const doneFlows = teamFlows.filter(

@@ -42,7 +42,7 @@ import { postTeamMessage } from './services/repositories/teamMessageRepository';
 import { logActivity } from './services/repositories/activityLedgerRepository';
 import { DEPT_TEAM_META } from './types/teamMessage';
 import type { DeptTeamId, TeamMessageAttachment } from './types/teamMessage';
-import type { ApprovalDecisionKind, LifecycleTask } from './services/taskLifecycleContract';
+import type { ActorRef, ApprovalDecisionKind, LifecycleTask } from './services/taskLifecycleContract';
 
 /** B-use-3: 화면 callback 이 돌려주는 **생성된 업무 식별자**. 활동 원장 연결에만 쓴다. */
 export interface CreatedTaskRef { taskId: string; correlationId: string }
@@ -50,6 +50,11 @@ type LifecycleTaskRefLike = Pick<LifecycleTask, 'ref'>;
 import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
+// B-use-4: 인증 게이트 + 로그인 신원 → 업무 행위자 연결.
+import { useAuthGate, getServerAccount, isAuthConfigured } from './services/authGate';
+import { actorFromServerAccount } from './services/authAccountActor';
+import AuthGateScreen from './components/AuthGateScreen';
+import AccountAdminPanel from './components/auth/AccountAdminPanel';
 import './App.css';
 
 // localStorage 쓰기 방어: 용량 초과(QuotaExceededError) 등으로 throw돼도 앱이 죽지 않게.
@@ -87,8 +92,27 @@ const withCanonicalInquiries = (snapshot: OperationsDataSnapshot): OperationsDat
 };
 
 
+/**
+ * B-use-4 — 화면 열람 범위·권한 판정에 쓰는 **단일 행위자 출처**.
+ *
+ * 인증이 구성되고 로그인 계정이 있으면 **서버 계정이 이긴다.**
+ *   → 역할 전환기를 아무리 돌려도 보이는 업무 범위도, 결정 권한도 넓어지지 않는다.
+ * 인증 미구성(명시적 로컬 개발)에서만 역할 전환기 행위자(`demo_role`)를 쓴다.
+ *   → 기존 검증 시나리오가 팀장·HQ 역할을 그대로 재현할 수 있어야 하기 때문이다.
+ */
+const actorForView = (role: ViewerRole): ActorRef => {
+  const account = getServerAccount();
+  if (isAuthConfigured() && account) return actorFromServerAccount(account);
+  return actorForRole(role);
+};
+
 function App() {
   const { theme, toggleTheme } = useTheme();
+  // B-use-4: 인증 게이트. 미구성(VITE_CLERK_PUBLISHABLE_KEY 없음) → 'open'(현행 개발 앱).
+  //   구성됨 + 미로그인/대기/정지 → 대시보드·데이터 fetch 를 시작하기 전에 게이트 화면으로 차단.
+  const authGateMode = useAuthGate();
+  // 계정 관리 패널(팀장/HQ 전용) — 서버 계정 뷰가 있고 role 이 team_lead/hq 일 때만 진입로 노출.
+  const [showAccountAdmin, setShowAccountAdmin] = useState(false);
   const [showOpening, setShowOpening] = useState(true);
   const [validationScenario, setValidationScenario] = useState<ValidationScenarioType>(() => {
     try {
@@ -119,14 +143,14 @@ function App() {
 
   // RC-2 D-1: 업무·승인 상태의 정본은 저장된 lifecycle task 다. 화면 상태는 거기서 파생한다.
   //   (App 이 localStorage 를 직접 만지지 않고 어댑터/저장 서비스만 사용한다.)
-  const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForRole(loadRole())));
+  const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForView(loadRole())));
   // RC-2 D-1.3: 팀장 화면은 화면용 요약이 아니라 **정본 LifecycleTask** 를 그대로 본다.
   //   (수행자·이력·제출 내용이 필요하다. 저장·갱신은 계속 App 이 소유한다.)
   const [lifecycleFlows, setLifecycleFlows] = useState(() => {
     // 구버전 저장자료에 소속을 확인할 수 없는 담당자가 남아 있으면 지우지 않고 '소속 확인 필요'로 표시한다.
     //   (신규 입력은 애초에 거부된다 — 이건 과거 자료 전용, idempotent.)
     quarantineUnknownAffiliation();
-    return taskFlowsFor(actorForRole(loadRole()));
+    return taskFlowsFor(actorForView(loadRole()));
   });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -141,11 +165,11 @@ function App() {
   useEffect(() => subscribeRole(() => {
     const next = loadRole();
     setViewerRole(next);
-    setTasks(visibleTasksFor(actorForRole(next)));
-    setLifecycleFlows(taskFlowsFor(actorForRole(next)));
+    setTasks(visibleTasksFor(actorForView(next)));
+    setLifecycleFlows(taskFlowsFor(actorForView(next)));
   }), []);
   // 지금 이 역할이 결정할 수 있는 대기 업무(= '내 확인 대기').
-  const myPendingTasks = pendingForActor(actorForRole(viewerRole));
+  const myPendingTasks = pendingForActor(actorForView(viewerRole));
   // '내 확인 대기' 목록(기존 승인 모달 재사용 — 새 화면을 만들지 않는다).
   const myPendingApprovals = approvalQueue.filter(q => myPendingTasks.some(t => t.id === q.taskId));
   const [showMyApprovals, setShowMyApprovals] = useState(false);
@@ -698,9 +722,15 @@ function App() {
     }
   };
 
-  // RC-2 D-1.1: 현재 세션 역할(역할 전환기) → 계약 ActorRef.
-  //   역할 전환기를 권한 실증의 정본으로 쓴다(실제 로그인·백엔드 권한은 범위 밖).
-  const sessionActor = () => actorForRole(viewerRole);
+  /**
+   * 업무 행위자(ActorRef)의 신원 출처 — 열람 범위와 **같은** 출처를 쓴다(`actorForView`).
+   *
+   * B-use-4: 인증이 구성된 운영 모드에서는 서버가 돌려준 계정 뷰만 신원 근거다.
+   *   `userId`·이름·팀·역할이 `/api/auth/me` 결과에서만 오고 `identitySource: 'session_login'` 이다.
+   *   역할 전환기를 돌려도 `accountRole` 은 서버 값 그대로라 권한이 올라가지 않는다.
+   * 인증 미구성(명시적 로컬 개발)에서만 역할 전환기 행위자(`demo_role`)를 쓴다.
+   */
+  const sessionActor = () => actorForView(viewerRole);
 
   // 저장소 정본에서 화면 상태를 다시 파생한다(단일 갱신 지점).
   //   RC-2 D-1.2: 업무 목록은 **역할별 열람 범위**로 거른다.
@@ -1094,8 +1124,36 @@ function App() {
     ? agents.find((a) => a.id === selectedAgent.id) || null
     : null;
 
+  // B-use-4: active(또는 미구성 open)가 아니면 대시보드 트리를 마운트하지 않는다
+  //   → 자식 대시보드의 회사 데이터 fetch 가 아예 시작되지 않는다.
+  //   미구성 로컬 개발에서는 'open' 이라 현행 앱 그대로다(무회귀).
+  if (authGateMode !== 'open' && authGateMode !== 'app') {
+    return <AuthGateScreen mode={authGateMode} />;
+  }
+
+  // 계정 관리(승인) 진입로 — 서버가 알려준 역할이 team_lead/hq 일 때만. 화면 역할 전환기와 무관하다.
+  const serverAccount = getServerAccount();
+  const canManageAccounts =
+    isAuthConfigured() && (serverAccount?.role === 'hq' || serverAccount?.role === 'team_lead');
+
   return (
     <>
+      {canManageAccounts && (
+        <button
+          type="button"
+          onClick={() => setShowAccountAdmin(true)}
+          style={{
+            position: 'fixed', bottom: 16, left: 16, zIndex: 8900, padding: '8px 14px',
+            borderRadius: 999, border: '1px solid #d1d5db', background: '#ffffff',
+            fontSize: 13, cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.12)'
+          }}
+        >
+          🔐 계정 관리
+        </button>
+      )}
+      {showAccountAdmin && canManageAccounts && (
+        <AccountAdminPanel onClose={() => setShowAccountAdmin(false)} />
+      )}
       {showOpening ? (
         <OpeningScreen onFinished={() => setShowOpening(false)} />
       ) : (

@@ -3,6 +3,7 @@ import type { VercelResponse } from '../_shared/proxyResponse.js';
 import { validateMarketingBehaviorCollectionRequest, isBehaviorOriginAllowed } from '../_shared/marketingBehaviorCollectionValidator.js';
 import { getMarketingBehaviorStorage } from '../_shared/marketingBehaviorPersistentStore.js';
 import { buildMarketingBehaviorSummaryResponse } from '../_shared/marketingBehaviorSummaryService.js';
+import { protectedHandler } from '../_shared/authActor.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // /api/marketing/[action] — Vercel demo gateway adapter (route entry 1개로 통합)
@@ -111,9 +112,14 @@ async function handleSummary(req: IncomingMessage, res: VercelResponse) {
   res.status(200).json(summary);
 }
 
+// AUTH-FOUNDATION-01 GREEN A:
+//   - behavior-events(방문자 공개 수집)는 공개 유지(인증 대상 아님 — abuse 방지는 R-ROUTE-ABUSE-01).
+//   - behavior-summary(회사 마케팅 집계 readout)는 인증된 active 사용자만(인증 미구성 시 현행 보존).
+const guardedSummary = protectedHandler(handleSummary);
+
 export default async function handler(req: ExtendedRequest, res: VercelResponse) {
   const action = actionOf(req);
   if (action === 'behavior-events') return handleCollect(req, res);
-  if (action === 'behavior-summary') return handleSummary(req, res);
+  if (action === 'behavior-summary') return guardedSummary(req, res);
   res.status(404).json({ ok: false, errorMessage: `Unknown marketing behavior action: ${action}` });
 }

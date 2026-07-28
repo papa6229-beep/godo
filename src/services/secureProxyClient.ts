@@ -2,6 +2,7 @@ import type { ApiResourceType } from '../types/apiBridge';
 import type { ProxyHealthResponse, ProxySyncResponse } from '../types/proxy';
 import { runMockSync } from './mockGodomallApi';
 import { resolveFetchOutcome, type ProvenanceKind } from './dataSourceProvenanceContract';
+import { authorizedFetch } from './authorizedFetch';
 
 // 프록시 API 호출 실패 시 활용할 로컬 폴백 판단용 에러 클래스
 class ProxyConnectionError extends Error {
@@ -73,7 +74,7 @@ export const syncProxyResource = async (
   requestedMode: 'real' | 'test' = 'real'
 ): Promise<SecureProxySyncResult> => {
   try {
-    const res = await fetch('/api/godomall/sync', {
+    const res = await authorizedFetch('/api/godomall/sync', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -154,7 +155,7 @@ export const syncProxyResource = async (
 // 3. 개별 리소스 직접 조회 API (GET /api/godomall/*)
 export const fetchProxyOrders = async (): Promise<Record<string, string>[]> => {
   try {
-    const res = await fetch('/api/godomall/orders');
+    const res = await authorizedFetch('/api/godomall/orders');
     if (!res.ok) throw new ProxyConnectionError(`Fetch proxy orders returned ${res.status}`);
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
@@ -168,7 +169,7 @@ export const fetchProxyOrders = async (): Promise<Record<string, string>[]> => {
 
 export const fetchProxyInquiries = async (): Promise<Record<string, string>[]> => {
   try {
-    const res = await fetch('/api/godomall/inquiries');
+    const res = await authorizedFetch('/api/godomall/inquiries');
     if (!res.ok) throw new ProxyConnectionError(`Fetch proxy inquiries returned ${res.status}`);
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
@@ -181,7 +182,7 @@ export const fetchProxyInquiries = async (): Promise<Record<string, string>[]> =
 
 export const fetchProxyReviews = async (): Promise<Record<string, string>[]> => {
   try {
-    const res = await fetch('/api/godomall/reviews');
+    const res = await authorizedFetch('/api/godomall/reviews');
     if (!res.ok) throw new ProxyConnectionError(`Fetch proxy reviews returned ${res.status}`);
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
@@ -194,7 +195,7 @@ export const fetchProxyReviews = async (): Promise<Record<string, string>[]> => 
 
 export const fetchProxyInventory = async (): Promise<Record<string, string>[]> => {
   try {
-    const res = await fetch('/api/godomall/inventory');
+    const res = await authorizedFetch('/api/godomall/inventory');
     if (!res.ok) throw new ProxyConnectionError(`Fetch proxy inventory returned ${res.status}`);
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];
@@ -207,7 +208,7 @@ export const fetchProxyInventory = async (): Promise<Record<string, string>[]> =
 
 export const fetchProxySales = async (): Promise<Record<string, string>[]> => {
   try {
-    const res = await fetch('/api/godomall/sales');
+    const res = await authorizedFetch('/api/godomall/sales');
     if (!res.ok) throw new ProxyConnectionError(`Fetch proxy sales returned ${res.status}`);
     const data = await res.json();
     return (data.records || []) as Record<string, string>[];

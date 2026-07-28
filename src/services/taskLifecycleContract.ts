@@ -109,6 +109,18 @@ export const finalApprover = (task: LifecycleTask): ApprovalStage =>
  */
 export type ActorIdentitySource = 'session_login' | 'demo_role' | 'unlinked';
 
+/**
+ * B-use-4 **구조 패치** — 서버가 검증한 사내 계정 역할.
+ *
+ * 정본은 서버다(`api/_shared/accountContract.ts` 의 `AccountRole`).
+ * 여기 값은 로그인 세션에서 받은 계정 뷰를 업무 행위자에 실어 나르기 위한 **사본**이며,
+ * 화면(역할 전환기)이 만들어 낼 수 없다.
+ *
+ * ⚠️ **undefined 를 `member` 로도, 실제 로그인으로도 단정하지 않는다.**
+ *    구형 저장분과 데모 역할 행위자에는 이 필드가 없다 — 없으면 기존 규칙 그대로 판정한다.
+ */
+export type AccountRoleRef = 'hq' | 'team_lead' | 'member';
+
 export interface ActorRef {
   kind: 'human' | 'agent';
   teamId: DeptTeamId;
@@ -117,7 +129,32 @@ export interface ActorRef {
   agentId?: string;
   /** 구버전 저장분에는 없다(undefined). 없다고 해서 실제 로그인으로 단정하지 않는다. */
   identitySource?: ActorIdentitySource;
+  /**
+   * B-use-4: 서버 검증 계정 역할. **로그인한 운영 모드에서만 채워진다.**
+   * 구형 저장분·데모 역할에는 없다(undefined = 기존 규칙 유지).
+   */
+  accountRole?: AccountRoleRef;
 }
+
+/**
+ * B-use-4 — 이 행위자가 **팀장 권한**(수행자 배정 · 인수 · 결과 확인 · 중단 · 반송)을 행사할 수 있는가.
+ *
+ * 계정 역할이 **있을 때만** 추가 제약을 건다.
+ *   - `member`     → 팀장 권한 없음 (같은 팀이어도 결정·배정·중단 불가)
+ *   - `team_lead`  → 있음 (팀 범위 제한은 기존 `teamId` 비교가 그대로 담당)
+ *   - `hq`         → 있음
+ *   - `undefined`  → **기존 동작 유지.** 데모 역할 검증 시나리오가 계속 재현되어야 한다.
+ */
+export const hasLeadAuthority = (actor: ActorRef): boolean =>
+  actor.accountRole === undefined || actor.accountRole !== 'member';
+
+/**
+ * B-use-4 — 이 행위자가 **HQ 확인 단계**를 맡을 수 있는가.
+ *   계정 역할이 있으면 `hq` 만. 없으면 기존처럼 `teamId === 'hq'`.
+ *   (계정 역할이 있는데 팀만 'hq' 인 경우를 HQ 로 승격하지 않는다.)
+ */
+export const hasHqAuthority = (actor: ActorRef): boolean =>
+  actor.accountRole === undefined ? actor.teamId === 'hq' : actor.accountRole === 'hq';
 
 // ── 업무 ─────────────────────────────────────────────────────────────────────
 export type DependencyMode = 'independent' | 'all_required' | 'selection';
@@ -384,12 +421,17 @@ const requesterTeamOf = (task: LifecycleTask): DeptTeamId | undefined =>
 function isCurrentStageApprover(task: LifecycleTask, actor: ActorRef): { ok: boolean; reason?: string } {
   const stage = task.approvalRoute.stages[task.approvalRoute.currentStageIndex];
   if (!stage) return { ok: false, reason: '남은 승인 단계가 없습니다.' };
-  if (stage.approverKind === 'hq') return actor.teamId === 'hq' ? { ok: true } : { ok: false, reason: '총괄(HQ) 확인 단계입니다.' };
+  // B-use-4: 로그인 계정 역할이 있으면 팀 일치만으로 부족하다(팀원은 확인 권한이 없다).
+  if (stage.approverKind === 'hq') {
+    return hasHqAuthority(actor) ? { ok: true } : { ok: false, reason: '총괄(HQ) 확인 단계입니다.' };
+  }
   if (stage.approverKind === 'owner_team_lead') {
-    return actor.teamId === task.ownerTeamId ? { ok: true } : { ok: false, reason: '담당 팀의 확인 단계입니다.' };
+    if (actor.teamId !== task.ownerTeamId) return { ok: false, reason: '담당 팀의 확인 단계입니다.' };
+    return hasLeadAuthority(actor) ? { ok: true } : { ok: false, reason: '담당 팀장만 확인할 수 있습니다.' };
   }
   const requester = task.requestingTeamId;
-  return requester && actor.teamId === requester ? { ok: true } : { ok: false, reason: '요청팀의 확인 단계입니다.' };
+  if (!requester || actor.teamId !== requester) return { ok: false, reason: '요청팀의 확인 단계입니다.' };
+  return hasLeadAuthority(actor) ? { ok: true } : { ok: false, reason: '요청팀 팀장만 확인할 수 있습니다.' };
 }
 
 /**
@@ -437,8 +479,13 @@ export function canDecide(
     // RC-2 D-1.3.3: 결과가 이미 제출돼 **다른 사람의 확인 차례**로 넘어간 뒤에는
     //   그 차례를 맡은 사람만 멈춘다. 넘겨 놓고 마음대로 되돌리지 않는다.
     if (task.status === 'awaiting_approval') return isCurrentStageApprover(task, actor);
+    // 지정된 임시 책임자 규칙은 기존 계약 그대로 유지한다(HQ 가 명시 지정한 사람).
     const isActingLead = !!task.actingLeadUserId && actor.userId === task.actingLeadUserId;
     if (actor.teamId !== task.ownerTeamId && !isActingLead) {
+      return { ok: false, reason: '담당 팀장만 업무를 중단할 수 있습니다. 중단 요청을 보내 주세요.' };
+    }
+    // B-use-4: 같은 팀이어도 팀원(member)은 실제 중단을 하지 않는다. 임시 책임자 지정은 예외.
+    if (!isActingLead && !hasLeadAuthority(actor)) {
       return { ok: false, reason: '담당 팀장만 업무를 중단할 수 있습니다. 중단 요청을 보내 주세요.' };
     }
     return { ok: true };
@@ -449,7 +496,8 @@ export function canDecide(
     if (task.status !== 'open' && task.status !== 'in_progress') {
       return { ok: false, reason: '수행 불가 반송은 결과를 제출하기 전에만 가능합니다.' };
     }
-    return actor.teamId === task.ownerTeamId
+    // B-use-4: 담당 팀 + 팀장 권한(계정 역할이 있을 때만 추가 제약).
+    return actor.teamId === task.ownerTeamId && hasLeadAuthority(actor)
       ? { ok: true }
       : { ok: false, reason: '지시를 받은 담당 팀장만 반송할 수 있습니다.' };
   }

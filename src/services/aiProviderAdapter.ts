@@ -19,6 +19,7 @@ import type {
 import { defaultAIProviders, getDefaultCloudModel } from '../data/aiProviderRegistry';
 import { getModels, getChatCompletion } from './lmsConnector';
 import { getProviderKey, getProviderModel } from './aiKeyVault';
+import { authorizedFetch } from './authorizedFetch';
 
 // 모델 id를 폭넓게 감지한다(특정 모델명 하드코딩 금지). AiProviderFoundationPanel과 동일 규칙.
 const MODEL_KEYWORDS = ['supergemma', 'super-gemma', 'gemma', 'uncensored', 'google/gemma'];
@@ -103,7 +104,7 @@ const chatWithCloud = async (
   }
 
   try {
-    const res = await fetch('/api/ai/chat', {
+    const res = await authorizedFetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

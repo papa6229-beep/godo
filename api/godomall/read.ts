@@ -4,6 +4,7 @@ import { sendOkResponse, sendErrorResponse } from '../_shared/proxyResponse.js';
 import { getGodomallConfig, isLiveMode, postGodomall } from '../_shared/godomallOpenApiClient.js';
 import { parseGodomallXml, extractList } from '../_shared/godomallXmlParser.js';
 import { getGodomallApiCapability } from '../_shared/godomallApiRegistry.js';
+import { protectedHandler } from '../_shared/authActor.js';
 import {
   CODE_SEARCH_ALLOWLIST,
   CODE_LIST_KEYS,
@@ -162,7 +163,8 @@ const READ_HANDLERS: Record<string, ReadHandler> = {
   brand_search: handleBrandSearch
 };
 
-export default async function handler(req: IncomingMessage, res: VercelResponse) {
+// AUTH-FOUNDATION-01 GREEN A: 고도몰 READ 게이트웨이 → 인증된 active 사용자만(인증 미구성 시 현행 보존).
+async function handler(req: IncomingMessage, res: VercelResponse) {
   if (req.method !== 'GET') {
     return sendErrorResponse(res, 'METHOD_NOT_ALLOWED', 'Only GET is accepted.', 405);
   }
@@ -211,3 +213,5 @@ export default async function handler(req: IncomingMessage, res: VercelResponse)
     return sendErrorResponse(res, 'READ_ERROR', `READ gateway error: ${msg}`, 500);
   }
 }
+
+export default protectedHandler(handler);

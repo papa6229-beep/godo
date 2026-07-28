@@ -5,6 +5,7 @@
 // 라우트 실패 시(로컬 dev 등) UI가 깨지지 않도록 안전하게 빈 결과로 폴백한다.
 
 import type { RealOrdersStatus, SyntheticStatus } from './revenueScreenState';
+import { authorizedFetch } from './authorizedFetch';
 
 export type DataSourceTag = 'real' | 'sandbox' | 'mock' | 'unavailable';
 
@@ -75,7 +76,7 @@ const bool = (v: unknown): boolean => v === true || v === 'y' || v === '1' || v 
 
 export const fetchAdminProducts = async (): Promise<AdminProductsResult> => {
   try {
-    const res = await fetch('/api/godomall/products');
+    const res = await authorizedFetch('/api/godomall/products');
     if (!res.ok) throw new Error(`products HTTP ${res.status}`);
     const data = await res.json();
     const records = (data.records || []) as Record<string, unknown>[];
@@ -126,8 +127,8 @@ export const fetchCatalog = async (): Promise<CatalogLookupResult> => {
   };
   try {
     const [catRes, brandRes] = await Promise.all([
-      fetch('/api/godomall/read?capability=category_search'),
-      fetch('/api/godomall/read?capability=brand_search')
+      authorizedFetch('/api/godomall/read?capability=category_search'),
+      authorizedFetch('/api/godomall/read?capability=brand_search')
     ]);
     const cat = catRes.ok ? await catRes.json() : {};
     const brand = brandRes.ok ? await brandRes.json() : {};
@@ -430,7 +431,7 @@ export const fetchRevenue = async (
     const auxQuery =
       (options.includeUniverseAux ? '&includeUniverseAux=true' : '') +
       (options.includeCsFakeContacts ? '&includeCsFakeContacts=true' : '');
-    const res = await fetch(
+    const res = await authorizedFetch(
       `/api/godomall/orders-revenue?includeSynthetic=${includeSynthetic ? 'true' : 'false'}&syntheticSource=${syntheticSource}${auxQuery}`
     );
     if (!res.ok) throw new Error(`orders-revenue HTTP ${res.status}`);

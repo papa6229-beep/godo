@@ -19,6 +19,7 @@ import {
   decideApproval,
   isPendingForApproval,
   userStatusLabel,
+  hasLeadAuthority,
   APPROVAL_ROUTES
 } from './taskLifecycleContract';
 import type {
@@ -548,6 +549,11 @@ export function createTeamInternalTask(
   if (input.actor.teamId !== input.teamId) {
     return { ok: false, reason: '자기 팀 업무만 등록할 수 있습니다. 다른 팀에는 협업을 요청하세요.' };
   }
+  // B-use-4: 팀 업무 등록은 팀장의 일이다. 로그인 계정 역할이 member 면 거부한다.
+  //   (계정 역할이 없는 데모 역할 행위자는 기존대로 팀장으로 동작한다.)
+  if (!hasLeadAuthority(input.actor)) {
+    return { ok: false, reason: '팀 업무 등록은 팀장만 할 수 있습니다.' };
+  }
   const task = createDirectiveTask(
     { title, targetTeamId: input.teamId, instructedBy: input.actor },
     ids
@@ -558,11 +564,17 @@ export function createTeamInternalTask(
 const okResult = (task: LifecycleTask) => ({ ok: true as const, task, state: hydrateAppState() });
 const failResult = (reason: string) => ({ ok: false as const, reason, state: hydrateAppState() });
 
-/** 이 사람이 그 업무의 담당 팀장(또는 지정된 임시 책임자)인가. */
+/**
+ * 이 사람이 그 업무의 담당 팀장(또는 지정된 임시 책임자)인가.
+ *
+ * B-use-4: 로그인 계정 역할이 있으면 **팀 일치만으로 부족하다** — 팀원(member)은
+ *   수행자 배정·인수 권한을 얻지 않는다. 지정된 임시 책임자는 기존 계약대로 예외다.
+ *   계정 역할이 없으면(구형 저장분·데모 역할) 기존 판정 그대로다.
+ */
 function isOwningLead(task: LifecycleTask, actor: ActorRef): boolean {
   if (actor.kind !== 'human') return false;
   if (task.actingLeadUserId && actor.userId === task.actingLeadUserId) return true;
-  return actor.teamId === task.ownerTeamId;
+  return actor.teamId === task.ownerTeamId && hasLeadAuthority(actor);
 }
 
 /**
