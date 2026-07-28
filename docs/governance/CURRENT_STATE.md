@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-28 (B-use-2 서버 기록 저장 구조 관측)
+최종 갱신: 2026-07-28 (B-use-4 인증 선별 통합)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -15,16 +15,18 @@
 | local main | `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864` (B-use-3 HQ 지시 흐름까지 fast-forward 통합) | `git rev-parse main` |
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
-| 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과(smoke 123/123 + build + typecheck:api + lint, exit 0) | `git rev-parse` |
-| 현재 작업 브랜치 | `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기, **main 미통합**) — 문서 조사만, 제품 코드 0변경 | `git rev-parse --abbrev-ref HEAD` |
-| 실행 환경 | **Vercel이 유일한 실행 환경** — 개발·검증·Production 모두 담당. 최종 배포 형태는 H단계 미결 | Vercel 대시보드 관측 |
+| 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과 → `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기) HEAD `61296fb`, 문서 조사만 | `git rev-parse` |
+| 현재 작업 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) — 인증 선별 통합 | `git rev-parse --abbrev-ref HEAD` |
+| 실행 장소 | **최종 미확정.** 유력 방향 = 회사가 관리하는 서버 또는 고도몰 전용 서버. **개인 데스크톱은 운영 서버로 쓰지 않는다.** 지금은 사용자 컴퓨터·기존 개발환경에서 개발·검사하고, 최종 서버 선택과 시험 이식은 11월 실작동 시험 전에 한다 | 사용자 확정 방향 (2026-07-28) |
+| DB | **미결정.** Supabase·Neon·Prisma 중 어떤 것도 채택하지 않았다. 특정 DB·클라우드 어댑터는 지금 구현하지 않는다 | `MASTER_PLAN §11` |
+| 실행 환경 | **현재** Vercel 이 개발·검증·Production 을 담당한다. **최종 배포처로 확정된 것은 아니다**(위 '실행 장소' 행 참조) | Vercel 대시보드 관측 |
 
 ## 2. 검사·빌드 (B-use-3 잔여 경로 마감 브랜치 기준)
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| smoke 파일 수 | **123개** (인증 브랜치에 3개 추가분 있음) | `ls scripts/smoke-*.mjs \| wc -l` |
-| manifest include | **123** / exclude **0** | `node scripts/run-regression.mjs --discover` |
+| smoke 파일 수 | **124개** (B-use-4 통합검사 1건 추가) | `ls scripts/smoke-*.mjs \| wc -l` |
+| manifest include | **124** / exclude **0** | `node scripts/run-regression.mjs --discover` |
 | lint | **0 errors** (`scripts/flowRouteSmoke.ts:49` 수정 후) | `npx eslint .` |
 | build | 통과 (`tsc -b` + `typecheck:api` + `vite build`) | `npm run build` |
 | `npm test` 실제 소요 | **약 130초** (smoke 113.5s + build + lint), exit 0 | `npm test` 실행 |
@@ -81,7 +83,11 @@
 
 - **agent task 실행 결과에는 전용 저장소가 없다.** 결과는 팀 메시지 1건 + 활동 원장 1~2건으로 흩어져 저장된다 (`agentTaskRunner.ts:62-78`).
 - **다섯 영역 모두 저장 실패를 `catch {}` 로 삼킨다** — 실패 여부를 사용자도 개발자도 알 수 없다 (헌법 §5 “저장 실패를 숨기지 않는다”와 어긋나는 현재 상태).
-- **모든 쓰기가 전체 목록 재작성이다** (`activityLedger.ts:126-128` · `teamMessageCenter.ts:122-143` · `taskLifecycleStore.ts:65-82` · `agentTaskStore.ts:56-65` · CS 는 전체 객체 `CsTeamDashboard.tsx:810-817`) → 다중 사용자 동시 저장 시 **나중 저장이 앞 저장을 덮어쓴다**.
+- **모든 쓰기가 전체 목록 재작성이다** (`activityLedger.ts:126-128` · `teamMessageCenter.ts:122-143` · `taskLifecycleStore.ts:65-82` · `agentTaskStore.ts:56-65` · CS 는 전체 객체 `CsTeamDashboard.tsx:810-817`).
+  **동시 저장의 현재 의미 (2026-07-28 표현 교정)**
+  - **다른 직원의 브라우저**: localStorage 를 공유하지 않는다 → 서로 덮어쓰는 것이 아니라 **각자 고립돼 보이지 않는다.**
+  - **같은 브라우저의 여러 탭**: localStorage 를 공유하므로 전체 배열 재저장 과정에서 **덮어쓰기가 발생할 수 있다**(현재도).
+  - **서버로 옮긴 뒤**: 전체 배열 교체 방식을 그대로 쓰면 다중 사용자 **lost update** 가 생긴다 → 행 단위 저장 필요.
 - **화면의 저장 구현 직접 import 0건** (facade 경계 유지). facade 사용 화면 9개 파일, lifecycle 어댑터 사용 화면 10개 파일.
 - **다섯 영역의 저장 API 는 전부 동기(sync)** 다. 선례 Postgres 포트는 async(`api/_shared/marketingBehaviorPersistentStore.ts`) → `repositories/README.md:6` 의 “저장소 교체 시 화면 무변경” 주장은 **localStorage 계열 교체에는 성립하지만 네트워크 저장에는 성립하지 않는다.**
 - **첨부 base64 가 저장량의 지배 변수다.** 텍스트 레코드는 **412 B ~ 1,218 B**(실측)인데 팀 메시지 첨부 1건은 **약 1.2 MB**(실측, 원본 900KB → base64 1.33배). 인라인 상한은 원본 1.5MB (`teamMessageCenter.ts:16,61`) → 최대 약 2.0MB/건.
@@ -272,6 +278,95 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 - **사실상 수동 실행 기반**. `runScheduledAgentTask`(`src/services/agentTaskRunner.ts:169`)는 정의만 있고 **제품 코드 내 호출자 0건**
 - 살아 있는 진입점: `runManualAgentTask` ← `src/components/AgentTaskPanel.tsx:38`
 - AI 실행은 `kind:'agent'`로, 사람의 승인·반려·중단은 `kind:'human'`으로 활동 원장에 분리 기록됨(`agentTaskRunner.ts:53,63,70,74,117,126`). 다만 사람 라벨이 `'운영자'` 하드코딩 → B3에서 실제 계정 연결
+
+### B-use-4 인증 선별 통합 — **로컬 구현·자동검증 완료, Codex 검증 대기 (2026-07-28)**
+
+브랜치 `codex/b-use-4-auth-integration` (`61296fb` 에서 분기).
+**인증 브랜치 `fix/auth-foundation-01-red`(`838e2c4`) 는 손대지 않았다** — merge·rebase·일괄 cherry-pick 없이 최종 상태 파일을 참고해 현재 코드 위에 선별 이식했다.
+
+**이식한 것**
+
+| 계층 | 파일 |
+|---|---|
+| 서버 인증·계정 (신규 6) | `api/_shared/accountContract.ts` · `accountDirectory.ts` · `authActor.ts` · `authConfigContract.ts` · `clerkAuthAdapter.ts` · `api/auth/[action].ts` |
+| 클라이언트 (신규 5) | `src/services/authGate.ts` · `authorizedFetch.ts` · `authAccountActor.ts`(신규 작성) · `src/components/AuthGateScreen.tsx` · `components/auth/ClerkAuthBridge.tsx` · `components/auth/AccountAdminPanel.tsx` |
+| 보호 라우트 (6) | `api/ai/chat.ts` · `api/godomall/[resource].ts` · `orders-revenue.ts` · `products.ts` · `read.ts` · `sync.ts` (전부 `export default protectedHandler(handler)`) |
+| fetch 호출부 (12지점) | `secureProxyClient.ts` 6 · `departmentDataService.ts` 4 · `aiProviderAdapter.ts` 1 · `useMarketingBehaviorSummary.ts` 1 |
+| 패키지 | `@clerk/react@6.12.8` · `@clerk/backend@3.13.1` (**이미 `node_modules` 에 설치돼 있던 버전** — 새 설치·네트워크 없음) |
+
+11개 호출부 파일은 분기 이후 B-core·B-use 변경이 **0건**이었고 3-way 로 깨끗이 적용됐다(`git diff --stat 5190f685..HEAD -- <11파일>` 빈 출력으로 확인). `App.tsx`·`main.tsx` 는 수동 선별 이식했다.
+
+**가져오지 않은 것과 이유**
+
+| 항목 | 이유 |
+|---|---|
+| 인증 브랜치의 `App.tsx` 전체 | 오래된 상태다. B-use-3 네 업무 경로·결과 상세 진입·리소스별 출처 판정을 덮어쓴다 |
+| RED 스모크 2종(`smoke-auth-foundation-01-red-v0` · `-01-1-red-v0`) | 과거 진단 재현용. 인증 브랜치에 증거로 남아 있고, 복사하면 검사 수만 늘어난다 |
+| GREEN 스모크 원본(`smoke-auth-foundation-01-green-v0`) | 현재 구조에 맞춰 **하나의 통합검사로 교체**했다(아래) |
+| `docs/DIAG_*`·`docs/GREEN_*` 4종 | 인증 브랜치의 당시 보고서. governance 정본이 아니다 |
+| 비밀번호 초기화·계정 정지 | **미채택 결정 유지.** 앱 경로에서 세션 검증 이전 503, 상태 변경 0 |
+
+**교정 1 — 회사 서버에서도 fail-closed** (`api/_shared/authConfigContract.ts`)
+
+인증 브랜치는 배포환경을 `VERCEL_ENV` 하나로만 판정했다(`isDeploymentEnv`). Vercel 밖에서는 이 변수가 없으므로 **회사 서버에서 인증 환경변수가 빠지면 로컬 개발로 오인해 익명으로 열린다.** `resolveProtectedEnv` 로 넓히고 **기본값을 보호환경**으로 바꿨다.
+
+| 입력 | 판정 | 근거 코드 |
+|---|---|---|
+| `AUTH_ENFORCE=true` | 보호 | `auth_enforce` |
+| `VERCEL_ENV=production\|preview` | 보호 | `vercel_deployment` |
+| `NODE_ENV=production` (회사 서버형) | 보호 | `node_production` |
+| `NODE_ENV=development` · `VERCEL_ENV=development` · `AUTH_DEV_OPEN=true` | **개방** | `explicit_local_dev` |
+| 그 밖 전부(환경 불명, `NODE_ENV=test` 포함) | 보호 | `unknown_fail_closed` |
+
+허용 출처는 `AUTH_AUTHORIZED_PARTIES` **단독으로 완결**된다. Vercel 도메인 변수(`VERCEL_URL` 등)는 Vercel 위에서만 채워지는 **추가 입력**이며 유일 경로가 아니다.
+추가 강화: 세션 검증·계정 조회가 **throw** 하면(잘못된 키 형식·SDK 오류·디렉터리 장애) 500 으로 터지거나 조용히 통과하지 않고 **503 으로 닫는다**(`authActor.ts` `protectedHandler` 내 try/catch). 인증 브랜치 주석의 의도("SDK/키 오류 크래시도 아닌 정적 503")를 실제로 강제한 것이다.
+
+`isDeploymentEnv` 는 `@deprecated` 로 남겨 두었다(삭제하지 않음).
+
+**교정 2 — 로그인 신원 → 업무 행위자** · **구조 패치** (actor 경계 변경)
+
+| 항목 | 내용 |
+|---|---|
+| 변경 | `ActorRef` 에 `accountRole?: 'hq' \| 'team_lead' \| 'member'` **optional 추가**(`taskLifecycleContract.ts`). 서버 계정 역할의 **사본**이며 화면이 만들 수 없다 |
+| 이유 | 인증 브랜치의 `App` 은 로그인 후에도 행위자를 역할 전환기에서 만들었다. 그대로면 실제 로그인 신원이 업무 이력에 연결되지 않고, 역할 전환기만 바꿔도 권한·열람 범위가 올라간다 |
+| 영향 | `isCurrentStageApprover` · `canDecide(stop/return)` · `isOwningLead` · `createTeamInternalTask` · `TeamTaskPanel` 의 팀장 판정에 `hasLeadAuthority`/`hasHqAuthority` 가 추가로 걸린다 |
+| **하위호환** | **`accountRole` 이 `undefined` 면 기존 규칙 그대로다.** 구형 저장분과 데모 역할 행위자에는 이 필드가 없다 — **없는 것을 `member` 로도, 실제 로그인으로도 단정하지 않는다.** 기존 검증 시나리오가 팀장·HQ 역할을 그대로 재현한다(집중검사 R-3·R-7·R-8 로 고정) |
+
+로그인 계정 → 행위자 변환 규칙(`src/services/authAccountActor.ts`)
+
+| ActorRef 필드 | 값 |
+|---|---|
+| `kind` | `'human'` |
+| `userId` | 서버 계정 `userId` |
+| `label` | 서버 계정 `name`(공백이면 `userId`) |
+| `teamId` | 서버 계정 `team` 을 **정본 `teamIdContract.isDeptTeamId`** 로 해석. 모르는 값은 `'unresolved_team'` 자리표시자(추측·`hq` 로 뭉개기 금지) |
+| `identitySource` | `'session_login'` |
+| `accountRole` | 서버 계정 `role` 그대로 |
+
+`marketing` 저장값을 `marketing_internal`/`marketing_external` 로 **승격하지 않는다**(집중검사 R-4·T-3·T-5).
+
+App 배선: `actorForView(role)` 하나가 **열람 범위와 권한의 단일 출처**다. 인증 구성 + 로그인 계정이 있으면 서버 계정이 이기고, 미구성에서만 `actorForRole`(=`demo_role`)을 쓴다. `visibleTasksFor`·`taskFlowsFor`·`pendingForActor`·`sessionActor` 5지점이 모두 이 함수를 통과한다 → **역할 전환기로 보이는 범위도 권한도 넓어지지 않는다.**
+
+**팀 어휘**: 인증 계층은 별도 TeamId 정본을 만들지 않는다. `accountContract.ACCOUNT_TEAMS` 는 정본 `DEPT_TEAM_IDS` 에서 `hq` 를 뺀 **미러**이며, 어긋나면 집중검사 T-2 가 실패한다.
+직접 import 하지 않은 이유: `api/` 가 `src/` 를 import 한 선례가 **0건**(B-core-2a 에서 의도적으로 유지한 경계)이고, Vercel 함수 번들러가 api 트리 밖 상대 경로를 어떻게 해석하는지 이번 범위에서 실증할 수 없다. 검증되지 않은 런타임 위험 대신 **깨지면 게이트가 실패하는 미러**로 두었다.
+
+**공개·보호 경로 (집중검사 P 구간으로 고정)**
+
+| 경로 | 정책 |
+|---|---|
+| 고도몰 READ·동기화·주문매출·AI 프록시·마케팅 행동 요약·인증 계정 API | **보호** |
+| `/api/marketing/behavior-events`(방문자 수집) | 공개 유지 |
+| `/api/godomall/health` | 공개 유지(회사 서버 fail-closed 중에도 200) |
+| `/api/godomall/orders-admin` | 기존 403 `ADMIN_ACCESS_DISABLED` 유지 |
+| `/api/detail/[action]` | 이번 범위 미보호(기존 rate-limit·SSRF 유지) |
+
+**검사**: `scripts/smoke-b-use-4-auth-integration-v0.mjs` **114/114**(manifest include **124**/exclude 0) · B-use-3 집중검사 **103/103** 유지 · `npm test` exit 0.
+`scripts/smoke-build-typecheck-api-red2-v0.mjs` 는 인증 브랜치의 교정(`c913cd1`)을 함께 적용했다 — `@clerk/backend` 정적 import 로 SDK 내부 d.ts 가 프로그램에 들어오면서 그 시뮬레이션(skipLibCheck 없음)에서 선택적 peer 의존 오류 6건이 잡힌다. "우리 api 코드 0오류" 단언을 `api/` 파일 진단으로 한정했다(실패 6건이 전부 `node_modules/@clerk/shared` 내부임을 직접 확인). BASE 단언(저장소 tsconfig 전체 api 0오류)은 그대로다.
+
+**음성 변형 3회**로 새 경계가 실제 결함을 잡는지 확인: ① 회사 서버 fail-closed 제거 → F 구간 6건 실패 ② `member` 팀장 권한 차단 제거 → R 구간 10건 실패 ③ 로그인 신원 연결 제거 → R-30 실패. 전부 원상복구 후 114/114 재확인.
+
+**미실증(이번 완료 주장에 포함하지 않음)**: 실제 Clerk 가입·브라우저 로그인·HQ 부트스트랩·승인 후 화면 진입 · Preview/Production · 화면 눈검증 · Vercel 함수 번들 동작. → **Preview 인수검사에서 실증한다.**
+main 병합·push·배포·환경변수 변경·인증 브랜치 변경은 하지 않았다.
 
 ## 6. 화면·기능 — "있는데 실무에서 안 되는" 것
 
