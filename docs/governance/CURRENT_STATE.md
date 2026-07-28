@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-28 (B-use-4 계정 전환 잔여 권한 경로 마감)
+최종 갱신: 2026-07-28 (B-use-4 Codex 독립검증 확정 + DB 후보 조사)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -16,22 +16,29 @@
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
 | 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과 → `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기) HEAD `61296fb`, 문서 조사만 | `git rev-parse` |
-| 현재 작업 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) — 인증 선별 통합 + 권한 정본 단일화 + 계정 전환 잔여 경로 마감 | `git rev-parse --abbrev-ref HEAD` |
+| B-use-4 구현 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) · HEAD **`e599ce2`** — 인증 선별 통합 + 권한 정본 단일화 + 계정 전환 잔여 경로 마감 · **Codex 독립검증 통과** | `git rev-parse` |
+| 현재 작업 브랜치 | `codex/b-use-2-db-options-research` (`e599ce2`에서 분기, **main 미통합**) — DB 후보 조사(문서 전용, 제품 코드 0변경) | `git rev-parse --abbrev-ref HEAD` |
 | 실행 장소 | **최종 미확정.** 유력 방향 = 회사가 관리하는 서버 또는 고도몰 전용 서버. **개인 데스크톱은 운영 서버로 쓰지 않는다.** 지금은 사용자 컴퓨터·기존 개발환경에서 개발·검사하고, 최종 서버 선택과 시험 이식은 11월 실작동 시험 전에 한다 | 사용자 확정 방향 (2026-07-28) |
 | DB | **미결정.** Supabase·Neon·Prisma 중 어떤 것도 채택하지 않았다. 특정 DB·클라우드 어댑터는 지금 구현하지 않는다 | `MASTER_PLAN §11` |
 | 실행 환경 | **현재** Vercel 이 개발·검증·Production 을 담당한다. **최종 배포처로 확정된 것은 아니다**(위 '실행 장소' 행 참조) | Vercel 대시보드 관측 |
 
-## 2. 검사·빌드 (B-use-3 잔여 경로 마감 브랜치 기준)
+## 2. 검사·빌드 — **Codex 독립검증 확정 (기준 HEAD `e599ce2`, 2026-07-28)**
+
+**Codex 가 직접 실행한 결과다.** 아래 수치가 현재 기준선이다.
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| smoke 파일 수 | **124개** (B-use-4 통합검사 1건 추가) | `ls scripts/smoke-*.mjs \| wc -l` |
-| manifest include | **124** / exclude **0** | `node scripts/run-regression.mjs --discover` |
-| lint | **0 errors** (`scripts/flowRouteSmoke.ts:49` 수정 후) | `npx eslint .` |
+| B-use-4 집중검사 | **206/206 통과** | `node scripts/smoke-b-use-4-auth-integration-v0.mjs` |
+| 전체 smoke | **124/124 통과 · 109.4초** | `npm run smoke` |
+| manifest | include **124** / exclude **0** | `node scripts/run-regression.mjs --discover` |
 | build | 통과 (`tsc -b` + `typecheck:api` + `vite build`) | `npm run build` |
-| `npm test` 실제 소요 | **약 130초** (smoke 113.5s + build + lint), exit 0 | `npm test` 실행 |
+| `tsc -b` | exit 0 | `npx tsc -b` |
+| 변경 파일 lint | **오류·경고 0** | `npx eslint <변경 파일>` |
+| `git diff --check` | exit 0 | `git diff --check` |
+| `npm test` | **exit 0 · 전체 약 131초** | `npm test` |
+| 원격 push·배포·환경변수 | **변경 없음** | — |
 
-직전 전체 게이트(Codex 실행, `9e38197`): smoke **123/123**·build·`typecheck:api`·lint 통과. 원격 push·Production 배포는 하지 않았다.
+**과거 기록(삭제하지 않는다)**: 직전 전체 게이트(Codex 실행, `9e38197`)는 smoke **123/123** 이었다. smoke 파일이 124개가 된 것은 B-use-4 통합검사 1건이 추가된 결과다.
 
 주의: 과거 과제의 스모크 8건이 `git status --porcelain`으로 **미커밋 작업 트리**를 검사한다. 제품 파일을 고친 뒤 커밋 전에 `npm test`를 돌리면 그 8건이 실패한다(결함 아님, 커밋 후 통과).
 
@@ -279,7 +286,7 @@ fixture 실측(주문 10·상품 6): 취소 2 · 배송비 5,500 · 상품 라�
 - 살아 있는 진입점: `runManualAgentTask` ← `src/components/AgentTaskPanel.tsx:38`
 - AI 실행은 `kind:'agent'`로, 사람의 승인·반려·중단은 `kind:'human'`으로 활동 원장에 분리 기록됨(`agentTaskRunner.ts:53,63,70,74,117,126`). 다만 사람 라벨이 `'운영자'` 하드코딩 → B3에서 실제 계정 연결
 
-### B-use-4 인증 선별 통합 — **로컬 구현·자동검증 완료, Codex 검증 대기 (2026-07-28)**
+### B-use-4 인증 선별 통합 — **1차 구현 기록 (2026-07-28 당시)**
 
 브랜치 `codex/b-use-4-auth-integration` (`61296fb` 에서 분기).
 **인증 브랜치 `fix/auth-foundation-01-red`(`838e2c4`) 는 손대지 않았다** — merge·rebase·일괄 cherry-pick 없이 최종 상태 파일을 참고해 현재 코드 위에 선별 이식했다.
@@ -360,15 +367,15 @@ App 배선: `actorForView(role)` 하나가 **열람 범위와 권한의 단일 �
 | `/api/godomall/orders-admin` | 기존 403 `ADMIN_ACCESS_DISABLED` 유지 |
 | `/api/detail/[action]` | 이번 범위 미보호(기존 rate-limit·SSRF 유지) |
 
-**검사**: `scripts/smoke-b-use-4-auth-integration-v0.mjs` **114/114**(manifest include **124**/exclude 0) · B-use-3 집중검사 **103/103** 유지 · `npm test` exit 0.
+**검사(이 시점 기준)**: `scripts/smoke-b-use-4-auth-integration-v0.mjs` **114/114**(manifest include **124**/exclude 0) · B-use-3 집중검사 **103/103** 유지 · `npm test` exit 0.
 `scripts/smoke-build-typecheck-api-red2-v0.mjs` 는 인증 브랜치의 교정(`c913cd1`)을 함께 적용했다 — `@clerk/backend` 정적 import 로 SDK 내부 d.ts 가 프로그램에 들어오면서 그 시뮬레이션(skipLibCheck 없음)에서 선택적 peer 의존 오류 6건이 잡힌다. "우리 api 코드 0오류" 단언을 `api/` 파일 진단으로 한정했다(실패 6건이 전부 `node_modules/@clerk/shared` 내부임을 직접 확인). BASE 단언(저장소 tsconfig 전체 api 0오류)은 그대로다.
 
-**음성 변형 3회**로 새 경계가 실제 결함을 잡는지 확인: ① 회사 서버 fail-closed 제거 → F 구간 6건 실패 ② `member` 팀장 권한 차단 제거 → R 구간 10건 실패 ③ 로그인 신원 연결 제거 → R-30 실패. 전부 원상복구 후 114/114 재확인.
+**음성 변형 3회**로 새 경계가 실제 결함을 잡는지 확인: ① 회사 서버 fail-closed 제거 → F 구간 6건 실패 ② `member` 팀장 권한 차단 제거 → R 구간 10건 실패 ③ 로그인 신원 연결 제거 → R-30 실패. 전부 원상복구 후 114/114 재확인(**당시 수치**).
 
 **미실증(이번 완료 주장에 포함하지 않음)**: 실제 Clerk 가입·브라우저 로그인·HQ 부트스트랩·승인 후 화면 진입 · Preview/Production · 화면 눈검증 · Vercel 함수 번들 동작. → **Preview 인수검사에서 실증한다.**
 main 병합·push·배포·환경변수 변경·인증 브랜치 변경은 하지 않았다.
 
-#### 보완 — 로그인 권한 정본 단일화 (2026-07-28, Codex 재검증 대기)
+#### 보완 1 — 로그인 권한 정본 단일화 (2026-07-28 당시 기록)
 
 Codex 독립검증이 자동검사가 놓친 실사용 결함 **2건**을 찾아냈고 이 브랜치에서 마감했다.
 
@@ -394,11 +401,11 @@ Codex 독립검증이 자동검사가 놓친 실사용 결함 **2건**을 찾아
 
 교정: `accountFromPublicMetadata(userId, publicMetadata, fallbackName)` 로 분리·공개(순수 함수)하고 fail-closed 검증을 넣었다. `role` ∈ `hq|team_lead|member`, `status` ∈ `pending|active|suspended`, 역할·팀 조합(`isValidRoleTeamPair`: hq→`'hq'`, team_lead·member→실제 운영팀)을 모두 만족해야 계정으로 인정하고 **아니면 `null`(계정 없음 → 보호 API 403)**. **`team` 누락을 어떤 값으로도 보정하지 않는다.**
 
-**검사**: 집중검사 **162/162**(기존 114 + 신규 48 — `[S]` 단일 권한 문맥 25건 · `[M]` metadata 14건 · R 구간 갱신). 시나리오는 문자열 확인이 아니라 `computeEffectiveIdentity`·`canCreateDirective`·`accountFromPublicMetadata` **순수 함수 실행**과 실제 `taskFlowsFor` 열람 범위로 확인한다. B-use-3 집중검사 **103/103** 유지.
+**검사(이 시점 기준)**: 집중검사 **162/162**(기존 114 + 신규 48 — `[S]` 단일 권한 문맥 25건 · `[M]` metadata 14건 · R 구간 갱신). 시나리오는 문자열 확인이 아니라 `computeEffectiveIdentity`·`canCreateDirective`·`accountFromPublicMetadata` **순수 함수 실행**과 실제 `taskFlowsFor` 열람 범위로 확인한다. B-use-3 집중검사 **103/103** 유지.
 
 **검사 갱신 2건(사실은 동일, 단언이 옛 구현 문구를 겨냥했던 것)**: `smoke-b-use-3` 의 E-30·E-31 과 `smoke-rc2-app-integration` 의 A35 를 새 구현 기준으로 고쳤다. 고정하는 사실(비HQ→`department` 제한 · `ChatConsole` 미렌더 · App 이 세션 신원을 결정 권한 ActorRef 로 연결)은 그대로이며 판정이 더 앞·더 강해졌다. **게이트를 줄인 것이 아니다.**
 
-#### 보완 2 — 계정 전환 잔여 권한 경로 마감 (2026-07-28, Codex 재검증 대기)
+#### 보완 2 — 계정 전환 잔여 권한 경로 마감 (2026-07-28 당시 기록)
 
 Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜치에서 마감했다.
 
@@ -409,9 +416,54 @@ Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜
 | **B-2** | `handleStartSimulation` 이 `setIsSimulating`·`setReport` 를 권한 확인보다 **먼저** 하고, HQ 가 아니어도 아래 런타임·보고서·에이전트 상태·운영이력이 계속 실행됐다 | 함수 시작부에서 ① 실행 중 확인 ② `identity.actor` + `identity.isHq` 확인 ③ 실패 시 경고 후 **즉시 반환**. 그 뒤에만 상태 변경·런타임 실행 |
 | **C** | `report`·`selectedTaskForResult`·`selectedApprovalDetail` 이 객체를 직접 들고 있어, HQ 가 상세를 연 채 로그아웃하고 다른 직원이 로그인하면 이전 계정 자료가 다시 표시될 수 있었다 | `isTaskVisibleToIdentity()` · `isReportOwnedBy()` 순수 함수로 **표시 직전 검증**. 상세는 현재 열람 범위(`tasks`)에 있을 때만, 보고서는 만든 신원 키와 현재 키가 같을 때만 렌더. **기존 자료는 삭제하지 않고 노출만 차단**하며, effect+setState 를 쓰지 않는 파생 판정이다 |
 
-**검사**: 집중검사 **162 → 188/188**(`[X]` 구간 26건 신규). 탭 허용·상세 노출 판단을 순수 함수(`resolveActiveTab`·`canAccessTab`·`isTaskVisibleToIdentity`·`isReportOwnedBy`)로 분리해 **실행 검사**한다 — 문자열 개수로 동작 검증을 대신하지 않는다. B-use-3 **103/103** · RC-2 lifecycle 스모크 10건 전부 PASS · lint 오류·경고 0.
+**검사(이 시점 기준)**: 집중검사 **162 → 188/188**(`[X]` 구간 26건 신규). 탭 허용·상세 노출 판단을 순수 함수(`resolveActiveTab`·`canAccessTab`·`isTaskVisibleToIdentity`·`isReportOwnedBy`)로 분리해 **실행 검사**한다 — 문자열 개수로 동작 검증을 대신하지 않는다. B-use-3 **103/103** · RC-2 lifecycle 스모크 10건 전부 PASS · lint 오류·경고 0.
 
-**B-use-4 는 여전히 완료가 아니다 — Codex 재검증 대기.**
+#### 보완 3 — 승인 상세 격리를 결정 권한 기준으로 교정 (2026-07-28 당시 기록)
+
+`visibleApprovalDetail` 이 `selectedApprovalDetail.taskId` 가 현재 `tasks` 에 있는지만 봤다.
+`visibleTasksFor` 는 팀만 보므로(`taskLifecycleAppAdapter.ts:859-865`) **같은 팀 일반 팀원도 업무를 열람**하는데, 승인 담당자 판정은 `pendingForActor` → `canDecide` → `hasLeadAuthority` 를 거친다(`:311-315`). 그래서 팀장이 연 승인 상세가 같은 팀 팀원 계정 전환 후에도 남았다.
+교정: `isApprovalVisibleToIdentity(approvalId, decidableApprovalIds)` 신설 — **지금 결정할 수 있는 승인 항목의 고유 `id`** 로만 판정한다(승인 항목은 `appr-<taskId>` 로 업무 단위라 `taskId` 대조는 부정확). 업무 상세는 기존 열람 범위 기준 유지 · `applyDecision` 도메인 검사 유지 · 저장 자료 삭제 없음.
+검사(이 시점 기준): 집중검사 **188 → 206/206**(`[Y]` 21건 신규, X-32 삭제).
+
+---
+
+### B-use-4 — **로컬 구현·자동검증 완료 · Codex 독립검증 통과 (기준 HEAD `e599ce2`, 2026-07-28)**
+
+> **B-use-4 는 로컬 구현과 자동검증 기준으로 완료했다. 실제 Clerk 가입·로그인·HQ 부트스트랩·계정 전환 렌더·승인 후 화면 진입은 아직 완료 주장에 포함하지 않으며, B-use-3 화면 확인과 함께 통합 Preview 인수검사에서 실증한다.**
+
+**완료로 인정하는 범위**(Codex 직접 실행으로 확인 — 수치는 §2)
+
+- 채택 기능 4가지: 가입 신청 · `member`+`pending` 생성 · 같은 팀장/HQ 승인(팀장 승격은 HQ만) · 승인 후 보호 API·대시보드 이용
+- 회사 서버형 `NODE_ENV=production`·환경 불명 포함 **fail-closed**
+- 로그인 신원 → 업무 행위자 연결 · `member`/`team_lead`/`hq` 권한 구분
+- 시험 역할 전환기가 인증 모드에서 권한·열람 범위를 바꾸지 못함
+- 계정 전환 시 이전 계정의 업무 상세·승인 상세·보고서 노출 차단(자료 삭제 없음)
+- Clerk `publicMetadata` 권한 자료 fail-closed 검증
+- 기존 B-core·B-use 무회귀(B-use-3 집중검사 103/103 · 전체 smoke 124/124)
+
+**완료 주장에 포함하지 않는 것(미실증)**: 실제 Clerk 가입·브라우저 로그인·HQ 부트스트랩 실행·계정 전환 시 실제 렌더·승인 후 화면 진입 · Preview/Production · Vercel 함수 번들 동작. → **통합 Preview 인수검사에서 B-use-3 화면 확인과 함께 실증한다.**
+
+main 병합·push·배포·환경변수 변경·인증 보존 브랜치 변경은 하지 않았다.
+
+### B-use-2 DB 후보 조사 — **결정자료 작성 완료 (2026-07-28)**
+
+브랜치 `codex/b-use-2-db-options-research` (`e599ce2` 에서 분기). **제품 코드·검사 코드 0변경(문서 전용).**
+산출물: `docs/governance/evidence/B_USE_2_DB_OPTIONS_RESEARCH.md`
+
+**이것은 채택안이 아니라 결정자료다.** DB 를 고르지 않았고 서버 어댑터도 만들지 않았다. `DECISIONS.md` 에 새 결정을 추가하지 않았으며 **DB 미결정 상태를 그대로 유지**한다.
+
+후보 3종(직접 운영 PostgreSQL · Supabase · Neon)을 **각 제품 공식 가격표·공식 문서 16개 URL**(2026-07-28 확인)로만 비교했다. Prisma 는 DB 제품이 아니라 ORM 이므로 후보에서 제외했다.
+
+관측된 주요 사실:
+
+- 입력 문서 §7 의 **12조건 중 1·2·4·5·11 은 후보 간 차이가 아니다**(셋 다 표준 PostgreSQL). 실제로 갈리는 것은 **3(첨부)·6(연결)·8(개인정보)·9(백업)·10(무료 등급)** 이다.
+- **무료 등급은 셋 다 우리 규모에 못 미친다**: Supabase Free DB **500 MB** + **1주 미사용 시 정지**, Neon Free **0.5 GB/프로젝트** + 한도 초과 시 **다음 청구월까지 컴퓨트 정지**.
+- **한국 리전**: Supabase **서울 `ap-northeast-2` 있음** · Neon **없음**(리전 변경도 불가). CS 완료 기록에 PII 그릇이 있으므로 C단계 실데이터 연결 이후 실제 조건이 된다.
+- **Neon Object Storage 는 beta · AWS `us-east-2` 전용** — 첨부 저장소로 지금 전제할 수 없다.
+- 직접 운영 PITR 은 PostgreSQL **기본 기능**이지만 `wal_level`·`archive_mode`·`archive_command` 설정 + `pg_basebackup` + **아카이빙 모니터링**을 우리가 직접 해야 한다.
+- 회사·고도몰 서버 직접 운영 확인표 **10개 항목은 전부 미확인** — 서버 제공 조건을 받아야 채울 수 있다.
+
+**미확인으로 남긴 값**(공식 근거를 붙이지 못함): 무료 프로젝트 자동 삭제 규정(양쪽) · Neon 월 최소 청구액 · Neon `pg_dump` 공식 절차·at-rest 암호화 · Supabase 등급별 pooler 상한·리전 변경 가능 여부·at-rest 암호화 표준 · 양쪽 실시간 반영 수단 · Vercel 공식 목록의 Supabase 네이티브 통합 여부.
 
 ## 6. 화면·기능 — "있는데 실무에서 안 되는" 것
 

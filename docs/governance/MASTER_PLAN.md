@@ -90,11 +90,12 @@
 > **B-core(전체 3단계)는 완료.** 주문 원본 사실(`orderFacts`) · 재고위험 단일화 · 저장 경계(repository/facade) · actor/executor 분리 · TeamId 정본이 섰다.
 > **결제완료 공식 정본은 전체 5단계(C — 새 고도몰 READ·상태코드 확인)로 명시적 이관한다.** 그전까지 두 규칙의 결과와 `conflicted` 를 함께 보존하며 한쪽을 정본으로 삼지 않는다.
 > **B-use-3 은 Codex 독립검증을 통과했다** (기준 HEAD `c22586b` · smoke 123/123 + build + typecheck:api + lint, exit 0 · manifest include 123/exclude 0). 실제 화면 클릭 확인은 다음 Preview 인수검사에서 다른 화면과 함께 한다.
-> **B-use-4 인증 선별 통합 + 로그인 권한 정본 단일화 보완**까지 로컬 구현·자동검증이 끝났다(브랜치 `codex/b-use-4-auth-integration`, 2026-07-28). Codex 1차 독립검증이 찾은 실사용 결함 2건(로그인 계정과 시험 역할 미분리 · 서버 권한 자료 검증 느슨함)을 마감했다. 실제 Clerk 가입·로그인·HQ 부트스트랩·승인 후 화면 진입은 **아직 실증하지 않았다** — Preview 인수검사에서 한다.
-> Codex 재검증이 찾은 잔여 3건(시험 역할 fallback · 탭 제한이 렌더 뒤 실행 · 계정 전환 시 이전 상세 잔존)도 마감했다.
-> **다음 한 작업: Codex 가 B-use-4 최종 보완분을 재검증한다.**
-> 그다음 대기 중: ① DB 후보 2~3개 공식 가격·운영 조건 조사(입력은 `docs/governance/evidence/B_USE_2_SERVER_RECORDS_WORKLOAD.md`) ② Preview 인수검사(B-use-3 화면 눈검증 + 인증 실로그인 함께).
-> **DB 가 정해지기 전에는 서버 어댑터를 구현하지 않는다. B-use-2 는 기술 입력 준비까지만 끝났고 서버 기록 완료가 아니다.**
+> **B-use-4 는 로컬 구현·자동검증 기준으로 완료했다** (브랜치 `codex/b-use-4-auth-integration` · 기준 HEAD `e599ce2` · **Codex 독립검증 통과**: 집중검사 206/206 · 전체 smoke 124/124(109.4초) · build · lint · `npm test` exit 0 · manifest include 124/exclude 0).
+> **실제 Clerk 가입·로그인·HQ 부트스트랩·계정 전환 렌더·승인 후 화면 진입은 완료 주장에 포함하지 않으며, B-use-3 화면 확인과 함께 통합 Preview 인수검사에서 실증한다.**
+> **B-use-2 DB 후보 조사도 끝났다**(브랜치 `codex/b-use-2-db-options-research`, 문서 전용). 산출물 `docs/governance/evidence/B_USE_2_DB_OPTIONS_RESEARCH.md` 는 **채택안이 아니라 결정자료**다 — DB 는 여전히 미결정이다.
+> **다음 한 작업: Codex 의 DB 조사 독립검토.**
+> 그다음 대기 중: **통합 Preview 인수검사**(B-use-3 화면 눈검증 + B-use-4 실로그인 함께).
+> **DB 가 정해지기 전에는 서버 어댑터를 구현하지 않는다. B-use-2 는 기술 입력·결정자료 준비까지만 끝났고 서버 기록 완료가 아니다.**
 > B-use 전체 인수검사로는 아직 넘어가지 않는다.
 
 ---
@@ -279,6 +280,18 @@ main 병합·Production 배포는 **별도 승인 전까지 금지**.
 
 **B-use-2 를 완료로 표시하지 않는다** — DB 미결정, 서버 어댑터 미구현.
 
+#### DB 후보 비교자료 — **작성 완료 (2026-07-28)** · Codex 독립검토 대기
+
+브랜치 `codex/b-use-2-db-options-research` (`e599ce2` 에서 분기). **제품 코드·검사 코드 0변경(문서 전용).**
+산출물: `docs/governance/evidence/B_USE_2_DB_OPTIONS_RESEARCH.md`
+
+**채택안이 아니라 결정자료다.** DB 를 고르지 않았고 `DECISIONS.md` 에 새 결정을 추가하지 않았다 — **DB 미결정 유지.**
+후보 3종(직접 운영 PostgreSQL · Supabase · Neon)을 **각 제품 공식 가격표·공식 문서 16개 URL**(2026-07-28 확인)로만 비교했다. Prisma 는 DB 제품이 아니라 ORM 이므로 후보에서 제외했다.
+
+권고 결론(문서 §8): **최종 회사·고도몰 서버 사양을 받기 전에는 공급자를 확정하지 않는다.** 애플리케이션은 표준 PostgreSQL 공통분모로 설계해 세 후보 사이 이전 가능성을 보존하고, **최종 선택 시점은 11월 실서버 시험 준비 전**이며 그때 서버 제공 조건과 관리 책임을 함께 비교한다.
+
+DB 선택보다 **먼저** 정할 수 있는 것으로 드러난 것: ① 첨부를 DB 안 base64 로 둘지 object storage 참조로 뺄지 ② 동기 API → 서버 전환 방식(입력 문서 §7) ③ 전체 배열 재작성 → 행 단위 저장.
+
 ### B-use-2. 업무 카드 → 결과 상세 진입 — **완료 · Codex 검증 통과 (2026-07-27)**
 
 실제 마운트 경로: 부서 업무 관장 탭(`MainLayout:402`) → `DepartmentWorkspacePanel:742 <TeamTaskPanel>` → 카드 `상세` 버튼 → `TaskDetailModal`.
@@ -336,7 +349,7 @@ Codex 독립검증에서 발견: 팀 내부 업무는 **계약만 통과**했고
 인증 브랜치를 main에 병합하면 **Production 대시보드가 잠길 수 있으므로** 실제 HQ와 Production 환경설정 준비 뒤에만 가능하다.
 **조건이 충족돼도 병합 실행은 사용자 승인 후에 한다.** merge/squash 선택과 Production 환경변수 설정·배포 순서도 함께 승인받는다.
 
-#### B-use-4 선별 통합 — **로컬 구현·자동검증 완료, Codex 독립검증 대기 (2026-07-28)**
+#### B-use-4 선별 통합 — **로컬 구현·자동검증 완료 · Codex 독립검증 통과 (기준 HEAD `e599ce2`, 2026-07-28)**
 
 브랜치 `codex/b-use-4-auth-integration` (`61296fb` 에서 분기).
 **인증 브랜치 `fix/auth-foundation-01-red`(`838e2c4`) 는 증거로 그대로 보존한다** — merge·rebase·일괄 cherry-pick 없이 최종 상태 파일을 참고해 현재 B-core·B-use 코드 위에 선별 이식했다.
@@ -349,7 +362,8 @@ Codex 독립검증에서 발견: 팀 내부 업무는 **계약만 통과**했고
 1. **회사 서버에서도 fail-closed** — 인증 브랜치는 배포환경을 `VERCEL_ENV` 하나로 판정했다. 최종 실행 장소가 미확정이고 유력 방향이 회사 서버·고도몰 전용 서버이므로 그대로 두면 Vercel 밖에서 환경변수가 빠졌을 때 로컬 개발로 오인해 익명으로 열린다. 보호환경 판정을 `Vercel production/preview` + `NODE_ENV=production` + `AUTH_ENFORCE` + **환경 불명(기본값)** 으로 넓히고, 명시적 개발 신호에서만 미구성 open 을 허용한다. 허용 출처는 `AUTH_AUTHORIZED_PARTIES` 단독으로 완결된다(Vercel 도메인은 추가 입력).
 2. **로그인 신원 → 업무 행위자** (**구조 패치** — `CURRENT_STATE` 에 이유·영향·하위호환 기록). 인증된 운영 모드에서는 서버 계정 뷰만 신원 근거이며 열람 범위와 권한이 같은 출처를 쓴다. 역할 전환기로 범위·권한이 넓어지지 않는다.
 
-검증: `smoke-b-use-4-auth-integration-v0.mjs` **188/188**(manifest 등록) · B-use-3 집중검사 **103/103** 유지 · `npm test` exit 0.
+검증(**Codex 직접 실행, 기준 HEAD `e599ce2`**): `smoke-b-use-4-auth-integration-v0.mjs` **206/206** · 전체 smoke **124/124(109.4초)** · manifest include **124**/exclude **0** · build(`tsc -b`+`typecheck:api`+`vite build`) · `tsc -b` exit 0 · 변경 파일 lint 오류·경고 0 · `git diff --check` exit 0 · **`npm test` exit 0(전체 약 131초)** · 원격 push·배포·환경변수 변경 없음.
+(중간 기록은 삭제하지 않는다: 1차 114/114 → 보완1 162/162 → 보완2 188/188 → 보완3 206/206.)
 
 **보완(2026-07-28) — 로그인 권한 정본 단일화**: Codex 1차 검증이 찾은 실사용 결함 2건을 마감했다.
 ① 화면 곳곳이 각자 `loadRole()` 을 읽어 로그인 계정과 시험 역할이 갈라지던 것을 `effectiveIdentity` 한 곳으로 모으고, 업무 목록을 `identity.actor` **파생값**으로 바꿔 로그인 전후 상태가 즉시 같은 계정 기준이 되게 했다. 시험 역할 전환기는 인증 모드에서 **읽기 전용**이다. 저장 직전 권한 확인(`canCreateDirective`)도 넣었다.
