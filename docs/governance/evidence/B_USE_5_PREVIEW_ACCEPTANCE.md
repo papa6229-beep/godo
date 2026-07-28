@@ -184,15 +184,31 @@ vercel curl /api/marketing/behavior-events --deployment dpl_Capuzbx55XzApTFX8PxK
 **검사 결과**: 집중검사 `smoke-b-use-4-auth-integration-v0.mjs` **206 → 210/210**(C-10a~C-10d 신규) · `tsc -b` exit 0 · 변경 파일 lint 오류·경고 0 · 인접 회귀 3건 PASS(B-use-3 103/103 포함) · `vite build` 성공.
 전체 `npm test` 는 A~G 화면검사가 끝난 뒤 한 번 실행한다(이번엔 반복하지 않는다).
 
-## 10. 수정 후 Preview
+## 10. 수정 후 Preview — **이것이 재검증 대상이다**
 
 | 항목 | 값 |
 |---|---|
-| Deployment URL | (아래 §12 참조 — 새 배포) |
-| Source commit | 수정 커밋 |
-| 상태 | Preview / Ready |
+| Deployment URL | `https://godo-f283voqsq-taejuns-projects-e5fc4e75.vercel.app` |
+| Deployment ID | `dpl_9BgcZz766FgmWVvAvhDaw8AQbmGz` |
+| 브랜치 별칭 | `https://godo-git-codex-b-use-5-preview-f2d73c-taejuns-projects-e5fc4e75.vercel.app` (최신 배포로 이동) |
+| **Environment** | **`preview`** |
+| **상태** | **`Ready`** |
+| **Source commit** | **`2d856b0`** — 수정 커밋과 일치. 빌드 로그: `Cloning github.com/papa6229-beep/godo (Branch: codex/b-use-5-preview-acceptance, Commit: 2d856b0)` |
+| 빌드 | 성공 · `api/auth/[action]` 함수 포함 |
+| 생성 시각 | 2026-07-28 14:51:48 KST |
 
-**수정 후 실제 화면 결과는 아직 `Codex 재검증 대기` 다.** A~G 구간은 여전히 §5 표대로 **미검증**이며, 이번 수정으로 통과 처리된 항목은 없다.
+> 앞선 §1 의 `b87ce91` 배포(`dpl_Capuzbx…`)는 **1차 관측 기록으로 보존**한다. 덮어쓰지 않았다.
+
+**수정 후 실제 화면 결과는 아직 `Codex 재검증 대기` 다.** A~G 구간은 여전히 §5 표대로 **미검증**이며, 이번 수정으로 통과 처리된 항목은 하나도 없다.
+
+**Codex 가 이 배포에서 확인할 정확한 지점**
+
+1. HQ 로그인 후 **상단 신원 배지(`[시험] HQ 관리자 · hq`) 바로 오른쪽에 `로그아웃` 버튼**이 보이는가
+2. 클릭 → 대시보드가 사라지고 **로그인 화면**으로 돌아가는가(중간에 빈 화면·오류 없이)
+3. 로그아웃 직후 이전 HQ 의 **대시보드·업무 상세·승인 상세·보고서가 렌더되지 않는가**
+4. 다시 로그인하면 이전 업무 자료가 **그대로 남아 있는가**(삭제가 아니라 노출 차단이었는지)
+5. 그 뒤 B 구간 재개: 앱의 **가입 신청 화면**에서 직원 후보 2명 생성 → 둘 다 `member`+`pending` → HQ 가 각각 `team_lead`·`member` 로 승인
+6. C·D 구간: HQ→팀장→팀원 전환하며 화면·권한 차이와 자료 격리 확인 (각 계정에서도 로그아웃 버튼이 동일하게 보이는지 포함)
 
 ## 11. 다음 단계 (계정 준비 순서)
 
