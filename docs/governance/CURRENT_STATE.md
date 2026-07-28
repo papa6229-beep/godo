@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-28 (B-use-3 팀 내부 업무 진입점 교정)
+최종 갱신: 2026-07-28 (B-use-2 서버 기록 저장 구조 관측)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -15,7 +15,8 @@
 | local main | `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864` (B-use-3 HQ 지시 흐름까지 fast-forward 통합) | `git rev-parse main` |
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
-| 현재 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `37343e4` (2026-07-28 관측) | `git rev-parse --abbrev-ref HEAD` / `git rev-parse HEAD` |
+| 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과(smoke 123/123 + build + typecheck:api + lint, exit 0) | `git rev-parse` |
+| 현재 작업 브랜치 | `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기, **main 미통합**) — 문서 조사만, 제품 코드 0변경 | `git rev-parse --abbrev-ref HEAD` |
 | 실행 환경 | **Vercel이 유일한 실행 환경** — 개발·검증·Production 모두 담당. 최종 배포 형태는 H단계 미결 | Vercel 대시보드 관측 |
 
 ## 2. 검사·빌드 (B-use-3 잔여 경로 마감 브랜치 기준)
@@ -62,6 +63,32 @@
 - `taskLifecycleStore.ts:16` `MAX_TASKS = 500` · `:52` `slice(-500)` · `:54` 저장 실패를 조용히 무시
 - `activityLedger.ts:10` `MAX_EVENTS = 500` · `:37` `slice(-500)`
 - → **501번째부터 오래된 이력이 경고 없이 사라짐** (헌법 §5 위반 상태, B5에서 해소)
+
+### 다섯 기록 영역의 저장 구조 — **관측 (B-use-2 준비, 2026-07-28)**
+
+확인 범위: 다섯 영역의 생산자·포트·어댑터·주요 소비자만. 전체 저장소 재감사 아님.
+전체 표·계산 변수·재현 명령: `docs/governance/evidence/B_USE_2_SERVER_RECORDS_WORKLOAD.md`
+
+| 영역 | 저장키 | schemaVersion | 건수 상한 | 구독 | 삭제 API | 멱등 키 |
+|---|---|---|---|---|---|---|
+| lifecycle 업무·결과·승인·수행자 이력 | `godo.rc2.taskLifecycle.v1` | **1** (구형 배열 후퇴 읽기 `taskLifecycleStore.ts:41`) | **500** (`:16,52`) | **없음** | 없음 | HQ 확인요청만 (`taskLifecycleAppAdapter.ts:926-927`) |
+| activity ledger | `godo_activity_ledger_v0` | 없음 | **500** (`activityLedger.ts:10,37`) | 있음 (`:43-48`) | 없음 (append 전용) | **없음** |
+| team messages | `godo_team_messages_v0` | 없음 | **300** (`teamMessageCenter.ts:14,44`) | 있음 (`:52-57`) | 없음 | **없음** |
+| CS completion·처리 이력 | `godo_ai_os.cs_state.v0` | **0** — 불일치 시 **`null` 반환=조용히 버림** (`csLocalStatePersistence.ts:70`) | 없음 | **없음** | **있음** (`:116-120`) | `completionKey`·`csApprovalKey` |
+| agent task 정의 | `godo_agent_tasks_v0` | 없음 | 없음 | 있음 (`agentTaskStore.ts:38-43`) | 있음 (`:61`) | `lifecycleTaskId(spec)` (`agentTaskRunner.ts:51`) |
+
+**추가로 관측된 사실**
+
+- **agent task 실행 결과에는 전용 저장소가 없다.** 결과는 팀 메시지 1건 + 활동 원장 1~2건으로 흩어져 저장된다 (`agentTaskRunner.ts:62-78`).
+- **다섯 영역 모두 저장 실패를 `catch {}` 로 삼킨다** — 실패 여부를 사용자도 개발자도 알 수 없다 (헌법 §5 “저장 실패를 숨기지 않는다”와 어긋나는 현재 상태).
+- **모든 쓰기가 전체 목록 재작성이다** (`activityLedger.ts:126-128` · `teamMessageCenter.ts:122-143` · `taskLifecycleStore.ts:65-82` · `agentTaskStore.ts:56-65` · CS 는 전체 객체 `CsTeamDashboard.tsx:810-817`) → 다중 사용자 동시 저장 시 **나중 저장이 앞 저장을 덮어쓴다**.
+- **화면의 저장 구현 직접 import 0건** (facade 경계 유지). facade 사용 화면 9개 파일, lifecycle 어댑터 사용 화면 10개 파일.
+- **다섯 영역의 저장 API 는 전부 동기(sync)** 다. 선례 Postgres 포트는 async(`api/_shared/marketingBehaviorPersistentStore.ts`) → `repositories/README.md:6` 의 “저장소 교체 시 화면 무변경” 주장은 **localStorage 계열 교체에는 성립하지만 네트워크 저장에는 성립하지 않는다.**
+- **첨부 base64 가 저장량의 지배 변수다.** 텍스트 레코드는 **412 B ~ 1,218 B**(실측)인데 팀 메시지 첨부 1건은 **약 1.2 MB**(실측, 원본 900KB → base64 1.33배). 인라인 상한은 원본 1.5MB (`teamMessageCenter.ts:16,61`) → 최대 약 2.0MB/건.
+- lifecycle 은 base64 유입을 차단한다(`taskLifecycleStore.ts:23-32`, 실측으로 확인). **첨부 원문을 보관하는 곳은 팀 메시지뿐이다.**
+- **CS 완료 기록에 고객 이름·전화·이메일 필드가 있고 저장 경로가 연결돼 있다** (`csTeamDashboardFacts.ts:496-504` · `CsTeamDashboard.tsx:902,913`). 현재 값은 합성이고 문의·리뷰는 미연결이라 **오늘 실제 PII 는 없다.** C단계에서 실데이터가 연결되면 그 시점부터 실제 PII 가 저장된다.
+- **백업·export 수단이 없다** (다섯 영역 전수 검색 0건).
+- 재사용 가능한 선례: `api/_shared/marketingBehaviorStorageTypes.ts`(포트) ← `marketingBehaviorPostgresStore.ts`(어댑터, lazy Pool `:50-58` · 자동 DDL 없음 · 비밀값 미노출) ← `marketingBehaviorPersistentStore.ts:80-107`(env 감지 선택기). `pg@^8.22.0` **이미 설치됨**.
 - 데이터 세계가 둘: `activeOperationsData`(적재 스냅샷, 소비자 12파일 + `src/engine` 2파일) / `fetchRevenue`(라이브 읽기, 호출자 3곳, **공유 캐시 없음·인자 상이**)
 
 ### 재고위험 판정 — **단일화 완료 (B-core-2a, 2026-07-27)**
