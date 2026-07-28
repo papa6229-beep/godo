@@ -155,6 +155,25 @@ export const isTaskVisibleToIdentity = (
 ): boolean => !!taskId && visibleTaskIds.includes(taskId);
 
 /**
+ * 열려 있던 **승인 상세**를 지금 신원에게 계속 보여도 되는가.
+ *
+ * ⚠️ 업무 열람 권한과 **다른 기준**을 쓴다.
+ *   `visibleTasksFor` 는 팀만 본다(`taskLifecycleAppAdapter`: `ownerTeamId`/`requestingTeamId` 일치).
+ *   그래서 같은 팀의 **일반 팀원도 업무는 볼 수 있다.** 하지만 승인 담당자는 아니다
+ *   (`pendingForActor` 는 `canDecide` → `hasLeadAuthority` 를 통과해야 한다).
+ *   업무 열람을 기준으로 삼으면 팀장이 연 승인 상세가 같은 팀 팀원 계정으로 전환한 뒤에도 남는다.
+ *
+ * 그래서 **지금 이 신원이 실제로 결정할 수 있는 승인 항목의 고유 `id`** 로만 판정한다.
+ *   `taskId` 가 아니라 `id` 를 쓰는 이유: 승인 항목은 업무 단위로 만들어지므로
+ *   `taskId` 로 대조하면 같은 업무의 다른 승인 항목까지 함께 열릴 수 있다.
+ * 판정 불가(빈 값·목록에 없음)는 숨긴다(fail-closed). 저장된 자료는 지우지 않는다.
+ */
+export const isApprovalVisibleToIdentity = (
+  approvalId: string | undefined | null,
+  decidableApprovalIds: readonly string[]
+): boolean => !!approvalId && decidableApprovalIds.includes(approvalId);
+
+/**
  * 시험 운영 보고서는 **그것을 만든 신원**에게만 보여 준다.
  * 만든 시점의 `identity.key` 를 함께 기록해 두고 현재 키와 비교한다.
  */

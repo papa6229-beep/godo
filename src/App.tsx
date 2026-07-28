@@ -53,7 +53,7 @@ import type { ViewerRole } from './services/sessionRole';
 // B-use-4: 인증 게이트 + 로그인 신원 → 업무 행위자 연결.
 import { useAuthGate, useServerAccount, isAuthConfigured } from './services/authGate';
 import {
-  computeEffectiveIdentity, isTaskVisibleToIdentity, isReportOwnedBy
+  computeEffectiveIdentity, isTaskVisibleToIdentity, isApprovalVisibleToIdentity, isReportOwnedBy
 } from './services/effectiveIdentity';
 import type { EffectiveIdentity } from './services/effectiveIdentity';
 import AuthGateScreen from './components/AuthGateScreen';
@@ -1196,11 +1196,16 @@ function App() {
   // ── B-use-4 보완(3.4): 계정 전환 시 이전 계정의 상세·보고서 격리 ──────────
   //   App 은 인증 게이트 동안 마운트를 유지하므로 팝업 상태가 그대로 남는다.
   //   기존 자료를 지우지 않고 **현재 열람 범위·신원으로 표시만** 막는다.
+  //   업무 상세: **열람 범위**(같은 팀이면 팀원도 본다)가 기준이다.
   const visibleTaskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
   const visibleTaskDetail =
     isTaskVisibleToIdentity(selectedTaskForResult?.id, visibleTaskIds) ? selectedTaskForResult : null;
+  //   승인 상세: **결정 권한**이 기준이다. 열람 범위로 판정하면 팀장이 연 승인 상세가
+  //   같은 팀 팀원 계정으로 전환한 뒤에도 남는다(팀원은 업무는 보지만 승인 담당자가 아니다).
+  //   업무 단위로 만들어지는 승인 항목이므로 taskId 가 아니라 **고유 id** 로 대조한다.
+  const myPendingApprovalIds = useMemo(() => myPendingApprovals.map((a) => a.id), [myPendingApprovals]);
   const visibleApprovalDetail =
-    isTaskVisibleToIdentity(selectedApprovalDetail?.taskId, visibleTaskIds) ? selectedApprovalDetail : null;
+    isApprovalVisibleToIdentity(selectedApprovalDetail?.id, myPendingApprovalIds) ? selectedApprovalDetail : null;
   const visibleReport = isReportOwnedBy(reportIdentityKey, identity.key) ? report : null;
 
   // B-use-4: active(또는 미구성 open)가 아니면 대시보드 트리를 마운트하지 않는다

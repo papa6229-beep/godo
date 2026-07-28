@@ -617,8 +617,10 @@ const TABS = ['office', 'agents', 'logs', 'brain', 'studio', 'engine', 'data', '
   ok('X-31. 열린 업무 상세는 A 에게만 표시된다',
     IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsA) === true
     && IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsB) === false);
-  ok('X-32. 승인 상세도 같은 규칙(taskId 가 현재 범위에 있을 때만)',
-    IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsB) === false);
+  // ⚠️ X-32 는 삭제했다 — "승인 상세도 taskId 가 열람 범위에 있으면 표시" 는 **잘못된 정책**이었다.
+  //    쓰던 사례가 다른 팀(design 업무 vs cs 팀원)이라 팀 필터만으로 걸러졌고,
+  //    **같은 팀 팀원** 사례를 한 번도 실행하지 않아 누출을 놓쳤다.
+  //    올바른 기준(결정 권한)은 아래 [Y] 구간에서 실제 lifecycle 도구로 재현한다.
   ok('X-33. taskId 가 없거나 빈 값이면 열지 않는다(fail-closed)',
     IDENT.isTaskVisibleToIdentity(undefined, idsA) === false
     && IDENT.isTaskVisibleToIdentity(null, idsA) === false
@@ -643,6 +645,110 @@ const TABS = ['office', 'agents', 'logs', 'brain', 'studio', 'engine', 'data', '
   ok('X-39. 격리를 effect+setState 로 하지 않는다(파생 판정)',
     !/useEffect\([^)]*setSelectedTaskForResult/.test(appBody)
     && !/useEffect\([^)]*setSelectedApprovalDetail/.test(appBody));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// [Y] 승인 상세 격리 — **결정 권한** 기준 (업무 열람 권한이 아니다)
+//
+// 배경: `visibleTasksFor` 는 팀만 본다(`ownerTeamId`/`requestingTeamId` 일치).
+//   그래서 같은 팀 **일반 팀원도 업무는 볼 수 있다.** 그러나 승인 담당자는 아니다
+//   (`pendingForActor` → `canDecide` → `hasLeadAuthority`).
+//   두 결과가 실제로 갈리는지를 문구 검색이 아니라 **기존 lifecycle 도구로 재현**한다.
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[Y] 승인 상세 격리 — 같은 팀 팀장 vs 일반 팀원');
+{
+  const leadP = ACTOR.actorFromServerAccount(view('u_leadY', 'team_lead', 'product', '상품팀장'));
+  const memP = ACTOR.actorFromServerAccount(view('u_memY', 'member', 'product', '상품팀원'));
+  const hqY = ACTOR.actorFromServerAccount(view('u_hqY', 'hq', 'hq', '총괄'));
+
+  // App 과 **같은 순서**로 '내 확인 대기' 승인 목록을 만든다.
+  const pendingApprovalsFor = (actor) => {
+    const st = LA.hydrateAppState();
+    const myTasks = LA.pendingForActor(actor);
+    return st.approvalQueue.filter((q) => myTasks.some((t) => t.id === q.taskId));
+  };
+
+  // 상품팀 업무 1건을 결과 제출까지 진행 → 담당 팀장 확인 대기 상태로 만든다.
+  const ty = LA.createDirectiveTask({ title: '승인 격리 확인용 업무', targetTeamId: 'product', instructedBy: hqY }, ids);
+  const tyId = ty.ref.taskId;
+  LA.assignExecutor(tyId, { kind: 'human', executorId: 'u_memY', actor: leadP }, ids);
+  LA.submitResult(tyId, { resultSummary: '수행 완료', actor: memP }, ids);
+
+  // ① 업무 열람: 팀장·팀원 **둘 다** 본다 (팀 기준)
+  const leadTaskIds = LA.visibleTasksFor(leadP).map((x) => x.id);
+  const memTaskIds = LA.visibleTasksFor(memP).map((x) => x.id);
+  ok('Y-1. 같은 팀 팀장·팀원 **둘 다** 그 업무를 열람할 수 있다(팀 기준)',
+    leadTaskIds.includes(tyId) && memTaskIds.includes(tyId));
+
+  // ② 결정 권한: 팀장만 (계정 역할 기준) — 두 결과가 실제로 갈린다
+  const leadApprovals = pendingApprovalsFor(leadP);
+  const memApprovals = pendingApprovalsFor(memP);
+  const hqApprovals = pendingApprovalsFor(hqY);
+  const target = leadApprovals.find((a) => a.taskId === tyId);
+  ok('Y-2. 승인 대기 목록은 팀장에게만 잡힌다(pendingForActor 결과가 갈린다)',
+    !!target && !memApprovals.some((a) => a.taskId === tyId),
+    `팀장 ${leadApprovals.length}건 · 팀원 ${memApprovals.length}건`);
+  ok('Y-3. 같은 팀인데 열람은 같고 결정은 다르다 — 두 기준이 실제로 분리됨',
+    memTaskIds.includes(tyId) === true && memApprovals.some((a) => a.taskId === tyId) === false);
+
+  const leadIds = leadApprovals.map((a) => a.id);
+  const memIds = memApprovals.map((a) => a.id);
+  const hqIds = hqApprovals.map((a) => a.id);
+
+  // ③ 사례 1·2: 같은 팀 팀장은 보이고, 같은 팀 팀원은 안 보인다
+  ok('Y-10. 같은 팀 팀장은 그 승인 상세를 볼 수 있다',
+    IDENT.isApprovalVisibleToIdentity(target.id, leadIds) === true, target.id);
+  ok('Y-11. 같은 팀 일반 팀원은 업무는 보지만 **승인 상세는 볼 수 없다**',
+    IDENT.isApprovalVisibleToIdentity(target.id, memIds) === false);
+
+  // ④ 사례 3: HQ 전용 승인 항목은 HQ 가 아닌 신원에게 보이지 않는다
+  //    담당 팀장이 1차 확인을 마치면 다음 단계는 HQ(hq_directive 2단계)다.
+  LA.applyDecision(tyId, { kind: 'approve', actor: leadP }, ids);
+  const hqStageApprovals = pendingApprovalsFor(hqY);
+  const hqOnly = hqStageApprovals.find((a) => a.taskId === tyId);
+  const leadAfter = pendingApprovalsFor(leadP).map((a) => a.id);
+  const memAfter = pendingApprovalsFor(memP).map((a) => a.id);
+  ok('Y-20. HQ 확인 단계로 넘어가면 HQ 목록에 잡힌다', !!hqOnly, hqOnly ? hqOnly.id : '없음');
+  ok('Y-21. HQ 전용 승인 항목은 팀장에게 보이지 않는다',
+    IDENT.isApprovalVisibleToIdentity(hqOnly.id, leadAfter) === false);
+  ok('Y-22. HQ 전용 승인 항목은 팀원에게도 보이지 않는다',
+    IDENT.isApprovalVisibleToIdentity(hqOnly.id, memAfter) === false);
+  // ※ hqIds 는 팀장 확인 **이전** 시점 목록이므로 여기서는 쓰지 않는다(현재 단계 목록으로 대조).
+  ok('Y-23. HQ 본인에게는 보인다',
+    IDENT.isApprovalVisibleToIdentity(hqOnly.id, hqStageApprovals.map((a) => a.id)) === true);
+  ok('Y-24. 팀장 확인 이전에는 HQ 목록에 그 항목이 없었다(단계별로 갈린다)',
+    !hqIds.includes(hqOnly.id), `이전 HQ 목록 ${hqIds.length}건`);
+
+  // ⑤ 사례 4: 빈 값·목록 밖 → fail-closed
+  ok('Y-30. 승인 id 가 undefined/null/빈 문자열이면 열지 않는다',
+    IDENT.isApprovalVisibleToIdentity(undefined, hqStageApprovals.map((a) => a.id)) === false
+    && IDENT.isApprovalVisibleToIdentity(null, hqStageApprovals.map((a) => a.id)) === false
+    && IDENT.isApprovalVisibleToIdentity('', hqStageApprovals.map((a) => a.id)) === false);
+  ok('Y-31. 현재 대기 목록에 없는 승인 id 는 열지 않는다',
+    IDENT.isApprovalVisibleToIdentity('appr-없는업무', hqStageApprovals.map((a) => a.id)) === false);
+  // taskId 로 대조했다면 통과했을 값이 id 대조에서는 막힌다.
+  ok('Y-32. taskId 를 승인 id 자리에 넣어도 통과하지 않는다(고유 id 대조)',
+    IDENT.isApprovalVisibleToIdentity(tyId, hqStageApprovals.map((a) => a.id)) === false, tyId);
+
+  // ⑥ 사례 5: 원본 자료는 저장소에 남고 화면 노출만 막힌다
+  ok('Y-40. 계정 전환 후에도 원본 업무·승인 자료는 저장소에 그대로 있다',
+    LSTORE.loadLifecycleTasks().some((x) => x.ref.taskId === tyId)
+    && LA.hydrateAppState().approvalQueue.some((a) => a.taskId === tyId));
+
+  // ⑦ 사례 6: App 이 승인 id 집합으로 판정하는가
+  const appBody = codeLines('src/App.tsx');
+  ok('Y-50. App 이 승인 상세를 myPendingApprovals 의 id 집합으로 판정한다',
+    /const myPendingApprovalIds = useMemo\(\(\) => myPendingApprovals\.map\(\(a\) => a\.id\)/.test(appBody)
+    && /isApprovalVisibleToIdentity\(selectedApprovalDetail\?\.id, myPendingApprovalIds\)/.test(appBody));
+  ok('Y-51. 업무 열람 기준(isTaskVisibleToIdentity + taskId)으로 승인을 판정하지 않는다',
+    !/isTaskVisibleToIdentity\(selectedApprovalDetail/.test(appBody));
+  ok('Y-52. 업무 상세는 기존대로 열람 범위 기준을 유지한다',
+    /isTaskVisibleToIdentity\(selectedTaskForResult\?\.id, visibleTaskIds\)/.test(appBody));
+  ok('Y-53. effect 로 승인 모달 상태를 지우지 않는다(파생 판정)',
+    !/useEffect\([^)]*setSelectedApprovalDetail/.test(appBody));
+  ok('Y-54. 실제 결정은 여전히 applyDecision 도메인 검사를 거친다',
+    /applyDecision\(\s*\n?\s*item\.taskId/.test(appBody) || /applyDecision\(item\.taskId/.test(appBody)
+    || /const result = applyDecision\(/.test(appBody));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
