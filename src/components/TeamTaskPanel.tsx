@@ -34,6 +34,13 @@ export interface TeamTaskPanelProps {
   onTakeOver: (taskId: string) => void;
   onSubmit: (taskId: string, report: string) => void;
   onDecide: (taskId: string, kind: ApprovalDecisionKind, reason?: string) => void;
+  /**
+   * B-use-3(교정): 담당 팀장이 **자기 팀 내부 업무**를 여기서 직접 등록한다.
+   *   총괄 콘솔의 빠른 업무 추가 바는 팀장 화면(부서 업무 관장 탭)에 렌더되지 않으므로
+   *   팀 내부 업무에는 실제 진입점이 없었다.
+   *   저장·권한 판정은 App 이 한다. 이 패널은 문자열만 넘기고 결과(true/false)만 받는다.
+   */
+  onCreateTask?: (title: string) => boolean;
 }
 
 const SECTIONS = [
@@ -50,7 +57,7 @@ const agentsOfTeam = (teamId: DeptTeamId) =>
   });
 
 export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
-  actor, teamId, flows, onAssign, onTakeOver, onSubmit, onDecide, onRequestStop
+  actor, teamId, flows, onAssign, onTakeOver, onSubmit, onDecide, onRequestStop, onCreateTask
 }) => {
   // RC-2 D-1.3.3.2: 수정 사유는 원본(superseded) 업무에 있다. 이미 넘어온 흐름 목록을
   //   그대로 resolver 입력으로 쓴다(렌더 중 저장소 재조회 없음).
@@ -67,6 +74,8 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
   const [stopReqText, setStopReqText] = useState('');
   // B-use-2: 업무 상세 진입. 이 패널 안에서만 열고 닫으므로 상위 화면 상태는 그대로 남는다.
   const [detailFor, setDetailFor] = useState<string | null>(null);
+  // B-use-3(교정): 팀 내부 업무 추가 입력. 성공했을 때만 비운다(실패하면 다시 쓰지 않게).
+  const [newTitle, setNewTitle] = useState('');
 
   // 이 팀의 흐름만. (열람 범위는 App 이 이미 걸렀고, 여기서는 보고 있는 팀으로 한 번 더 좁힌다.)
   const teamFlows = flows.filter(
@@ -82,6 +91,20 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
   const detailFlow = detailFor
     ? teamFlows.find((f) => f.task.ref.taskId === detailFor) ?? null
     : null;
+
+  /**
+   * 팀 내부 업무 추가 입력을 **누구에게 보여 줄지**.
+   *   담당 팀장 본인에게만. 총괄이 남의 팀 화면을 볼 때도, 총괄팀 화면에서도 보이지 않는다.
+   *   (총괄이 팀에 시키는 것은 '지시', 총괄팀으로 올리는 것은 '확인 요청'이라 경로가 다르다.)
+   *   최종 허용 여부는 여기서 정하지 않는다 — App 의 계약이 다시 판정하고 거부 사유를 낸다.
+   */
+  const canCreateTeamTask = !!onCreateTask && isOwningLead && teamId !== 'hq';
+
+  const submitNewTask = () => {
+    const title = newTitle.trim();
+    if (!title || !onCreateTask) return;
+    if (onCreateTask(title)) setNewTitle('');
+  };
 
   const submitReport = (taskId: string) => {
     const text = reportText.trim();
@@ -338,6 +361,30 @@ export const TeamTaskPanel: React.FC<TeamTaskPanelProps> = ({
           ? '지시받은 업무입니다. 수행 방식을 정하고, 결과가 나오면 확인해 주세요.'
           : '읽기 전용입니다. 수행 방식과 결과 확인은 담당 팀장이 합니다.'}
       </p>
+
+      {/* B-use-3(교정): 팀 내부 업무 추가 — 담당 팀장 본인에게만 보인다.
+          별도 화면·모달을 만들지 않고 기존 업무 탭 안에 입력 한 줄만 둔다. */}
+      {canCreateTeamTask && (
+        <div className="ttask-new">
+          <input
+            type="text"
+            className="ttask-new-input"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitNewTask(); } }}
+            placeholder="우리 팀에서 처리할 업무를 적어 주세요"
+            aria-label="팀 내부 업무 추가"
+          />
+          <button
+            type="button"
+            className="ttask-btn primary"
+            disabled={!newTitle.trim()}
+            onClick={submitNewTask}
+          >
+            업무 추가
+          </button>
+        </div>
+      )}
 
       {SECTIONS.map((sec) => {
         const rows = teamFlows.filter((f) => f.task.status === sec.key);

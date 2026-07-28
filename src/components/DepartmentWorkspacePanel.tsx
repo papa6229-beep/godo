@@ -186,6 +186,11 @@ export interface DepartmentWorkspaceLifecycle {
   /** 총괄에게 보낸 '확인 요청' 을 총괄이 결정할 카드 1건으로 남긴다. */
   /** B-use-3: 총괄 확인요청. 만들어진(또는 기존 멱등) 확인 카드 식별자를 돌려준다. */
   onHqReview: (message: TeamMessage) => { taskId: string; correlationId: string } | null;
+  /**
+   * B-use-3(교정): 팀장이 **자기 팀 내부 업무**를 이 화면에서 직접 등록한다.
+   * 권한 판정과 저장은 App(계약)이 한다 — 만들어졌으면 true.
+   */
+  onCreateTeamTask: (title: string, teamId: string) => boolean;
 }
 
 export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspaceLifecycle }> = ({ lifecycle }) => {
@@ -763,6 +768,9 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
               onSubmit={lifecycle.onSubmit}
               onDecide={lifecycle.onDecide}
               onRequestStop={lifecycle.onRequestStop}
+              // 팀 내부 업무 추가 — 지금 보고 있는 팀으로 고정해 넘긴다.
+              //   실제 허용 여부는 App 의 계약이 판정한다(화면은 결정하지 않는다).
+              onCreateTask={(title) => lifecycle.onCreateTeamTask(title, selectedTeamId)}
             />
           )}
           {tasksForSelectedTeam.length > 0 && (

@@ -511,6 +511,50 @@ export function createDirectiveTask(
   return task;
 }
 
+/**
+ * B-use-3(교정): 팀장이 **자기 팀 안에서 처리할 업무**를 직접 등록한다.
+ *
+ * 왜 별도 함수인가 — 이 경로에는 다음 셋이 모두 없다.
+ *   총괄 지시의 원본 메시지 · 협업의 요청팀/수행팀 두 카드 · 확인 요청의 review-only 표식.
+ * 그래서 `createDirectiveTask` 를 **그대로 재사용**하되, 화면이 판정하면 안 되는
+ *   권한 규칙만 여기 한 곳에 둔다(화면은 거부 사유를 그대로 보여 준다).
+ *
+ * 권한: **사람 팀장이 자기 팀에만.**
+ *   - AI actor 차단 — 업무를 만드는 것은 사람의 결정이다.
+ *   - 총괄(HQ) 차단 — 총괄이 팀에 시키는 것은 '지시'(hq_directive)다.
+ *   - 다른 팀 차단 — 남의 팀에 부탁하는 것은 '협업'(collaboration)이다.
+ *   - 총괄팀 대상 차단 — 총괄에게 올리는 것은 '확인 요청'(escalation)이다.
+ *
+ * 승인 경로는 새로 만들지 않는다. `createDirectiveTask` 안의 기존 `routeFor` 가
+ *   creator.teamId === ownerTeamId 를 보고 `team_internal` 로 판정한다.
+ * 원본 자료가 없으므로 **가짜 `inputRefs` 를 만들지 않는다.**
+ * 수행자는 `unassigned` 다 — 등록한 사람을 수행자로 자동 덮어쓰지 않는다(actor ≠ executor).
+ */
+export function createTeamInternalTask(
+  input: { title: string; teamId: ActorRef['teamId']; actor: ActorRef },
+  ids: IdContext
+): { ok: true; task: LifecycleTask } | { ok: false; reason: string } {
+  const title = input.title.trim();
+  if (!title) return { ok: false, reason: '업무 내용을 적어 주세요.' };
+  if (input.actor.kind !== 'human') {
+    return { ok: false, reason: '팀 업무 등록은 사람만 할 수 있습니다.' };
+  }
+  if (input.actor.teamId === 'hq') {
+    return { ok: false, reason: '총괄은 팀 내부 업무를 만들지 않고 담당 팀에 지시합니다.' };
+  }
+  if (input.teamId === 'hq') {
+    return { ok: false, reason: '총괄팀 업무는 확인 요청으로 올려 주세요.' };
+  }
+  if (input.actor.teamId !== input.teamId) {
+    return { ok: false, reason: '자기 팀 업무만 등록할 수 있습니다. 다른 팀에는 협업을 요청하세요.' };
+  }
+  const task = createDirectiveTask(
+    { title, targetTeamId: input.teamId, instructedBy: input.actor },
+    ids
+  );
+  return { ok: true, task };
+}
+
 const okResult = (task: LifecycleTask) => ({ ok: true as const, task, state: hydrateAppState() });
 const failResult = (reason: string) => ({ ok: false as const, reason, state: hydrateAppState() });
 

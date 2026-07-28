@@ -34,7 +34,8 @@ import { isSameAgent } from './services/agentIdRegistry';
 import {
   hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
   actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
-  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest, messageRef
+  quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest, messageRef,
+  createTeamInternalTask
 } from './services/taskLifecycleAppAdapter';
 // B-use-3: HQ 지시 1건 = 원본 메시지 + lifecycle 업무 + 활동 원장. 저장 경계는 repository 만 쓴다.
 import { postTeamMessage } from './services/repositories/teamMessageRepository';
@@ -858,6 +859,47 @@ function App() {
     return { taskId: r.task.ref.taskId, correlationId: r.task.ref.correlationId };
   };
 
+  /**
+   * B-use-3(교정): 팀장이 **자기 팀 화면에서** 팀 내부 업무를 등록한다.
+   *
+   * 이전 상태: 팀 내부 업무를 만드는 진입점은 총괄 콘솔(ChatConsole)의 빠른 업무 추가 바뿐이었다.
+   *   그런데 비HQ 사용자는 항상 부서 업무 관장 탭으로 이동하고(MainLayout.tsx:209),
+   *   ChatConsole 은 그 탭에서 렌더되지 않는다(MainLayout.tsx:355).
+   *   → 팀장에게는 진입점이 **아예 없었다**(헌법 §6: 진입할 수 없으면 완료가 아니다).
+   *
+   * 이번 교정은 기존 부서 업무 관장 → 업무 탭 → TeamTaskPanel 안에 입력 하나만 연결한다.
+   *   새 화면·새 모달·새 승인 규칙을 만들지 않는다.
+   * 권한 판정은 화면이 아니라 계약(`createTeamInternalTask`)이 한다.
+   *   실패하면 아무것도 만들지 않고 거부 사유를 그대로 보여 준다.
+   */
+  const handleCreateTeamTask = (title: string, teamId: string): boolean => {
+    const actor = sessionActor();
+    const r = createTeamInternalTask(
+      { title, teamId: teamId as ViewerRole, actor },
+      { newId: newTaskId, nowIso: nowIso() }
+    );
+    if (!r.ok) {
+      addLog(r.reason, 'warning', 'SYSTEM');
+      return false;
+    }
+    // 원본 메시지가 없는 경로다 — 가짜 refId·inputRefs 를 만들지 않고 업무 식별자만 남긴다.
+    logActivity({
+      teamId: actor.teamId,
+      // 기존 ActivityType 만 쓴다(새 종류를 만들지 않는다). 'note' 는 상태 집계를 왜곡하지 않는다.
+      type: 'note',
+      status: 'info',
+      title: r.task.title,
+      detail: `${roleMeta(teamId as ViewerRole).label} 팀 내부 업무 등록`,
+      actor,
+      relatedTeam: teamId as DeptTeamId,
+      taskId: r.task.ref.taskId,
+      correlationId: r.task.ref.correlationId
+    });
+    refreshLifecycleState();
+    addLog(`팀 업무 "${r.task.title}"을 등록했습니다. 수행 방식을 정해 주세요.`, 'info', 'SYSTEM');
+    return true;
+  };
+
   /** 팀 간 협업 요청 — 요청팀 카드와 수행팀 카드를 함께 남긴다. */
   const handleCollaborationRequest = (
     title: string,
@@ -1100,6 +1142,7 @@ function App() {
             actor: sessionActor(),
             onCollaborate: handleCollaborationRequest,
             onHqReview: handleHqReview,
+            onCreateTeamTask: handleCreateTeamTask,
             flows: lifecycleFlows,
             onRequestStop: handleRequestStop,
             onAssign: handleAssignExecutor,
