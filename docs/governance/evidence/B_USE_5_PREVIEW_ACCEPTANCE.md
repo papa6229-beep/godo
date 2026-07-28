@@ -139,7 +139,62 @@ vercel curl /api/auth/suspend     --deployment dpl_Capuzbx55XzApTFX8PxKPw28hZg6 
 vercel curl /api/marketing/behavior-events --deployment dpl_Capuzbx55XzApTFX8PxKPw28hZg6 -- -X OPTIONS -s -o /dev/null -w "HTTP %{http_code}\n"
 ```
 
-## 8. 다음 단계 (계정 준비 순서)
+## 8. 1차 실제 화면 관측 (2026-07-28, Codex 실행) — **차단 결함 1건 발견**
+
+> 위 §1~§7 은 Source `b87ce91` Preview 에 대한 **과거 관측 기록으로 그대로 보존한다.** 아래는 그 배포에서 실제 브라우저로 확인한 결과다.
+
+**정상 확인된 항목** (실제 화면)
+
+| 항목 | 결과 |
+|---|---|
+| 로그인 전 대시보드 미노출 | 확인 |
+| `admin` 계정 로그인 | 성공 |
+| 로그인 후 비밀번호 입력란 소멸 | 확인 |
+| 계정 표시 | `[시험] HQ 관리자 · hq` |
+| HQ 전용 메뉴 노출 | 확인 |
+| 전체 부서 관제 화면 | 확인 |
+| `계정 관리` 진입 | 성공 |
+| `가입 승인 (총괄)` 화면 진입 | 성공 |
+| 승인 대기 0건 표시 | 정상 |
+
+**차단 결함 — active 계정 로그아웃 진입점 부재**
+
+- `AuthGateScreen.tsx` 의 `PendingScreen`(`:163`·`:222`)과 `SuspendedScreen`(`:230`·`:238`)에만 `signOut` 이 있었다.
+- active 상태는 `App.tsx` 가 대시보드를 바로 렌더하는데 **그 경로에 로그아웃 버튼·메뉴가 없었다.**
+- 저장소 전수 검색에서도 `signOut` 은 위 두 화면에만 존재했다.
+- 결과: **HQ→팀장→팀원 계정 전환·가입 신청·이전 계정 자료 격리 검사(B·C·D 구간)를 실제 화면에서 진행할 수 없었다.**
+
+## 9. 결함 수정 (2026-07-28)
+
+**종료조건**: 인증된 active 사용자가 화면에서 안전하게 로그아웃할 수 있고, 로그아웃 직후 대시보드가 사라지며 로그인·가입 화면으로 돌아간다.
+
+| 파일 | 변경 |
+|---|---|
+| `src/components/auth/SignOutButton.tsx` (신규) | Clerk `useClerk().signOut()` 만 쓰는 작은 버튼. Clerk 훅을 **이 컴포넌트 안에 가둔다** |
+| `src/components/MainLayout.tsx` | 신원 배지 바로 옆에 `{identity.mode === 'authenticated' && <SignOutButton />}` |
+| `src/components/MainLayout.css` | `.auth-signout-btn` (배지 옆 작은 pill 버튼) |
+| `scripts/smoke-b-use-4-auth-integration-v0.mjs` | 계약 4건 추가(C-10a~C-10d) |
+
+**설계 근거**
+- 미구성 로컬(시험 역할) 모드에는 `main.tsx` 가 `ClerkProvider` 를 씌우지 않으므로 Clerk 훅을 호출하면 안 된다. 그래서 **훅을 조건부로 마운트되는 버튼 안에만** 두고 `MainLayout` 은 Clerk 를 import 하지 않는다.
+- 쿠키 직접 삭제·localStorage 전체 삭제·페이지 강제 초기화를 쓰지 않는다. **Clerk `signOut()` 하나만** 호출한다.
+- 로그아웃 후 해제 경로는 기존 그대로다: `signOut()` → `ClerkAuthBridge` 의 `isSignedIn` effect → `registerSessionTokenGetter(null)` + `setServerAccount(null)` + `notifyAuthChange()` → `useServerAccount`/`useAuthGate` 재계산 → `computeEffectiveIdentity` 가 `actor: null` → `App` 의 게이트가 `login` 으로 `AuthGateScreen` 반환. **업무 자료는 삭제하지 않고 노출만 끊긴다.**
+- `계정 관리`(승인)와 섞지 않는다 — 버튼은 로그아웃만 한다.
+
+**검사 결과**: 집중검사 `smoke-b-use-4-auth-integration-v0.mjs` **206 → 210/210**(C-10a~C-10d 신규) · `tsc -b` exit 0 · 변경 파일 lint 오류·경고 0 · 인접 회귀 3건 PASS(B-use-3 103/103 포함) · `vite build` 성공.
+전체 `npm test` 는 A~G 화면검사가 끝난 뒤 한 번 실행한다(이번엔 반복하지 않는다).
+
+## 10. 수정 후 Preview
+
+| 항목 | 값 |
+|---|---|
+| Deployment URL | (아래 §12 참조 — 새 배포) |
+| Source commit | 수정 커밋 |
+| 상태 | Preview / Ready |
+
+**수정 후 실제 화면 결과는 아직 `Codex 재검증 대기` 다.** A~G 구간은 여전히 §5 표대로 **미검증**이며, 이번 수정으로 통과 처리된 항목은 없다.
+
+## 11. 다음 단계 (계정 준비 순서)
 
 Clerk 대시보드에서 직원 계정을 미리 만들지 **않는다** — 그러면 앱의 실제 가입과 `/api/auth/signup-metadata` 경로를 건너뛴다.
 

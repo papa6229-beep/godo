@@ -472,3 +472,8 @@
 .role-switcher-ico { font-size: 12px; }
 .role-switcher-sel { font-size: 12px; font-weight: 600; border: none; background: transparent; color: var(--text-primary, #e6edf3); cursor: pointer; outline: none; }
 .role-switcher-sel option { color: #111; }
+/* B-use-5: 로그인한 계정의 로그아웃 진입점 — 신원 배지 바로 옆에 작게 둔다.
+   '계정 관리'(승인)와 섞지 않는다. 인증 모드에서만 렌더된다. */
+.auth-signout-btn { margin-left: 6px; padding: 3px 10px; font-size: 12px; font-weight: 600; border-radius: 999px; border: 1px solid var(--line-subtle, #2a3441); background: rgba(255,255,255,0.03); color: var(--text-secondary, #9fb0c0); cursor: pointer; transition: all 0.14s ease; }
+.auth-signout-btn:hover:not(:disabled) { color: var(--text-primary, #e6edf3); border-color: var(--accent-primary, #31D6C4); }
+.auth-signout-btn:disabled { opacity: 0.6; cursor: default; }

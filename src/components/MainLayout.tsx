@@ -25,6 +25,9 @@ import { loadRole, saveRole, subscribeRole, VIEWER_ROLES, type ViewerRole } from
 import type { EffectiveIdentity } from '../services/effectiveIdentity';
 import { resolveActiveTab } from '../services/effectiveIdentity';
 import type { AppTab } from '../services/effectiveIdentity';
+// B-use-5: 로그인한 active 사용자의 로그아웃 진입점.
+//   Clerk 훅은 이 컴포넌트 안에만 있다 — 인증 미구성 모드에서는 아예 마운트하지 않는다.
+import SignOutButton from './auth/SignOutButton';
 import './MainLayout.css';
 
 // 관리/설정성 메뉴 — 우측 "관리자 설정" 드롭다운으로 묶음 (라우팅 키/화면 동작은 그대로)
@@ -285,6 +288,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               </span>
             </span>
           )}
+          {/* B-use-5: 로그인한 계정만 로그아웃할 수 있다.
+              시험 역할 모드(roleSwitcherEnabled)에는 Clerk 세션이 없으므로 만들지 않는다. */}
+          {identity.mode === 'authenticated' && <SignOutButton />}
         </div>
 
         <div className="header-right">

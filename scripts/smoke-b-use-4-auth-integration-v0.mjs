@@ -859,6 +859,23 @@ ok('C-2. 브리지: useAuth + registerAuthSource + /api/auth/me 실호출',
   ok('C-9. 이메일·전화 입력 없음', !/type="email"|emailAddress|전화번호|phoneNumber/.test(screen));
   ok('C-10. pending/suspended 화면에 로그아웃·상태 재확인 배선',
     (screen.match(/signOut\(\)/g) || []).length >= 2 && (screen.match(/refreshAuthStatus\(\)/g) || []).length >= 3);
+  // ── B-use-5: active 로그인 사용자의 로그아웃 진입점 ──
+  //   실제 화면 관측에서 발견된 차단 결함 — signOut 이 pending/suspended 화면에만 있어
+  //   active 로 로그인하면 계정을 바꿀 수 없었다(계정 전환·가입 검사가 전부 막혔다).
+  {
+    const layout = codeLines('src/components/MainLayout.tsx');
+    const btn = codeLines('src/components/auth/SignOutButton.tsx');
+    ok('C-10a. authenticated active 화면에 로그아웃 진입점이 있다',
+      /identity\.mode === 'authenticated' && <SignOutButton \/>/.test(layout) && /로그아웃/.test(btn));
+    ok('C-10b. demo/미구성 모드에는 Clerk 로그아웃 진입점을 만들지 않는다',
+      // 상위(MainLayout)는 Clerk 훅을 부르지 않는다 — 훅은 조건부로 마운트되는 버튼 안에만 있다.
+      !/from '@clerk\/react'/.test(layout) && /from '@clerk\/react'/.test(btn));
+    ok('C-10c. 로그아웃은 기존 Clerk signOut 을 쓴다(쿠키·localStorage 직접 조작 없음)',
+      /const \{ signOut \} = useClerk\(\)/.test(btn) && /await signOut\(\)/.test(btn)
+      && !/localStorage/.test(btn) && !/document\.cookie/.test(btn) && !/location\.(reload|href)/.test(btn));
+    ok('C-10d. 로그아웃 버튼이 계정 관리(승인) 기능과 섞이지 않는다',
+      !/api\/auth\/approve|pending-approvals|AccountAdminPanel/.test(btn));
+  }
   const panel = codeLines('src/components/auth/AccountAdminPanel.tsx');
   ok('C-11. 관리패널: 승인만 배선(member 기본 · team_lead 은 isHq 조건)',
     /authorizedFetch\('\/api\/auth\/approve'/.test(panel) && /approve\(a\.userId, 'member'/.test(panel)
