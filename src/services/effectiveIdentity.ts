@@ -111,3 +111,52 @@ export function computeEffectiveIdentity(input: EffectiveIdentityInput): Effecti
  */
 export const isOwnTeam = (identity: EffectiveIdentity, teamId: unknown): boolean =>
   identity.teamId !== null && identity.teamId === teamId;
+
+// ── 탭 접근 (렌더 전 동기 판정) ───────────────────────────────────────────────
+/** 화면 탭 식별자 — `MainLayout` 이 렌더하는 목록과 같다. */
+export type AppTab =
+  | 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department';
+
+/** 총괄만 들어갈 수 있는 탭. 그 밖(=`department`)은 모두가 쓴다. */
+export const HQ_ONLY_TABS: readonly AppTab[] =
+  ['office', 'agents', 'logs', 'brain', 'studio', 'engine', 'data', 'api', 'calendar'] as const;
+
+/**
+ * **실제로 렌더할 탭**을 동기적으로 정한다.
+ *
+ * 이전에는 `useEffect` 안에서 `setActiveTab('department')` 로 되돌렸는데,
+ * effect 는 **화면이 한 번 그려진 뒤** 실행되므로 다음 상황에서 HQ 화면이 한 렌더 동안 보였다.
+ *   - 로그인 직후 기본 탭이 `office` 인 상태
+ *   - HQ 계정에서 member 계정으로 바뀌었는데 이전 탭이 관리자·운영 탭인 경우
+ *
+ * 그래서 판정을 **렌더 경로의 순수 계산**으로 옮긴다. 비HQ 는 요청한 탭이 무엇이든 `department` 다.
+ * (effect 는 저장된 탭 상태를 정리하는 용도로만 남기고, 보안 경계로 쓰지 않는다.)
+ */
+export function resolveActiveTab(requested: AppTab, isHq: boolean): AppTab {
+  if (isHq) return requested;
+  return 'department';
+}
+
+/** 이 신원이 그 탭을 열 수 있는가(요청 그대로 렌더되는가). */
+export const canAccessTab = (tab: AppTab, isHq: boolean): boolean => resolveActiveTab(tab, isHq) === tab;
+
+// ── 상세·보고서 노출 (계정 전환 격리) ─────────────────────────────────────────
+/**
+ * 열려 있던 상세를 지금 신원에게 계속 보여도 되는가.
+ *
+ * 인증 게이트 동안 App 은 마운트 상태를 유지하므로, HQ 가 상세를 연 채 로그아웃하고
+ * 다른 직원이 로그인하면 **이전 계정의 객체가 그대로 남아** 다시 표시될 수 있었다.
+ * 업무 목록은 새 계정 기준으로 다시 계산되므로, **현재 열람 범위에 있는 것만** 연다.
+ * 기존 자료를 지우지 않고 화면 노출만 막는다.
+ */
+export const isTaskVisibleToIdentity = (
+  taskId: string | undefined | null,
+  visibleTaskIds: readonly string[]
+): boolean => !!taskId && visibleTaskIds.includes(taskId);
+
+/**
+ * 시험 운영 보고서는 **그것을 만든 신원**에게만 보여 준다.
+ * 만든 시점의 `identity.key` 를 함께 기록해 두고 현재 키와 비교한다.
+ */
+export const isReportOwnedBy = (reportIdentityKey: string | null, currentIdentityKey: string): boolean =>
+  reportIdentityKey !== null && reportIdentityKey === currentIdentityKey;

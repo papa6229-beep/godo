@@ -33,7 +33,7 @@ import { migrateLegacyGhostOrders } from './services/legacyOrderSnapshotMigratio
 import { isSameAgent } from './services/agentIdRegistry';
 import {
   hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
-  actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
+  pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
   quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest, messageRef,
   createTeamInternalTask, canCreateDirective
 } from './services/taskLifecycleAppAdapter';
@@ -52,7 +52,9 @@ import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sess
 import type { ViewerRole } from './services/sessionRole';
 // B-use-4: 인증 게이트 + 로그인 신원 → 업무 행위자 연결.
 import { useAuthGate, useServerAccount, isAuthConfigured } from './services/authGate';
-import { computeEffectiveIdentity } from './services/effectiveIdentity';
+import {
+  computeEffectiveIdentity, isTaskVisibleToIdentity, isReportOwnedBy
+} from './services/effectiveIdentity';
 import type { EffectiveIdentity } from './services/effectiveIdentity';
 import AuthGateScreen from './components/AuthGateScreen';
 import AccountAdminPanel from './components/auth/AccountAdminPanel';
@@ -191,6 +193,8 @@ function App() {
   const myPendingApprovals = approvalQueue.filter(q => myPendingTasks.some(t => t.id === q.taskId));
   const [showMyApprovals, setShowMyApprovals] = useState(false);
   const [report, setReport] = useState<OperationReport | null>(null);
+  // B-use-4 보완(3.4): 이 보고서를 **만든 신원**. 계정이 바뀌면 이전 계정 보고서를 보여 주지 않는다.
+  const [reportIdentityKey, setReportIdentityKey] = useState<string | null>(null);
   const [selectedTaskForResult, setSelectedTaskForResult] = useState<OperationTask | null>(null);
   const [selectedApprovalDetail, setSelectedApprovalDetail] = useState<ApprovalItem | null>(null);
 
@@ -565,17 +569,25 @@ function App() {
 
   // 비동기 순차 실행 시뮬레이터
   const handleStartSimulation = async () => {
+    // ── B-use-4 보완(3.3): 권한 확인이 **어떤 상태 변경보다도 먼저** 온다 ──
+    //   예전에는 setIsSimulating·setReport 를 먼저 하고 HQ 여부로 일괄 지시만 건너뛰었다.
+    //   그래서 팀원·팀장이 이 함수를 직접 불러도 런타임 실행·보고서 생성·에이전트 상태 변경·
+    //   운영이력 추가가 그대로 일어났다. 이제 그 이전에 되돌아간다.
     if (isSimulating) return;
+    const bulkActor = identity.actor;
+    if (!bulkActor || !identity.isHq) {
+      addLog('오늘의 운영 시작은 총괄 관리자만 할 수 있습니다.', 'warning', 'SYSTEM');
+      return;
+    }
 
     setIsSimulating(true);
     setReport(null);
+    setReportIdentityKey(null);
 
     // RC-2 D-1.3: 총괄의 '오늘의 운영 시작'은 **각 팀장에게 오늘 점검을 지시**하는 것이다.
     //   총괄이 다른 팀 AI 를 대신 실행하지 않는다. 수행 방식은 각 팀장이 정한다.
-    // B-use-4 보완: 화면 표시가 아니라 **권한 정본(identity)** 으로 판정하고,
     //   저장 직전에 계약(canCreateDirective)으로 한 번 더 확인한다.
-    const bulkActor = identity.actor;
-    if (identity.isHq && bulkActor) {
+    {
       const targets = VIEWER_ROLES.filter((r) => r.id !== 'hq');
       let made = 0;
       for (const t of targets) {
@@ -719,6 +731,7 @@ function App() {
       }, []);
       
       setReport(finalReport);
+      setReportIdentityKey(identity.key);   // 이 보고서를 만든 신원(계정 전환 시 격리 기준)
       setLastNativeAgentRun(runtimeResult.run);
 
       // OperationHistoryItem 축적 저장 (캘린더 연동)
@@ -1126,6 +1139,7 @@ function App() {
 
   const handleCloseReport = () => {
     setReport(null);
+    setReportIdentityKey(null);
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -1178,6 +1192,16 @@ function App() {
   const currentSelectedAgent = selectedAgent
     ? agents.find((a) => a.id === selectedAgent.id) || null
     : null;
+
+  // ── B-use-4 보완(3.4): 계정 전환 시 이전 계정의 상세·보고서 격리 ──────────
+  //   App 은 인증 게이트 동안 마운트를 유지하므로 팝업 상태가 그대로 남는다.
+  //   기존 자료를 지우지 않고 **현재 열람 범위·신원으로 표시만** 막는다.
+  const visibleTaskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+  const visibleTaskDetail =
+    isTaskVisibleToIdentity(selectedTaskForResult?.id, visibleTaskIds) ? selectedTaskForResult : null;
+  const visibleApprovalDetail =
+    isTaskVisibleToIdentity(selectedApprovalDetail?.taskId, visibleTaskIds) ? selectedApprovalDetail : null;
+  const visibleReport = isReportOwnedBy(reportIdentityKey, identity.key) ? report : null;
 
   // B-use-4: active(또는 미구성 open)가 아니면 대시보드 트리를 마운트하지 않는다
   //   → 자식 대시보드의 회사 데이터 fetch 가 아예 시작되지 않는다.
@@ -1251,8 +1275,10 @@ function App() {
           onToggleTheme={toggleTheme}
           onStartSimulation={handleStartSimulation}
           onAddTask={handleAddTask}
-          departmentLifecycle={{
-            actor: identity.actor ?? actorForRole(viewerRole),
+          // B-use-4 보완(3.1): 인증 모드에서 계정이 없으면 **lifecycle 기능 자체를 넘기지 않는다.**
+          //   시험 역할 actor 로 대신 채우면 "계정 없으면 권한 0" 계약이 그 자리에서 깨진다.
+          departmentLifecycle={identity.actor ? {
+            actor: identity.actor,
             onCollaborate: handleCollaborationRequest,
             onHqReview: handleHqReview,
             onCreateTeamTask: handleCreateTeamTask,
@@ -1262,7 +1288,7 @@ function App() {
             onTakeOver: handleTakeOver,
             onSubmit: handleSubmitResult,
             onDecide: handleTaskDecision
-          }}
+          } : undefined}
           onSelectAgent={(agent) => setSelectedAgent(agent)}
           onClearLogs={handleClearLogs}
           onApprove={handleApprove}
@@ -1348,9 +1374,9 @@ function App() {
         />
       )}
 
-      {report && (
+      {visibleReport && (
         <ReportModal
-          report={report}
+          report={visibleReport}
           onClose={handleCloseReport}
           activeOperationsData={activeOperationsData}
           setActiveTab={setActiveTab}
@@ -1358,27 +1384,27 @@ function App() {
         />
       )}
 
-      {selectedTaskForResult && (
+      {visibleTaskDetail && (
         <TaskResultModal
-          task={selectedTaskForResult}
+          task={visibleTaskDetail}
           onClose={() => setSelectedTaskForResult(null)}
           // RC-2 D-1: 결과 화면에는 이력 전체를 넘긴다(승인·미채택·중단도 계속 조회 가능).
           approvalQueue={approvalHistory}
           onApprove={handleApprove}
           onReject={handleReject}
-          onCancel={cancelHandlerFor(selectedTaskForResult.reviewOnly)}
+          onCancel={cancelHandlerFor(visibleTaskDetail.reviewOnly)}
         />
       )}
 
-      {selectedApprovalDetail && (
+      {visibleApprovalDetail && (
         <ApprovalDetailModal
-          item={selectedApprovalDetail}
+          item={visibleApprovalDetail}
           onRequestRevision={handleRequestRevision}
-          onReturn={tasks.find(t => t.id === selectedApprovalDetail.taskId)?.parentTaskId ? handleReturn : undefined}
+          onReturn={tasks.find(t => t.id === visibleApprovalDetail.taskId)?.parentTaskId ? handleReturn : undefined}
           onClose={() => setSelectedApprovalDetail(null)}
           onApprove={handleApprove}
           onReject={handleReject}
-          onCancel={cancelHandlerFor(selectedApprovalDetail.reviewOnly)}
+          onCancel={cancelHandlerFor(visibleApprovalDetail.reviewOnly)}
         />
       )}
     </>

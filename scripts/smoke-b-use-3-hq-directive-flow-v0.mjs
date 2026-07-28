@@ -440,10 +440,15 @@ const DEPT = readFileSync(path.join(REPO, 'src', 'components', 'DepartmentWorksp
 const TPANEL = readFileSync(path.join(REPO, 'src', 'components', 'TeamTaskPanel.tsx'), 'utf8');
 
 // 회귀 가드: 이 두 사실이 바뀌면 "총괄 콘솔이 팀장 경로"라는 오판이 다시 생긴다.
-ok('E-30. 비HQ 사용자는 부서 업무 관장 탭으로 강제 이동한다(사실 고정)',
-  /!hq\s*&&\s*activeTab\s*!==\s*'department'/.test(LAYOUT));
+// B-use-4 보완(2026-07-28): 이 두 사실은 그대로이고 **판정 위치만 더 앞으로** 옮겨졌다.
+//   예전: useEffect 안에서 setActiveTab('department') — 화면이 한 번 그려진 뒤 실행
+//   지금: resolveActiveTab(activeTab, hq) 로 **렌더 전 동기 계산**
+//   단언을 새 구현 문구로 갱신한다(고정하는 사실은 동일하며, 오히려 더 강해졌다).
+ok('E-30. 비HQ 사용자는 부서 업무 관장 탭으로 제한된다(사실 고정)',
+  /const hq = identity\.isHq/.test(LAYOUT)
+  && /const effectiveActiveTab = resolveActiveTab\(activeTab, hq\)/.test(LAYOUT));
 ok('E-31. 총괄 콘솔(ChatConsole)은 부서 업무 관장 탭에 렌더되지 않는다(사실 고정)',
-  /activeTab\s*!==\s*'office'\s*&&\s*activeTab\s*!==\s*'department'/.test(LAYOUT));
+  /effectiveActiveTab\s*!==\s*'office'\s*&&\s*effectiveActiveTab\s*!==\s*'department'/.test(LAYOUT));
 
 ok('E-32. App 이 팀 내부 업무 계약을 호출', /createTeamInternalTask/.test(APP));
 ok('E-33. App 이 팀장 화면에 생성 핸들러를 내려보냄', /onCreateTeamTask/.test(APP));

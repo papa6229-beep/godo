@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-28 (B-use-4 로그인 권한 정본 단일화 보완)
+최종 갱신: 2026-07-28 (B-use-4 계정 전환 잔여 권한 경로 마감)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -16,7 +16,7 @@
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
 | 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과 → `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기) HEAD `61296fb`, 문서 조사만 | `git rev-parse` |
-| 현재 작업 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) — 인증 선별 통합 + 로그인 권한 정본 단일화 보완 | `git rev-parse --abbrev-ref HEAD` |
+| 현재 작업 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) — 인증 선별 통합 + 권한 정본 단일화 + 계정 전환 잔여 경로 마감 | `git rev-parse --abbrev-ref HEAD` |
 | 실행 장소 | **최종 미확정.** 유력 방향 = 회사가 관리하는 서버 또는 고도몰 전용 서버. **개인 데스크톱은 운영 서버로 쓰지 않는다.** 지금은 사용자 컴퓨터·기존 개발환경에서 개발·검사하고, 최종 서버 선택과 시험 이식은 11월 실작동 시험 전에 한다 | 사용자 확정 방향 (2026-07-28) |
 | DB | **미결정.** Supabase·Neon·Prisma 중 어떤 것도 채택하지 않았다. 특정 DB·클라우드 어댑터는 지금 구현하지 않는다 | `MASTER_PLAN §11` |
 | 실행 환경 | **현재** Vercel 이 개발·검증·Production 을 담당한다. **최종 배포처로 확정된 것은 아니다**(위 '실행 장소' 행 참조) | Vercel 대시보드 관측 |
@@ -395,6 +395,21 @@ Codex 독립검증이 자동검사가 놓친 실사용 결함 **2건**을 찾아
 교정: `accountFromPublicMetadata(userId, publicMetadata, fallbackName)` 로 분리·공개(순수 함수)하고 fail-closed 검증을 넣었다. `role` ∈ `hq|team_lead|member`, `status` ∈ `pending|active|suspended`, 역할·팀 조합(`isValidRoleTeamPair`: hq→`'hq'`, team_lead·member→실제 운영팀)을 모두 만족해야 계정으로 인정하고 **아니면 `null`(계정 없음 → 보호 API 403)**. **`team` 누락을 어떤 값으로도 보정하지 않는다.**
 
 **검사**: 집중검사 **162/162**(기존 114 + 신규 48 — `[S]` 단일 권한 문맥 25건 · `[M]` metadata 14건 · R 구간 갱신). 시나리오는 문자열 확인이 아니라 `computeEffectiveIdentity`·`canCreateDirective`·`accountFromPublicMetadata` **순수 함수 실행**과 실제 `taskFlowsFor` 열람 범위로 확인한다. B-use-3 집중검사 **103/103** 유지.
+
+**검사 갱신 2건(사실은 동일, 단언이 옛 구현 문구를 겨냥했던 것)**: `smoke-b-use-3` 의 E-30·E-31 과 `smoke-rc2-app-integration` 의 A35 를 새 구현 기준으로 고쳤다. 고정하는 사실(비HQ→`department` 제한 · `ChatConsole` 미렌더 · App 이 세션 신원을 결정 권한 ActorRef 로 연결)은 그대로이며 판정이 더 앞·더 강해졌다. **게이트를 줄인 것이 아니다.**
+
+#### 보완 2 — 계정 전환 잔여 권한 경로 마감 (2026-07-28, Codex 재검증 대기)
+
+Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜치에서 마감했다.
+
+| # | 남아 있던 것 (확인 지점) | 마감 |
+|---|---|---|
+| **A** | `App.tsx:1255` `identity.actor ?? actorForRole(viewerRole)` — "계정 없으면 권한 0" 계약과 모순 | fallback 제거. 계정이 없으면 **`departmentLifecycle` 을 아예 넘기지 않는다**(`identity.actor ? {...} : undefined`). App 에서 `actorForRole` **import 자체를 제거**해 업무·권한 경로에 0건 |
+| **B-1** | `MainLayout.tsx:216-219` 탭 강제이동이 `useEffect` → 첫 렌더 뒤 실행. 로그인 직후(기본 `office`)·HQ→member 전환 시 HQ 화면이 **한 렌더 동안** 보일 수 있었다 | `resolveActiveTab(activeTab, isHq)` 순수 함수 신설. `MainLayout` 은 **`effectiveActiveTab` 으로만** 렌더·네비 판정(원본 `activeTab` 직접 비교 0건). effect 는 저장 상태 정리용으로만 남고 경계가 아니다 |
+| **B-2** | `handleStartSimulation` 이 `setIsSimulating`·`setReport` 를 권한 확인보다 **먼저** 하고, HQ 가 아니어도 아래 런타임·보고서·에이전트 상태·운영이력이 계속 실행됐다 | 함수 시작부에서 ① 실행 중 확인 ② `identity.actor` + `identity.isHq` 확인 ③ 실패 시 경고 후 **즉시 반환**. 그 뒤에만 상태 변경·런타임 실행 |
+| **C** | `report`·`selectedTaskForResult`·`selectedApprovalDetail` 이 객체를 직접 들고 있어, HQ 가 상세를 연 채 로그아웃하고 다른 직원이 로그인하면 이전 계정 자료가 다시 표시될 수 있었다 | `isTaskVisibleToIdentity()` · `isReportOwnedBy()` 순수 함수로 **표시 직전 검증**. 상세는 현재 열람 범위(`tasks`)에 있을 때만, 보고서는 만든 신원 키와 현재 키가 같을 때만 렌더. **기존 자료는 삭제하지 않고 노출만 차단**하며, effect+setState 를 쓰지 않는 파생 판정이다 |
+
+**검사**: 집중검사 **162 → 188/188**(`[X]` 구간 26건 신규). 탭 허용·상세 노출 판단을 순수 함수(`resolveActiveTab`·`canAccessTab`·`isTaskVisibleToIdentity`·`isReportOwnedBy`)로 분리해 **실행 검사**한다 — 문자열 개수로 동작 검증을 대신하지 않는다. B-use-3 **103/103** · RC-2 lifecycle 스모크 10건 전부 PASS · lint 오류·경고 0.
 
 **B-use-4 는 여전히 완료가 아니다 — Codex 재검증 대기.**
 

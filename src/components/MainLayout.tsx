@@ -23,6 +23,8 @@ import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
 import { loadRole, saveRole, subscribeRole, VIEWER_ROLES, type ViewerRole } from '../services/sessionRole';
 import type { EffectiveIdentity } from '../services/effectiveIdentity';
+import { resolveActiveTab } from '../services/effectiveIdentity';
+import type { AppTab } from '../services/effectiveIdentity';
 import './MainLayout.css';
 
 // 관리/설정성 메뉴 — 우측 "관리자 설정" 드롭다운으로 묶음 (라우팅 키/화면 동작은 그대로)
@@ -62,7 +64,8 @@ interface MainLayoutProps {
   tasks: OperationTask[];
   logs: LogEntry[];
   isSimulating: boolean;
-  activeTab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department';
+  /** 요청된 탭. 실제로 렌더하는 것은 권한 정본으로 제한한 `resolveActiveTab` 결과다. */
+  activeTab: AppTab;
   approvalQueue: ApprovalItem[];
   setActiveTab: (tab: 'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department') => void;
   onStartSimulation: () => void;
@@ -213,10 +216,15 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   // 시험 역할 전환기 값(표시·조작용). 인증 모드에서는 **읽기 전용 신원 배지**로 대체된다.
   const [role, setRoleState] = useState<ViewerRole>(loadRole);
   useEffect(() => subscribeRole(() => setRoleState(loadRole())), []);
-  // 팀장 역할이면 접근 가능한 탭은 부서 업무 관장뿐 → 다른 탭이면 강제 이동.
+  // ── B-use-4 보완(3.2): 탭 접근을 **렌더 전 동기 판정**으로 제한한다 ──────────
+  //   `activeTab` 은 "요청된 탭"이고, 실제로 그리는 것은 `effectiveActiveTab` 이다.
+  //   비HQ 는 요청이 무엇이든 첫 계산부터 'department' 이므로
+  //   로그인 직후(기본 'office')나 HQ→member 전환 순간에도 HQ 화면이 한 번도 그려지지 않는다.
+  //   아래 effect 는 저장된 탭 상태를 **정리**할 뿐 보안 경계가 아니다.
+  const effectiveActiveTab = resolveActiveTab(activeTab, hq);
   useEffect(() => {
-    if (!hq && activeTab !== 'department') setActiveTab('department');
-  }, [hq, activeTab, setActiveTab]);
+    if (activeTab !== effectiveActiveTab) setActiveTab(effectiveActiveTab);
+  }, [activeTab, effectiveActiveTab, setActiveTab]);
   const changeRole = (r: ViewerRole) => { saveRole(r); setRoleState(r); };
 
   // 관리자 설정 드롭다운 (외부 클릭/ESC 닫기)
@@ -237,7 +245,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       document.removeEventListener('keydown', onKey);
     };
   }, [adminOpen]);
-  const adminActive = ADMIN_NAV_KEYS.includes(activeTab as AdminNavKey);
+  const adminActive = ADMIN_NAV_KEYS.includes(effectiveActiveTab as AdminNavKey);
   const selectAdminTab = (key: AdminNavKey) => {
     setActiveTab(key);
     setAdminOpen(false);
@@ -294,7 +302,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             {/* 오늘의 운영: 총괄 관리자 전용 */}
             {hq && (
               <button
-                className={`nav-tab-btn ${activeTab === 'office' ? 'active' : ''}`}
+                className={`nav-tab-btn ${effectiveActiveTab === 'office' ? 'active' : ''}`}
                 onClick={() => setActiveTab('office')}
                 title="오늘의 운영 현황 (총괄 전용)"
               >
@@ -302,7 +310,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               </button>
             )}
             <button
-              className={`nav-tab-btn ${activeTab === 'department' ? 'active' : ''}`}
+              className={`nav-tab-btn ${effectiveActiveTab === 'department' ? 'active' : ''}`}
               onClick={() => setActiveTab('department')}
               title="팀별 업무 공간 — 부서를 선택해 업무를 확인하고 지시"
             >
@@ -310,7 +318,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             </button>
             {hq && (
               <button
-                className={`nav-tab-btn ${activeTab === 'agents' ? 'active' : ''}`}
+                className={`nav-tab-btn ${effectiveActiveTab === 'agents' ? 'active' : ''}`}
                 onClick={() => setActiveTab('agents')}
                 title="AI 직원 현황"
               >
@@ -319,7 +327,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             )}
             {hq && (
               <button
-                className={`nav-tab-btn ${activeTab === 'calendar' ? 'active' : ''}`}
+                className={`nav-tab-btn ${effectiveActiveTab === 'calendar' ? 'active' : ''}`}
                 onClick={() => setActiveTab('calendar')}
                 title="일자별 운영 캘린더 및 일지"
               >
@@ -351,7 +359,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                           key={it.key}
                           type="button"
                           role="menuitem"
-                          className={`nav-admin-item ${activeTab === it.key ? 'active' : ''}`}
+                          className={`nav-admin-item ${effectiveActiveTab === it.key ? 'active' : ''}`}
                           onClick={() => selectAdminTab(it.key)}
                           title={it.title}
                         >
@@ -369,9 +377,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
       </header>
 
       {/* 메인 뷰포트 영역 */}
-      <div className={`main-viewport ${activeTab === 'office' ? 'office-tab-layout' : ''}${activeTab === 'department' ? 'department-tab-layout' : ''}`}>
+      <div className={`main-viewport ${effectiveActiveTab === 'office' ? 'office-tab-layout' : ''}${effectiveActiveTab === 'department' ? 'department-tab-layout' : ''}`}>
         {/* 좌측: 메인 채팅 제어 콘솔 (오늘의 운영/부서 업무 관장 탭은 자체 레이아웃 사용) */}
-        {activeTab !== 'office' && activeTab !== 'department' && (
+        {effectiveActiveTab !== 'office' && effectiveActiveTab !== 'department' && (
           <aside className="viewport-left">
             <ChatConsole
               activeOperationsData={activeOperationsData}
@@ -393,9 +401,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         <main 
           className="viewport-right" 
           tabIndex={-1} 
-          style={{ outline: 'none', padding: (activeTab === 'office' || activeTab === 'department') ? '0' : '15px' }}
+          style={{ outline: 'none', padding: (effectiveActiveTab === 'office' || effectiveActiveTab === 'department') ? '0' : '15px' }}
         >
-          {activeTab === 'office' && (
+          {effectiveActiveTab === 'office' && (
             <OfficeView
               agents={agents}
               tasks={tasks}
@@ -423,11 +431,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             />
           )}
 
-          {activeTab === 'department' && (
+          {effectiveActiveTab === 'department' && (
             <DepartmentWorkspacePanel lifecycle={departmentLifecycle} identity={identity} />
           )}
 
-          {activeTab === 'agents' && (
+          {effectiveActiveTab === 'agents' && (
             <AgentPanel
               agents={agents} 
               onSelectAgent={onSelectAgent} 
@@ -435,7 +443,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             />
           )}
 
-          {activeTab === 'brain' && (
+          {effectiveActiveTab === 'brain' && (
             <BrainPanel
               brainKnowledge={brainKnowledge}
               agents={agents}
@@ -451,7 +459,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             />
           )}
 
-          {activeTab === 'studio' && (
+          {effectiveActiveTab === 'studio' && (
             <StudioPanel
               brainKnowledge={brainKnowledge}
               agents={agents}
@@ -482,7 +490,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             />
           )}
 
-          {activeTab === 'engine' && (
+          {effectiveActiveTab === 'engine' && (
             <EnginePanel
               engineMode={engineMode}
               engineProviders={engineProviders}
@@ -499,13 +507,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             />
           )}
 
-          {activeTab === 'logs' && (
+          {effectiveActiveTab === 'logs' && (
             <div className="full-logs-panel">
               <ActivityLog logs={logs} onClearLogs={onClearLogs} />
             </div>
           )}
 
-          {activeTab === 'data' && (
+          {effectiveActiveTab === 'data' && (
              <DataPanel
                activeOperationsData={activeOperationsData}
                setActiveOperationsData={setActiveOperationsData}
@@ -517,7 +525,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
              />
            )}
 
-          {activeTab === 'api' && (
+          {effectiveActiveTab === 'api' && (
              <ApiBridgePanel
                activeOperationsData={activeOperationsData}
                setActiveOperationsData={setActiveOperationsData}
@@ -529,7 +537,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
              />
            )}
 
-          {activeTab === 'calendar' && (
+          {effectiveActiveTab === 'calendar' && (
              <CalendarPanel
                activeOperationsData={activeOperationsData}
                lastSelectedDate={lastSelectedDate}

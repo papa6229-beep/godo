@@ -485,9 +485,17 @@ red('A34. runtime/manual 생성부에 무조건 ownerTeamId:\'hq\' 가 없다',
   !/ownerTeamId:\s*'hq'/.test(appSource),
   "App 에 ownerTeamId:'hq' 고정 잔존");
 
-red('A35. App 이 역할 전환기(sessionRole)를 결정 권한에 연결한다',
-  /actorForRole/.test(appSource) && /viewerRole|sessionRole|loadRole/.test(appSource),
-  'App 이 역할을 ActorRef 로 쓰지 않음');
+// B-use-4 보완(2026-07-28): 신원 출처가 바뀌었다. 고정하는 사실은 같다 —
+//   "App 이 세션 신원을 결정 권한의 ActorRef 로 연결한다".
+//   예전: actorForRole(viewerRole) 를 App 이 직접 호출
+//   지금: computeEffectiveIdentity() 가 계산한 identity.actor 를 쓰고,
+//         인증 미구성 demo 모드에서만 그 안에서 actorForRole 이 쓰인다
+//         (App 에서 actorForRole 직접 호출은 §3.1 로 0건이 되었다).
+red('A35. App 이 세션 신원을 결정 권한의 ActorRef 로 연결한다',
+  /computeEffectiveIdentity\(/.test(appSource)
+  && /identity\.actor/.test(appSource)
+  && /viewerRole|sessionRole|loadRole/.test(appSource),
+  'App 이 세션 신원을 ActorRef 로 쓰지 않음');
 
 red('A36. 팀장용 "내 확인 대기" 진입로가 기존 승인 모달을 재사용해 존재한다',
   /내 확인 대기/.test(appSource + apprModal + readFileSync(path.join(REPO, 'src', 'components', 'ApprovalListModal.tsx'), 'utf8')) &&

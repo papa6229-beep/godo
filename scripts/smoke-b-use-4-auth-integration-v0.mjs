@@ -532,6 +532,120 @@ const idOf = (authConfigured, serverAccount, demoRole) =>
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// [X] 계정 전환 잔여 권한 경로 (재검증 A·B·C 마감) — 순수 함수 실행으로 확인
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[X] 계정 전환 잔여 경로: fallback · 탭 동기 제한 · 상세 격리');
+
+// ── A. 인증 모드의 시험 역할 fallback 제거 ──
+{
+  const appBody = codeLines('src/App.tsx');
+  ok('X-1. App 업무·권한 경로에 actorForRole(viewerRole) 0건',
+    !/actorForRole\(viewerRole\)/.test(appBody),
+    `${(appBody.match(/actorForRole\(/g) || []).length}곳`);
+  ok('X-2. App 이 actorForRole 을 아예 import 하지 않는다',
+    !/actorForRole/.test(src('src/App.tsx')));
+  ok('X-3. 계정이 없으면 lifecycle 기능 자체를 넘기지 않는다',
+    /departmentLifecycle=\{identity\.actor \? \{/.test(appBody) && /\} : undefined\}/.test(appBody));
+  // demo 모드는 computeEffectiveIdentity 가 actor 를 제공하므로 기존 동작이 유지된다.
+  ok('X-4. 미구성 demo 모드는 여전히 actor 를 제공한다(기능 유지)',
+    idOf(false, null, 'product').actor !== null && idOf(false, null, 'hq').actor !== null);
+  ok('X-5. 인증 모드 계정 없음은 actor 가 null(권한 0)', idOf(true, null, 'hq').actor === null);
+}
+
+// ── B. 탭 접근 동기 제한 ──
+const TABS = ['office', 'agents', 'logs', 'brain', 'studio', 'engine', 'data', 'api', 'calendar', 'department'];
+{
+  const forNonHq = TABS.map((t) => IDENT.resolveActiveTab(t, false));
+  ok('X-10. 비HQ 는 어떤 탭을 요청해도 첫 계산부터 department',
+    forNonHq.every((t) => t === 'department'), `[${[...new Set(forNonHq)].join(',')}]`);
+  const forHq = TABS.map((t) => IDENT.resolveActiveTab(t, true));
+  ok('X-11. HQ 는 요청한 탭 그대로', forHq.join(',') === TABS.join(','));
+  ok('X-12. canAccessTab: 비HQ 는 department 만 · HQ 는 전부',
+    TABS.filter((t) => IDENT.canAccessTab(t, false)).join(',') === 'department'
+    && TABS.every((t) => IDENT.canAccessTab(t, true)));
+  // HQ → member 전환 순간: 이전 탭이 무엇이든 HQ 화면이 한 번도 렌더되지 않는다.
+  const hqIdent = idOf(true, view('u_hq', 'hq', 'hq'), 'hq');
+  const memIdent = idOf(true, view('u_memP', 'member', 'product'), 'hq');
+  const beforeTab = IDENT.resolveActiveTab('office', hqIdent.isHq);
+  const afterTab = IDENT.resolveActiveTab('office', memIdent.isHq);
+  ok('X-13. HQ→member 전환 시 같은 요청 탭이 office → department 로 즉시 바뀐다',
+    beforeTab === 'office' && afterTab === 'department', `${beforeTab} → ${afterTab}`);
+  ok('X-14. 관리자 탭(brain/studio/data/api)도 비HQ 에게는 렌더되지 않는다',
+    ['brain', 'studio', 'data', 'api'].every((t) => IDENT.resolveActiveTab(t, false) === 'department'));
+  const layout = codeLines('src/components/MainLayout.tsx');
+  // 정리용 effect 한 줄(`activeTab !== effectiveActiveTab`)만 원본을 참조한다 — 렌더 비교는 0건.
+  ok('X-15. MainLayout 이 effectiveActiveTab 으로만 렌더한다(렌더용 activeTab 직접 비교 0건)',
+    /const effectiveActiveTab = resolveActiveTab\(activeTab, hq\)/.test(layout)
+    && !/(^|[^a-zA-Z])activeTab ===/.test(layout)
+    && (layout.match(/(^|[^a-zA-Z])activeTab !==/g) || []).length === 1
+    && /if \(activeTab !== effectiveActiveTab\)/.test(layout));
+  ok('X-16. effect 는 상태 정리용일 뿐 경계가 아니다(비교 대상이 effectiveActiveTab)',
+    /if \(activeTab !== effectiveActiveTab\) setActiveTab\(effectiveActiveTab\)/.test(layout));
+}
+
+// ── B-2. 운영 시작 선차단 ──
+{
+  const appBody = codeLines('src/App.tsx');
+  const fn = appBody.slice(appBody.indexOf('const handleStartSimulation'), appBody.indexOf('const handleStartSimulation') + 1400);
+  const iGuard = fn.indexOf('!identity.isHq');
+  const firstMutation = Math.min(
+    ...['setIsSimulating(true)', 'setReport(null)', 'createDirectiveTask(', 'setAgents(', 'setOperationHistory(']
+      .map((n) => { const i = fn.indexOf(n); return i < 0 ? Number.MAX_SAFE_INTEGER : i; })
+  );
+  ok('X-20. 권한 확인이 첫 상태 변경보다 앞선다',
+    iGuard > 0 && iGuard < firstMutation, `guard@${iGuard} < mutation@${firstMutation}`);
+  ok('X-21. 권한 실패 시 즉시 반환(경고만)',
+    /if \(!bulkActor \|\| !identity\.isHq\) \{[\s\S]{0,200}?return;/.test(fn));
+  ok('X-22. HQ 확인 뒤에만 시뮬레이션 상태를 켠다',
+    fn.indexOf('setIsSimulating(true)') > iGuard);
+  // 실제 권한 판정으로도 확인: 팀장·팀원은 통과하지 못한다.
+  ok('X-23. 팀장·팀원 신원은 isHq=false 라 위 가드에서 걸린다',
+    idOf(true, view('u_leadP', 'team_lead', 'product'), 'hq').isHq === false
+    && idOf(true, view('u_memP', 'member', 'product'), 'hq').isHq === false);
+}
+
+// ── C. 계정 전환 상세 격리 ──
+{
+  // 사용자 A(HQ)가 만든 업무 → 사용자 B(상품팀 member)의 열람 범위에 없다.
+  const hqActor = ACTOR.actorFromServerAccount(view('u_hqX', 'hq', 'hq'));
+  const memActor = ACTOR.actorFromServerAccount(view('u_memX', 'member', 'cs'));
+  const t = LA.createDirectiveTask({ title: 'A 가 연 상세', targetTeamId: 'design', instructedBy: hqActor }, ids);
+  const idsA = LA.visibleTasksFor(hqActor).map((x) => x.id);
+  const idsB = LA.visibleTasksFor(memActor).map((x) => x.id);
+  ok('X-30. 사용자 A 열람 범위에는 있고 B 에는 없다',
+    idsA.includes(t.ref.taskId) && !idsB.includes(t.ref.taskId));
+  ok('X-31. 열린 업무 상세는 A 에게만 표시된다',
+    IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsA) === true
+    && IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsB) === false);
+  ok('X-32. 승인 상세도 같은 규칙(taskId 가 현재 범위에 있을 때만)',
+    IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsB) === false);
+  ok('X-33. taskId 가 없거나 빈 값이면 열지 않는다(fail-closed)',
+    IDENT.isTaskVisibleToIdentity(undefined, idsA) === false
+    && IDENT.isTaskVisibleToIdentity(null, idsA) === false
+    && IDENT.isTaskVisibleToIdentity('', idsA) === false);
+  // 보고서: 만든 신원 키와 현재 키가 같을 때만.
+  const keyA = idOf(true, view('u_hqX', 'hq', 'hq'), 'hq').key;
+  const keyB = idOf(true, view('u_memX', 'member', 'cs'), 'hq').key;
+  ok('X-34. 보고서는 만든 신원에게만 표시된다',
+    IDENT.isReportOwnedBy(keyA, keyA) === true && IDENT.isReportOwnedBy(keyA, keyB) === false);
+  ok('X-35. 소유 신원이 기록되지 않은 보고서는 표시하지 않는다',
+    IDENT.isReportOwnedBy(null, keyA) === false);
+  ok('X-36. 기존 자료를 삭제하지 않는다(업무는 저장소에 그대로)',
+    LSTORE.loadLifecycleTasks().some((x) => x.ref.taskId === t.ref.taskId));
+  const appBody = codeLines('src/App.tsx');
+  ok('X-37. 렌더가 원본 state 가 아니라 검증된 파생값을 쓴다',
+    /\{visibleTaskDetail && \(/.test(appBody) && /\{visibleApprovalDetail && \(/.test(appBody)
+    && /\{visibleReport && \(/.test(appBody)
+    && !/\{selectedTaskForResult && \(/.test(appBody) && !/\{selectedApprovalDetail && \(/.test(appBody)
+    && !/\{report && \(/.test(appBody));
+  ok('X-38. 보고서 생성 시 소유 신원 키를 함께 기록한다',
+    /setReportIdentityKey\(identity\.key\)/.test(appBody));
+  ok('X-39. 격리를 effect+setState 로 하지 않는다(파생 판정)',
+    !/useEffect\([^)]*setSelectedTaskForResult/.test(appBody)
+    && !/useEffect\([^)]*setSelectedApprovalDetail/.test(appBody));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // [M] 서버 권한 자료 fail-closed (결함 B 마감)
 // ══════════════════════════════════════════════════════════════════════════
 console.log('\n[M] metadata 검증 — 잘못된 권한 자료는 계정 없음으로 닫힌다');
