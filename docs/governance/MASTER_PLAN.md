@@ -90,8 +90,8 @@
 > **B-core(전체 3단계)는 완료.** 주문 원본 사실(`orderFacts`) · 재고위험 단일화 · 저장 경계(repository/facade) · actor/executor 분리 · TeamId 정본이 섰다.
 > **결제완료 공식 정본은 전체 5단계(C — 새 고도몰 READ·상태코드 확인)로 명시적 이관한다.** 그전까지 두 규칙의 결과와 `conflicted` 를 함께 보존하며 한쪽을 정본으로 삼지 않는다.
 > **B-use-3 은 Codex 독립검증을 통과했다** (기준 HEAD `c22586b` · smoke 123/123 + build + typecheck:api + lint, exit 0 · manifest include 123/exclude 0). 실제 화면 클릭 확인은 다음 Preview 인수검사에서 다른 화면과 함께 한다.
-> **B-use-4 인증 선별 통합은 로컬 구현·자동검증까지 끝났다**(브랜치 `codex/b-use-4-auth-integration`, 2026-07-28). 실제 Clerk 가입·로그인·HQ 부트스트랩·승인 후 화면 진입은 **아직 실증하지 않았다** — Preview 인수검사에서 한다.
-> **다음 한 작업: Codex 가 B-use-4 통합분을 독립검증한다.**
+> **B-use-4 인증 선별 통합 + 로그인 권한 정본 단일화 보완**까지 로컬 구현·자동검증이 끝났다(브랜치 `codex/b-use-4-auth-integration`, 2026-07-28). Codex 1차 독립검증이 찾은 실사용 결함 2건(로그인 계정과 시험 역할 미분리 · 서버 권한 자료 검증 느슨함)을 마감했다. 실제 Clerk 가입·로그인·HQ 부트스트랩·승인 후 화면 진입은 **아직 실증하지 않았다** — Preview 인수검사에서 한다.
+> **다음 한 작업: Codex 가 B-use-4 보완분을 재검증한다.**
 > 그다음 대기 중: ① DB 후보 2~3개 공식 가격·운영 조건 조사(입력은 `docs/governance/evidence/B_USE_2_SERVER_RECORDS_WORKLOAD.md`) ② Preview 인수검사(B-use-3 화면 눈검증 + 인증 실로그인 함께).
 > **DB 가 정해지기 전에는 서버 어댑터를 구현하지 않는다. B-use-2 는 기술 입력 준비까지만 끝났고 서버 기록 완료가 아니다.**
 > B-use 전체 인수검사로는 아직 넘어가지 않는다.
@@ -348,7 +348,11 @@ Codex 독립검증에서 발견: 팀 내부 업무는 **계약만 통과**했고
 1. **회사 서버에서도 fail-closed** — 인증 브랜치는 배포환경을 `VERCEL_ENV` 하나로 판정했다. 최종 실행 장소가 미확정이고 유력 방향이 회사 서버·고도몰 전용 서버이므로 그대로 두면 Vercel 밖에서 환경변수가 빠졌을 때 로컬 개발로 오인해 익명으로 열린다. 보호환경 판정을 `Vercel production/preview` + `NODE_ENV=production` + `AUTH_ENFORCE` + **환경 불명(기본값)** 으로 넓히고, 명시적 개발 신호에서만 미구성 open 을 허용한다. 허용 출처는 `AUTH_AUTHORIZED_PARTIES` 단독으로 완결된다(Vercel 도메인은 추가 입력).
 2. **로그인 신원 → 업무 행위자** (**구조 패치** — `CURRENT_STATE` 에 이유·영향·하위호환 기록). 인증된 운영 모드에서는 서버 계정 뷰만 신원 근거이며 열람 범위와 권한이 같은 출처를 쓴다. 역할 전환기로 범위·권한이 넓어지지 않는다.
 
-검증: `smoke-b-use-4-auth-integration-v0.mjs` **114/114**(manifest 등록) · B-use-3 집중검사 **103/103** 유지 · `npm test` exit 0 · 음성 변형 3회.
+검증: `smoke-b-use-4-auth-integration-v0.mjs` **162/162**(manifest 등록) · B-use-3 집중검사 **103/103** 유지 · `npm test` exit 0.
+
+**보완(2026-07-28) — 로그인 권한 정본 단일화**: Codex 1차 검증이 찾은 실사용 결함 2건을 마감했다.
+① 화면 곳곳이 각자 `loadRole()` 을 읽어 로그인 계정과 시험 역할이 갈라지던 것을 `effectiveIdentity` 한 곳으로 모으고, 업무 목록을 `identity.actor` **파생값**으로 바꿔 로그인 전후 상태가 즉시 같은 계정 기준이 되게 했다. 시험 역할 전환기는 인증 모드에서 **읽기 전용**이다. 저장 직전 권한 확인(`canCreateDirective`)도 넣었다.
+② Clerk `publicMetadata` 의 role·status·역할·팀 조합을 fail-closed 로 검증하고, **`team` 누락을 `hq` 로 보정하던 것을 제거**했다. 자세한 내용은 `CURRENT_STATE.md` 참조.
 **미실증**: 실제 Clerk 가입·브라우저 로그인·HQ 부트스트랩·승인 후 화면 진입 · Preview/Production. → **Preview 인수검사에서 실증한다.**
 main 병합·push·배포·환경변수 변경은 하지 않았다.
 

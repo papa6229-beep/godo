@@ -33,6 +33,20 @@ export const isAccountTeamId = (v: unknown): v is AccountTeamId =>
   typeof v === 'string' && (ACCOUNT_TEAMS as readonly string[]).includes(v);
 export const isAccountRole = (v: unknown): v is AccountRole =>
   v === 'hq' || v === 'team_lead' || v === 'member';
+export const isAccountStatus = (v: unknown): v is AccountStatus =>
+  v === 'pending' || v === 'active' || v === 'suspended';
+
+/**
+ * B-use-4 보완 — 역할과 팀의 **조합**이 허용되는가.
+ *   hq        → 소속 표식은 반드시 'hq'
+ *   team_lead · member → 반드시 실제 운영팀(hq 는 팀이 아니다)
+ * 어긋나면 추측하거나 기본값으로 보정하지 않고 거부한다.
+ */
+export function isValidRoleTeamPair(role: unknown, team: unknown): boolean {
+  if (!isAccountRole(role)) return false;
+  if (role === 'hq') return team === 'hq';
+  return isAccountTeamId(team);
+}
 
 export type AccountHistoryEvent =
   | 'created' | 'approved' | 'suspended' | 'reinstated' | 'password_reset';

@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-28 (B-use-4 인증 선별 통합)
+최종 갱신: 2026-07-28 (B-use-4 로그인 권한 정본 단일화 보완)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -16,7 +16,7 @@
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
 | 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과 → `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기) HEAD `61296fb`, 문서 조사만 | `git rev-parse` |
-| 현재 작업 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) — 인증 선별 통합 | `git rev-parse --abbrev-ref HEAD` |
+| 현재 작업 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) — 인증 선별 통합 + 로그인 권한 정본 단일화 보완 | `git rev-parse --abbrev-ref HEAD` |
 | 실행 장소 | **최종 미확정.** 유력 방향 = 회사가 관리하는 서버 또는 고도몰 전용 서버. **개인 데스크톱은 운영 서버로 쓰지 않는다.** 지금은 사용자 컴퓨터·기존 개발환경에서 개발·검사하고, 최종 서버 선택과 시험 이식은 11월 실작동 시험 전에 한다 | 사용자 확정 방향 (2026-07-28) |
 | DB | **미결정.** Supabase·Neon·Prisma 중 어떤 것도 채택하지 않았다. 특정 DB·클라우드 어댑터는 지금 구현하지 않는다 | `MASTER_PLAN §11` |
 | 실행 환경 | **현재** Vercel 이 개발·검증·Production 을 담당한다. **최종 배포처로 확정된 것은 아니다**(위 '실행 장소' 행 참조) | Vercel 대시보드 관측 |
@@ -367,6 +367,36 @@ App 배선: `actorForView(role)` 하나가 **열람 범위와 권한의 단일 �
 
 **미실증(이번 완료 주장에 포함하지 않음)**: 실제 Clerk 가입·브라우저 로그인·HQ 부트스트랩·승인 후 화면 진입 · Preview/Production · 화면 눈검증 · Vercel 함수 번들 동작. → **Preview 인수검사에서 실증한다.**
 main 병합·push·배포·환경변수 변경·인증 브랜치 변경은 하지 않았다.
+
+#### 보완 — 로그인 권한 정본 단일화 (2026-07-28, Codex 재검증 대기)
+
+Codex 독립검증이 자동검사가 놓친 실사용 결함 **2건**을 찾아냈고 이 브랜치에서 마감했다.
+
+**결함 A — 로그인 계정과 시험 역할이 분리되지 않음** (확인된 지점)
+`App.tsx` 의 업무·흐름 상태가 마운트 시점(계정 도착 전) 시험 역할로 만들어지고 **서버 계정이 들어와도 다시 계산되지 않았다.** `MainLayout` 은 자체 `loadRole()` 로 HQ 메뉴를 판정했고, `DepartmentWorkspacePanel`·`AgentDetailModal` 도 각자 `loadRole()` 을 읽었으며, `viewerRole` 이 업무 생성·협업 요청·직접 지시 판단에 남아 있었다. → 로그인 전 시험 역할이 HQ 였다면 로그인 뒤에도 HQ 목록·메뉴가 남을 수 있었다.
+
+교정: **권한 정본 한 곳**을 만들었다.
+
+| 항목 | 내용 |
+|---|---|
+| 신설 | `src/services/effectiveIdentity.ts` — `computeEffectiveIdentity()` 순수 함수가 `mode / actor / teamId / role / isHq / isLead / roleSwitcherEnabled / label / key` 를 한 번에 계산 |
+| 신설 | `authGate.useServerAccount()` — 기존 auth subscriber 를 그대로 쓰는 반응형 계정 구독(알림 경로 1개) |
+| 규칙 | 인증 구성 + 계정 있음 → **서버 계정만** 신원 근거 · 인증 구성인데 계정 없음 → **시험 역할로 대체하지 않고 권한 0** · 인증 미구성 → 시험 역할 전환기 |
+| App | 업무 목록·흐름·확인대기를 `useState` 가 아니라 **`identity.actor` 파생값**으로 바꿨다. 신원이 바뀌면 자동으로 그 계정 기준이 된다. 저장 후 갱신은 `lifecycleRevision` 한 곳 → **effect 안에서 setState 하지 않는다**(무한 effect·중복 저장 없음) |
+| MainLayout | 자체 `loadRole()`/`isHqRole` 판정 제거 → `identity.isHq`. 역할 전환기는 `identity.roleSwitcherEnabled` 일 때만 조작 가능하고, 로그인 모드에서는 **읽기 전용 신원 배지**로 대체 |
+| DepartmentWorkspacePanel | `loadRole()` 0건. 보고 있는 팀은 파생값(총괄만 선택, 팀장·팀원은 항상 자기 팀). `messageActor` 는 `identity.actor` 에서 오고, 신원 미확인이면 발신하지 않는다 |
+| AgentDetailModal | `loadRole()` 제거 → `actorTeamId`·`actorIsLead` prop |
+| 저장 전 권한 | `taskLifecycleAppAdapter.canCreateDirective(actor, targetTeamId)` 신설 — 자기 팀=팀장 권한 · 다른 팀=HQ만 · AI actor 불가. 오늘의 운영 일괄 지시·일반 업무 추가가 **저장 직전에** 통과한다. 협업 `requestingTeamId` 와 직접 지시도 `identity.teamId` 기준 |
+| 남은 `loadRole()` | App 4곳(시험 모드 초기값·전환기 값)과 MainLayout 1곳(전환기 표시값)뿐. 인증과 무관한 시험 모드 용도는 유지했다 |
+
+**결함 B — 서버 권한 자료 검증이 느슨함** (확인된 지점)
+`clerkAuthAdapter.ts` 의 `metaToAccount` 가 `role`·`status` 를 검사 없이 단언하고 **`team` 누락 시 `'hq'` 로 기본 처리**했다.
+
+교정: `accountFromPublicMetadata(userId, publicMetadata, fallbackName)` 로 분리·공개(순수 함수)하고 fail-closed 검증을 넣었다. `role` ∈ `hq|team_lead|member`, `status` ∈ `pending|active|suspended`, 역할·팀 조합(`isValidRoleTeamPair`: hq→`'hq'`, team_lead·member→실제 운영팀)을 모두 만족해야 계정으로 인정하고 **아니면 `null`(계정 없음 → 보호 API 403)**. **`team` 누락을 어떤 값으로도 보정하지 않는다.**
+
+**검사**: 집중검사 **162/162**(기존 114 + 신규 48 — `[S]` 단일 권한 문맥 25건 · `[M]` metadata 14건 · R 구간 갱신). 시나리오는 문자열 확인이 아니라 `computeEffectiveIdentity`·`canCreateDirective`·`accountFromPublicMetadata` **순수 함수 실행**과 실제 `taskFlowsFor` 열람 범위로 확인한다. B-use-3 집중검사 **103/103** 유지.
+
+**B-use-4 는 여전히 완료가 아니다 — Codex 재검증 대기.**
 
 ## 6. 화면·기능 — "있는데 실무에서 안 되는" 것
 

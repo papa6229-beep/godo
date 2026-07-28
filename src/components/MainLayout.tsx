@@ -21,7 +21,8 @@ import type { OperationsDataSnapshot, ImportHistoryItem } from '../types/dataCon
 import type { DeptTeamId, TeamMessageAttachment } from '../types/teamMessage';
 import type { NativeAgentRun } from '../engine/nativeAgentRuntime/types';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
-import { loadRole, saveRole, subscribeRole, VIEWER_ROLES, isHqRole, type ViewerRole } from '../services/sessionRole';
+import { loadRole, saveRole, subscribeRole, VIEWER_ROLES, type ViewerRole } from '../services/sessionRole';
+import type { EffectiveIdentity } from '../services/effectiveIdentity';
 import './MainLayout.css';
 
 // 관리/설정성 메뉴 — 우측 "관리자 설정" 드롭다운으로 묶음 (라우팅 키/화면 동작은 그대로)
@@ -52,6 +53,11 @@ const ADMIN_NAV_KEYS: AdminNavKey[] = ['data', 'api', 'logs', 'brain', 'studio',
 interface MainLayoutProps {
   /** RC-2 D-1.3: 팀장 업무 배선(정본·갱신은 App 소유). */
   departmentLifecycle?: DepartmentWorkspaceLifecycle;
+  /**
+   * B-use-4 보완: **권한 정본**. 이 컴포넌트는 더 이상 자체적으로 역할을 읽어
+   * HQ 여부를 판정하지 않는다(로그인 계정과 시험 역할이 갈라지던 원인).
+   */
+  identity: EffectiveIdentity;
   agents: Agent[];
   tasks: OperationTask[];
   logs: LogEntry[];
@@ -142,6 +148,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onStartSimulation,
   onAddTask,
   departmentLifecycle,
+  identity,
   onSelectAgent,
   onClearLogs,
   onApprove,
@@ -200,10 +207,12 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   theme,
   onToggleTheme,
 }) => {
-  // 세션 역할(뷰어) — 총괄=전체, 팀장=본인 팀 보드만. 1단계 데모 전환.
+  // B-use-4 보완: HQ 여부는 **권한 정본**에서 온다. 여기서 loadRole() 로 다시 판정하지 않는다.
+  //   인증 모드 = 서버 계정 역할 · 미구성 로컬 = 시험 역할 전환기.
+  const hq = identity.isHq;
+  // 시험 역할 전환기 값(표시·조작용). 인증 모드에서는 **읽기 전용 신원 배지**로 대체된다.
   const [role, setRoleState] = useState<ViewerRole>(loadRole);
   useEffect(() => subscribeRole(() => setRoleState(loadRole())), []);
-  const hq = isHqRole(role);
   // 팀장 역할이면 접근 가능한 탭은 부서 업무 관장뿐 → 다른 탭이면 강제 이동.
   useEffect(() => {
     if (!hq && activeTab !== 'department') setActiveTab('department');
@@ -251,13 +260,23 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             <span className="badge-blink"></span>
             LOCAL APP MODE
           </span>
-          {/* 역할 전환(데모) — 실제 로그인/권한 격리는 다음 단계(백엔드) */}
-          <label className="role-switcher" title="지금 누구로 보는가 (데모 전환 · 실제 로그인은 다음 단계)">
-            <span className="role-switcher-ico">👤</span>
-            <select className="role-switcher-sel" value={role} onChange={(e) => changeRole(e.target.value as ViewerRole)}>
-              {VIEWER_ROLES.map((r) => <option key={r.id} value={r.id}>{r.emoji} {r.label}</option>)}
-            </select>
-          </label>
+          {/* B-use-4 보완: 시험 역할 전환기는 **인증 미구성 로컬 모드에서만** 조작 가능하다.
+              로그인 모드에서는 서버 계정을 읽기 전용으로 보여 준다(역할을 바꿔도 권한이 변하지 않는다). */}
+          {identity.roleSwitcherEnabled ? (
+            <label className="role-switcher" title="지금 누구로 보는가 (시험 역할 전환 · 인증 미구성 로컬 모드 전용)">
+              <span className="role-switcher-ico">👤</span>
+              <select className="role-switcher-sel" value={role} onChange={(e) => changeRole(e.target.value as ViewerRole)}>
+                {VIEWER_ROLES.map((r) => <option key={r.id} value={r.id}>{r.emoji} {r.label}</option>)}
+              </select>
+            </label>
+          ) : (
+            <span className="role-switcher" title="로그인한 계정입니다. 역할은 총괄 관리자가 정합니다.">
+              <span className="role-switcher-ico">👤</span>
+              <span className="role-switcher-sel" style={{ pointerEvents: 'none' }}>
+                {identity.label}{identity.teamId ? ` · ${identity.teamId}` : ''}
+              </span>
+            </span>
+          )}
         </div>
 
         <div className="header-right">
@@ -405,7 +424,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           )}
 
           {activeTab === 'department' && (
-            <DepartmentWorkspacePanel lifecycle={departmentLifecycle} />
+            <DepartmentWorkspacePanel lifecycle={departmentLifecycle} identity={identity} />
           )}
 
           {activeTab === 'agents' && (

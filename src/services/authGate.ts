@@ -99,3 +99,21 @@ export function useAuthGate(): AuthGateMode {
   }, []);
   return computeAuthGate(readAuthInput());
 }
+
+/**
+ * B-use-4 보완 — **서버 계정 반응형 구독**.
+ *
+ * `getServerAccount()` 는 모듈 변수라 값이 바뀌어도 React 가 다시 그리지 않는다.
+ * 로그인·로그아웃·승인 후 재확인 시 `setServerAccount` 가 부르는 같은 구독자 집합에 붙어,
+ * **계정이 바뀌면 화면의 권한 문맥이 즉시 다시 계산되게** 한다.
+ * (`useAuthGate` 와 같은 구독자 집합을 쓰므로 알림 경로가 하나다.)
+ */
+export function useServerAccount(): ServerAccountView | null {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const s = () => force((x) => x + 1);
+    subscribers.add(s);
+    return () => { subscribers.delete(s); };
+  }, []);
+  return getServerAccount();
+}

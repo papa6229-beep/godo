@@ -10,7 +10,7 @@ import {
 } from '../services/aiBrainSettings';
 import './AgentDetailModal.css';
 import { teamOfAgent } from '../services/taskLifecycleAppAdapter';
-import { loadRole, roleMeta } from '../services/sessionRole';
+import { roleMeta } from '../services/sessionRole';
 import type { ViewerRole } from '../services/sessionRole';
 
 const BRAIN_OPTIONS: { value: 'global' | BrainProviderId; label: string }[] = [
@@ -33,6 +33,12 @@ interface AgentDetailModalProps {
   onDirectInstruct: (target: { agentId: string; byTeamId: string }, instruction: string) => void;
   onNavigateToBrain: (itemId: string) => void;
   onNavigateToStudio?: (agentId: string) => void;
+  /**
+   * B-use-4 보완: 지금 이 사람의 **권한 정본 팀**과 팀장 자격.
+   * 예전에는 이 화면이 `loadRole()` 을 직접 읽어 로그인 계정과 갈라졌다.
+   */
+  actorTeamId: string | null;
+  actorIsLead: boolean;
 }
 
 const agentStatsMap: Record<string, { aiCount: number; dataset: string; synergy: string; level: number }> = {
@@ -64,12 +70,14 @@ export const AgentDetailModal: React.FC<AgentDetailModalProps> = ({
   onClose,
   onDirectInstruct,
   onNavigateToBrain,
-  onNavigateToStudio
+  onNavigateToStudio,
+  actorTeamId,
+  actorIsLead
 }) => {
   const [instruction, setInstruction] = useState('');
   // 이 AI 의 소속 팀 — 소속을 확인할 수 없으면 아무도 직접 지시할 수 없다(추측 금지).
   const instructionTargetTeam = teamOfAgent(agent.id);
-  const canInstructDirectly = !!instructionTargetTeam && loadRole() === instructionTargetTeam;
+  const canInstructDirectly = !!instructionTargetTeam && actorTeamId === instructionTargetTeam && actorIsLead;
   const [showPrompt, setShowPrompt] = useState(false);
   const [brainChoice, setBrainChoice] = useState<'global' | BrainProviderId>(() => getAgentBrainChoice(agent.id));
   const [brainMsg, setBrainMsg] = useState('');

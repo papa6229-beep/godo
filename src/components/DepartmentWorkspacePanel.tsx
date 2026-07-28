@@ -31,7 +31,8 @@ import { TeamTaskPanel } from './TeamTaskPanel';
 import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { routeTeamMessage } from '../services/taskLifecycleAppAdapter';
-import { loadRole, subscribeRole, isHqRole, roleMeta, type ViewerRole } from '../services/sessionRole';
+import type { ViewerRole } from '../services/sessionRole';
+import type { EffectiveIdentity } from '../services/effectiveIdentity';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import { loadAgentTasks, subscribeAgentTasks } from '../services/repositories/agentTaskRepository';
 import type { AgentTaskSpec } from '../types/agentTask';
@@ -193,18 +194,22 @@ export interface DepartmentWorkspaceLifecycle {
   onCreateTeamTask: (title: string, teamId: string) => boolean;
 }
 
-export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspaceLifecycle }> = ({ lifecycle }) => {
-  // 세션 역할 — 팀장이면 본인 팀만 보이고 선택됨(총괄은 전체).
-  const [role, setRole] = useState<ViewerRole>(loadRole);
-  const [selectedTeamId, setSelectedTeamId] = useState<TeamId>(() => { const r = loadRole(); return isHqRole(r) ? 'hq' : (r as TeamId); });
-  // 역할 변경 시(구독 콜백=이벤트 핸들러) 역할·선택 팀 동기화. 팀장이면 본인 팀 고정.
-  useEffect(() => subscribeRole(() => {
-    const r = loadRole();
-    setRole(r);
-    if (!isHqRole(r)) setSelectedTeamId(r as TeamId);
-  }), []);
-  const hqView = isHqRole(role);
-  const visibleTeams = hqView ? TEAMS : TEAMS.filter((t) => t.id === role);
+export const DepartmentWorkspacePanel: React.FC<{
+  lifecycle?: DepartmentWorkspaceLifecycle;
+  /** B-use-4 보완: **권한 정본**. 이 화면은 더 이상 loadRole() 을 직접 읽지 않는다. */
+  identity: EffectiveIdentity;
+}> = ({ lifecycle, identity }) => {
+  // B-use-4 보완: 지금 이 사람의 팀·HQ 여부는 **권한 정본**에서 온다.
+  //   인증 모드 = 서버 계정 · 미구성 로컬 = 시험 역할 전환기(identity 가 이미 그렇게 계산한다).
+  const hqView = identity.isHq;
+  const myTeamId = identity.teamId;
+  // 총괄만 팀을 직접 고른다. 팀장·팀원은 **항상 자기 팀**이다.
+  //   effect 로 동기화하지 않고 **파생값**으로 만든다 → 신원이 바뀌면 즉시 따라오고,
+  //   로그인 전 시험 역할로 고른 팀이 로그인 뒤에 남지 않는다.
+  const [pickedTeamId, setPickedTeamId] = useState<TeamId | null>(null);
+  const selectedTeamId: TeamId = hqView ? (pickedTeamId ?? 'hq') : ((myTeamId ?? 'hq') as TeamId);
+  const setSelectedTeamId = (id: TeamId) => setPickedTeamId(id);
+  const visibleTeams = hqView ? TEAMS : TEAMS.filter((t) => t.id === myTeamId);
   // 팀별 채팅 기록 — localStorage에서 복원(탭 이동/새로고침 유지, 팀별 분리)
   const [chatLog, setChatLog] = useState<Record<TeamId, ChatMessage[]>>(() => loadDeptChatLog());
   const [input, setInput] = useState('');
@@ -221,11 +226,15 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
   useEffect(() => subscribeTeamMessages(() => setTeamMessages(loadTeamMessages())), []);
   const refreshTeamMessages = () => setTeamMessages(loadTeamMessages());
   /**
-   * 메시지를 실제로 보내고 처리하는 사람 — **세션 역할**에서 온다.
+   * 메시지를 실제로 보내고 처리하는 사람 — **권한 정본(identity)** 에서 온다.
    * 화면에서 어느 팀을 보고 있든(selectedTeamId) 신원은 바뀌지 않는다.
+   * 신원을 확인할 수 없으면 발신 자체를 하지 않는다(fail-closed).
    */
-  const messageActor = { kind: 'human' as const, teamId: role as TeamId, label: roleMeta(role).label };
+  const messageActor = identity.actor
+    ? { kind: 'human' as const, teamId: identity.actor.teamId as TeamId, label: identity.actor.label }
+    : null;
   const handlePostTeamMessage = (input: CreateTeamMessageInput) => {
+    if (!messageActor) return;   // 신원 미확인 → 발신하지 않는다(fail-closed)
     const posted = postTeamMessage(input);
     // RC-2 D-1.3.3: 무엇을 만들지는 **받는 곳과 종류**로만 정한다(문구를 읽어 추측하지 않는다).
     //   다른 팀에 지원요청 → 협업 업무(요청팀 추적 + 수행팀 실행)
@@ -254,6 +263,7 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
   const handleResolveTeamMessage = (id: string, status: TeamMessageStatus) => {
     // 처리 주체도 화면 선택값이 아니라 실제 사용자다. 받은 팀 본인만 처리한다.
     const actor = messageActor;
+    if (!actor) return;
     const msgToResolve = teamMessages.find((m) => m.id === id);
     if (msgToResolve && msgToResolve.toTeam !== actor.teamId) return;
     resolveTeamMessage(id, status, actor);
@@ -264,7 +274,7 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
     }
     refreshTeamMessages();
   };
-  const handleMarkTeamMessageRead = (id: string) => { markInboxRead(id, messageActor); refreshTeamMessages(); };
+  const handleMarkTeamMessageRead = (id: string) => { if (!messageActor) return; markInboxRead(id, messageActor); refreshTeamMessages(); };
   // 자동 업무 스펙(Studio에서 편집) — 스토어에서 로드, 편집 시 storage 이벤트로 반영.
   const [agentTasks, setAgentTasks] = useState<AgentTaskSpec[]>(() => loadAgentTasks());
   useEffect(() => subscribeAgentTasks(() => setAgentTasks(loadAgentTasks())), []);
@@ -746,7 +756,7 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
           )}
         </div>
 
-        {rightTab === 'messages' && (
+        {rightTab === 'messages' && messageActor && (
           <TeamMessagePanel
             viewedTeamId={selectedTeamId}
             actor={messageActor}
@@ -779,7 +789,7 @@ export const DepartmentWorkspacePanel: React.FC<{ lifecycle?: DepartmentWorkspac
               tasks={tasksForSelectedTeam}
               revenue={productData.revenue}
               onRan={refreshTeamMessages}
-              viewerRole={role}
+              viewerRole={(myTeamId ?? 'hq') as ViewerRole}
             />
           )}
         </>)}

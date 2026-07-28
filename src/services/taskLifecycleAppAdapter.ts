@@ -20,6 +20,7 @@ import {
   isPendingForApproval,
   userStatusLabel,
   hasLeadAuthority,
+  hasHqAuthority,
   APPROVAL_ROUTES
 } from './taskLifecycleContract';
 import type {
@@ -559,6 +560,35 @@ export function createTeamInternalTask(
     ids
   );
   return { ok: true, task };
+}
+
+/**
+ * B-use-4 보완 — **업무 지시를 실제로 저장하기 전** 권한을 확인한다(버튼 숨김만으로 끝내지 않는다).
+ *
+ * 화면 어디서 부르든(총괄 콘솔 빠른 업무 추가 · 오늘의 운영 일괄 지시 · HQ 지시 작성기)
+ * 같은 규칙을 통과해야 한다.
+ *
+ *   자기 팀에 지시     → 팀장 권한 필요 (팀원 불가)
+ *   다른 팀에 지시     → **HQ 만**. 팀장이 다른 팀에 시키는 것은 협업 요청이다
+ *   AI actor          → 불가 (업무를 만드는 것은 사람의 결정)
+ *
+ * 계정 역할이 없으면(구형 저장분·데모 역할) 기존 판정 그대로다 —
+ * `hasLeadAuthority`/`hasHqAuthority` 가 그 하위호환을 담당한다.
+ */
+export function canCreateDirective(
+  actor: ActorRef,
+  targetTeamId: ActorRef['teamId']
+): { ok: true } | { ok: false; reason: string } {
+  if (actor.kind !== 'human') {
+    return { ok: false, reason: '업무 지시는 사람만 할 수 있습니다.' };
+  }
+  if (actor.teamId === targetTeamId) {
+    return hasLeadAuthority(actor)
+      ? { ok: true }
+      : { ok: false, reason: '팀 업무 등록은 팀장만 할 수 있습니다.' };
+  }
+  if (hasHqAuthority(actor)) return { ok: true };
+  return { ok: false, reason: '다른 팀에는 지시할 수 없습니다. 협업을 요청해 주세요.' };
 }
 
 const okResult = (task: LifecycleTask) => ({ ok: true as const, task, state: hydrateAppState() });

@@ -1,5 +1,5 @@
 // Godo AI Operating Center Main Entry
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Agent, LogEntry } from './types';
 import type { OperationTask } from './types/task';
 import type { ApprovalItem } from './types/approval';
@@ -35,7 +35,7 @@ import {
   hydrateAppState, applyDecision, createDirectiveTask, teamOfAgent, visibleTasksFor,
   actorForRole, pendingForActor, assignExecutor, takeOverByLead, submitResult, createCollaborationRequest,
   quarantineUnknownAffiliation, requestTaskStop, taskFlowsFor, createHqReviewRequest, messageRef,
-  createTeamInternalTask
+  createTeamInternalTask, canCreateDirective
 } from './services/taskLifecycleAppAdapter';
 // B-use-3: HQ 지시 1건 = 원본 메시지 + lifecycle 업무 + 활동 원장. 저장 경계는 repository 만 쓴다.
 import { postTeamMessage } from './services/repositories/teamMessageRepository';
@@ -51,8 +51,9 @@ import type { TeamMessageLike } from './services/taskLifecycleAppAdapter';
 import { loadRole, subscribeRole, roleMeta, VIEWER_ROLES } from './services/sessionRole';
 import type { ViewerRole } from './services/sessionRole';
 // B-use-4: 인증 게이트 + 로그인 신원 → 업무 행위자 연결.
-import { useAuthGate, getServerAccount, isAuthConfigured } from './services/authGate';
-import { actorFromServerAccount } from './services/authAccountActor';
+import { useAuthGate, useServerAccount, isAuthConfigured } from './services/authGate';
+import { computeEffectiveIdentity } from './services/effectiveIdentity';
+import type { EffectiveIdentity } from './services/effectiveIdentity';
 import AuthGateScreen from './components/AuthGateScreen';
 import AccountAdminPanel from './components/auth/AccountAdminPanel';
 import './App.css';
@@ -92,20 +93,6 @@ const withCanonicalInquiries = (snapshot: OperationsDataSnapshot): OperationsDat
 };
 
 
-/**
- * B-use-4 — 화면 열람 범위·권한 판정에 쓰는 **단일 행위자 출처**.
- *
- * 인증이 구성되고 로그인 계정이 있으면 **서버 계정이 이긴다.**
- *   → 역할 전환기를 아무리 돌려도 보이는 업무 범위도, 결정 권한도 넓어지지 않는다.
- * 인증 미구성(명시적 로컬 개발)에서만 역할 전환기 행위자(`demo_role`)를 쓴다.
- *   → 기존 검증 시나리오가 팀장·HQ 역할을 그대로 재현할 수 있어야 하기 때문이다.
- */
-const actorForView = (role: ViewerRole): ActorRef => {
-  const account = getServerAccount();
-  if (isAuthConfigured() && account) return actorFromServerAccount(account);
-  return actorForRole(role);
-};
-
 function App() {
   const { theme, toggleTheme } = useTheme();
   // B-use-4: 인증 게이트. 미구성(VITE_CLERK_PUBLISHABLE_KEY 없음) → 'open'(현행 개발 앱).
@@ -143,15 +130,16 @@ function App() {
 
   // RC-2 D-1: 업무·승인 상태의 정본은 저장된 lifecycle task 다. 화면 상태는 거기서 파생한다.
   //   (App 이 localStorage 를 직접 만지지 않고 어댑터/저장 서비스만 사용한다.)
-  const [tasks, setTasks] = useState<OperationTask[]>(() => visibleTasksFor(actorForView(loadRole())));
-  // RC-2 D-1.3: 팀장 화면은 화면용 요약이 아니라 **정본 LifecycleTask** 를 그대로 본다.
-  //   (수행자·이력·제출 내용이 필요하다. 저장·갱신은 계속 App 이 소유한다.)
-  const [lifecycleFlows, setLifecycleFlows] = useState(() => {
-    // 구버전 저장자료에 소속을 확인할 수 없는 담당자가 남아 있으면 지우지 않고 '소속 확인 필요'로 표시한다.
-    //   (신규 입력은 애초에 거부된다 — 이건 과거 자료 전용, idempotent.)
-    quarantineUnknownAffiliation();
-    return taskFlowsFor(actorForView(loadRole()));
-  });
+  //
+  // B-use-4 보완: 업무 목록·흐름을 **useState 로 들고 있지 않고 파생값으로 만든다.**
+  //   예전에는 마운트 시점(서버 계정 도착 전)에 시험 역할로 목록을 만들어 두고
+  //   계정이 들어와도 다시 계산하지 않아 로그인 전 HQ 목록이 남을 수 있었다.
+  //   이제 `identity.actor` 가 바뀌면 목록이 **자동으로** 그 계정 기준으로 다시 계산된다.
+  //   저장이 일어났을 때만 `lifecycleRevision` 을 올려 다시 읽는다(effect 안에서 setState 하지 않는다).
+  const [lifecycleRevision, setLifecycleRevision] = useState(0);
+  // 구버전 저장자료에 소속을 확인할 수 없는 담당자가 남아 있으면 지우지 않고 '소속 확인 필요'로 표시한다.
+  //   (신규 입력은 애초에 거부된다 — 이건 과거 자료 전용, idempotent. 마운트 1회.)
+  useState(() => { quarantineUnknownAffiliation(); return 0; });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [activeTab, setActiveTab] = useState<'agents' | 'office' | 'logs' | 'brain' | 'studio' | 'engine' | 'data' | 'api' | 'calendar' | 'department'>('office');
@@ -161,15 +149,44 @@ function App() {
   const [approvalHistory, setApprovalHistory] = useState<ApprovalItem[]>(() => hydrateAppState().history);
   // 역할 전환기와 동기화 — 전환 직후 결정 버튼도 새 역할을 사용한다.
   const [viewerRole, setViewerRole] = useState<ViewerRole>(() => loadRole());
-  // 역할이 바뀌면 열람 범위도 함께 바뀐다(팀장 ↔ 총괄 전환 시 이전 역할의 목록이 남지 않게).
-  useEffect(() => subscribeRole(() => {
-    const next = loadRole();
-    setViewerRole(next);
-    setTasks(visibleTasksFor(actorForView(next)));
-    setLifecycleFlows(taskFlowsFor(actorForView(next)));
-  }), []);
-  // 지금 이 역할이 결정할 수 있는 대기 업무(= '내 확인 대기').
-  const myPendingTasks = pendingForActor(actorForView(viewerRole));
+  // 시험 역할 전환기 값만 따라간다. **열람 범위 재계산은 아래 identity effect 한 곳**에서만 한다.
+  //   (인증 모드에서는 identity.key 가 역할 전환과 무관하므로 아무것도 다시 계산되지 않는다.)
+  useEffect(() => subscribeRole(() => setViewerRole(loadRole())), []);
+
+  // ── B-use-4 보완: 권한 정본 한 곳 ────────────────────────────────────────
+  //   인증 모드 = 서버 계정 · 미구성 로컬 = 시험 역할. 화면 전체가 이 값만 쓴다.
+  const serverAccount = useServerAccount();
+  const identity: EffectiveIdentity = useMemo(
+    () => computeEffectiveIdentity({
+      authConfigured: isAuthConfigured(),
+      serverAccount,
+      demoRole: viewerRole
+    }),
+    [serverAccount, viewerRole]
+  );
+
+  // 신원이 바뀌면(로그인·로그아웃·승인·시험 역할 전환) 열람 범위가 **같은 계정 기준으로 다시** 계산된다.
+  //   effect·setState 가 아니라 파생값이므로 무한 effect 도 중복 저장도 생기지 않는다.
+  //   "누구 기준으로" + "언제 저장된 것" 을 한 스냅샷 토큰으로 묶는다.
+  //   저장소는 React 밖에 있으므로 revision 이 바뀌어야 다시 읽는다.
+  const lifecycleSource = useMemo(
+    () => ({ actor: identity.actor, revision: lifecycleRevision }),
+    [identity.actor, lifecycleRevision]
+  );
+  const tasks = useMemo<OperationTask[]>(
+    () => (lifecycleSource.actor ? visibleTasksFor(lifecycleSource.actor) : []),
+    [lifecycleSource]
+  );
+  // RC-2 D-1.3: 팀장 화면은 화면용 요약이 아니라 **정본 LifecycleTask** 를 그대로 본다.
+  const lifecycleFlows = useMemo(
+    () => (lifecycleSource.actor ? taskFlowsFor(lifecycleSource.actor) : []),
+    [lifecycleSource]
+  );
+  // 지금 이 신원이 결정할 수 있는 대기 업무(= '내 확인 대기').
+  const myPendingTasks = useMemo(
+    () => (lifecycleSource.actor ? pendingForActor(lifecycleSource.actor) : []),
+    [lifecycleSource]
+  );
   // '내 확인 대기' 목록(기존 승인 모달 재사용 — 새 화면을 만들지 않는다).
   const myPendingApprovals = approvalQueue.filter(q => myPendingTasks.some(t => t.id === q.taskId));
   const [showMyApprovals, setShowMyApprovals] = useState(false);
@@ -555,18 +572,25 @@ function App() {
 
     // RC-2 D-1.3: 총괄의 '오늘의 운영 시작'은 **각 팀장에게 오늘 점검을 지시**하는 것이다.
     //   총괄이 다른 팀 AI 를 대신 실행하지 않는다. 수행 방식은 각 팀장이 정한다.
-    if (viewerRole === 'hq') {
+    // B-use-4 보완: 화면 표시가 아니라 **권한 정본(identity)** 으로 판정하고,
+    //   저장 직전에 계약(canCreateDirective)으로 한 번 더 확인한다.
+    const bulkActor = identity.actor;
+    if (identity.isHq && bulkActor) {
       const targets = VIEWER_ROLES.filter((r) => r.id !== 'hq');
+      let made = 0;
       for (const t of targets) {
+        const allowed = canCreateDirective(bulkActor, t.id);
+        if (!allowed.ok) { addLog(allowed.reason, 'warning', 'SYSTEM'); continue; }
         createDirectiveTask(
           // 이 실행은 검증 시나리오 기반 시험 운영이므로 만들어지는 지시도 시험 표식을 갖는다.
           //   (정식 HQ 업무 지시는 업무 탭의 '팀에 지시' 경로로 따로 만든다.)
-          { title: `[시험 시나리오] 오늘의 운영 점검 — ${t.label}`, targetTeamId: t.id, instructedBy: sessionActor() },
+          { title: `[시험 시나리오] 오늘의 운영 점검 — ${t.label}`, targetTeamId: t.id, instructedBy: bulkActor },
           { newId: newTaskId, nowIso: nowIso() }
         );
+        made += 1;
       }
       refreshLifecycleState();
-      addLog(`오늘의 운영 점검을 ${targets.length}개 팀장에게 지시했습니다. 수행 방식은 각 팀장이 정합니다.`, 'info', 'SYSTEM');
+      addLog(`오늘의 운영 점검을 ${made}개 팀장에게 지시했습니다. 수행 방식은 각 팀장이 정합니다.`, 'info', 'SYSTEM');
     }
     // RC-2 D-1.1: 실행 중 기존 승인 목록을 비우지 않는다.
     //   (비우면 실행 실패 시 새로고침 전까지 대기 건이 사라져 보인다. 정본은 저장 원장이다.)
@@ -723,22 +747,26 @@ function App() {
   };
 
   /**
-   * 업무 행위자(ActorRef)의 신원 출처 — 열람 범위와 **같은** 출처를 쓴다(`actorForView`).
+   * 업무 행위자 — 열람 범위·메뉴·권한과 **완전히 같은 출처**(`identity.actor`)를 쓴다.
    *
-   * B-use-4: 인증이 구성된 운영 모드에서는 서버가 돌려준 계정 뷰만 신원 근거다.
-   *   `userId`·이름·팀·역할이 `/api/auth/me` 결과에서만 오고 `identitySource: 'session_login'` 이다.
-   *   역할 전환기를 돌려도 `accountRole` 은 서버 값 그대로라 권한이 올라가지 않는다.
-   * 인증 미구성(명시적 로컬 개발)에서만 역할 전환기 행위자(`demo_role`)를 쓴다.
+   * 인증 모드에서 서버 계정이 없으면 `null` 이다. **시험 역할로 대체하지 않는다.**
+   *   (그 상태는 인증 게이트가 화면 자체를 막으므로 정상 사용 중에는 도달하지 않는다.
+   *    도달하더라도 아래 handler 들이 아무것도 저장하지 않고 사유를 알린다.)
    */
-  const sessionActor = () => actorForView(viewerRole);
+  /** 행위자가 없으면(인증 모드·계정 미확인) 아무것도 저장하지 않는다. */
+  const requireActor = (): ActorRef | null => {
+    const a = identity.actor;
+    if (!a) addLog('로그인 계정을 확인하기 전에는 이 작업을 할 수 없습니다.', 'warning', 'SYSTEM');
+    return a;
+  };
 
   // 저장소 정본에서 화면 상태를 다시 파생한다(단일 갱신 지점).
   //   RC-2 D-1.2: 업무 목록은 **역할별 열람 범위**로 거른다.
   //   총괄은 전 팀을 하나의 흐름으로 보고, 팀장은 자기 팀 업무와 자기가 요청한 협업만 본다.
   const refreshLifecycleState = (next?: ReturnType<typeof hydrateAppState>) => {
     const st = next ?? hydrateAppState();
-    setTasks(visibleTasksFor(sessionActor()));
-    setLifecycleFlows(taskFlowsFor(sessionActor()));
+    // 저장이 일어났음을 알린다 → 위 파생값이 **현재 신원 기준으로** 다시 계산된다.
+    setLifecycleRevision((r) => r + 1);
     setApprovalQueue(st.approvalQueue);
     setApprovalHistory(st.history);
   };
@@ -746,8 +774,18 @@ function App() {
   // 업무 지시 — **팀에게** 보낸다. 수행 방식(AI 배정/직접 처리)은 담당 팀장이 고른다.
   //   RC-2 D-1.2: 화면에서 AI 를 직접 골라 배정하지 않는다.
   const handleAddTask = (title: string, targetTeamId: string) => {
-    const teamId = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
-    const actor = sessionActor();
+    const actor = requireActor();
+    if (!actor) return;
+    // 대상 팀 기본값은 **화면 역할이 아니라 권한 정본의 팀**이다.
+    const fallbackTeam = identity.teamId;
+    if (!VIEWER_ROLES.some((r) => r.id === targetTeamId) && !fallbackTeam) {
+      addLog('담당 팀을 확인할 수 없어 업무를 만들지 않았습니다.', 'warning', 'SYSTEM');
+      return;
+    }
+    const teamId = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : fallbackTeam) as ViewerRole;
+    // B-use-4 보완: 버튼을 숨기는 것으로 끝내지 않는다 — 저장 직전에 서버 actor 권한을 확인한다.
+    const allowed = canCreateDirective(actor, teamId);
+    if (!allowed.ok) { addLog(allowed.reason, 'warning', 'SYSTEM'); return; }
     const task = createDirectiveTask(
       { title, targetTeamId: teamId, instructedBy: actor },
       { newId: newTaskId, nowIso: nowIso() }
@@ -790,9 +828,11 @@ function App() {
     text: string,
     attachments: TeamMessageAttachment[]
   ) => {
-    const actor = sessionActor();
+    const actor = requireActor();
+    if (!actor) return;
     // 권한 판정을 **가장 먼저** 한다. 실패하면 메시지도 업무도 원장도 만들지 않는다.
-    if (actor.kind !== 'human' || actor.teamId !== 'hq') {
+    //   B-use-4 보완: 팀만 'hq' 인 계정을 HQ 로 보지 않는다(계정 역할이 있으면 hq 만).
+    if (actor.kind !== 'human' || !identity.isHq) {
       addLog('총괄(HQ) 계정만 팀에 지시를 보낼 수 있습니다. 역할을 확인해 주세요.', 'warning', 'SYSTEM');
       return;
     }
@@ -836,31 +876,36 @@ function App() {
 
   /** 팀장이 수행 방식을 고른다 — 우리 팀 AI에게 맡기기 / 내가 직접 처리. */
   const handleAssignExecutor = (taskId: string, kind: 'agent' | 'human', executorId?: string) => {
-    const r = assignExecutor(taskId, { kind, executorId, actor: sessionActor() }, { nowIso: nowIso() });
+    const actor = requireActor(); if (!actor) return;
+    const r = assignExecutor(taskId, { kind, executorId, actor }, { nowIso: nowIso() });
     reportOutcome(r, kind === 'agent' ? '담당 AI에게 업무를 맡겼습니다.' : '직접 처리로 지정했습니다.');
   };
 
   /** 진행 중인 AI 작업을 팀장이 인수한다(기존 시도는 이력에 남는다). */
   const handleTakeOver = (taskId: string) => {
-    const r = takeOverByLead(taskId, { actor: sessionActor() }, { nowIso: nowIso() });
+    const actor = requireActor(); if (!actor) return;
+    const r = takeOverByLead(taskId, { actor }, { nowIso: nowIso() });
     reportOutcome(r, '팀장이 직접 인수했습니다. 이전 수행 기록은 그대로 남습니다.');
   };
 
   /** 수행자가 결과(업무보고)를 제출한다. 빈 보고는 계약에서 거부된다. */
   const handleSubmitResult = (taskId: string, report: string) => {
-    const r = submitResult(taskId, { resultSummary: report, actor: sessionActor() }, { nowIso: nowIso() });
+    const actor = requireActor(); if (!actor) return;
+    const r = submitResult(taskId, { resultSummary: report, actor }, { nowIso: nowIso() });
     reportOutcome(r, '결과를 제출했습니다. 담당 팀장 확인 대기로 넘어갑니다.');
   };
 
   /** 확인 완료·수정 요청·미채택·중단·반송 — 어떤 것이 가능한지는 계약이 정한다. */
   const handleTaskDecision = (taskId: string, kind: ApprovalDecisionKind, reason?: string) => {
-    const r = applyDecision(taskId, { kind, actor: sessionActor(), reason }, { nowIso: nowIso(), newId: newTaskId });
+    const actor = requireActor(); if (!actor) return;
+    const r = applyDecision(taskId, { kind, actor, reason }, { nowIso: nowIso(), newId: newTaskId });
     reportOutcome(r, '처리했습니다.');
   };
 
   /** 총괄·요청자가 담당 팀장에게 중단을 요청한다. 요청만으로는 아무것도 멈추지 않는다. */
   const handleRequestStop = (taskId: string, reason: string) => {
-    const r = requestTaskStop(taskId, { reason, actor: sessionActor() }, { nowIso: nowIso() });
+    const actor = requireActor(); if (!actor) return;
+    const r = requestTaskStop(taskId, { reason, actor }, { nowIso: nowIso() });
     reportOutcome(r, '담당 팀장에게 중단 요청을 보냈습니다. 실제 중단은 담당 팀장이 처리합니다.');
   };
 
@@ -875,7 +920,8 @@ function App() {
    *   총괄에게 일을 시키는 게 아니므로 수행자를 배정하지 않고 협업도 만들지 않는다.
    */
   const handleHqReview = (message: TeamMessageLike): CreatedTaskRef | null => {
-    const r = createHqReviewRequest({ message, actor: sessionActor() }, { newId: newTaskId, nowIso: nowIso() });
+    const actor = requireActor(); if (!actor) return null;
+    const r = createHqReviewRequest({ message, actor }, { newId: newTaskId, nowIso: nowIso() });
     if (!r.ok) {
       // 메시지는 이미 전달됐다. 카드를 못 만든 사실을 숨기지 않고 그대로 알린다.
       addLog(`메시지는 전달했지만 총괄 확인 카드를 만들지 못했습니다 — ${r.reason}`, 'warning', 'SYSTEM');
@@ -903,7 +949,8 @@ function App() {
    *   실패하면 아무것도 만들지 않고 거부 사유를 그대로 보여 준다.
    */
   const handleCreateTeamTask = (title: string, teamId: string): boolean => {
-    const actor = sessionActor();
+    const actor = requireActor();
+    if (!actor) return false;
     const r = createTeamInternalTask(
       { title, teamId: teamId as ViewerRole, actor },
       { newId: newTaskId, nowIso: nowIso() }
@@ -937,7 +984,12 @@ function App() {
     /** B-use-3: 이미 저장된 원본 지원요청 메시지의 id. 새로 만들거나 재구성하지 않는다. */
     sourceMessageId?: string
   ): CreatedTaskRef | null => {
-    const team = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : viewerRole) as ViewerRole;
+    const actor = requireActor();
+    if (!actor) return null;
+    const requestingTeamId = identity.teamId;
+    if (!requestingTeamId) { addLog('요청 팀을 확인할 수 없어 협업을 요청하지 않았습니다.', 'warning', 'SYSTEM'); return null; }
+    // 대상 팀 기본값도 **권한 정본의 팀**이다(화면 역할 전환기 아님).
+    const team = (VIEWER_ROLES.some((r) => r.id === targetTeamId) ? targetTeamId : requestingTeamId) as ViewerRole;
     // RC-2 D-1.3.2: 협업이 성립하지 않는 경우(총괄 발신·다른 팀 사칭·같은 팀)는 계약이 막는다.
     //   화면은 그 이유를 그대로 보여 주고 아무것도 만들지 않는다.
     let created: { parent: LifecycleTaskRefLike; child: LifecycleTaskRefLike };
@@ -945,9 +997,9 @@ function App() {
       created = createCollaborationRequest(
         {
           title,
-          requestingTeamId: viewerRole,
+          requestingTeamId,
           targetTeamId: team,
-          instructedBy: sessionActor(),
+          instructedBy: actor,
           // 실제 수행 정본인 자식에만 싣는다(계약이 그렇게 처리한다).
           ...(sourceMessageId ? { inputRefs: [messageRef(sourceMessageId)] } : {})
         },
@@ -970,7 +1022,8 @@ function App() {
     if (!agent) return;
     // RC-2 D-1.2: 자기 팀 AI 에 대한 팀장 지시만 허용. 총괄·다른 팀장의 우회 경로를 막는다.
     const ownerTeam = teamOfAgent(agentId);
-    if (!ownerTeam || byTeamId !== ownerTeam || viewerRole !== ownerTeam) {
+    //   B-use-4 보완: 화면 역할이 아니라 **권한 정본의 팀·팀장 자격**으로 판정한다.
+    if (!ownerTeam || byTeamId !== ownerTeam || identity.teamId !== ownerTeam || !identity.isLead) {
       addLog(`직접 지시가 거절되었습니다 — 담당 팀장만 이 담당자에게 지시할 수 있습니다.`, 'warning', 'SYSTEM');
       return;
     }
@@ -1028,9 +1081,11 @@ function App() {
       return;
     }
 
+    const decisionActor = requireActor();
+    if (!decisionActor) return;
     const result = applyDecision(
       item.taskId,
-      { kind, actor: sessionActor(), reason },
+      { kind, actor: decisionActor, reason },
       { nowIso: new Date().toISOString(), newId: () => `task-rev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` }
     );
 
@@ -1131,10 +1186,9 @@ function App() {
     return <AuthGateScreen mode={authGateMode} />;
   }
 
-  // 계정 관리(승인) 진입로 — 서버가 알려준 역할이 team_lead/hq 일 때만. 화면 역할 전환기와 무관하다.
-  const serverAccount = getServerAccount();
+  // 계정 관리(승인) 진입로 — **권한 정본**이 팀장/총괄일 때만. 화면 역할 전환기와 무관하다.
   const canManageAccounts =
-    isAuthConfigured() && (serverAccount?.role === 'hq' || serverAccount?.role === 'team_lead');
+    identity.mode === 'authenticated' && (identity.role === 'hq' || identity.role === 'team_lead');
 
   return (
     <>
@@ -1168,7 +1222,7 @@ function App() {
               border: '1px solid var(--border, #444)', background: 'var(--accent, #2df5a2)', color: '#04241a',
               fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.25)'
             }}
-            title={`${roleMeta(viewerRole).label}이 지금 확인할 수 있는 업무`}
+            title={`${identity.label}이 지금 확인할 수 있는 업무`}
           >
             ✅ 내 확인 대기 {myPendingApprovals.length}건
           </button>
@@ -1180,11 +1234,12 @@ function App() {
           items={myPendingApprovals}
           agents={agents}
           statuses={['waiting']}
-          title={`내 확인 대기 · ${roleMeta(viewerRole).label}`}
+          title={`내 확인 대기 · ${identity.label}`}
           onSelectApproval={(item) => { setShowMyApprovals(false); setSelectedApprovalDetail(item); }}
         />
 
         <MainLayout
+          identity={identity}
           agents={agents}
           tasks={tasks}
           logs={logs}
@@ -1197,7 +1252,7 @@ function App() {
           onStartSimulation={handleStartSimulation}
           onAddTask={handleAddTask}
           departmentLifecycle={{
-            actor: sessionActor(),
+            actor: identity.actor ?? actorForRole(viewerRole),
             onCollaborate: handleCollaborationRequest,
             onHqReview: handleHqReview,
             onCreateTeamTask: handleCreateTeamTask,
@@ -1277,6 +1332,8 @@ function App() {
           agent={currentSelectedAgent}
           onClose={() => setSelectedAgent(null)}
           onDirectInstruct={handleDirectInstruct}
+          actorTeamId={identity.teamId}
+          actorIsLead={identity.isLead}
           onNavigateToBrain={(itemId) => {
             setSelectedAgent(null);
             setSelectedBrainItemId(itemId);

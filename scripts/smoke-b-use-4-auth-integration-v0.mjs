@@ -58,7 +58,7 @@ ok('0-3. 어댑터가 정적 import(비리터럴 지정자 트릭 없음)',
 
 // ── 컴파일 ───────────────────────────────────────────────────────────────────
 let AC, AA, AD, CFG, AUTHROUTE, ordersRevenue, ordersAdmin, marketing, health, ADAPTER;
-let AG, AF, ACTOR, LC, LA, LSTORE;
+let AG, AF, ACTOR, LC, LA, LSTORE, IDENT;
 try {
   execFileSync(process.execPath, [tscBin,
     path.join(REPO, 'api', '_shared', 'accountContract.ts'),
@@ -78,6 +78,7 @@ try {
     path.join(REPO, 'src', 'services', 'authGate.ts'),
     path.join(REPO, 'src', 'services', 'authorizedFetch.ts'),
     path.join(REPO, 'src', 'services', 'authAccountActor.ts'),
+    path.join(REPO, 'src', 'services', 'effectiveIdentity.ts'),
     path.join(REPO, 'src', 'services', 'taskLifecycleContract.ts'),
     path.join(REPO, 'src', 'services', 'taskLifecycleAppAdapter.ts'),
     path.join(REPO, 'src', 'services', 'taskLifecycleStore.ts'),
@@ -121,6 +122,7 @@ try {
   LC = await imp(path.join('cli', 'services'), 'taskLifecycleContract.js');
   LA = await imp(path.join('cli', 'services'), 'taskLifecycleAppAdapter.js');
   LSTORE = await imp(path.join('cli', 'services'), 'taskLifecycleStore.js');
+  IDENT = await imp(path.join('cli', 'services'), 'effectiveIdentity.js');
 } catch (e) {
   console.error('[smoke] 컴파일/import 실패:\n', e.stdout?.toString() || e.message);
   rmSync(tmp, { recursive: true, force: true }); process.exit(1);
@@ -387,28 +389,186 @@ ok('R-22. 팀장은 팀 내부 업무 등록 가능',
 
 // 역할 전환기로 권한 상승 불가 — App 의 sessionActor 규칙(소스 계약)
 const appSrc = codeLines('src/App.tsx');
-ok('R-30. actorForView 가 인증 구성 시 서버 계정만 신원 근거로 쓴다',
-  /isAuthConfigured\(\) && account\) return actorFromServerAccount\(account\)/.test(appSrc));
-// import 문은 소비가 아니다 — **호출부만** 센다.
-//   열람 범위(visibleTasksFor·taskFlowsFor·pendingForActor)와 권한(sessionActor)이 **같은 출처**를
-//   써야 역할 전환기로 보이는 범위를 넓힐 수 없다. actorForRole 직접 호출은 fallback 1곳뿐이어야 한다.
+// B-use-4 보완: 신원 출처가 `identity` 하나로 합쳐졌다(상세 배선 가드는 [S] 구간).
+ok('R-30. App 이 권한 정본(computeEffectiveIdentity)을 단일 출처로 계산한다',
+  /computeEffectiveIdentity\(\{/.test(appSrc) && /authConfigured: isAuthConfigured\(\)/.test(appSrc));
 {
   const body = appSrc.split('\n').filter((l) => !/^\s*import\b/.test(l)).join('\n');
   const nRole = (body.match(/actorForRole\(/g) || []).length;
-  const nView = (body.match(/actorForView\(/g) || []).length;
-  ok('R-31. actorForRole 직접 호출은 미구성 fallback 1곳뿐', nRole === 1, `${nRole}곳`);
-  ok('R-31a. 열람 범위·권한이 모두 actorForView 를 통과(정의 1 + 소비 ≥5)', nView >= 6, `${nView}곳`);
-  ok('R-31b. 열람 범위 3함수가 역할 전환기 행위자를 직접 쓰지 않는다',
-    !/visibleTasksFor\(actorForRole\(/.test(body) && !/taskFlowsFor\(actorForRole\(/.test(body) && !/pendingForActor\(actorForRole\(/.test(body));
+  const nIdent = (body.match(/identity\.(actor|teamId|isHq|isLead|role|label|key|mode)/g) || []).length;
+  // actorForRole 직접 호출은 **시험 모드 초기화 2곳 + departmentLifecycle fallback 1곳**만 남는다.
+  ok('R-31. actorForRole 직접 호출이 시험 모드 경로에만 남는다(<=3곳)', nRole <= 3, `${nRole}곳`);
+  ok('R-31a. 열람 범위·권한·메뉴가 모두 identity 를 소비한다', nIdent >= 10, `${nIdent}곳`);
+  ok('R-31b. 열람 범위·확인대기가 역할 전환기 행위자를 직접 쓰지 않는다',
+    !/pendingForActor\(actorForRole\(/.test(body) && !/setTasks\(visibleTasksFor\(actorForRole\(/.test(body));
 }
-ok('R-31c. sessionActor(권한)와 열람 범위가 같은 출처(actorForView)를 쓴다',
-  /const sessionActor = \(\) => actorForView\(viewerRole\)/.test(appSrc));
-ok('R-32. 계정 관리 진입로는 서버 역할로만 판정(역할 전환기 아님)',
-  /serverAccount\?\.role === 'hq' \|\| serverAccount\?\.role === 'team_lead'/.test(appSrc));
+ok('R-31c. 업무 행위자와 열람 범위가 같은 출처(identity.actor)를 쓴다',
+  /\{ actor: identity\.actor, revision: lifecycleRevision \}/.test(appSrc)
+  && /const requireActor = \(\): ActorRef \| null => \{/.test(appSrc)
+  && /const a = identity\.actor;/.test(appSrc));
+ok('R-32. 계정 관리 진입로는 권한 정본으로 판정(역할 전환기 아님)',
+  /identity\.mode === 'authenticated' && \(identity\.role === 'hq'/.test(appSrc));
 // 실행으로도 확인: 역할 전환기 값이 무엇이든 서버 계정 actor 의 권한은 변하지 않는다.
 ok('R-33. 서버 계정 actor 는 화면 역할과 무관(같은 계정 → 항상 같은 권한)',
   LC.hasLeadAuthority(ACTOR.actorFromServerAccount(view('u_memP', 'member', 'product'))) === false
   && LC.hasHqAuthority(ACTOR.actorFromServerAccount(view('u_memP', 'member', 'hq'))) === false);
+
+// ══════════════════════════════════════════════════════════════════════════
+// [S] 단일 권한 문맥 — 로그인 계정과 시험 역할이 갈라지지 않는다 (결함 A 마감)
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[S] 단일 권한 문맥 (로그인 계정 vs 시험 역할)');
+const idOf = (authConfigured, serverAccount, demoRole) =>
+  IDENT.computeEffectiveIdentity({ authConfigured, serverAccount, demoRole });
+
+// 시나리오 1: 시험 역할 HQ 상태에서 상품팀 member 로 로그인
+{
+  const before = idOf(true, null, 'hq');            // 로그인 전(계정 미확인)
+  const after = idOf(true, view('u_memP', 'member', 'product', '상품팀원'), 'hq');
+  ok('S-1. 로그인 전(인증 구성·계정 없음)은 시험 역할로 대체되지 않는다',
+    before.actor === null && before.teamId === null && before.isHq === false && before.isLead === false,
+    `actor=${before.actor} isHq=${before.isHq}`);
+  ok('S-2. 로그인 후 팀·역할이 서버 계정으로 바뀐다(시험 역할 HQ 무시)',
+    after.teamId === 'product' && after.role === 'member' && after.isHq === false,
+    `team=${after.teamId} role=${after.role} isHq=${after.isHq}`);
+  ok('S-3. 신원 키가 바뀐다 → 열람 범위가 다시 계산될 조건이 성립', before.key !== after.key,
+    `${before.key} → ${after.key}`);
+  ok('S-4. member 는 팀장 자격 없음', after.isLead === false);
+  ok('S-5. 로그인 모드에서 시험 역할 전환기는 잠긴다', after.roleSwitcherEnabled === false);
+  // 이전 HQ 목록이 남지 않는가 — 실제 열람 범위 함수로 확인한다.
+  const hqTask = LA.createDirectiveTask(
+    { title: 'HQ 시절 업무', targetTeamId: 'cs', instructedBy: LA.actorForRole('hq') }, ids);
+  const seenBefore = LA.taskFlowsFor(LA.actorForRole('hq')).some((f) => f.task.ref.taskId === hqTask.ref.taskId);
+  const seenAfter = after.actor
+    ? LA.taskFlowsFor(after.actor).some((f) => f.task.ref.taskId === hqTask.ref.taskId)
+    : false;
+  ok('S-6. 시험 HQ 로는 보이던 타 팀 업무가 로그인 후에는 보이지 않는다',
+    seenBefore === true && seenAfter === false, `HQ=${seenBefore} 로그인후=${seenAfter}`);
+  ok('S-7. 계정 없음 상태에서는 열람 범위 자체가 만들어지지 않는다(actor null)', before.actor === null);
+}
+
+// 시나리오 2: 로그인 후 시험 역할값을 바꿔도 권한·범위 불변
+{
+  const account = view('u_memP', 'member', 'product', '상품팀원');
+  const keys = ['hq', 'cs', 'marketing', 'design', 'product'].map((r) => idOf(true, account, r));
+  const same = keys.every((k) =>
+    k.teamId === 'product' && k.role === 'member' && k.isHq === false && k.isLead === false
+    && k.roleSwitcherEnabled === false && k.key === keys[0].key);
+  ok('S-10. 로그인 모드: 시험 역할을 hq/cs/marketing/design 로 바꿔도 팀·권한·신원키 불변',
+    same, `keys=[${[...new Set(keys.map((k) => k.key))].join(' | ')}]`);
+  ok('S-11. 시험 역할을 바꿔도 열람 범위 재계산 트리거(key)가 변하지 않는다',
+    new Set(keys.map((k) => k.key)).size === 1);
+}
+
+// 시나리오 3: 실제 HQ 서버 계정
+{
+  const hqId = idOf(true, view('u_hq', 'hq', 'hq', '총괄'), 'product');
+  ok('S-20. HQ 계정 → isHq·isLead 참, 팀=hq', hqId.isHq === true && hqId.isLead === true && hqId.teamId === 'hq');
+  ok('S-21. HQ 계정은 시험 역할이 product 여도 총괄로 판정', hqId.role === 'hq');
+  ok('S-22. HQ 계정도 시험 역할 전환기는 잠긴다', hqId.roleSwitcherEnabled === false);
+}
+
+// 시나리오 4: 인증 미구성 로컬 모드 — 기존 시험 역할 전환 유지
+{
+  const demoHq = idOf(false, null, 'hq');
+  const demoLead = idOf(false, null, 'product');
+  ok('S-30. 미구성 로컬: 시험 역할 HQ → 총괄 권한 재현',
+    demoHq.mode === 'demo' && demoHq.isHq === true && demoHq.teamId === 'hq');
+  ok('S-31. 미구성 로컬: 시험 역할 팀장 → 팀장 권한 재현',
+    demoLead.mode === 'demo' && demoLead.isHq === false && demoLead.isLead === true && demoLead.teamId === 'product');
+  ok('S-32. 미구성 로컬: 역할 전환기 사용 가능', demoHq.roleSwitcherEnabled === true && demoLead.roleSwitcherEnabled === true);
+  ok('S-33. 미구성 로컬: 계정 역할은 없음(구형 규칙 유지)', demoHq.role === null && demoLead.role === null);
+  ok('S-34. 미구성 로컬: 역할을 바꾸면 신원 키가 바뀐다(열람 범위 재계산)', demoHq.key !== demoLead.key);
+  ok('S-35. 미구성 로컬 행위자는 demo_role 표식 유지', demoLead.actor?.identitySource === 'demo_role');
+}
+
+// 저장 전 권한 확인(§3.4) — 계약 실행
+{
+  const leadP = ACTOR.actorFromServerAccount(view('u_leadP', 'team_lead', 'product'));
+  const memP = ACTOR.actorFromServerAccount(view('u_memP2', 'member', 'product'));
+  const hqA = ACTOR.actorFromServerAccount(view('u_hq2', 'hq', 'hq'));
+  const agentActor = { kind: 'agent', teamId: 'product', label: 'AI', agentId: 'a1' };
+  ok('S-40. 팀장은 자기 팀 지시 가능', LA.canCreateDirective(leadP, 'product').ok === true);
+  ok('S-41. 팀원은 자기 팀이어도 지시 불가', LA.canCreateDirective(memP, 'product').ok === false,
+    LA.canCreateDirective(memP, 'product').reason);
+  ok('S-42. 팀장은 다른 팀에 지시 불가(협업 경로)', LA.canCreateDirective(leadP, 'cs').ok === false,
+    LA.canCreateDirective(leadP, 'cs').reason);
+  ok('S-43. HQ 는 다른 팀에 지시 가능', LA.canCreateDirective(hqA, 'cs').ok === true);
+  ok('S-44. AI actor 는 지시 불가', LA.canCreateDirective(agentActor, 'product').ok === false);
+  ok('S-45. 데모 역할(계정 역할 없음)은 기존대로 허용',
+    LA.canCreateDirective(LA.actorForRole('product'), 'product').ok === true
+    && LA.canCreateDirective(LA.actorForRole('hq'), 'cs').ok === true);
+}
+
+// 화면 배선 가드 — 컴포넌트가 다시 loadRole() 을 직접 읽지 않는가
+{
+  const appBody = codeLines('src/App.tsx');
+  const layout = codeLines('src/components/MainLayout.tsx');
+  const dept = codeLines('src/components/DepartmentWorkspacePanel.tsx');
+  const modal = codeLines('src/components/AgentDetailModal.tsx');
+  ok('S-50. MainLayout 은 HQ 여부를 권한 정본에서 받는다(isHqRole 자체 판정 없음)',
+    /const hq = identity\.isHq/.test(layout) && !/isHqRole\(/.test(layout));
+  ok('S-51. DepartmentWorkspacePanel 은 loadRole 을 쓰지 않는다',
+    !/loadRole\(/.test(dept) && /identity\.isHq/.test(dept));
+  ok('S-52. AgentDetailModal 은 loadRole 을 쓰지 않는다(actorTeamId·actorIsLead 사용)',
+    !/loadRole\(/.test(modal) && /actorTeamId === instructionTargetTeam && actorIsLead/.test(modal));
+  ok('S-53. App 의 loadRole 은 시험 모드 초기화·전환기 값에만 남는다(4곳 이하)',
+    (appBody.match(/loadRole\(\)/g) || []).length <= 4, `${(appBody.match(/loadRole\(\)/g) || []).length}곳`);
+  // 업무 목록은 **state 가 아니라 파생값**이다 → 신원이 바뀌면 자동으로 그 계정 기준이 된다.
+  ok('S-54. 업무 목록·흐름·확인대기가 identity.actor 파생값이다(시험 역할 초기값 없음)',
+    /const tasks = useMemo<OperationTask\[\]>\(/.test(appBody)
+    && /\[identity\.actor, lifecycleRevision\]/.test(appBody)
+    && (appBody.match(/\[lifecycleSource\]/g) || []).length === 3
+    && !/useState<OperationTask\[\]>/.test(appBody));
+  ok('S-55. 저장 후 갱신은 revision 한 곳으로만(effect 안 setState 없음)',
+    /setLifecycleRevision\(\(r\) => r \+ 1\)/.test(appBody) && !/setTasks\(/.test(appBody) && !/setLifecycleFlows\(/.test(appBody));
+  ok('S-56. viewerRole 은 시험 역할 입력으로만 남는다(권한 판정에 미사용)',
+    !/viewerRole === 'hq'/.test(appBody) && !/requestingTeamId: viewerRole/.test(appBody)
+    && !/viewerRole !== ownerTeam/.test(appBody));
+  ok('S-57. 저장 전 권한 확인이 App 지시 경로에 배선됨', /canCreateDirective\(/.test(appBody));
+  ok('S-58. 역할 전환기는 미구성 모드에서만 조작 가능(읽기 전용 분기 존재)',
+    /identity\.roleSwitcherEnabled \? \(/.test(layout));
+  ok('S-59. 계정 관리 진입로도 권한 정본으로 판정',
+    /identity\.mode === 'authenticated' && \(identity\.role === 'hq' \|\| identity\.role === 'team_lead'\)/.test(appBody));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// [M] 서버 권한 자료 fail-closed (결함 B 마감)
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[M] metadata 검증 — 잘못된 권한 자료는 계정 없음으로 닫힌다');
+const meta = (account) => ADAPTER.accountFromPublicMetadata('u_x', { account }, 'fallback');
+ok('M-1. 정상 팀장 메타 → 계정 인정',
+  meta({ name: '홍', team: 'product', position: '팀장', role: 'team_lead', status: 'active' })?.role === 'team_lead');
+ok('M-2. 정상 HQ 메타(team=hq) → 계정 인정',
+  meta({ name: '사장', team: 'hq', position: '대표', role: 'hq', status: 'active' })?.team === 'hq');
+ok('M-3. **team 누락 → 거부**(예전엔 hq 로 기본 처리했다)',
+  meta({ name: '홍', position: '팀장', role: 'team_lead', status: 'active' }) === null);
+ok('M-4. team_lead 인데 team=hq → 거부(역할·팀 불일치)',
+  meta({ name: '홍', team: 'hq', position: '팀장', role: 'team_lead', status: 'active' }) === null);
+ok('M-5. hq 인데 team=product → 거부(역할·팀 불일치)',
+  meta({ name: '홍', team: 'product', position: '대표', role: 'hq', status: 'active' }) === null);
+ok('M-6. 임의 role → 거부',
+  meta({ name: '홍', team: 'product', position: 'x', role: 'superadmin', status: 'active' }) === null);
+ok('M-7. 임의 status → 거부',
+  meta({ name: '홍', team: 'product', position: 'x', role: 'member', status: 'approved' }) === null);
+ok('M-8. 알 수 없는 team → 거부',
+  meta({ name: '홍', team: 'finance', position: 'x', role: 'member', status: 'active' }) === null);
+ok('M-9. 마케팅 두 팀 값은 계정 팀으로 인정하지 않는다(저장값 승격 금지)',
+  meta({ name: '홍', team: 'marketing_internal', position: 'x', role: 'member', status: 'active' }) === null);
+ok('M-10. account 없음 → 계정 없음', ADAPTER.accountFromPublicMetadata('u_x', {}, 'f') === null);
+ok('M-11. publicMetadata 자체가 없음 → 계정 없음', ADAPTER.accountFromPublicMetadata('u_x', undefined) === null);
+ok('M-12. role/status 누락 → 거부',
+  meta({ name: '홍', team: 'product', position: 'x' }) === null);
+ok('M-13. 인정된 계정의 이름 fallback 은 username 을 쓴다',
+  meta({ team: 'product', position: 'x', role: 'member', status: 'active' })?.name === 'fallback');
+// 거부된 메타는 보호 API 에서 실제로 막히는가(계정 없음 = 403).
+{
+  const brokenDir = { getAccount: async () => ADAPTER.accountFromPublicMetadata('u_b', { account: { role: 'hq', status: 'active' } }) };
+  const g = AA.protectedHandler(async (_r, res) => res.status(200).json({ ok: true, ran: true }),
+    { session: stubSession, directory: brokenDir });
+  const r = await callRoute(g, { method: 'GET', headers: {}, url: '/x', __uid: 'u_b' });
+  ok('M-14. team 누락 hq 주장 메타 → 보호 API 403(총괄 승격 안 됨)',
+    r.status === 403 && r.body?.ran !== true, `status=${r.status}`);
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // [T] 팀 어휘 정본 일치 — 인증 계층이 별도 TeamId 정본을 만들지 않는다
