@@ -1,8 +1,8 @@
 # 상품팀 일일 재고점검 내부 업무 설계
 
-작성일: 2026-07-30  
-상태: 사용자 승인 설계  
-대상: `task-product-daily` 한 건  
+작성일: 2026-07-30
+상태: 사용자 승인 설계
+대상: `task-product-daily` 한 건
 근거: `docs/governance/DECISIONS.md` D-009
 
 ## 1. 목적

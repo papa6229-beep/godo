@@ -941,6 +941,34 @@ Codex 가 재확인한 보존 항목: `CalendarPanel` 자체 `fetchRevenue` 경�
 **완료로 확대하지 않는 것**: 이것은 **시험자료 기반 미리 구현 완료**다. **고도몰 실데이터 검증(C) 완료가 아니고, 전체 팀 기능 완료도 아니다.** 실제 상품·실제 데이터로 같은 흐름을 재시험하기 전에는 E·F 의 실제 완주로 표시하지 않는다. **고도몰 키 발급과 실제 상품 준비는 계속 병렬 대기**다.
 **예약 시각 자동 실행은 이번 범위 밖**이다(`runScheduledAgentTask` 제품 호출자 0건 — E 단계).
 
+#### Codex 전체 게이트 1차 결과와 게이트 정합 교정 (2026-07-30)
+
+**Codex 가 `db5ec25` 에서 전체 `npm test` 를 실행한 결과**
+
+| 항목 | 값 |
+|---|---|
+| 제품 집중검사 `smoke-agent-task-runner-v0` | **55/55 통과** |
+| build · API typecheck · 전체 lint | **통과**(smoke 실패로 `npm test` 안에서는 시작되지 않아 Codex 가 별도 실행) |
+| 구현 커밋 `1217cb2` · 문서 커밋 `db5ec25` | 각각 `git show --check` **통과** |
+| 전체 smoke | **121/125 · 136.8초 — 실패 4건** |
+
+**실패 4건은 제품 결함이 아니라 옛 검사 기준이었다**(입력·정규식·호출 계약). 제품 로직은 재설계·확대하지 않았고 **제품 코드 변경 0건**이다.
+
+| 실패 | 원인(수정 전 실제값) | 교정(수정 후 실제값) |
+|---|---|---|
+| `smoke-rc2-d13` **W21** | 옛 변수명 `viewerRole\|canOperateTeam\|readOnly` 만 찾음 → `RED (현재: AgentTaskPanel 이 역할을 받지 않아…)` | 화면 배선(`actor={identity.actor}`·`canOperate`·`identity.teamId === selectedTeamId`·`identity.isLead`) **+ 서비스 실제 반환값**으로 판정. 팀장 실행 허용 / 팀원·HQ·타 팀장 거부 / 확인·반려·중단도 같은 경계 → **MET** |
+| `smoke-rc2-d131` **S25** | 공개 함수 소스 **400~600자 거리 정규식** — 권한 검사가 공통 `leadGuard` 로 이동해 정상 코드인데 실패 → `RED (현재: 공개 진입점 또는 게이트 누락)` | 소스 거리 대신 **실제 반환값**. 수동=팀장만(팀원·HQ·타 팀 거부) · 스케줄=승인된 standing 만(없음·미승인 거부) → **MET** |
+| `smoke-rc2-task-lifecycle` **R2a·R7b·R7c** | 옛 호출 계약 — actor 에 `accountRole` 없음 · `revenue:null` · `approveAgentTask` 옛 인자 순서 → `pending taskId=이벤트 없음`, `추적 키가 발신 메시지 id`, `spec.id 흔적 없음` | 팀장 actor(`label`+`userId`+`accountRole:'team_lead'`) · 유효한 시험 매출 fixture · `approveAgentTask(spec, actor, ctx, body)` → `pending taskId=agenttask-spec-inv`, `추적 키=업무 식별자`, R2b `pending=0 done=1`, R2c `pending=1` → **전부 MET** |
+| `smoke-simulation-catalog-baseline-d121-refund-completion` **R4** | 내부에서 위 S25 실패 검사를 다시 호출한 **연쇄 실패**(값 잠금 자체는 12/12 통과였다) | 계산식·기준값 무변경. S25 교정만으로 **`[FACT] 5/5 · [RED] 5/5 met` exit 0** |
+
+`R2a/R2b/R2c`·`R7b/R7c` 의 **원래 목적은 낮추지 않았다** — pending 기록의 업무 추적키 존재 · 확인 후 같은 업무 pending 닫힘 · 중복 누적 없음 · 메시지 id 가 아닌 업무 id 역추적 · 원장에 spec 업무 id 잔존을 모두 그대로 확인한다. `W21`·`S25` 는 문자열 검사에서 **실행 검사로 바뀌어 오히려 강해졌다.**
+
+부수: `docs/superpowers/specs/2026-07-30-product-daily-internal-workflow-design.md` 3~5행의 **줄 끝 공백만** 제거했다(내용 무변경). `git diff --check main..HEAD` 가 이 3줄을 잡고 있었고, **구현 커밋 2개 자체에는 공백 오류가 없었다.**
+
+**교정 후 실행**: 지정 검사 5종 전부 **exit 0**(agent-task-runner 55/55 · d13 30/30 · d131 31/31 · task-lifecycle 40/40 · d121 5/5) · 변경 검사 파일 lint 0 · `git diff --check main..HEAD` 0 · manifest **125/0 불변** · **제품 코드 변경 0건**.
+**실행하지 않은 것**: **전체 `npm test`** — 후속 커밋을 받은 뒤 **Codex 가 전체 게이트를 한 번 재실행**한다.
+**전체 게이트가 다시 통과하기 전에는 D-0 상품팀 점검을 최종 확정으로 확대하지 않는다.** 고도몰 키 발급 대기도 그대로다.
+
 ---
 
 ### B-use-5 Preview 인수검사 — **완료 · 실제 Preview 화면 재확인 통과 (브랜치 `codex/b-use-5-preview-acceptance`, 제품 기준 `bcf91a4`, 2026-07-28)**

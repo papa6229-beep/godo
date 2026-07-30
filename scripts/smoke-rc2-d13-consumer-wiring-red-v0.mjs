@@ -40,11 +40,13 @@ globalThis.window = {
   addEventListener() {}, removeEventListener() {}
 };
 
-let A, L, S, R;
+let A, L, S, R, RUN;
 try {
   execFileSync(process.execPath, [tscBin,
     path.join(REPO, 'src', 'services', 'taskLifecycleAppAdapter.ts'),
     path.join(REPO, 'src', 'services', 'agentIdRegistry.ts'),
+    // D-0: 자동 업무 권한은 **문자열이 아니라 실제 반환값**으로 본다(W21).
+    path.join(REPO, 'src', 'services', 'agentTaskRunner.ts'),
     '--ignoreConfig', '--rootDir', path.join(REPO, 'src'), '--outDir', tmp,
     '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck'], { stdio: 'pipe' });
   for (const sub of ['services', 'types', 'data']) {
@@ -61,6 +63,7 @@ try {
   L = await imp('taskLifecycleContract.js');
   S = await imp('taskLifecycleStore.js');
   R = await imp('agentIdRegistry.js');
+  RUN = await imp('agentTaskRunner.js');
 } catch (e) {
   console.error('[smoke] tsc emit 실패:\n', e.stdout?.toString() || e.message);
   rmSync(tmp, { recursive: true, force: true });
@@ -397,9 +400,59 @@ red('W20. 협업 자식의 상태 변화가 요청팀 부모 카드에 반영된
 console.log('');
 console.log('  --- 자동 업무 권한과 스케줄 게이트 ---');
 
+// D-0 교정: 이 단언은 `viewerRole|canOperateTeam|readOnly` 라는 **옛 변수명**만 찾고 있었다.
+//   현재 정본은 `AgentTaskPanel`=`actor`+`canOperate`, `DepartmentWorkspacePanel`=실제 로그인
+//   identity 로 `canOperate` 계산, 서비스는 `leadGuard` 로 같은 권한을 다시 검사한다.
+//   확인하려는 사실(HQ·타 팀은 조작할 수 없다)을 **실제 반환값**으로 본다 — 더 강한 판정이다.
+//   옛 `viewerRole` 을 제품에 되살리지 않는다.
 red('W21. HQ·타 팀장은 다른 팀 AgentTaskPanel 의 실행·승인을 사용할 수 없다',
-  /viewerRole|canOperateTeam|readOnly/.test(agentTaskPanel) && /viewerRole|canOperateTeam|readOnly/.test(deptPanel),
-  'AgentTaskPanel 이 역할을 받지 않아 HQ 도 타 팀 자동 업무를 실행·승인할 수 있음');
+  (() => {
+    const wired = /actor=\{identity\.actor\}/.test(deptPanel)
+      && /canOperate=\{/.test(deptPanel)
+      && /identity\.teamId === selectedTeamId/.test(deptPanel)
+      && /identity\.isLead/.test(deptPanel)
+      && /canOperate/.test(agentTaskPanel) && !/viewerRole/.test(agentTaskPanel);
+    if (!RUN || !wired) return false;
+    // 데이터 없음 게이트에 권한 판정이 가려지지 않도록 유효한 시험 매출을 쓴다.
+    const SIM = {
+      count: 0, source: 'mock', live: false,
+      realOrdersStatus: 'unavailable', syntheticStatus: 'success',
+      summary: { syntheticOrderCount: 1, realOrderCount: 0, syntheticTotalNetSoldQuantity: 0 },
+      stockImpact: [], orders: []
+    };
+    const AT_W = '2026-07-23T00:00:00.000Z';
+    const spec = {
+      id: 'w21-perm', teamId: 'product', agentId: 'stock', agentLabel: '상품 관리 AI',
+      title: 'W21 권한 확인', focus: 'inventory', reportTo: 'product', reportKind: 'info',
+      schedule: { kind: 'manual' }, approvalMode: 'approval'
+    };
+    const at = (o) => ({ kind: 'human', label: 'x', ...o });
+    const lead = at({ teamId: 'product', userId: 'u-p-lead', accountRole: 'team_lead' });
+    const member = at({ teamId: 'product', userId: 'u-p-mem', accountRole: 'member' });
+    const hq = at({ teamId: 'hq', userId: 'u-hq', accountRole: 'hq' });
+    const csLead = at({ teamId: 'cs', userId: 'u-cs-lead', accountRole: 'team_lead' });
+    const ctx = { revenue: SIM, nowIso: AT_W };
+    // 이 검사만의 부수효과가 다른 단언에 남지 않게 원장을 저장·복원한다.
+    const KEY = 'godo_activity_ledger_v0';
+    const saved = store.has(KEY) ? store.get(KEY) : null;
+    try {
+      const blockedRun = [member, hq, csLead].every((a) => {
+        const r = RUN.runManualAgentTask(spec, a, ctx);
+        return r.ran === false && r.staged === false;
+      });
+      const staged = RUN.runManualAgentTask(spec, lead, ctx);
+      // 확인·반려·중단도 같은 권한 경계를 통과해야 한다.
+      const blockedDecide = RUN.approveAgentTask(spec, hq, ctx, 'x').ok === false
+        && RUN.rejectAgentTask(spec, csLead, ctx, '사유').ok === false
+        && RUN.cancelAgentTask(spec, member, ctx, '사유').ok === false;
+      const leadDecide = RUN.approveAgentTask(spec, lead, ctx, staged.body ?? '').ok === true;
+      return blockedRun && staged.staged === true && blockedDecide && leadDecide;
+    } finally {
+      if (saved === null) store.delete(KEY); else store.set(KEY, saved);
+    }
+  })(),
+  'AgentTaskPanel 이 실제 행위자를 받지 않거나, 서비스가 HQ·타 팀·팀원의 실행·확인을 막지 않음',
+  '팀장만 실행·확인·반려·중단 · HQ/타 팀/팀원 거부');
 
 red('W22. 자동 스케줄 진입점이 standing gate 를 반드시 통과한다',
   (() => {

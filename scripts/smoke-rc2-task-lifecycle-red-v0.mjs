@@ -168,9 +168,24 @@ red('R1c. 소비자(App)가 업무 id 와 승인 taskId 를 **각각 따로** �
 store.clear();
 const spec = { id: 'spec-inv', teamId: 'product', agentId: 'stock', agentLabel: '상품 관리 AI', title: '재고 일일 점검',
   focus: 'inventory', reportTo: 'hq', reportKind: 'report', schedule: { kind: 'manual' }, approvalMode: 'approval' };
-const ctx = { revenue: null, nowIso: AT, nowMs: 0 };
+// D-0 교정: 옛 호출 계약(actor 에 accountRole 없음 · revenue:null)을 현재 계약으로 바꾼다.
+//   ① 실행 권한은 `hasLeadAuthority` 를 거치므로 actor 에 label/userId/accountRole 이 필요하다.
+//   ② `revenue:null` 은 이제 **데이터 없음 게이트**에 막혀 pending 자체가 생기지 않는다
+//      (연결 안 됨을 대기·완료로 저장하지 않는 계약). 유효한 시험 매출 fixture 를 쓴다.
+//   확인하려는 사실(추적 키·pending 닫힘·중복 없음·업무 ID 역추적)은 그대로 둔다.
+const SIM_REVENUE = {
+  count: 0, source: 'mock', live: false,
+  realOrdersStatus: 'unavailable', syntheticStatus: 'success',
+  summary: { syntheticOrderCount: 1, realOrderCount: 0, syntheticTotalNetSoldQuantity: 0 },
+  stockImpact: [], orders: []
+};
+const PRODUCT_LEAD_ACTOR = {
+  kind: 'human', teamId: 'product', label: '상품 팀장',
+  userId: 'u-prod-lead', accountRole: 'team_lead'
+};
+const ctx = { revenue: SIM_REVENUE, nowIso: AT, nowMs: 0 };
 // RC-2 D-1.3.1: raw 실행 함수는 비공개다. 담당 팀장이 화면에서 누르는 공개 진입점으로 대기 상태를 만든다.
-const stageAsLead = (sp, c) => RUNNER.runManualAgentTask(sp, { kind: 'human', teamId: sp.teamId }, c);
+const stageAsLead = (sp, c) => RUNNER.runManualAgentTask(sp, { ...PRODUCT_LEAD_ACTOR, teamId: sp.teamId }, c);
 stageAsLead(spec, ctx);
 const stagedEvents = LEDGER.loadActivity();
 const pendingEv = stagedEvents.find((e) => e.status === 'pending');
@@ -180,7 +195,8 @@ red('R2a. 승인 대기(pending) 기록이 추적 식별자(taskId 우선·refId
   `pending taskId=${pendingEv ? JSON.stringify(pendingEv.taskId) : '이벤트 없음'} refId=${pendingEv ? JSON.stringify(pendingEv.refId) : '-'}`,
   `pending taskId=${pendingEv ? pendingEv.taskId : ''}`);
 
-RUNNER.approveAgentTask(spec, { ...ctx, nowIso: '2026-07-23T00:00:05.000Z' }, '승인된 본문');
+// D-0: 현재 계약 approveAgentTask(spec, actor, ctx, body) — 확인자는 실제 팀장이다.
+RUNNER.approveAgentTask(spec, PRODUCT_LEAD_ACTOR, { ...ctx, nowIso: '2026-07-23T00:00:05.000Z' }, '승인된 본문');
 const afterApprove = LEDGER.loadActivity();
 const sumAfter = LEDGER.teamSummary(afterApprove, 'product');
 red('R2b. 승인 후 pending 이 0 이 된다(같은 업무로 닫힘)',

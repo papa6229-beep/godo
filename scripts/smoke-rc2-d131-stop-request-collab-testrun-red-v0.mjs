@@ -37,10 +37,12 @@ globalThis.window = {
   addEventListener() {}, removeEventListener() {}
 };
 
-let A, L, S;
+let A, L, S, RUN;
 try {
   execFileSync(process.execPath, [tscBin,
     path.join(REPO, 'src', 'services', 'taskLifecycleAppAdapter.ts'),
+    // D-0: 공개 진입점의 권한·standing 게이트를 **실제 반환값**으로 본다(S25).
+    path.join(REPO, 'src', 'services', 'agentTaskRunner.ts'),
     '--ignoreConfig', '--rootDir', path.join(REPO, 'src'), '--outDir', tmp,
     '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck'], { stdio: 'pipe' });
   for (const sub of ['services', 'types', 'data']) {
@@ -56,6 +58,7 @@ try {
   A = await imp('taskLifecycleAppAdapter.js');
   L = await imp('taskLifecycleContract.js');
   S = await imp('taskLifecycleStore.js');
+  RUN = await imp('agentTaskRunner.js');
 } catch (e) {
   console.error('[smoke] tsc emit 실패:\n', e.stdout?.toString() || e.message);
   rmSync(tmp, { recursive: true, force: true });
@@ -402,13 +405,58 @@ red('S24. raw 실행 함수가 모듈 밖으로 공개되지 않는다',
   })(), 'runAgentTask/stageApprovalTask/postAgentReport 가 여전히 export 되어 게이트 우회가 가능',
   'raw 실행 비공개 · 외부 호출 0');
 
+// D-0 교정: 이 단언은 공개 함수 **소스 근처 400~600자** 안에서 문자열을 찾았다.
+//   권한 검사가 공통 helper(leadGuard)로 옮겨가자 정상 코드인데도 실패했다.
+//   소스 거리 정규식 대신 **실제 반환값**으로 게이트를 확인한다 — 더 강한 판정이다.
 red('S25. 수동·스케줄 공개 진입점은 유지되고 각각 권한·standing gate 를 통과한다',
   (() => {
     const manual = /export function runManualAgentTask/.test(agentTaskRunner);
     const scheduled = /export function runScheduledAgentTask/.test(agentTaskRunner);
-    const manualGate = /runManualAgentTask[\s\S]{0,600}?actor\.teamId !== spec\.teamId/.test(agentTaskRunner);
-    const schedGate = /runScheduledAgentTask[\s\S]{0,400}?canRunStandingDirective/.test(agentTaskRunner);
-    return manual && scheduled && manualGate && schedGate;
+    if (!manual || !scheduled || !RUN) return false;
+    // 데이터 없음 게이트에 권한·standing 판정이 가려지지 않도록 유효한 시험 매출을 쓴다.
+    const SIM = {
+      count: 0, source: 'mock', live: false,
+      realOrdersStatus: 'unavailable', syntheticStatus: 'success',
+      summary: { syntheticOrderCount: 1, realOrderCount: 0, syntheticTotalNetSoldQuantity: 0 },
+      stockImpact: [], orders: []
+    };
+    const AT_S = '2026-07-23T00:00:00.000Z';
+    const base = {
+      teamId: 'product', agentId: 'stock', agentLabel: '상품 관리 AI',
+      title: 'S25 게이트 확인', focus: 'inventory', reportTo: 'product', reportKind: 'info',
+      schedule: { kind: 'manual' }, approvalMode: 'approval'
+    };
+    const at = (o) => ({ kind: 'human', label: 'x', ...o });
+    const lead = at({ teamId: 'product', userId: 'u-p-lead', accountRole: 'team_lead' });
+    const member = at({ teamId: 'product', userId: 'u-p-mem', accountRole: 'member' });
+    const hq = at({ teamId: 'hq', userId: 'u-hq', accountRole: 'hq' });
+    const csLead = at({ teamId: 'cs', userId: 'u-cs-lead', accountRole: 'team_lead' });
+    const ctx = { revenue: SIM, nowIso: AT_S };
+    const APPROVED = {
+      ownerTeamId: 'product', ownerLeadUserId: 'u-p-lead', scope: 'S25',
+      schedule: { kind: 'daily', at: '09:00' }, active: true, approvedByLeadAt: AT_S,
+      riskLevel: 'normal', source: 'real', history: []
+    };
+    const KEY = 'godo_activity_ledger_v0';
+    const saved = store.has(KEY) ? store.get(KEY) : null;
+    try {
+      // 수동: 담당 팀장만.
+      const manualAllowed = RUN.runManualAgentTask({ ...base, id: 's25-m1' }, lead, ctx).staged === true;
+      const manualDenied = [member, hq, csLead].every((a) => {
+        const r = RUN.runManualAgentTask({ ...base, id: `s25-d-${a.teamId}-${a.accountRole}` }, a, ctx);
+        return r.ran === false && r.staged === false;
+      });
+      // 스케줄: 승인된 standing 만. 없음·미승인·중지는 거부.
+      const schedAllowed = RUN.runScheduledAgentTask(
+        { ...base, id: 's25-s1', approvalMode: 'auto', reportTo: 'hq', standing: APPROVED }, ctx).ran === true;
+      const schedDeniedNone = RUN.runScheduledAgentTask(
+        { ...base, id: 's25-s2', approvalMode: 'auto' }, ctx).ran === false;
+      const schedDeniedUnapproved = RUN.runScheduledAgentTask(
+        { ...base, id: 's25-s3', approvalMode: 'auto', standing: { ...APPROVED, approvedByLeadAt: undefined } }, ctx).ran === false;
+      return manualAllowed && manualDenied && schedAllowed && schedDeniedNone && schedDeniedUnapproved;
+    } finally {
+      if (saved === null) store.delete(KEY); else store.set(KEY, saved);
+    }
   })(), '공개 진입점 또는 게이트 누락', '수동=팀장 권한 · 스케줄=standing gate');
 
 // ════════════════════════════════════════════════════════════════════════════
