@@ -707,7 +707,7 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 
 ---
 
-### Local migration 5 — 사용되지 않는 `syntheticCommerceFacts` 제거 (2026-07-30, 브랜치 `codex/local-migration-synthetic-facts-cleanup`) — **로컬 구현 완료 · Codex 독립검증 대기**
+### Local migration 5 — 사용되지 않는 `syntheticCommerceFacts` 제거 (2026-07-30, 브랜치 `codex/local-migration-synthetic-facts-cleanup`) — **완료 · Codex 독립검증 통과**
 
 **분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `syntheticCommerceFacts 계약 우회 3건(제품 import 0)`). 계약 우회를 **고치는 대신 파일을 제거**했다 — 제품 소비자가 0건이라 그 우회가 제품 경로에 존재하지 않았다.
 
@@ -752,8 +752,28 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 제거만 한 단언은 없다. 단언 수를 맞추려고 의미 없는 검사를 만들지도 않았다(26 → **29**, 순증 3건은 전부 삭제 사실 자체를 고정하는 것).
 
 **이번에 실행한 것**: `smoke-synthetic-commerce-universe` **29/29 exit 0** · `smoke-synthetic-commerce-universe-activation` **10/10 exit 0** · 인접 `smoke-marketing-analysis-facts-core-v0` **34/34** · `smoke-department-data-source-of-truth-v0` **23/23** · `npx tsc -b` exit 0 · `npx tsc -p api/tsconfig.json --noEmit` exit 0 · 변경 파일 lint 0 · `git diff --check` 0 · 변경분 비밀값·외부 WRITE 추가 **0건** · manifest **125/0** 불변.
-**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다** · Preview·Vercel·브라우저 확인(사용자 화면·배포 동작을 바꾸는 작업이 아니다) · main 통합·push·배포·환경변수 변경 · manifest `--discover`.
-**Codex 독립검증 대기.**
+**Claude 가 실행하지 않은 것**: 전체 `npm test` · Preview·Vercel·브라우저 확인 · main 통합·push·배포·환경변수 변경 · manifest `--discover`.
+
+**→ Codex 독립검증 통과 (기준 HEAD `9e196ba40062ef19e5c63aecf2af1141ee271e90`, 2026-07-30)**
+
+**Codex 가 직접 실행했다.**
+
+| 항목 | 값 |
+|---|---|
+| `smoke-synthetic-commerce-universe.mjs` | **29/29 통과** |
+| `npm test` | **exit 0** |
+| 전체 smoke | **125/125 통과 · 123.7초** |
+| manifest | include **125** / exclude **0** |
+| `tsc -b` | 통과 |
+| API 타입검사 | 통과 |
+| Vite build | 통과 |
+| 전체 lint | 통과 |
+| `git diff --check` | 통과 |
+| 검증 후 작업 트리 | clean |
+
+**Codex 판정**: `syntheticCommerceFacts.ts` 제거는 안전하다 — 제거 전 제품 호출자 **0건**이었고 직접 소비자는 해당 smoke 하나뿐이었다. 활성 경로 `syntheticCommerceUniverse.ts`·`syntheticRevenue.ts` 는 보존됐다. **화면·API 동작을 바꾼 작업이 아니므로 Preview·Vercel·브라우저 검사는 불필요했다.** 과거 문서는 시점 기록으로 보존하며, **현재 상태 안내가 있는 정본을 우선한다**(`docs/SYNTHETIC_COMMERCE_UNIVERSE_V1.md` 상단 블록).
+
+**이것은 자동검사 근거다. Preview·Production 을 확인한 것이 아니다.**
 
 ---
 
