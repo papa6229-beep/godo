@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-30 (B-use 종료 기록 · local main fast-forward 통합)
+최종 갱신: 2026-07-30 (legacy 업무 UI 제거 Local migration — Codex 독립검증 통과 기록)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -12,7 +12,7 @@
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| local main | **2026-07-30 사용자 승인 아래 `codex/b-use-5-preview-acceptance` 를 `--ff-only` 로 통합**(merge commit 없음, 27커밋). 통합 시점의 값은 문서에 적지 않는다 — **`git rev-parse main` 직접 관측을 우선한다**. 이전 값은 `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864`(B-use-3 HQ 지시 흐름까지) | `git rev-parse main` |
+| local main | **2026-07-30 사용자 승인 아래 `codex/b-use-5-preview-acceptance` 를 `--ff-only` 로 통합**(merge commit 없음, **28커밋**). 통합 시점의 값은 문서에 적지 않는다 — **`git rev-parse main` 직접 관측을 우선한다**. 이전 값은 `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864`(B-use-3 HQ 지시 흐름까지) | `git rev-parse main` |
 | origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` — **변경 없음. 원격 push 는 승인받지 않았고 하지 않았다.** local main 이 이보다 앞선다 | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
 | 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과 → `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기) HEAD `61296fb`, 문서 조사만 | `git rev-parse` |
@@ -622,7 +622,7 @@ o.claim?.claimTypes?.some((t) => t === 'refund' || t === 'return')
 
 ---
 
-### Local migration — 도달 불가능한 legacy 업무 UI 제거 (2026-07-30, 브랜치 `codex/local-migration-legacy-task-ui-cleanup`) — **로컬 구현 완료 · Codex 독립검증 대기**
+### Local migration — 도달 불가능한 legacy 업무 UI 제거 (2026-07-30, 브랜치 `codex/local-migration-legacy-task-ui-cleanup`) — **완료 · Codex 독립검증 통과**
 
 **분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리). 새 화면을 만들지도, 미마운트 화면을 다시 살리지도 않았다.
 
@@ -682,8 +682,28 @@ o.claim?.claimTypes?.some((t) => t === 'refund' || t === 'return')
 **관측했으나 이번에 손대지 않은 것(범위 밖 — Codex 판단 대기)**: `TeamOperationsBoard.tsx:31` 에 `onReject?: (id: string) => void;` **타입 선언만** 남아 있다. 구조분해·호출·전달 **0건**으로 `OfficeView.onSelectTask` 와 같은 종류의 죽은 prop 선언이다. 지시 범위에 없어 삭제하지 않았고, A-14 판정을 "호출" 기준으로 정확히 써서 통과시켰다.
 
 **이번에 실행한 것**: 관련 집중검사 **7종 전부 exit 0**(app-integration 48/48 · b-use-4 212/212 · b-use-5 71/71 · d12 51/51 · d13 30/30 · d1331 15/15 · d1332 11/11) · `npx tsc -b` exit 0 · 변경 파일 lint 오류 0 · `git diff --check` exit 0 · 변경분 비밀값·외부 WRITE 추가 검색 **0건** · manifest include **125** / exclude **0**.
-**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다** · Preview·Vercel·브라우저 확인(마운트된 화면을 바꾸는 작업이 아니다) · main 통합·push·배포·환경변수 변경.
-**Codex 독립검증 대기.**
+**Claude 가 실행하지 않은 것**: 전체 `npm test` · Preview·Vercel·브라우저 확인 · main 통합·push·배포·환경변수 변경.
+
+**→ Codex 독립검증 통과 (기준 HEAD `6fce72141052dd989133dd2cb9b4635c1e92d195`, 2026-07-30)**
+
+**Codex 가 직접 실행했다.**
+
+| 항목 | 값 |
+|---|---|
+| `npm test` | **exit 0** |
+| smoke | **125/125 통과 · 147.3초** |
+| `tsc -b` | 통과 |
+| API 타입검사 | 통과 |
+| Vite build | 통과 |
+| 전체 lint | 통과 |
+| `git diff --check` | 통과 |
+| 작업 트리 | clean |
+| main 이후 신규 커밋 | **1개** · merge commit **0개** |
+
+Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · 삭제 전 호출 관계(`TaskBoard` 제품 호출자 0건 · `TaskListModal` 은 `TaskBoard` 에서만 · `TaskResultModal` 의 유일 배선 `App → MainLayout → OfficeView` 에서 `OfficeView.onSelectTask` 가 **선언만 있고 사용 0건**) · 보존된 활성 경로(`DepartmentWorkspacePanel → TeamTaskPanel → 상세 → TaskDetailModal`, 선택 ID 를 현재 `teamFlows` 에서 재조회) · lifecycle 저장 자료와 승인·수정·중단·반송 이력 **미삭제** · 관련 집중검사 7종 exit 0.
+
+**이것은 자동검사 근거다. Preview·Production 을 확인한 것이 아니다.**
+**마운트된 화면 동작을 바꾸지 않은 dead-code 제거이므로 Preview·Vercel·브라우저 검사는 이번 작업에 추가하지 않는다**(Codex 판정).
 
 ---
 
@@ -856,7 +876,7 @@ main 병합·push·배포·환경변수 변경·인증 보존 브랜치 변경�
 | 예약 실행 | 함수 존재 | **호출자 0건** | E |
 | 마케팅 1팀/2팀 분리 | 없음 (`marketing` 단일) | 리터럴 `'marketing'` **95곳/41파일** | 저장 의미 = B-core-5 / 소비자 이관 = Local migration |
 | 오늘의 운영 주문 통계 출처 표시 | ✅ **2026-07-28 Local migration 으로 해소** | 관제 채팅 헤더에 `주문 통계: 불러오는 중 / 실제 주문 N건 / 시험 데이터(+실제 주문 연결 안 됨) / 연결 안 됨` 표시. 통계 질문이 연결 실패·0건일 때 `activeOperationsData` 로 조용히 대체되지 않음 | 완료(자동검사 기준) |
-| ~~`TaskBoard`·`TaskListModal`·`TaskResultModal` (코드는 있으나 진입 불가)~~ | **2026-07-30 Local migration 으로 삭제** | 세 화면 모두 실제 진입 경로가 없었다(호출자 0건 / 끊어진 setter 배선). 헌법 §6 대상이 **다시 마운트가 아니라 제거**로 해소됐다. 업무 상세의 활성 경로는 위 첫 행 그대로 | 로컬 완료 · Codex 독립검증 대기 |
+| ~~`TaskBoard`·`TaskListModal`·`TaskResultModal` (코드는 있으나 진입 불가)~~ | **2026-07-30 Local migration 으로 삭제** | 세 화면 모두 실제 진입 경로가 없었다(호출자 0건 / 끊어진 setter 배선). 헌법 §6 대상이 **다시 마운트가 아니라 제거**로 해소됐다. 업무 상세의 활성 경로는 위 첫 행 그대로 | **완료 · Codex 독립검증 통과** (기준 `6fce721`) |
 
 ## 7. 팀별 기능 — 존재 상태
 
