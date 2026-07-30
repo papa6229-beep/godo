@@ -14,7 +14,7 @@ import { getGlobalBrainSelection, providerLabel, isBrainConnected } from '../ser
 import { loadHqMessages, saveHqMessages } from '../services/repositories/chatMemoryRepository';
 import { answerCommerceQuestion } from '../services/commerceDataQueryEngine';
 import { understandCommerceQuery } from '../services/marketingAnalyticsQueryCompilerLlm';
-import { resolveRealOrdersDisplay, realOrdersPhrase, type RevenueScreenState } from '../services/revenueScreenState';
+import { resolveRealOrdersDisplay, realOrdersPhrase, orderStatsHeaderLabel, type RevenueScreenState } from '../services/revenueScreenState';
 import { callMarketingPlannerLlm } from '../services/departmentChatService';
 import { MarketingChartSpecPanel } from './MarketingAnalysisDashboard';
 import type { MarketingChatChartArtifact } from '../services/marketingChatChartSpec';
@@ -572,23 +572,15 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             총괄 매니저 콘솔 | 운영 지시, 승인, 에이전트 호출을 이곳에서 처리합니다.
           </span>
           {/* Local migration: 새 패널을 만들지 않고 기존 부제 자리에 **주문 통계 출처 상태**만 짧게 붙인다.
-              문구는 정본(screenStateFromRevenue · resolveRealOrdersDisplay · realOrdersPhrase)에서 온다.
+              문구 선택은 정본 orderStatsHeaderLabel 하나가 한다
+              (그 안에서 screenStateFromRevenue · resolveRealOrdersDisplay · realOrdersPhrase 를 쓴다).
               내부 오류 원문·URL·키·응답 전문은 표시하지 않는다.
               이 prop 을 쓰지 않는 기존 화면(revenue === undefined)에서는 아무것도 그리지 않는다. */}
           {revenue !== undefined && (() => {
             const notLoaded = revenue === null;
-            const real = notLoaded ? null : resolveRealOrdersDisplay(revenue.realOrdersStatus, revenue.summary?.realOrderCount);
+            // 문구 선택은 정본 순수 함수 한 곳에서 한다(화면에서 조립하면 실행 검사를 할 수 없다).
+            const label = orderStatsHeaderLabel(revenue, revenueScreenState);
             const usable = !!revenueScreenState?.usable;
-            const label = notLoaded
-              ? '주문 통계: 불러오는 중'
-              : usable
-                // 사용 가능 — 정본 사용자 라벨을 그대로 쓴다.
-                //   실제 주문만 실패하고 시험 데이터가 살아 있으면 두 가지를 함께 보여 준다.
-                ? `주문 통계: ${revenueScreenState?.userLabel ?? '연결 안 됨'}`
-                  + (revenueScreenState?.realOrdersNotice ? ' · 실제 주문 연결 안 됨' : '')
-                : real?.kind === 'known'
-                  ? `주문 통계: ${realOrdersPhrase(real)}`
-                  : '주문 통계: 연결 안 됨';
             const warn = notLoaded ? false : (!usable || !!revenueScreenState?.realOrdersNotice);
             return (
               <span

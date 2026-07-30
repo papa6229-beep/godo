@@ -261,6 +261,52 @@ console.log('  --- [G] 오늘의 운영 주문 통계 출처 상태 ---');
   red('G10. 내부 오류 원문·URL·키를 화면에 표시하지 않는다',
     !/errorMessage\}/.test(chat) && !/realOrdersErrorMessage\}/.test(chat),
     '오류 원문을 그대로 렌더', '내부 사유 미노출');
+
+  // ── 헤더 문구 **실행 검사** ────────────────────────────────────────────────
+  //   G4·G6 은 함수 이름의 존재만 봤다. 두 함수가 '답변' 경로에만 쓰여도 통과하므로
+  //   헤더가 '실제 데이터'(0건 미구분)로 나오는 결함을 놓쳤다(Codex 독립검증 지적).
+  //   여기서는 문자열을 찾지 않고 **정본 함수의 반환값을 직접 비교**한다.
+  const header = (rev, st) => (ST && ST.orderStatsHeaderLabel ? ST.orderStatsHeaderLabel(rev, st) : null);
+  const revLike = (r) => ({
+    realOrdersStatus: r.realOrdersStatus,
+    syntheticStatus: r.syntheticStatus,
+    realOrdersErrorMessage: r.realOrdersErrorMessage,
+    syntheticErrorMessage: r.syntheticErrorMessage,
+    summary: r.summary
+  });
+
+  const hLoading = header(null);
+  red('G11. [실행] 응답 전(revenue=null) → "주문 통계: 불러오는 중"',
+    hLoading === '주문 통계: 불러오는 중',
+    ST?.orderStatsHeaderLabel ? `반환="${hLoading}"` : '헤더 문구 함수 없음(화면 JSX 안에서만 조립)');
+
+  // 서버 실제 출력(실제 성공 · 빈 배열 · 시뮬레이션 없음)을 그대로 넣는다.
+  const hZero = header(revLike(srvOkNoSynth));
+  red('G12. [실행] 실제 성공 0건·시뮬레이션 없음 → "주문 통계: 실제 주문 0건"(≠ "실제 데이터")',
+    hZero === '주문 통계: 실제 주문 0건',
+    ST?.orderStatsHeaderLabel ? `반환="${hZero}"` : '헤더 문구 함수 없음(화면 JSX 안에서만 조립)');
+
+  const hFixture = header({ realOrdersStatus: 'fixture', syntheticStatus: 'not_requested', summary: { realOrderCount: 0, syntheticOrderCount: 0 } });
+  const hSynth = header(revLike(srvOrderFail));
+  red('G13. [실행] 시험 데이터 사용 가능 → 기존 "시험 데이터" 표시 유지(실제 주문 실패는 병기)',
+    hFixture === '주문 통계: 시험 데이터' && hSynth === '주문 통계: 시험 데이터 · 실제 주문 연결 안 됨',
+    ST?.orderStatsHeaderLabel ? `fixture="${hFixture}" · 시뮬유지="${hSynth}"` : '헤더 문구 함수 없음(화면 JSX 안에서만 조립)');
+
+  const hNone = header({ realOrdersStatus: 'unavailable', syntheticStatus: 'unavailable', summary: null });
+  red('G14. [실행] 실제 실패 + 쓸 시험자료 없음 → "주문 통계: 연결 안 됨"',
+    hNone === '주문 통계: 연결 안 됨',
+    ST?.orderStatsHeaderLabel ? `반환="${hNone}"` : '헤더 문구 함수 없음(화면 JSX 안에서만 조립)');
+
+  // 회귀 방지: 이번 교정은 **0건일 때만** 문구를 바꾼다. 실제 주문이 있으면 정본 라벨 그대로다.
+  const hReal = header({ realOrdersStatus: 'success', syntheticStatus: 'not_requested', summary: { realOrderCount: 5, syntheticOrderCount: 0 } });
+  red('G15. [실행] 실제 주문 N(>0)건은 정본 라벨 "실제 데이터" 유지(범위 확대 없음)',
+    hReal === '주문 통계: 실제 데이터',
+    ST?.orderStatsHeaderLabel ? `반환="${hReal}"` : '헤더 문구 함수 없음(화면 JSX 안에서만 조립)');
+
+  red('G16. 화면이 헤더 문구를 자체 조립하지 않고 정본 함수를 호출한다',
+    /orderStatsHeaderLabel\(/.test(chat) && !/`주문 통계: \$\{/.test(chat),
+    '화면 JSX 안에서 문구를 직접 조립(실행 검사 불가·정본과 갈릴 수 있음)',
+    '정본 orderStatsHeaderLabel 호출 · JSX 내 자체 조립 0건');
 }
 
 console.log('');

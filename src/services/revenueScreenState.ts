@@ -149,6 +149,51 @@ export interface RevenueLikeForScreenState {
   summary?: { syntheticOrderCount?: number } | null;
 }
 
+// ── 관제 채팅 헤더 한 줄 문구 ─────────────────────────────────────────────────
+//   **새 판정 규칙이 아니다.** 위 세 정본(resolveRevenueScreenState/screenStateFromRevenue ·
+//   resolveRealOrdersDisplay · realOrdersPhrase)의 결과 중 어느 것을 보여줄지 고르기만 한다.
+//   화면(JSX) 안에서 조립하면 실행 검사를 할 수 없어 여기로 분리했다.
+
+export interface RevenueLikeForHeader extends RevenueLikeForScreenState {
+  summary?: { syntheticOrderCount?: number; realOrderCount?: number } | null;
+}
+
+const ORDER_STATS_PREFIX = '주문 통계: ';
+
+/**
+ * 오늘의 운영 관제 채팅 헤더 문구(순수 함수).
+ *
+ * 우선순위(위가 이긴다):
+ *   ① 응답 전(`revenue == null`)                 → 불러오는 중
+ *   ② 실제 데이터만 있고 **건수 0**              → 실제 주문 0건   ← 연결 실패와 구분한다
+ *   ③ 사용 가능                                   → 정본 사용자 라벨(+ 실제 주문 연결 안 됨 병기)
+ *   ④ 사용 불가인데 실제 건수는 아는 경우         → 실제 주문 N건
+ *   ⑤ 그 밖                                       → 연결 안 됨
+ *
+ * ②가 ③보다 앞서는 이유: `실제 데이터` 라벨만 보면 **자료가 있는 것처럼 읽힌다.**
+ * 판정 자체(`kind='actual'` · `usable=true`)는 그대로 두고 표시 문구만 고른다.
+ * 시험 데이터가 함께 쓰이는 경우는 `kind` 가 `simulation`/`fixture` 이므로 ②에 걸리지 않는다.
+ */
+export function orderStatsHeaderLabel(
+  revenue: RevenueLikeForHeader | null | undefined,
+  screenState?: RevenueScreenState | null
+): string {
+  if (revenue === null || revenue === undefined) return `${ORDER_STATS_PREFIX}불러오는 중`;
+
+  const state = screenState ?? screenStateFromRevenue(revenue);
+  const real = resolveRealOrdersDisplay(revenue.realOrdersStatus, revenue.summary?.realOrderCount);
+
+  if (state.kind === 'actual' && real.kind === 'known' && real.count === 0) {
+    return `${ORDER_STATS_PREFIX}${realOrdersPhrase(real)}`;
+  }
+  if (state.usable) {
+    return `${ORDER_STATS_PREFIX}${state.userLabel}`
+      + (state.realOrdersNotice ? ' · 실제 주문 연결 안 됨' : '');
+  }
+  if (real.kind === 'known') return `${ORDER_STATS_PREFIX}${realOrdersPhrase(real)}`;
+  return `${ORDER_STATS_PREFIX}연결 안 됨`;
+}
+
 export const screenStateFromRevenue = (
   revenue: RevenueLikeForScreenState | null | undefined
 ): RevenueScreenState =>
