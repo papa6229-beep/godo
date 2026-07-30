@@ -1,5 +1,4 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import type { OperationsDataSnapshot } from '../types/dataConnector';
 import type { CalendarMetricLevel } from '../types/calendar';
 import { fetchRevenue, type RevenueResult } from '../services/departmentDataService';
 import { classifyStockRisk, summarizeStockRisk } from '../services/inventoryRiskContract';
@@ -10,8 +9,10 @@ import './CalendarPanel.css';
 // - 기존 /api/godomall/orders-revenue?includeSynthetic=true 데이터를 프론트에서 날짜별 집계
 // - 새 API/생성 로직 수정 없음. 실데이터가 쌓이면 같은 구조로 자동 반영.
 
+// ⚠️ Local migration 7(2026-07-30): 쓰이지 않던 `activeOperationsData` prop 과
+//    그 전용 `OperationsDataSnapshot` import 를 제거했다. 이 화면은 아래
+//    `fetchRevenue` 결과(`RevenueResult`)만 쓴다.
 interface CalendarPanelProps {
-  activeOperationsData: OperationsDataSnapshot;
   lastSelectedDate: string;
   setLastSelectedDate: (date: string) => void;
   lastViewedMonth: string;

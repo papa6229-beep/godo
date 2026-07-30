@@ -125,7 +125,6 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
         <TeamOperationsBoard
           departments={defaultDepartments}
           agents={defaultNativeAgents}
-          lastRunJobs={lastNativeAgentRun ? lastNativeAgentRun.jobs : []}
           lastRunResults={lastNativeAgentRun ? lastNativeAgentRun.results : []}
           lastRunHandoffs={lastNativeAgentRun ? lastNativeAgentRun.handoffs : []}
           activeScenario={validationScenario}
@@ -137,7 +136,6 @@ export const OfficeView: React.FC<OfficeViewProps> = ({
           managerBriefing={lastNativeAgentRun?.managerBriefing ?? null}
           onOpenBriefingModal={() => setBriefingModalOpen(true)}
           approvalItems={pendingApprovalsForIdentity}
-          onApprove={onApprove}
           onOpenApprovals={onOpenApprovals}
         />
       </div>

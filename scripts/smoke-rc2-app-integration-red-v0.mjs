@@ -589,10 +589,68 @@ console.log('  --- Local migration · legacy 업무 UI 제거 ---');
     })(), noAdapter, '삭제 없이 표시만 차단');
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Local migration 7 (M1~M5) — 마운트 화면의 미사용 prop 묶음 정리
+//
+//   관측된 사실(선언만 있고 구조분해·본문 사용 0건):
+//     CalendarPanel.activeOperationsData   — MainLayout 이 값을 넘기지만 화면은 쓰지 않는다.
+//                                            달력은 자체 fetchRevenue 결과를 쓴다.
+//     TeamOperationsBoard.lastRunJobs      — OfficeView 가 넘기지만 구조분해·사용 0건.
+//     TeamOperationsBoard.onApprove        — OfficeView 가 넘기지만 구조분해·호출 0건.
+//     TeamOperationsBoard.onReject         — 선언만 있고 전달·구조분해·호출 0건.
+//
+//   활성 기능(approvalItems · onOpenApprovals · OfficeView 의 다른 onApprove 전달 ·
+//   CalendarPanel 의 fetchRevenue)은 보존 대상이다.
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- Local migration 7 · 마운트 화면 미사용 prop ---');
+{
+  const codeOf = (p) => readFileSync(path.join(REPO, p), 'utf8')
+    .split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const cal = codeOf('src/components/CalendarPanel.tsx');
+  const layout = codeOf('src/components/MainLayout.tsx');
+  const board = codeOf('src/components/TeamOperationsBoard.tsx');
+  const office = codeOf('src/components/OfficeView.tsx');
+
+  red('M1. CalendarPanel 이 쓰지 않는 activeOperationsData 계약을 갖지 않는다',
+    !/activeOperationsData/.test(cal) && !/OperationsDataSnapshot/.test(cal),
+    `CalendarPanel 잔존: ${(cal.match(/activeOperationsData|OperationsDataSnapshot/g) || []).join(', ')}`,
+    '미사용 prop·타입 import 0건');
+
+  // MainLayout 의 **CalendarPanel 전달만** 본다. 다른 activeOperationsData 사용은 활성이다.
+  const calBlock = (layout.match(/<CalendarPanel[\s\S]*?\/>/) || [''])[0];
+  red('M2. MainLayout 이 CalendarPanel 에 activeOperationsData 를 넘기지 않는다',
+    !/activeOperationsData/.test(calBlock),
+    'CalendarPanel 전달 잔존', 'CalendarPanel 전달 0건');
+  red('M2a. MainLayout 의 다른 activeOperationsData 사용은 그대로다(전역 삭제 아님)',
+    /activeOperationsData/.test(layout),
+    'MainLayout 에서 activeOperationsData 가 전부 사라짐(과삭제)',
+    '다른 소비자에는 그대로 전달');
+
+  red('M3. CalendarPanel 의 자체 매출 조회 경로가 유지된다',
+    /fetchRevenue\(/.test(cal), 'CalendarPanel fetchRevenue 경로 소실', 'fetchRevenue 유지');
+
+  const boardDead = ['lastRunJobs', 'onApprove', 'onReject'].filter((n) => new RegExp(`\\b${n}\\b`).test(board));
+  const boardBlock = (office.match(/<TeamOperationsBoard[\s\S]*?\/>/) || [''])[0];
+  const officeDead = ['lastRunJobs', 'onApprove'].filter((n) => new RegExp(`\\b${n}\\b`).test(boardBlock));
+  red('M4. TeamOperationsBoard 의 미사용 prop 3종이 계약·호출부에 없다',
+    boardDead.length === 0 && officeDead.length === 0,
+    `계약 잔존: ${boardDead.join(', ') || '없음'} · OfficeView 전달 잔존: ${officeDead.join(', ') || '없음'}`,
+    '계약·전달 모두 0건');
+
+  red('M5. 활성 승인 경로는 유지된다(보드 진입 + OfficeView 의 다른 승인 처리)',
+    /onOpenApprovals/.test(board) && /approvalItems/.test(board)
+    && /onOpenApprovals/.test(boardBlock) && /approvalItems=\{pendingApprovalsForIdentity\}/.test(boardBlock)
+    && /onApprove:\s*\(id: string\) => void;/.test(office)
+    && (office.match(/onApprove=\{onApprove\}/g) || []).length >= 2,
+    '승인 목록 진입 또는 OfficeView 의 다른 승인 전달이 사라짐',
+    '보드 진입·승인 항목 유지 · OfficeView onApprove 다른 소비자 2곳 이상 유지');
+}
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (전제 — fail>0이면 검사 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (App 실배선 통합 계약 A1~A36 + Local migration L1~L8)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (App 실배선 통합 계약 A1~A36 + Local migration L1~L8 · M1~M5)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0 || redUnmet > 0) {
   console.log(`\n✗ 미충족 — BASE fail ${baseF} · RED unmet ${redUnmet}`);

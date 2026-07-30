@@ -564,7 +564,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
           {effectiveActiveTab === 'calendar' && (
              <CalendarPanel
-               activeOperationsData={activeOperationsData}
                lastSelectedDate={lastSelectedDate}
                setLastSelectedDate={setLastSelectedDate}
                lastViewedMonth={lastViewedMonth}

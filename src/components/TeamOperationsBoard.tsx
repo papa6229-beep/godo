@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { DepartmentDefinition, NativeAgentDefinition, AgentJob, AgentResult, AgentHandoff } from '../engine/nativeAgentRuntime/types';
+import type { DepartmentDefinition, NativeAgentDefinition, AgentResult, AgentHandoff } from '../engine/nativeAgentRuntime/types';
 import type { ApprovalItem } from '../types/approval';
 import type { ValidationScenarioType } from '../engine/nativeAgentRuntime/validationScenarios';
 import { HandoffDetailModal } from './HandoffDetailModal';
@@ -15,7 +15,8 @@ const localMidnightIso = (): string => { const d = new Date(); d.setHours(0, 0, 
 interface TeamOperationsBoardProps {
   departments: DepartmentDefinition[];
   agents: NativeAgentDefinition[];
-  lastRunJobs: AgentJob[];
+  // ⚠️ Local migration 7(2026-07-30): 쓰이지 않던 `lastRunJobs` 를 제거했다
+  //    (구조분해·본문 사용 0건). 아래 결과·핸드오프는 실제로 쓰인다.
   lastRunResults: AgentResult[];
   lastRunHandoffs: AgentHandoff[];
   activeScenario: ValidationScenarioType;
@@ -27,8 +28,9 @@ interface TeamOperationsBoardProps {
   managerBriefing?: string | null;
   onOpenBriefingModal: () => void;
   approvalItems?: ApprovalItem[];
-  onApprove?: (id: string) => void;
-  onReject?: (id: string) => void;
+  // ⚠️ Local migration 7(2026-07-30): 쓰이지 않던 `onApprove`·`onReject` 를 제거했다
+  //    (구조분해·호출 0건 · `onReject` 는 전달조차 없었다).
+  //    이 화면의 승인 관련 동작은 아래 진입점 하나뿐이고, 실제 결정은 승인 상세에서 한다.
   /** B-use-5: 승인 대기 요약을 누르면 **실제 승인 대기열**을 연다(보이는 곳이 눌려야 한다). */
   onOpenApprovals?: () => void;
 }
