@@ -121,6 +121,34 @@ try {
   ok('5-8. agentExecutor 가 계약을 import 한다', /inventoryRiskContract/.test(AE));
   ok('5-9. agentExecutor 가 unknown 을 발주 대상으로 취급하지 않는다',
     /unknown/.test(AE) && /classifyStockRisk/.test(AE));
+
+  // ── 6. Local migration 6 — 미사용 고도몰 상품 매퍼 제거 ────────────────────
+  //   호출자 0건이던 legacy 중간구조 매퍼가 근거 없는 safetyStock 기본값 '5' 를
+  //   만들어 내고 있었다. 활성 경로(mapGoodsToProducts → deriveInventoryFromProducts)는
+  //   그대로 두고 死코드만 없앤다.
+  console.log('\n[6] 미사용 고도몰 상품 매퍼 제거');
+  // 삭제 사유는 주석으로 보존한다(헌법 §6) — 판정은 **코드 줄만** 본다.
+  //   재도입(선언·호출)은 코드 줄에 나타나므로 이 방식으로도 잡힌다.
+  const MAPPER_RAW = read('api/_shared/godomallMapper.ts');
+  const MAPPER = MAPPER_RAW.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const LEGACY_NAMES = ['ProductIntermediate', 'InventoryIntermediate', 'mapGoodsList', 'mapGoodsToInventory'];
+  const leftInSource = LEGACY_NAMES.filter((n) => new RegExp(`\\b${n}\\b`).test(MAPPER));
+  ok('6-1. 제품 매퍼에 legacy 중간구조 4종이 남아 있지 않다',
+    leftInSource.length === 0, leftInSource.length ? `잔존: ${leftInSource.join(', ')}` : '');
+  const leftExported = LEGACY_NAMES.filter((n) => mods.mapper[n] !== undefined);
+  ok('6-2. legacy 매퍼가 런타임 export 로도 남아 있지 않다',
+    leftExported.length === 0, leftExported.length ? `잔존 export: ${leftExported.join(', ')}` : '');
+  ok('6-3. 활성 상품 매퍼는 유지된다(mapGoodsToProducts)',
+    typeof mods.mapper.mapGoodsToProducts === 'function' && /export const mapGoodsToProducts/.test(MAPPER));
+  ok('6-4. 활성 경로 mapGoodsToProducts → deriveInventoryFromProducts 가 동작한다',
+    (() => {
+      const items = mods.inventoryDerive.deriveInventoryFromProducts(mods.mapper.mapGoodsToProducts(RAW_GOODS));
+      return items.length === RAW_GOODS.length && items.every((i) => 'stock' in i && 'safetyStock' in i);
+    })());
+  ok('6-5. 실제 상품 매퍼가 safetyStock:\'5\' 를 만들어내지 않는다',
+    mods.mapper.mapGoodsToProducts(RAW_GOODS).every((p) => p.safetyStock === undefined)
+    && !/'safetyStock', 'minStock', 'soldOutLimit'\], '5'/.test(MAPPER)
+    && !/safetyStock:\s*'5'/.test(MAPPER));
 } finally {
   dispose();
 }

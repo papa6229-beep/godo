@@ -41,44 +41,16 @@ const toBool = (v: string): boolean => {
 };
 
 // ---- 상품(Goods_Search) ----
-// 출력: 상품/재고 파생용 중간 구조
-export interface ProductIntermediate extends Record<string, string> {
-  productName: string;
-  optionName: string;
-  price: string;
-  status: string;
-  stock: string;
-  safetyStock: string;
-}
-
-export const mapGoodsList = (goods: Raw[]): ProductIntermediate[] => {
-  return goods.map((g) => {
-    const productName = pick(g, ['goodsNm', 'goodsName', 'goods_name', 'productName', 'goodsNmPc', 'scmNm']);
-    const optionName = pick(g, ['optionName', 'optionNm', 'goodsOption', 'sno'], '단품');
-    const price = pick(g, ['fixedPrice', 'goodsPrice', 'price', 'salePrice', 'goodsDiscountPrice'], '0');
-    const status = pick(g, ['goodsDisplayFl', 'soldOutFl', 'sellFl', 'goodsState', 'status'], '판매중');
-    const stock = pick(g, ['stockCnt', 'totalStock', 'stock', 'goodsCnt', 'invQty'], '0');
-    const safetyStock = pick(g, ['safetyStock', 'minStock', 'soldOutLimit'], '5');
-    return { productName, optionName, price, status, stock, safetyStock };
-  });
-};
-
-// 상품 응답 -> 재고(inventory) 중간 구조 파생
-export interface InventoryIntermediate extends Record<string, string> {
-  productName: string;
-  optionName: string;
-  stock: string;
-  safetyStock: string;
-}
-
-export const mapGoodsToInventory = (goods: Raw[]): InventoryIntermediate[] => {
-  return mapGoodsList(goods).map((p) => ({
-    productName: p.productName,
-    optionName: p.optionName,
-    stock: p.stock,
-    safetyStock: p.safetyStock
-  }));
-};
+//
+// ⚠️ Local migration 6(2026-07-30): 상품/재고 파생용 **중간 구조 매퍼 4종**
+//    (`ProductIntermediate` · `InventoryIntermediate` · `mapGoodsList` ·
+//     `mapGoodsToInventory`)을 제거했다.
+//    제품 호출자가 0건인 닫힌 死코드였고(`mapGoodsToInventory` 호출자 0 →
+//    `mapGoodsList` → 두 타입), Goods_Search 응답에 없는 값을 기본값으로 지어내
+//    **근거 없는 `safetyStock: '5'`** 를 만들고 있었다.
+//    상품 READ 의 정본은 아래 `mapGoodsToProducts` 이고, 재고 파생은
+//    `godomallInventoryDerive.deriveInventoryFromProducts` 가 담당한다.
+//    안전재고 기본값은 `src/services/inventoryRiskContract` 의 전역 기본값 하나뿐이다.
 
 // ---- 확정 Products 매퍼 (Goods_Search.php 실응답 기준) ----
 // 필드명은 고도몰5 Goods_Search.php 실제 응답에서 확인된 값으로 고정한다.

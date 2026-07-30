@@ -777,6 +777,45 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 
 ---
 
+### Local migration 6 — 미사용 고도몰 상품 매퍼 제거 (2026-07-30, 브랜치 `codex/local-migration-godomall-dead-mapper-cleanup`) — **로컬 구현 완료 · Codex 독립검증 대기**
+
+**분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `godomallMapper.mapGoodsToInventory`/`mapGoodsList` dead code). 계약·화면·API 경로를 바꾸지 않고 **호출자 0건인 死코드만** 없앴다.
+
+**삭제 전 전체 호출 관계 (직접 전수 검색: `api`·`src`·`scripts`)**
+
+| 이름 | 정의 | 호출자 |
+|---|---|---|
+| `mapGoodsToInventory` | `godomallMapper.ts:74` | **0건** |
+| `mapGoodsList` | `:54` | `mapGoodsToInventory`(`:75`) **하나뿐** |
+| `ProductIntermediate` | `:45` | `mapGoodsList` 반환 타입뿐 |
+| `InventoryIntermediate` | `:67` | `mapGoodsToInventory` 반환 타입뿐 |
+
+→ **닫힌 死코드 묶음.** 바깥에서 들어오는 호출이 없다.
+
+**활성 경로는 별개이며 보존됐다(직접 확인)**: `mapGoodsToProducts`(`godomallMapper.ts:109`) ← `godomallResource.ts:14,100,377`(제품) · `deriveInventoryFromProducts`(`godomallInventoryDerive.ts:45`) ← `godomallResource.ts:38,102`(제품). 두 함수와 상품 READ 경로·주문 매퍼·재고위험 계약·전역 기본값 규칙·고도몰 API 경로·환경변수·화면·manifest는 **무변경**.
+
+**함께 사라진 것**: `godomallMapper.ts:61` 의 `pick(g, ['safetyStock','minStock','soldOutLimit'], '5')` — Goods_Search 응답에 없는 값을 지어내던 **근거 없는 `safetyStock` 기본값 `'5'`**. 안전재고 기본값은 이제 `src/services/inventoryRiskContract` 의 전역 기본값 하나뿐이다(B-core-2a 판정 그대로).
+
+**RED → GREEN** (기존 `smoke-b-core-2a-inventory-risk-single-source-v0.mjs` 에 최소 단언만 추가 · 신규 smoke 파일 0 · manifest **125/0 불변**)
+
+| | RED (삭제 전 실제 출력) | GREEN |
+|---|---|---|
+| 6-1 legacy 4종 부재 | **FAIL** — 잔존: `ProductIntermediate, InventoryIntermediate, mapGoodsList, mapGoodsToInventory` | PASS |
+| 6-2 런타임 export 부재 | **FAIL** — 잔존 export: `mapGoodsList, mapGoodsToInventory` | PASS |
+| 6-3 활성 `mapGoodsToProducts` 유지 | **RED 단계에서도 PASS**(안전망) | PASS |
+| 6-4 `mapGoodsToProducts → deriveInventoryFromProducts` 동작 | **RED 단계에서도 PASS**(안전망) | PASS |
+| 6-5 `safetyStock:'5'` 미생성 | **FAIL** | PASS |
+| 검사 전체 | **45 pass / 3 fail · exit 1** | **48 pass / 0 fail · exit 0** |
+
+6-1·6-5 는 삭제 사유를 기록한 **주석**까지 훑어 한 번 더 실패했다. 이 저장소의 다른 smoke 와 같이 **코드 줄만** 판정하도록 고쳤다(주석 보존은 헌법 §6, 재도입은 코드 줄에 나타나므로 여전히 잡힌다).
+
+**이번에 실행한 것**: `smoke-b-core-2a-inventory-risk-single-source-v0` **48/48 exit 0** · 인접 고도몰 상품 READ `smoke-godomall-read-gateway` **13/13** · `smoke-godomall-catalog` **15/15** · `smoke-godomall-api-registry` **13/13** · `npx tsc -b` exit 0 · `npx tsc -p api/tsconfig.json --noEmit` exit 0 · 변경 파일 lint 0 · `git diff --check` 0 · 네 이름 코드 잔여 **각 0건** · manifest **125/0**.
+**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다**(Codex 가 다음 경계에서 판단) · Preview·Vercel·브라우저 검사 · push·배포·환경변수 변경 · main 통합 · 다른 후속 대장 항목 조사·수정.
+**제품 동작 영향**: 없음. 삭제한 4종은 제품 실행 경로에 들어가지 않았고, 상품·재고 READ 는 활성 두 함수를 그대로 쓴다.
+**Codex 독립검증 대기.**
+
+---
+
 ### B-use-5 Preview 인수검사 — **완료 · 실제 Preview 화면 재확인 통과 (브랜치 `codex/b-use-5-preview-acceptance`, 제품 기준 `bcf91a4`, 2026-07-28)**
 
 > **B-use-5 Preview 인수검사는 완료했다.** 사용자가 관측했던 화면 결함 7건이 실제 Preview 화면에서 재확인됐다.
