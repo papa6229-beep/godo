@@ -85,7 +85,8 @@ HQ가 팀의 업무 내용을 받는 경우는 두 가지뿐이다.
 
 현재 `AgentTaskPanel`의 승인 대기와 완료 상태는 React 메모리에만 있어 새로고침하면 사라진다. 대표 업무에서는 이를 허용하지 않는다.
 
-- 업무 상태의 정본은 기존 task lifecycle repository/facade로 고정한다. 활동 원장은 그 상태변화를 기록할 뿐 별도 상태 정본이 되지 않는다.
+- 반복 AI 업무의 실행 상태 정본은 이미 `AgentTaskRunner`와 HQ 부서 관제 화면이 함께 쓰는 append-only `activityLedger`로 고정한다. 조회·구독은 `activityLedgerRepository`를 통해서만 한다.
+- `taskLifecycleAppAdapter`는 HQ 지시·팀 간 협업처럼 사람의 지시→수행→결과→승인 흐름에 계속 사용하며, 이번 팀 내부 반복 점검을 그곳에 중복 등록하지 않는다.
 - 새 저장 체계를 만들지 않는다.
 - 상태는 최소한 `점검 전 → 확인 대기 → 확인 완료` 또는 `반려`를 구분한다.
 - 새로고침·탭 이동·같은 계정 재진입 뒤에도 같은 상태를 복원한다.
