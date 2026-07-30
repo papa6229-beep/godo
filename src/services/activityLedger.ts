@@ -3,7 +3,7 @@
 // 사람 UI와 (미래) AI 에이전트 런타임이 같은 logActivity를 호출해 기록한다.
 // 오늘의 운영(관제)·HQ 채팅은 teamSummary/activityForTeam로 읽기만 한다.
 
-import type { ActivityEvent, ActivityType, ActivityStatus, TeamActivitySummary } from '../types/activityLedger';
+import type { ActivityEvent, ActivityType, ActivityStatus, ActivityDataProvenance, TeamActivitySummary } from '../types/activityLedger';
 import type { DeptTeamId, TeamMessageActor } from '../types/teamMessage';
 
 const STORAGE_KEY = 'godo_activity_ledger_v0';
@@ -80,6 +80,10 @@ export interface LogActivityInput {
   refId?: string;
   taskId?: string;
   correlationId?: string;
+  // D-0: 반복 AI 업무 상태 복원용 선택 필드(§types/activityLedger). 그대로 통과시킨다.
+  resultBody?: string;
+  dataProvenance?: ActivityDataProvenance;
+  decisionReason?: string;
 }
 
 export function createActivity(input: LogActivityInput, nowIso: string = nowIsoDefault()): ActivityEvent {
@@ -95,6 +99,9 @@ export function createActivity(input: LogActivityInput, nowIso: string = nowIsoD
     refId: input.refId,
     taskId: input.taskId,
     correlationId: input.correlationId,
+    resultBody: input.resultBody,
+    dataProvenance: input.dataProvenance,
+    decisionReason: input.decisionReason,
     at: nowIso
   };
 }

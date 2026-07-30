@@ -13,7 +13,8 @@ const TYPE_META: Record<string, { label: string; emoji: string }> = {
   chat_query: { label: '질의', emoji: '💬' },
   note: { label: '메모', emoji: '📝' }
 };
-const STATUS_KO: Record<string, string> = { done: '완료', pending: '승인 대기', in_progress: '진행 중', rejected: '반려', info: '' };
+// D-0: `failed`(계산·저장 실패)를 빈 문구로 두면 실패가 화면에서 사라진다. 라벨을 준다.
+const STATUS_KO: Record<string, string> = { done: '완료', pending: '승인 대기', in_progress: '진행 중', rejected: '반려', failed: '실패', info: '' };
 const shortTime = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${String(d.getMonth() + 1)}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 interface Props { teamId: DeptTeamId; onClose: () => void; }

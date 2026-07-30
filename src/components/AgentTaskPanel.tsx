@@ -1,65 +1,94 @@
-import React, { useState } from 'react';
-import { runManualAgentTask, approveAgentTask } from '../services/agentTaskRunner';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  runManualAgentTask, approveAgentTask, rejectAgentTask, cancelAgentTask
+} from '../services/agentTaskRunner';
+import { latestAgentTaskRunState, type AgentTaskRunState } from '../services/agentTaskRunState';
+import { loadActivity, subscribeActivity } from '../services/repositories/activityLedgerRepository';
+import { userLabelOf } from '../services/dataSourceProvenanceContract';
 import { scheduleLabel, APPROVAL_MODE_META, FOCUS_META, type AgentTaskSpec } from '../types/agentTask';
 import { DEPT_TEAM_META, type DeptTeamId } from '../types/teamMessage';
+import type { ActorRef } from '../services/taskLifecycleContract';
 import type { RevenueResult } from '../services/departmentDataService';
 
-// 팀 AI 에이전트 자동 업무 — 정의된 작업을 canonical 엔진으로 계산 → 팀 소통에 AI 명의로 보고.
-// 승인모드: 자동 완료 / 승인 후 보고 / 검토·수정 후 등록. (정의·편집은 AI 직원 탭에서)
+// 팀 AI 에이전트 자동 업무 — 정의된 작업을 canonical 엔진으로 계산 → 팀장이 확인.
+//
+// D-0: **상태 정본은 이 컴포넌트의 React 상태가 아니라 업무기록 장부(activityLedger)다.**
+//   예전에는 승인 대기·완료가 메모리에만 있어 새로고침하면 사라졌다. 대표 업무에서는 허용하지 않는다.
+//   여기 남는 React 상태는 **아직 저장되지 않은 단기 입력값**뿐이다(초안 편집·반려 사유·호출 실패 안내).
 
 interface Props {
   teamId: DeptTeamId;
-  /**
-   * RC-2 D-1.3: 보고 있는 사람의 역할.
-   *   자기 팀 자동 업무를 실행·승인할 수 있는 사람은 **그 팀 팀장뿐**이다.
-   *   총괄·다른 팀장은 열람만 한다(버튼을 숨기고 핸들러에서도 막는다).
-   */
-  viewerRole?: string;
+  /** 실제 로그인 신원. 없으면(미로그인·미확인) 조작하지 않는다. */
+  actor: ActorRef | null;
+  /** 담당 팀장인가. **서비스도 같은 권한을 다시 검사한다** — 화면 숨김을 보안 경계로 삼지 않는다. */
+  canOperate: boolean;
   tasks: AgentTaskSpec[];
   revenue: RevenueResult | null;
-  onRan: () => void;   // 실행/승인 후 메시지·원장 새로고침
+  onRan: () => void;   // 실행/확인 후 메시지 새로고침(원장은 구독으로 자동 갱신)
 }
 
-interface Pending { body: string; editable: boolean }
+/** 팀 내부 기록 업무인가(`reportTo === teamId`). 문구를 팀 내부용으로 바꾼다. */
+const isInternal = (t: AgentTaskSpec): boolean => t.reportTo === t.teamId;
 
-export const AgentTaskPanel: React.FC<Props> = ({ teamId, tasks, revenue, onRan, viewerRole }) => {
-  // 이 팀의 팀장만 조작할 수 있다. 역할이 오지 않으면(구 호출부) 안전하게 열람 전용.
-  const canOperate = !!viewerRole && viewerRole === teamId;
-  const [done, setDone] = useState<Record<string, string>>({});   // 완료 결과 본문
-  const [pending, setPending] = useState<Record<string, Pending>>({}); // 승인 대기 본문
-  // 자동 완료가 막힌 이유(상시 지시 미승인 · 중지 · 고위험)를 그대로 보여 준다.
-  const [gateNote, setGateNote] = useState<Record<string, string>>({});
+/**
+ * 아직 저장되지 않은 **단기 입력값**. 업무 상태(대기·완료·반려)는 여기 두지 않는다 —
+ * 그건 장부(`latestAgentTaskRunState`)가 정본이다.
+ */
+interface TaskUiInput {
+  draft?: string;       // 초안 수정 본문
+  rejectOpen?: boolean; // 반려 입력칸 열림
+  reason?: string;      // 반려·중단 사유 입력값
+  note?: string;        // 현재 호출 실패 안내
+}
+
+export const AgentTaskPanel: React.FC<Props> = ({ actor, canOperate, tasks, revenue, onRan }) => {
+  // 장부 구독 — 다른 탭·같은 탭 저장 모두 듣는다(activityLedgerRepository).
+  const [activity, setActivity] = useState(() => loadActivity());
+  useEffect(() => subscribeActivity(() => setActivity(loadActivity())), []);
+
+  const [ui, setUi] = useState<Record<string, TaskUiInput>>({});
+  const patch = (id: string, next: TaskUiInput) => setUi((p) => ({ ...p, [id]: { ...p[id], ...next } }));
+
+  const states = useMemo(() => {
+    const out: Record<string, AgentTaskRunState> = {};
+    for (const t of tasks) out[t.id] = latestAgentTaskRunState(activity, t.id);
+    return out;
+  }, [activity, tasks]);
+
+  const setNoteFor = (id: string, text: string) => patch(id, { note: text });
+  const clearInputs = (id: string) => setUi((p) => ({ ...p, [id]: { note: p[id]?.note } }));
 
   const run = (spec: AgentTaskSpec) => {
-    if (!canOperate) return;   // 화면 숨김에만 기대지 않는다.
-    // RC-2 D-1.3: 실행은 공개 진입점으로만 한다.
-    //   runManualAgentTask 가 담당 팀장 권한과 고위험 여부를 함께 판정하고,
-    //   자동 완료가 아니면 결과를 내보내지 않고 확인 대기로 둔다.
-    const outcome = runManualAgentTask(spec, { kind: 'human', teamId }, { revenue });
-    if (outcome.ran) {
-      setDone((p) => ({ ...p, [spec.id]: outcome.body }));
-      setPending((p) => { const n = { ...p }; delete n[spec.id]; return n; });
-      setGateNote((p) => { const n = { ...p }; delete n[spec.id]; return n; });
-    } else if (outcome.staged) {
-      setPending((p) => ({ ...p, [spec.id]: { body: outcome.body, editable: spec.approvalMode === 'draft' } }));
-      setGateNote((p) => ({
-        ...p,
-        [spec.id]: outcome.dataKind === 'fixture'
-          ? `${outcome.reason} (시험 자료로 계산한 결과입니다)`
-          : outcome.reason
-      }));
-    } else {
-      setGateNote((p) => ({ ...p, [spec.id]: outcome.reason }));
-    }
+    if (!canOperate || !actor) return;   // 화면 숨김에만 기대지 않는다(서비스도 막는다).
+    const outcome = runManualAgentTask(spec, actor, { revenue });
+    // 성공·실패 모두 상태는 장부에서 다시 읽는다. 여기서는 안내 문구만 남긴다.
+    setNoteFor(spec.id, outcome.ran || outcome.staged ? '' : outcome.reason);
     onRan();
   };
 
   const approve = (spec: AgentTaskSpec) => {
-    if (!canOperate) return;
-    const body = pending[spec.id]?.body ?? '';
-    approveAgentTask(spec, { revenue }, body);
-    setPending((p) => { const n = { ...p }; delete n[spec.id]; return n; });
-    setDone((p) => ({ ...p, [spec.id]: body }));
+    if (!canOperate || !actor) return;
+    const body = ui[spec.id]?.draft ?? states[spec.id]?.resultBody ?? '';
+    const r = approveAgentTask(spec, actor, { revenue }, body);
+    setNoteFor(spec.id, r.ok ? '' : r.reason);
+    if (r.ok) clearInputs(spec.id);
+    onRan();
+  };
+
+  const reject = (spec: AgentTaskSpec) => {
+    if (!canOperate || !actor) return;
+    const r = rejectAgentTask(spec, actor, { revenue }, ui[spec.id]?.reason ?? '');
+    setNoteFor(spec.id, r.ok ? '' : r.reason);
+    if (r.ok) clearInputs(spec.id);
+    onRan();
+  };
+
+  // 사용자가 **실행 자체를 중단**하는 동작. 화면만 닫고 장부에 대기를 남기지 않는다.
+  const stop = (spec: AgentTaskSpec) => {
+    if (!canOperate || !actor) return;
+    const r = cancelAgentTask(spec, actor, { revenue }, ui[spec.id]?.reason ?? '점검 결과를 쓰지 않고 중단');
+    setNoteFor(spec.id, r.ok ? '' : r.reason);
+    if (r.ok) clearInputs(spec.id);
     onRan();
   };
 
@@ -67,9 +96,9 @@ export const AgentTaskPanel: React.FC<Props> = ({ teamId, tasks, revenue, onRan,
     <div className="atask-panel">
       <p className="atask-intro">
         {!canOperate && (
-          <><b>열람 전용입니다.</b> 실행·승인은 담당 팀장만 할 수 있습니다.<br /></>
+          <><b>열람 전용입니다.</b> 실행·확인은 담당 팀장만 할 수 있습니다.<br /></>
         )}
-        이 팀 AI 에이전트의 자동 업무입니다. 정해진 시간에 스스로 점검하고 결과를 담당 팀에 보고합니다.
+        이 팀 AI 에이전트의 자동 업무입니다. 결과는 담당 팀장이 확인해 마감합니다.
         <br /><span className="atask-intro-sub">※ 업무·승인모드 편집은 <b>AI 직원 → 자동 업무</b>에서. 시각 자동 실행은 서버 연결(2단계) 후 활성화.</span>
       </p>
       {tasks.length === 0 ? (
@@ -78,7 +107,12 @@ export const AgentTaskPanel: React.FC<Props> = ({ teamId, tasks, revenue, onRan,
         <div className="atask-list">
           {tasks.map((t) => {
             const am = APPROVAL_MODE_META[t.approvalMode];
-            const pend = pending[t.id];
+            const st = states[t.id] ?? { phase: 'idle' as const, taskId: t.id };
+            const internal = isInternal(t);
+            const waiting = st.phase === 'awaiting_review';
+            const editable = t.approvalMode === 'draft';
+            const body = ui[t.id]?.draft ?? st.resultBody ?? '';
+            const label = st.dataProvenance ? userLabelOf(st.dataProvenance) : null;
             return (
               <div key={t.id} className="atask-item">
                 <div className="atask-item-head">
@@ -88,32 +122,69 @@ export const AgentTaskPanel: React.FC<Props> = ({ teamId, tasks, revenue, onRan,
                 <div className="atask-meta">
                   <span className="atask-agent">{t.agentLabel}</span>
                   <span className={`atask-mode mode-${t.approvalMode}`} title={am.desc}>{am.label}</span>
-                  <span>{FOCUS_META[t.focus]} · → {DEPT_TEAM_META[t.reportTo].emoji} {DEPT_TEAM_META[t.reportTo].name}</span>
+                  <span>
+                    {FOCUS_META[t.focus]} · {internal
+                      ? '팀 내부 점검'
+                      : <>→ {DEPT_TEAM_META[t.reportTo].emoji} {DEPT_TEAM_META[t.reportTo].name}</>}
+                  </span>
                 </div>
 
-                {pend ? (
-                  <div className="atask-pending">
-                    <div className="atask-pending-label">🕒 {t.approvalMode === 'draft' ? '초안 검토 후 등록' : '승인 대기'}</div>
-                    {gateNote[t.id] && <div className="atask-gate-note">⚠ {gateNote[t.id]}</div>}
-                    {pend.editable ? (
-                      <textarea className="atask-pending-edit" rows={3} value={pend.body}
-                        onChange={(e) => setPending((p) => ({ ...p, [t.id]: { ...p[t.id], body: e.target.value } }))} />
-                    ) : (
-                      <div className="atask-pending-body">{pend.body}</div>
-                    )}
-                    <div className="atask-pending-actions">
-                      {canOperate && (<button type="button" className="atask-approve" onClick={() => approve(t)}>
-                        {t.approvalMode === 'draft' ? '검토 완료 · 등록' : '승인 · 보고'}
-                      </button>
-                      )}
-                      <button type="button" className="atask-cancel" onClick={() => setPending((p) => { const n = { ...p }; delete n[t.id]; return n; })}>취소</button>
-                    </div>
-                  </div>
-                ) : done[t.id] ? (
-                  <div className="atask-result">방금 완료 · {DEPT_TEAM_META[t.reportTo].name} 요청함으로 전송됨<div className="atask-result-body">{done[t.id]}</div></div>
-                ) : null}
+                {ui[t.id]?.note && <div className="atask-gate-note">⚠ {ui[t.id]?.note}</div>}
 
-                {!pend && canOperate && (
+                {waiting && (
+                  <div className="atask-pending">
+                    <div className="atask-pending-label">
+                      🕒 {internal ? '팀장 확인 대기' : (editable ? '초안 검토 후 등록' : '승인 대기')}
+                      {label && <span className="atask-source"> · {label}</span>}
+                    </div>
+                    {editable ? (
+                      <textarea className="atask-pending-edit" rows={3} value={body}
+                        onChange={(e) => patch(t.id, { draft: e.target.value })} />
+                    ) : (
+                      <div className="atask-pending-body">{body}</div>
+                    )}
+                    {canOperate && (
+                      <div className="atask-pending-actions">
+                        <button type="button" className="atask-approve" onClick={() => approve(t)}>
+                          {internal ? '확인 완료' : (editable ? '검토 완료 · 등록' : '승인 · 보고')}
+                        </button>
+                        {ui[t.id]?.rejectOpen ? (
+                          <>
+                            <input
+                              className="atask-reject-reason" type="text" placeholder="이유를 한 문장 적어 주세요"
+                              value={ui[t.id]?.reason ?? ''}
+                              onChange={(e) => patch(t.id, { reason: e.target.value })}
+                            />
+                            <button type="button" className="atask-reject-confirm" onClick={() => reject(t)}>반려</button>
+                            <button type="button" className="atask-cancel" onClick={() => stop(t)}>작업 중단</button>
+                          </>
+                        ) : (
+                          <button type="button" className="atask-reject" onClick={() => patch(t.id, { rejectOpen: true })}>
+                            확인하지 않음
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {st.phase === 'completed' && (
+                  <div className="atask-result">
+                    {internal ? '팀 내부 확인 완료' : `${DEPT_TEAM_META[t.reportTo].name} 요청함으로 전송됨`}
+                    {label && <span className="atask-source"> · {label}</span>}
+                    <div className="atask-result-body">{st.resultBody}</div>
+                  </div>
+                )}
+                {st.phase === 'rejected' && (
+                  <div className="atask-rejected">
+                    반려됨{st.decisionReason ? ` · ${st.decisionReason}` : ''}
+                  </div>
+                )}
+                {st.phase === 'failed' && (
+                  <div className="atask-rejected">실패{st.decisionReason ? ` · ${st.decisionReason}` : ''}</div>
+                )}
+
+                {!waiting && canOperate && (
                   <button type="button" className="atask-run" onClick={() => run(t)}>
                     {t.approvalMode === 'auto' ? '지금 실행' : '지금 점검'}
                   </button>

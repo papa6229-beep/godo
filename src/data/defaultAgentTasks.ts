@@ -12,7 +12,10 @@ export const DEFAULT_AGENT_TASKS: AgentTaskSpec[] = [
     agentLabel: '상품 관리 AI',
     title: '재고·매출 일일 점검',
     focus: 'inventory',
-    reportTo: 'hq',
+    // D-0/D-010: **팀 내부 일상 점검**이다. `reportTo === teamId` = 팀 내부 기록.
+    //   HQ 요청함·HQ 승인대기·팀 간 메시지를 만들지 않는다. HQ 는 부서 업무 확인 화면에서 열람한다.
+    //   (HQ 가 지시한 업무와 팀장이 명시적으로 보낸 보고는 기존 경로로 HQ 에 도착한다.)
+    reportTo: 'product',
     reportKind: 'info',
     schedule: { kind: 'daily', at: '09:00' },
     approvalMode: 'approval'

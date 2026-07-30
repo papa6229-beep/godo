@@ -31,7 +31,6 @@ import { TeamTaskPanel } from './TeamTaskPanel';
 import type { ActorRef, ApprovalDecisionKind } from '../services/taskLifecycleContract';
 import type { TaskFlow } from '../services/taskLifecycleAppAdapter';
 import { routeTeamMessage } from '../services/taskLifecycleAppAdapter';
-import type { ViewerRole } from '../services/sessionRole';
 import type { EffectiveIdentity } from '../services/effectiveIdentity';
 import { agentTasksForTeam } from '../data/defaultAgentTasks';
 import { loadAgentTasks, subscribeAgentTasks } from '../services/repositories/agentTaskRepository';
@@ -786,10 +785,15 @@ export const DepartmentWorkspacePanel: React.FC<{
           {tasksForSelectedTeam.length > 0 && (
             <AgentTaskPanel
               teamId={selectedTeamId}
+              actor={identity.actor}
+              canOperate={
+                identity.actor?.kind === 'human'
+                && identity.teamId === selectedTeamId
+                && identity.isLead
+              }
               tasks={tasksForSelectedTeam}
               revenue={productData.revenue}
               onRan={refreshTeamMessages}
-              viewerRole={(myTeamId ?? 'hq') as ViewerRole}
             />
           )}
         </>)}

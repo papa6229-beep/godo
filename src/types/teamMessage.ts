@@ -24,8 +24,14 @@ export type ActorKind = 'human' | 'agent';
 export interface TeamMessageActor {
   kind: ActorKind;
   teamId: DeptTeamId;
-  label: string;        // 표시명(사람='운영자' 등, 에이전트=에이전트명)
+  label: string;        // 표시명(사람=로그인 계정 이름, 에이전트=에이전트명)
   agentId?: string;     // kind==='agent'일 때 식별자
+  /**
+   * D-0: 사람 계정 식별자. **로그인 신원이 연결된 기록에만 있다.**
+   *   구버전 저장분에는 없다(undefined) — 없다고 해서 실제 로그인으로 단정하지 않는다.
+   *   표시명(label)은 바뀔 수 있으므로 "누가 했는가"의 대조는 이 값으로 한다.
+   */
+  userId?: string;
 }
 
 export interface TeamMessageAttachment {
