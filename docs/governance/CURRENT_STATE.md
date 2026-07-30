@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-30 (Local migration 5 — 사용되지 않는 `syntheticCommerceFacts` 제거)
+최종 갱신: 2026-07-30 (D-0 첫 대표 업무 — 상품팀 일일 재고점검 팀 내부 완주)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -895,6 +895,51 @@ Codex 가 재확인한 보존 항목: `CalendarPanel` 자체 `fetchRevenue` 경�
 
 **이것은 자동검사 근거다. Preview·Production 을 확인한 것이 아니다.**
 **화면 동작을 바꾸지 않은 미사용 prop 정리이므로 Preview·Vercel·브라우저 확인은 하지 않는다**(Codex 판정).
+
+---
+
+### D-0 첫 대표 업무 — 상품팀 일일 재고점검 팀 내부 완주 (2026-07-30, 브랜치 `codex/d0-parallel-team-readiness-plan`) — **로컬 구현 완료 · Codex 독립검증 대기**
+
+**분류**: D 단계의 **미리 구현·시험**(D-009 §8·§9). 근거 결정 **D-010**(HQ 자동 보고 경계).
+설계·계획: `docs/superpowers/specs/2026-07-30-product-daily-internal-workflow-design.md` · `docs/superpowers/plans/2026-07-30-product-daily-internal-workflow.md`
+
+**대상**: `src/data/defaultAgentTasks.ts` 의 **`task-product-daily`** 한 건. 다른 팀 자동 업무를 함께 일반화하지 않았다.
+
+#### 구현 사실 (파일:행 대조)
+
+| 사실 | 근거 |
+|---|---|
+| **팀 내부 점검으로 동작** | `defaultAgentTasks.ts` `task-product-daily.reportTo: 'product'`(=`teamId`). `agentTaskRunner.ts` `isInternalTeamRecord(spec)` 가 참이면 `postTeamMessage` 를 호출하지 않고 장부에만 남긴다 |
+| **시험자료 출처가 `시험 데이터` 로 유지** | `provenanceOf(snap)` 가 **실제 계산에 쓴 `snapshot.sourceMode`** 만 본다(`standing.source`·버튼 이름 미사용). 라벨은 기존 `dataSourceProvenanceContract.userLabelOf` 재사용. 본문 첫머리 `[시험 데이터]` + 원장에 `dataProvenance` 구조값 저장 |
+| **결과·확인·반려·행위자가 새로고침 뒤 복원** | 상태 정본이 append-only `activityLedger`. `agentTaskRunState.latestAgentTaskRunState` 가 `resultBody`·`dataProvenance`·`decisionReason`·actor 를 복원하고, `AgentTaskPanel` 이 `subscribeActivity` 로 구독한다(React 에는 저장 전 단기 입력값만) |
+| **HQ 메시지·승인 요청 자동 생성 없음** | 집중검사 `내부 8`·`내부 9` — 확인 뒤 `inboxFor(hq)` **0건**, `inboxFor(product)` **0건** |
+| **HQ 는 기존 화면에서 원장 기록 열람** | 완료 원장에 `teamId:'product'` · `taskId:'agenttask-task-product-daily'` · 결과 본문 · 출처 · 실제 확인 actor 가 남는다. 경로는 기존 `HQ 오늘의 운영 → 상품관리팀 카드 → 부서 업무 확인 → DeptActivityModal`. 새 HQ 알림·승인 UI 를 만들지 않았다 |
+| **실제 로그인 행위자 기록** | `humanActor(actor)` 가 `label` + `userId` 를 남긴다. `'운영자'` 하드코딩 **3곳 제거**(이전 `agentTaskRunner.ts:74,117,126`) — 집중검사 `내부 11`·`내부 11b` |
+| **중복 실행 차단** | `preRunGate` 가 실행 직전 장부 상태를 보고 `awaiting_review` 면 새 pending 을 만들지 않는다(manual·scheduled 두 진입점 공통) — `내부 7` |
+| **데이터 미연결을 완료·대기로 저장하지 않음** | snapshot 이 `null` 이거나 `unavailable` 이면 pending·done·메시지 **0건** — `내부 3` |
+| **기존 HQ 지시 업무 흐름 무변경** | `taskLifecycleAppAdapter` 에 이 반복 업무를 **등록하지 않았다**. `reportTo !== teamId` 인 업무의 전송 동작 유지 — `회귀 1` |
+
+부수 교정: `DeptActivityModal` 상태 라벨에 `failed: '실패'` 추가(실패 기록이 빈 문구로 보이지 않게).
+
+#### RED → GREEN (기존 smoke 확장 · 신규 smoke 파일 0 · **manifest 125/0 불변**)
+
+| 단계 | RED (실제 출력) | GREEN |
+|---|---|---|
+| Task 1 상태 복원 계약 | 모듈 부재로 컴파일 실패 → **4 pass / 1 fail · exit 1** | 포함 |
+| Task 2 팀 내부 완주 | `회귀 1` 실패 → **46 pass / 1 fail · exit 1** | 포함 |
+| Task 3 패널 장부 구독 | `UI 1~8` 전부 실패 → **47 pass / 8 fail · exit 1** | 포함 |
+| 최종 | — | **55 pass / 0 fail · exit 0** |
+
+**계획서 스니펫 2건을 저장소 사실에 맞춰 교정했다**(구현 동작 변경 아님):
+① `회귀 1` 의 `externalSpec` 에 승인된 `standing` 을 붙였다 — `task-product-daily` 에는 `standing` 이 없어 `canRunStandingDirective(undefined)` 가 `requiresLeadConfirmation: true` 를 돌려주므로(**기존 규칙** `standingDirectiveContract.ts:63-71`) auto 전송 경로에 도달할 수 없었다.
+② `UI 2` 단언이 `useState<Record<string,string>>({})` 라는 **일반 React 관용구**를 통째로 금지해 저장 전 단기 입력값까지 막았다. 확인하려는 사실(업무 결과 상태를 React 정본으로 두지 않는다)을 직접 보도록 `[done,setDone]`/`[pending,setPending]` 부재 + `latestAgentTaskRunState` 사용 + `st.resultBody` 렌더로 바꿨다(**더 강한 판정**).
+③ 계획서의 `AgentTaskPanel.css` 는 저장소에 없는 파일이라, `atask-*` 스타일이 실제로 있는 `DepartmentWorkspacePanel.css:682-697` 에 3줄만 추가했다(죽은 파일을 만들지 않았다).
+
+**이번에 실행한 것**: `node scripts/smoke-agent-task-runner-v0.mjs` **55/55 exit 0** · `npx tsc -b` exit 0 · 변경 파일 lint 0 · `git diff --check` 0 · 변경분 비밀값·외부 WRITE 추가 **0건** · manifest **125/0**.
+**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다. Codex 독립검증 대기.** · Preview·Vercel·브라우저 확인 · main 통합·push·배포 · 환경변수·외부 WRITE · 스케줄러·서버 DB·고도몰 키.
+
+**완료로 확대하지 않는 것**: 이것은 **시험자료 기반 미리 구현 완료**다. **고도몰 실데이터 검증(C) 완료가 아니고, 전체 팀 기능 완료도 아니다.** 실제 상품·실제 데이터로 같은 흐름을 재시험하기 전에는 E·F 의 실제 완주로 표시하지 않는다. **고도몰 키 발급과 실제 상품 준비는 계속 병렬 대기**다.
+**예약 시각 자동 실행은 이번 범위 밖**이다(`runScheduledAgentTask` 제품 호출자 0건 — E 단계).
 
 ---
 
