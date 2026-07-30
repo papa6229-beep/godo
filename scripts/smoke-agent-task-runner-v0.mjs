@@ -34,7 +34,7 @@ globalThis.window = {
 
 const tscBin = path.join(REPO, 'node_modules', 'typescript', 'bin', 'tsc');
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'godo-atr-'));
-let R = null, A = null, TC = null, S = null, DEFAULTS = null;
+let R = null, A = null, TC = null, S = null, DEFAULTS = null, DEPT = null;
 try {
   execFileSync(process.execPath, [tscBin,
     path.join(REPO, 'src', 'services', 'agentTaskRunner.ts'),
@@ -55,6 +55,9 @@ try {
   if (stPath) S = await import(pathToFileURL(stPath).href);
   const dfPath = find('defaultAgentTasks.js');
   if (dfPath) DEFAULTS = await import(pathToFileURL(dfPath).href);
+  // agentTaskRunner 가 이미 끌어온 공통 스냅샷 엔진 — CS 수치 검증에 그대로 쓴다.
+  const dsPath = find('departmentDataSourceOfTruth.js');
+  if (dsPath) DEPT = await import(pathToFileURL(dsPath).href);
 } catch (e) { console.error('[smoke] compile failed:', e.stdout?.toString() || e.message); }
 
 // RC-2 D-1.3.1: raw 실행 함수는 비공개다. 공개 진입점만으로 검증한다.
@@ -297,6 +300,119 @@ if (R && A && TC) {
       !/viewerRole/.test(panelSource) && /canOperate/.test(workspaceSource));
     ok('UI 8. 부서 업무 확인 화면이 실패 상태를 빈 문구로 두지 않음',
       /failed:\s*'실패'/.test(modalSource));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // D-0 두 번째 팀 업무 — CS 문의·리뷰 일일 점검 팀 내부 완주 (D-010)
+  //   CS 상담 AI 가 시험자료로 초안을 만들고, CS팀장이 확인·수정해 팀 내부 기록으로 마감한다.
+  //   HQ 자동 보고·자동 승인 요청을 만들지 않는다. 상품팀에서 만든 **일반 내부 업무 경계**
+  //   (`reportTo === teamId`)를 그대로 재사용한다 — 팀 이름 조건문을 만들지 않는다.
+  // ══════════════════════════════════════════════════════════════════════
+  console.log('\n  --- D-0 · CS 문의·리뷰 일일 점검 팀 내부 완주 ---');
+  {
+    const inbox = (teamId) => TC.inboxFor(TC.loadTeamMessages(), teamId);
+    const csDaily = DEFAULTS ? DEFAULTS.DEFAULT_AGENT_TASKS.find((t) => t.id === 'task-cs-daily') : null;
+    const csSpec = csDaily ? { ...csDaily, schedule: { kind: 'manual' } } : null;
+
+    // 시험 fixture — 문의 5건(미처리 3) · 리뷰 2건.
+    //   autoCandidates = 리뷰 2 + (미처리 & 배송 주제) 2 = 4  (기존 계약 그대로, 새 계산식 없음)
+    const inq = (status, topic) => ({ inquiryId: `q${Math.random()}`, status, topic, createdAt: '2026-06-20 09:00:00' });
+    const CS_REVENUE = {
+      count: 0, source: 'mock', live: false,
+      realOrdersStatus: 'unavailable', syntheticStatus: 'success',
+      summary: { syntheticOrderCount: 1, realOrderCount: 0, syntheticTotalNetSoldQuantity: 0 },
+      stockImpact: [], orders: [],
+      universeAux: {
+        customers: [],
+        reviews: [{ reviewId: 'rv1', rating: 5 }, { reviewId: 'rv2', rating: 2 }],
+        inquiries: [
+          inq('answered', 'delivery'),      // 처리됨 — 자동응대 후보 아님
+          inq('unanswered', 'delivery'),    // 미처리 + 배송 → 후보
+          inq('unanswered', 'payment'),     // 미처리
+          inq('needs_human', '배송'),        // 미처리 + 배송 → 후보
+          inq('answered', 'refund')          // 처리됨
+        ],
+        meta: { syntheticProfile: 'commerce_universe_v1' }
+      }
+    };
+    const csLeadActor = { kind: 'human', teamId: 'cs', label: '[시험] CS팀장', userId: 'u-cs-lead', accountRole: 'team_lead' };
+    const csMember = { kind: 'human', teamId: 'cs', label: '[시험] CS팀원', userId: 'u-cs-member', accountRole: 'member' };
+    const hqActor = { kind: 'human', teamId: 'hq', label: '[시험] 총괄', userId: 'u-hq', accountRole: 'hq' };
+    const otherLead = { kind: 'human', teamId: 'product', label: '[시험] 상품팀장', userId: 'u-p-lead', accountRole: 'team_lead' };
+    const aiActor = { kind: 'agent', teamId: 'cs', label: 'CS 상담 AI', agentId: 'cs-lead' };
+    const csCtx = { revenue: CS_REVENUE, nowIso: NOW };
+
+    ok('CS 1. task-cs-daily 가 팀 내부 업무다(reportTo=cs · draft 유지)',
+      !!csSpec && csSpec.reportTo === 'cs' && csSpec.approvalMode === 'draft' && csSpec.focus === 'cs');
+
+    const csReport = csSpec ? R.formatTaskReport(csSpec, DEPT.buildDepartmentSourceOfTruthSnapshot(CS_REVENUE, { nowMs: 0 })) : null;
+    ok('CS 2. 시험 fixture 의 문의·리뷰 수치가 결과에 정확히 들어간다', (() => {
+      if (!csReport) return false;
+      return /총 문의 5건 중 미처리 3건 · 리뷰 2건 · 자동응대 후보 4건\./.test(csReport.body);
+    })(), csReport ? csReport.body : '보고 없음');
+    ok('CS 3. 출처가 simulation 이고 사용자 문구는 시험 데이터',
+      !!csReport && csReport.dataProvenance === 'simulation' && csReport.dataLabel === '시험 데이터'
+      && csReport.body.startsWith('[시험 데이터]'));
+
+    store.clear();
+    ok('CS 5. CS팀원·HQ·타 팀장·AI 는 실행할 수 없다',
+      [csMember, hqActor, otherLead, aiActor].every((a) => {
+        const r = R.runManualAgentTask(csSpec, a, csCtx);
+        return r.ran === false && r.staged === false;
+      }) && ledger().length === 0);
+
+    const csRun = R.runManualAgentTask(csSpec, csLeadActor, csCtx);
+    ok('CS 4. CS팀장 실행 허용(초안 대기)', csRun.ran === false && csRun.staged === true && typeof csRun.body === 'string');
+    ok('CS 6. 실행 후 pending 정확히 1건',
+      ledger().filter((e) => e.type === 'task_run' && e.status === 'pending').length === 1);
+
+    const beforeDup = ledger().length;
+    const csDup = R.runManualAgentTask(csSpec, csLeadActor, csCtx);
+    ok('CS 7. pending 중 재클릭 시 추가 pending 0건',
+      csDup.ran === false && csDup.staged === false && ledger().length === beforeDup);
+
+    // draft — 팀장이 AI 초안을 수정해 확인한다.
+    const EDITED = '[시험 데이터] 총 문의 5건 중 미처리 3건. 배송 지연 문의 2건은 오늘 중 답변 예정.';
+    const csApproved = R.approveAgentTask(csSpec, csLeadActor, csCtx, EDITED);
+    ok('CS 8. 팀장이 수정한 초안이 최종 결과로 복원된다', (() => {
+      const st = S.latestAgentTaskRunState(ledger(), csSpec.id);
+      return csApproved.ok === true && st.phase === 'completed' && st.resultBody === EDITED
+        && st.dataProvenance === 'simulation';
+    })());
+    ok('CS 9. 확인 후 HQ inbox 0건', inbox('hq').length === 0);
+    ok('CS 10. 확인 후 CS 자기 inbox 0건', inbox('cs').length === 0);
+    ok('CS 11. AI 계산 actor 와 실제 팀장 actor 가 구분돼 남는다',
+      ledger().some((e) => e.type === 'task_run' && e.status === 'done'
+        && e.actor.kind === 'agent' && e.actor.agentId === csSpec.agentId)
+      && ledger().some((e) => e.type === 'approval' && e.status === 'done'
+        && e.actor.kind === 'human' && e.actor.label === csLeadActor.label && e.actor.userId === csLeadActor.userId));
+    ok('CS 14. 새로고침을 가정해 원장만 다시 읽어도 상태가 복원된다', (() => {
+      // 화면 메모리를 쓰지 않고 저장소 원본만으로 다시 계산한다.
+      const reread = JSON.parse(store.get('godo_activity_ledger_v0') || '[]');
+      const st = S.latestAgentTaskRunState(reread, csSpec.id);
+      return st.phase === 'completed' && st.resultBody === EDITED
+        && st.dataProvenance === 'simulation' && st.actor.userId === csLeadActor.userId;
+    })());
+
+    store.clear();
+    R.runManualAgentTask(csSpec, csLeadActor, csCtx);
+    R.rejectAgentTask(csSpec, csLeadActor, csCtx, '리뷰 건수가 어제와 달라 다시 확인해 주세요');
+    ok('CS 12. 반려 이유가 실제 팀장 신원과 함께 복원된다', (() => {
+      const st = S.latestAgentTaskRunState(ledger(), csSpec.id);
+      return st.phase === 'rejected'
+        && st.decisionReason === '리뷰 건수가 어제와 달라 다시 확인해 주세요'
+        && st.actor.userId === csLeadActor.userId;
+    })());
+
+    store.clear();
+    const csNoData = R.runManualAgentTask(csSpec, csLeadActor, { revenue: null, nowIso: NOW });
+    const csUnavail = R.runManualAgentTask(csSpec, csLeadActor, {
+      revenue: { ...CS_REVENUE, syntheticStatus: 'unavailable', summary: null }, nowIso: NOW
+    });
+    ok('CS 13. unavailable·데이터 없음은 기록·메시지 0건',
+      csNoData.ran === false && csNoData.staged === false
+      && csUnavail.ran === false && csUnavail.staged === false
+      && ledger().length === 0 && inbox('hq').length === 0 && inbox('cs').length === 0);
   }
 }
 

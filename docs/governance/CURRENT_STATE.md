@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-30 (D-0 첫 대표 업무 — 상품팀 일일 재고점검 팀 내부 완주)
+최종 갱신: 2026-07-30 (D-0 — 상품팀 점검 최종 확정 · CS 문의·리뷰 점검 팀 내부 완주)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -966,8 +966,66 @@ Codex 가 재확인한 보존 항목: `CalendarPanel` 자체 `fetchRevenue` 경�
 부수: `docs/superpowers/specs/2026-07-30-product-daily-internal-workflow-design.md` 3~5행의 **줄 끝 공백만** 제거했다(내용 무변경). `git diff --check main..HEAD` 가 이 3줄을 잡고 있었고, **구현 커밋 2개 자체에는 공백 오류가 없었다.**
 
 **교정 후 실행**: 지정 검사 5종 전부 **exit 0**(agent-task-runner 55/55 · d13 30/30 · d131 31/31 · task-lifecycle 40/40 · d121 5/5) · 변경 검사 파일 lint 0 · `git diff --check main..HEAD` 0 · manifest **125/0 불변** · **제품 코드 변경 0건**.
-**실행하지 않은 것**: **전체 `npm test`** — 후속 커밋을 받은 뒤 **Codex 가 전체 게이트를 한 번 재실행**한다.
-**전체 게이트가 다시 통과하기 전에는 D-0 상품팀 점검을 최종 확정으로 확대하지 않는다.** 고도몰 키 발급 대기도 그대로다.
+
+#### → Codex 전체 게이트 통과 · **상품팀 일일 점검 최종 확정** (기준 HEAD `d26019a`, 2026-07-30)
+
+**Codex 가 직접 실행했다.**
+
+| 항목 | 값 |
+|---|---|
+| `npm test` | **exit 0** |
+| smoke | **125/125 · 139.2초** |
+| `tsc -b` · API typecheck · Vite build · 전체 lint | 전부 통과 |
+| `git diff --check main..HEAD` | 통과 |
+| manifest | include **125** / exclude **0** |
+| 작업 트리 | clean |
+
+Vite 의 큰 번들 경고는 **기존 비차단 경고**이며 이번 상품팀 업무의 실패가 아니다.
+
+**확정 범위 (이 범위 밖으로 확대하지 않는다)**
+
+- ✅ **시험자료 기반 미리 구현·자동검증 완료**
+- ✅ 상품팀 내부에서 팀장이 실행 → 결과 확인 또는 **이유 있는 반려** → 기록 복원
+- ✅ **HQ 메시지·HQ 승인대기 자동 생성 없음**
+- ❌ **실제 상품·실데이터 재시험은 아직 미완료**
+- ❌ **C 완료 아님 · E·F 실제 완주 아님 · 전체 팀 기능 완료 아님**
+
+---
+
+### D-0 두 번째 팀 업무 — CS 문의·리뷰 일일 점검 팀 내부 완주 (2026-07-30) — **로컬 구현 완료 · Codex 독립검증 대기**
+
+**분류**: D 단계의 **미리 구현·시험**(D-009). 근거 결정 **D-010**(HQ 자동 보고 경계) — **새 결정을 만들지 않고 재사용**했다.
+**대상**: `src/data/defaultAgentTasks.ts` 의 **`task-cs-daily`** 한 건.
+
+**구현 범위 — 스펙 1줄 변경이 전부다**
+
+| 항목 | 값 |
+|---|---|
+| 변경 | `task-cs-daily.reportTo: 'hq' → 'cs'`(+ 사유 주석) |
+| `approvalMode` | **`draft` 유지** — AI 가 문의·리뷰 요약 초안을 만들고 CS팀장이 문장을 수정해 확정한다 |
+| 새 실행기·저장소·승인 체계 | **0건.** `AgentTaskPanel`·`agentTaskRunner`·`agentTaskRunState`·`activityLedger`·`dataSourceProvenanceContract`·`csUniverse`·`identity.actor`·기존 HQ 부서 업무 열람 화면을 그대로 재사용 |
+| 팀 이름 조건문 | **0건.** 상품팀에서 만든 일반 경계 `isInternalTeamRecord(spec) = reportTo === teamId` 가 CS 에 그대로 적용된다 |
+| 예약 실행 | 연결하지 않았다 — 화면의 수동 `지금 점검`만 쓴다 |
+
+**보고 내용**: 기존 `focus:'cs'` 계산 그대로(`agentTaskRunner.ts:66-68`) — 총 문의 · 미처리 문의 · 리뷰 수 · 자동응대 후보. **새 계산식·문의 상태 재판정 0건**이며 `DepartmentSourceOfTruthSnapshot.csUniverse` 값을 그대로 인용한다.
+
+**RED → GREEN** (기존 `smoke-agent-task-runner-v0.mjs` 확장 · **신규 smoke 파일 0 · manifest 125/0 불변**)
+
+| | RED (`reportTo:'hq'` 상태의 실제 출력) | GREEN |
+|---|---|---|
+| `CS 1` 팀 내부 업무 | **FAIL** (`reportTo === 'hq'`) | PASS |
+| `CS 9` 확인 후 HQ inbox 0건 | **FAIL** — 확인 시 HQ 요청함에 **자동 보고가 생성됨** | PASS (0건) |
+| 나머지 CS 2~14 | RED 단계에서도 PASS(안전망) | PASS |
+| 검사 전체 | **67 pass / 2 fail · exit 1** | **69 pass / 0 fail · exit 0** |
+
+시험 fixture(문의 5건·미처리 3·리뷰 2·자동응대 후보 4)의 수치가 결과 문장에 **정확히** 들어가는 것을 확인했다 — `[시험 데이터] 총 문의 5건 중 미처리 3건 · 리뷰 2건 · 자동응대 후보 4건.`
+
+**CS real 문의·리뷰 경로에 대한 정확한 표현**: `godomallResource.ts:132,134` 의 `inquiries`·`reviews` 는 아직 **mock 분기만** 있다. 이 사실은 **실제 데이터 최종 실증을 막을 뿐, 기존 시험자료 기반 구현을 막지 않는다**(D-009). **CS 실제 고객 답글 발송은 계속 미연결·범위 밖**이며 `csWorkCompletionState.writeStatus` 는 **손대지 않았다**(항상 `'not_connected'`).
+
+**이번에 실행한 것**: `smoke-agent-task-runner-v0` **69/69 exit 0** · 인접 `smoke-c4-inquiry-status-contract-v0` **RED 8/8** · `smoke-data-source-provenance-v0` **RED 42/42** · `smoke-cs-work-completion-flow` **19/19** · `npx tsc -b` exit 0 · 변경 2파일 lint 0 · `git diff --check main..HEAD` 0 · manifest **125/0**.
+**실행하지 않은 것**: **전체 `npm test` — Codex 가 묶음 경계에서 한 번 실행** · Preview·Vercel·브라우저 · main 통합·push·배포 · 실제 답글 발송·고도몰 WRITE·real API 구현·스케줄러 연결.
+
+**완료로 확대하지 않는 것**: 이번 CS 업무도 **시험자료 기반 미리 구현**이며 **실제 완주가 아니다.** 고도몰 키는 **발급 대기 중**이다.
 
 ---
 

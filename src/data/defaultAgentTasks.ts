@@ -39,7 +39,11 @@ export const DEFAULT_AGENT_TASKS: AgentTaskSpec[] = [
     agentLabel: 'CS 상담 AI',
     title: '문의·리뷰 데스크 점검',
     focus: 'cs',
-    reportTo: 'hq',
+    // D-0/D-010: **CS팀 내부 일상 점검**이다(`reportTo === teamId` = 팀 내부 기록).
+    //   CS 상담 AI 가 초안을 만들고 CS팀장이 확인·수정해 팀 안에서 마감한다.
+    //   HQ 요청함·HQ 승인대기를 만들지 않는다 — HQ 는 부서 업무 확인 화면에서 열람한다.
+    //   HQ 가 지시한 업무와 팀장이 명시적으로 보내는 보고는 기존 경로로 HQ 에 도착한다.
+    reportTo: 'cs',
     reportKind: 'info',
     schedule: { kind: 'daily', at: '09:00' },
     approvalMode: 'draft'

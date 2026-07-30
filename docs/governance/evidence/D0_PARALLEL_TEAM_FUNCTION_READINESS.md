@@ -174,6 +174,25 @@ cat src/data/defaultAgentTasks.ts
 
 자세한 구현 사실·검사 수치는 `CURRENT_STATE.md` 의 `D-0 첫 대표 업무` 절.
 
+**2026-07-30 최종 확정**: Codex 전체 게이트 통과(`d26019a` · `npm test` exit 0 · smoke 125/125 · 139.2초). 확정 범위는 **시험자료 기반 미리 구현·자동검증 완료**까지이며, **실제 상품·실데이터 재시험은 미완료**다.
+
+### 갱신 2 (2026-07-30) — CS팀 대표 업무도 같은 방식으로 구현
+
+위 **2-2 CS팀 표**의 판정을 그대로 유지하되, 한 가지를 분명히 한다.
+
+> **`문의·리뷰 real 경로가 mock 분기만`(C/P) 이라는 사실은 실제 데이터 최종 실증을 막을 뿐, 기존 시험자료 기반 구현을 막지 않는다**(D-009).
+
+그래서 위 §4 에서 "실증 간극 두 겹"을 이유로 후순위로 뒀던 `task-cs-daily` 를 **시험자료 기반 미리 구현** 범위에서 완주시켰다(2026-07-30, Codex 독립검증 대기).
+
+| 항목 | 결과 |
+|---|---|
+| 변경 | `task-cs-daily.reportTo: 'hq' → 'cs'` **한 줄**(`approvalMode: 'draft'` 유지) |
+| 재사용 | `AgentTaskPanel`·`agentTaskRunner`·`agentTaskRunState`·`activityLedger`·`csUniverse`·`identity.actor` — **새 실행기·저장소·승인 체계 0건, 팀 이름 조건문 0건** |
+| 검사 | 기존 smoke 확장 **69/69** · 신규 파일 0 · manifest 125/0 |
+| 여전히 막혀 있는 것 | **CS 실제 고객 답글 발송**(`writeStatus` 항상 `'not_connected'`, 손대지 않음) · **문의·리뷰 real API**(`godomallResource.ts:132,134` mock 분기만) · 실제 고객 PII |
+
+**이 둘(상품·CS) 모두 시험자료 기반 미리 구현이며 실제 완주가 아니다.** 고도몰 키는 발급 대기 중이다.
+
 ---
 
 ## 5. 이 문서가 바꾸지 않는 것
