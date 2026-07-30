@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-30 (D-0 — 상품팀 점검 최종 확정 · CS 문의·리뷰 점검 팀 내부 완주)
+최종 갱신: 2026-07-30 (D-0 — CS 점검 확정 · 마케팅 매출 요약 팀 내부 마감)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -1026,6 +1026,84 @@ Vite 의 큰 번들 경고는 **기존 비차단 경고**이며 이번 상품팀
 **실행하지 않은 것**: **전체 `npm test` — Codex 가 묶음 경계에서 한 번 실행** · Preview·Vercel·브라우저 · main 통합·push·배포 · 실제 답글 발송·고도몰 WRITE·real API 구현·스케줄러 연결.
 
 **완료로 확대하지 않는 것**: 이번 CS 업무도 **시험자료 기반 미리 구현**이며 **실제 완주가 아니다.** 고도몰 키는 **발급 대기 중**이다.
+
+#### → Codex 전체 게이트 통과 · **CS 일일 점검 확정** (기준 HEAD `6a23d02a`, 2026-07-30)
+
+**Codex 가 직접 실행했다.**
+
+| 항목 | 값 |
+|---|---|
+| `npm test` | **exit 0** |
+| smoke | **125/125 · 131.2초** |
+| `tsc -b` · API typecheck · Vite build · 전체 lint | 전부 통과 |
+| manifest | include **125** / exclude **0** |
+| 작업 트리 | clean |
+
+**확정 범위**
+- ✅ 시험자료 기반 **미리 구현·자동검증 완료**
+- ✅ CS팀장이 **AI 초안을 수정해** 팀 내부에서 마감
+- ✅ **HQ·CS 요청함 자동 생성 0건**
+- ❌ **실제 문의·리뷰 API 와 고객 답글 WRITE 는 미연결**
+- ❌ **실제 데이터 최종 실증 아님 · 전체 CS 기능 완료 아님**
+
+**자동검사 통과이며 Preview·Production 화면 확인으로 확대하지 않는다.**
+
+---
+
+### D-0 세 번째 팀 업무 — 마케팅 일일 매출 요약 팀 내부 마감 (2026-07-30) — **로컬 구현 완료 · Codex 독립검증 대기**
+
+**분류**: D 단계의 **미리 구현·시험**(D-009). **D-009·D-010 의 적용**이며 `DECISIONS.md` 에 새 결정을 만들지 않았다.
+**대상**: `src/data/defaultAgentTasks.ts` 의 **`task-marketing-daily`** 한 건.
+
+**착수 전 이견과 Codex A안 판정 (기록으로 남긴다)**
+
+Codex 의 최초 지시는 `approvalMode:'auto'` 유지 + 수동 실행 즉시 `ran:true·staged:false` 였다. **저장소와 대조해 구현 전에 중지하고 보고했다.**
+
+| 관측 | 근거 |
+|---|---|
+| `task-marketing-daily` 에 **`standing` 없음** | `defaultAgentTasks.ts` 전체 grep 0건 |
+| `canRunStandingDirective(undefined)` → `requiresLeadConfirmation:true` | `standingDirectiveContract.ts:63-71` |
+| `approvalMode==='auto'` 여도 stage 경로로 감 | `agentTaskRunner.ts:292-295` |
+| 실제 반환값 | `{ran:false, staged:true, …}` · 원장은 `task_run/pending` |
+
+**Codex A안 판정 채택**: `reportTo:'marketing'` + **`approvalMode:'approval'`**.
+**채택하지 않은 것**: 승인받은 적 없는 `standing.approvedByLeadAt` 을 기본값으로 넣는 것(B안) · `runManualAgentTask`·`runScheduledAgentTask`·`standingDirectiveContract` 의 공통 안전 경계 변경(C안). **사람의 버튼 클릭을 근거로 자동 실행 제한을 우회하지 않는다.**
+
+**구현 범위 — 스펙 변경이 전부다**
+
+| 항목 | 값 |
+|---|---|
+| 변경 | `reportTo: 'hq' → 'marketing'` · `approvalMode: 'auto' → 'approval'`(+ 사유 주석) |
+| 흐름 | 마케팅팀장 실행 → 초안 `pending` → 같은 팀장이 문장 수정·확인 → 팀 내부 `completed` |
+| 새 실행기·저장소·마케팅 계산식 | **0건.** `AgentTaskPanel`·`agentTaskRunner`·`agentTaskRunState`·`activityLedger`·`dataSourceProvenanceContract`·`DepartmentSourceOfTruthSnapshot`·`identity.actor`·HQ 부서 업무 확인 화면 재사용 |
+| 마케팅 전용 조건문 | **0건** — 일반 경계 `reportTo === teamId` 그대로 |
+
+**`매일 09:30` 의 의미 — 혼동 금지**
+- `매일 09:30` 은 **업무 설정값(화면 표시)** 이다.
+- **실제 시각 자동 스케줄러는 미연결**이다(`runScheduledAgentTask` 제품 호출자 0건 — E 단계).
+- **현재는 마케팅팀장이 직접 실행하고 확인한다.**
+- 승인된 `standing` 이 없으므로 **스케줄 자동 실행은 계속 차단**된다(검사 `MK 16` 으로 고정).
+
+**결과 내용**: 기존 `focus:'sales'` 계산 그대로(`agentTaskRunner.ts:63-65`) — 운영매출 · 운영주문 수 · 객단가 · 적용 기간. **새 매출 정의 0건**이며 `revenueMetricContract` 와 canonical snapshot 값을 그대로 쓴다.
+
+**RED → GREEN** (기존 smoke 확장 · **신규 파일 0 · manifest 125/0 불변**)
+
+| | RED (`reportTo:'hq'`·`auto` 상태 실제 출력) | GREEN |
+|---|---|---|
+| `MK 1` 팀 내부 업무 | **FAIL** | PASS |
+| `MK 2` approvalMode=approval | **FAIL** | PASS |
+| `MK 12` 확인 후 HQ inbox 0건 | **FAIL** — 확인 시 HQ 요청함에 자동 보고 생성 | PASS (0건) |
+| 나머지 MK 3~16 | RED 단계에서도 PASS(안전망) | PASS |
+| 검사 전체 | **83 pass / 3 fail · exit 1** | **86 pass / 0 fail · exit 0** |
+
+시험자료 결과: **`[시험 데이터] 운영매출 80,000원 · 운영주문 2건 · 객단가 40,000원. (기준: 전체 기간)`**
+
+**마케팅 고객 행동수집(`CUSTOMER_BEHAVIOR_EVENTS` 8종 전부 `connected:false`)은 실제 마케팅 실증을 막지만, 기존 매출 시험자료 요약 구현은 막지 않는다**(D-009). 광고 플랫폼 연결·캠페인 성과 계산·외부 광고 WRITE 는 **범위 밖 그대로**다.
+
+**이번에 실행한 것**: `smoke-agent-task-runner-v0` **86/86 exit 0** · 인접 `smoke-cross-team-revenue-metric-parity-v0` **20/20** · `smoke-data-source-provenance-v0` **RED 42/42** · `smoke-marketing-analysis-facts-core-v0` **34/34** · `npx tsc -b` exit 0 · 변경 2파일 lint 0 · `git diff --check main..HEAD` 0 · manifest **125/0**.
+**실행하지 않은 것**: **전체 `npm test` — Codex 가 인계 후 한 번 실행** · Preview·Vercel·브라우저 · main 통합·push·배포 · 스케줄러 연결 · 고도몰 실제 API·WRITE · 공통 runner·standing 계약 변경.
+
+**완료로 확대하지 않는 것**: 이번 마케팅 업무는 **시험자료 기반 팀 내부 기록**이며 **실제 마케팅 기능 완주도, E·F 완료도 아니다.** 실제 고도몰 자료가 아니라 **시험자료로 검증**했다. 고도몰 키는 **발급 대기 중**이다.
 
 ---
 

@@ -27,10 +27,20 @@ export const DEFAULT_AGENT_TASKS: AgentTaskSpec[] = [
     agentLabel: '마케팅 기획 AI',
     title: '매출 요약 리포트',
     focus: 'sales',
-    reportTo: 'hq',
+    // D-0/D-010: **마케팅팀 내부 일상 요약**이다(`reportTo === teamId` = 팀 내부 기록).
+    //   HQ 요청함·HQ 승인대기를 만들지 않는다 — HQ 는 부서 업무 확인 화면에서 열람한다.
+    reportTo: 'marketing',
     reportKind: 'info',
+    // ⚠️ `매일 09:30` 은 **업무 설정값(표시)** 이다. 실제 시각 자동 스케줄러는 **미연결**이다
+    //    (`runScheduledAgentTask` 제품 호출자 0건 — E 단계). 지금은 팀장이 직접 실행한다.
     schedule: { kind: 'daily', at: '09:30' },
-    approvalMode: 'auto'
+    // Codex A안 판정: 'auto' 로 두면 **승인된 standing 이 없어**
+    //   `canRunStandingDirective(undefined)` 가 `requiresLeadConfirmation:true` 를 돌려주므로
+    //   (`standingDirectiveContract.ts:63-71`) 수동 실행이 즉시 완료되지 않는다.
+    //   승인받은 적 없는 `standing.approvedByLeadAt` 을 지어내지 않고, 공통 안전 경계
+    //   (runManualAgentTask·runScheduledAgentTask·standingDirectiveContract)도 바꾸지 않는다.
+    //   대신 상품·CS 와 같은 흐름으로 **팀장이 확인해 팀 내부에서 마감**한다.
+    approvalMode: 'approval'
   },
   {
     id: 'task-cs-daily',

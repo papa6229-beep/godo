@@ -414,6 +414,125 @@ if (R && A && TC) {
       && csUnavail.ran === false && csUnavail.staged === false
       && ledger().length === 0 && inbox('hq').length === 0 && inbox('cs').length === 0);
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // D-0 세 번째 팀 업무 — 마케팅 일일 매출 요약 팀 내부 마감 (D-009·D-010 적용)
+  //
+  //   Codex A안 판정: `approvalMode` 를 'auto' 가 아니라 **'approval'** 로 둔다.
+  //   `task-marketing-daily` 에는 **승인된 standing 이 없고**, 기존 계약
+  //   (`standingDirectiveContract.ts:63-71`)이 이를 `requiresLeadConfirmation:true` 로
+  //   판정하므로 'auto' 로는 수동 실행이 즉시 완료되지 않는다.
+  //   승인 경계(runManualAgentTask·runScheduledAgentTask·standingDirectiveContract)를
+  //   바꾸지 않고, 승인받은 적 없는 standing 을 지어내지도 않는다.
+  //   → 마케팅팀장이 실행 → 초안 pending → 같은 팀장이 확인 → 팀 내부 completed.
+  // ══════════════════════════════════════════════════════════════════════
+  console.log('\n  --- D-0 · 마케팅 일일 매출 요약 팀 내부 마감 ---');
+  {
+    const inbox = (teamId) => TC.inboxFor(TC.loadTeamMessages(), teamId);
+    const mktDaily = DEFAULTS ? DEFAULTS.DEFAULT_AGENT_TASKS.find((t) => t.id === 'task-marketing-daily') : null;
+    const mktSpec = mktDaily ? { ...mktDaily } : null;
+
+    // 시험 주문 2건 — 운영매출 80,000원 · 운영주문 2건 · 객단가 40,000원 · 기준 전체 기간.
+    const ord = (no, amount) => ({
+      orderNo: no, orderDate: '2026-06-01 10:00:00', totalAmount: amount,
+      productRevenueByLines: amount - 2500, deliveryFee: 2500,
+      paid: true, canceled: false, sourceType: 'synthetic_test',
+      lines: [], state: { paid: true, canceled: false }
+    });
+    const MKT_REVENUE = {
+      count: 2, source: 'mock', live: false,
+      realOrdersStatus: 'unavailable', syntheticStatus: 'success',
+      summary: { syntheticOrderCount: 2, realOrderCount: 0, syntheticTotalNetSoldQuantity: 0 },
+      stockImpact: [], orders: [ord('MO1', 30000), ord('MO2', 50000)]
+    };
+    const mktLead = { kind: 'human', teamId: 'marketing', label: '[시험] 마케팅팀장', userId: 'u-mkt-lead', accountRole: 'team_lead' };
+    const mktMember = { kind: 'human', teamId: 'marketing', label: '[시험] 마케팅팀원', userId: 'u-mkt-member', accountRole: 'member' };
+    const hqActor2 = { kind: 'human', teamId: 'hq', label: '[시험] 총괄', userId: 'u-hq2', accountRole: 'hq' };
+    const otherLead2 = { kind: 'human', teamId: 'cs', label: '[시험] CS팀장', userId: 'u-cs-lead2', accountRole: 'team_lead' };
+    const mktAi = { kind: 'agent', teamId: 'marketing', label: '마케팅 기획 AI', agentId: 'marketing-lead' };
+    const mktCtx = { revenue: MKT_REVENUE, nowIso: NOW, nowMs: 0 };
+
+    ok('MK 1. task-marketing-daily 가 팀 내부 업무다(reportTo=marketing)',
+      !!mktSpec && mktSpec.reportTo === 'marketing');
+    ok('MK 2. approvalMode 는 approval 이다(승인받은 적 없는 standing 을 만들지 않는다)',
+      !!mktSpec && mktSpec.approvalMode === 'approval' && mktSpec.standing === undefined);
+
+    const mktReport = mktSpec ? R.formatTaskReport(mktSpec, DEPT.buildDepartmentSourceOfTruthSnapshot(MKT_REVENUE, { nowMs: 0 })) : null;
+    ok('MK 3. 운영매출·운영주문·객단가·기간이 정확히 결과에 들어간다', (() => {
+      if (!mktReport) return false;
+      return /운영매출 80,000원 · 운영주문 2건 · 객단가 40,000원\. \(기준: 전체 기간\)/.test(mktReport.body);
+    })(), mktReport ? mktReport.body : '보고 없음');
+    ok('MK 4. 출처가 simulation 이고 사용자 문구는 시험 데이터',
+      !!mktReport && mktReport.dataProvenance === 'simulation' && mktReport.dataLabel === '시험 데이터'
+      && mktReport.body.startsWith('[시험 데이터]'));
+
+    store.clear();
+    ok('MK 6. 마케팅팀원·HQ·타 팀장·AI 는 실행할 수 없다',
+      [mktMember, hqActor2, otherLead2, mktAi].every((a) => {
+        const r = R.runManualAgentTask(mktSpec, a, mktCtx);
+        return r.ran === false && r.staged === false;
+      }) && ledger().length === 0);
+
+    const mktRun = R.runManualAgentTask(mktSpec, mktLead, mktCtx);
+    ok('MK 5. 마케팅팀장 실행은 ran:false · staged:true(초안 대기)',
+      mktRun.ran === false && mktRun.staged === true && typeof mktRun.body === 'string');
+    ok('MK 7. 실행 직후 pending 원장 1건',
+      ledger().filter((e) => e.type === 'task_run' && e.status === 'pending').length === 1);
+
+    const mktBeforeDup = ledger().length;
+    const mktDup = R.runManualAgentTask(mktSpec, mktLead, mktCtx);
+    ok('MK 8. 재클릭 시 중복 pending 0건',
+      mktDup.ran === false && mktDup.staged === false && ledger().length === mktBeforeDup);
+
+    ok('MK 16. 승인된 standing 이 없으므로 스케줄 자동 실행은 계속 차단된다', (() => {
+      const before = ledger().length;
+      const sched = R.runScheduledAgentTask(mktSpec, mktCtx);
+      return sched.ran === false && sched.staged === false && ledger().length === before;
+    })());
+
+    const MKT_EDITED = '[시험 데이터] 운영매출 80,000원 · 운영주문 2건 · 객단가 40,000원. 지난주 대비 주문 수 유지.';
+    const mktApproved = R.approveAgentTask(mktSpec, mktLead, mktCtx, MKT_EDITED);
+    ok('MK 9. 팀장 확인 후 completed 로 복원된다', (() => {
+      const st = S.latestAgentTaskRunState(ledger(), mktSpec.id);
+      return mktApproved.ok === true && st.phase === 'completed' && st.dataProvenance === 'simulation';
+    })());
+    ok('MK 10. 수정된 최종 문장과 확인자가 복원된다', (() => {
+      const st = S.latestAgentTaskRunState(ledger(), mktSpec.id);
+      return st.resultBody === MKT_EDITED && st.actor.userId === mktLead.userId && st.actor.label === mktLead.label;
+    })());
+    ok('MK 12. 확인 후 HQ inbox 0건', inbox('hq').length === 0);
+    ok('MK 13. 확인 후 marketing inbox 0건', inbox('marketing').length === 0);
+    ok('MK 14. AI 작성자와 사람 확인자가 구분돼 남는다',
+      ledger().some((e) => e.type === 'task_run' && e.status === 'done'
+        && e.actor.kind === 'agent' && e.actor.agentId === mktSpec.agentId)
+      && ledger().some((e) => e.type === 'approval' && e.status === 'done'
+        && e.actor.kind === 'human' && e.actor.userId === mktLead.userId));
+    ok('MK 10b. 새로고침을 가정해 원장만 다시 읽어도 결과·출처·완료 상태가 복원된다', (() => {
+      const reread = JSON.parse(store.get('godo_activity_ledger_v0') || '[]');
+      const st = S.latestAgentTaskRunState(reread, mktSpec.id);
+      return st.phase === 'completed' && st.resultBody === MKT_EDITED && st.dataProvenance === 'simulation';
+    })());
+
+    store.clear();
+    R.runManualAgentTask(mktSpec, mktLead, mktCtx);
+    R.rejectAgentTask(mktSpec, mktLead, mktCtx, '기간 기준을 이번 주로 바꿔 다시 뽑아 주세요');
+    ok('MK 11. 반려 이유가 실제 팀장 신원과 함께 복원된다', (() => {
+      const st = S.latestAgentTaskRunState(ledger(), mktSpec.id);
+      return st.phase === 'rejected'
+        && st.decisionReason === '기간 기준을 이번 주로 바꿔 다시 뽑아 주세요'
+        && st.actor.userId === mktLead.userId;
+    })());
+
+    store.clear();
+    const mktNoData = R.runManualAgentTask(mktSpec, mktLead, { revenue: null, nowIso: NOW });
+    const mktUnavail = R.runManualAgentTask(mktSpec, mktLead, {
+      revenue: { ...MKT_REVENUE, syntheticStatus: 'unavailable', summary: null }, nowIso: NOW
+    });
+    ok('MK 15. unavailable·데이터 없음은 원장·메시지 0건',
+      mktNoData.ran === false && mktNoData.staged === false
+      && mktUnavail.ran === false && mktUnavail.staged === false
+      && ledger().length === 0 && inbox('hq').length === 0 && inbox('marketing').length === 0);
+  }
 }
 
 console.log(`\n=== 결과: ${pass} pass / ${fail} fail ===`);
