@@ -93,9 +93,12 @@
 > `TaskBoard` 는 제품 import 0건, `TaskListModal`·두 CSS 는 그 미마운트 파일에서만 쓰였고, `TaskResultModal` 은 유일한 setter 배선(`App → MainLayout → OfficeView`)에서 **`OfficeView` 가 prop 을 선언만 하고 쓰지 않아** 사용자 행동으로 열릴 수 없었다. 5파일(2,337줄) 삭제 + 죽은 state·prop 배선 제거. **활성 경로 `TeamTaskPanel → TaskDetailModal` 과 lifecycle 계약·화면 동작은 무변경.** 신규 smoke 파일 0 · **manifest 125 불변** · 기존 검사 7개를 활성 경로 기준으로 교정(약화 없음).
 > **Codex 최종 전체 게이트 (기준 HEAD `6fce721`, 직접 실행)**: `npm test` **exit 0** · smoke **125/125 · 147.3초** · `tsc -b` · API 타입검사 · Vite build · 전체 lint · `git diff --check` 통과 · 작업 트리 clean · main 이후 신규 커밋 **1개** · merge commit **0개**.
 > **자동검사 근거다. Preview·Production 을 확인한 것이 아니다.** 마운트된 화면 동작을 바꾸지 않은 dead-code 제거이므로 **Preview·Vercel·브라우저 검사는 이번 작업에 추가하지 않는다**(Codex 판정).
-> **다음 한 작업: Local migration 5 — 제품 import 0건인 `api/_shared/syntheticCommerceFacts.ts` 와 전용 smoke 의 실제 사용 관계를 기준으로 dead-code 제거.**
-> Codex 가 현재 확인한 사실: 제품 코드의 `syntheticCommerceFacts` import **0건** · `scripts/smoke-synthetic-commerce-universe.mjs` 만 이 모듈을 직접 불러온다. **착수 시 제품 호출 여부를 다시 확인한 뒤** 진행하고, 제거하더라도 **synthetic universe·synthetic revenue 의 살아 있는 검사는 보존한다.**
-> **고도몰 키가 확보된 사실이 새로 확인되면 이 후보보다 C 단계를 우선한다.**
+> **Local migration 5 로컬 구현 완료 (2026-07-30, 브랜치 `codex/local-migration-synthetic-facts-cleanup`, Codex 독립검증 대기)**: **사용되지 않는 `api/_shared/syntheticCommerceFacts.ts` 제거.**
+> 착수 시 제품 호출 여부를 **다시 확인했다** — `api/`·`src/` 전수 검색 **0건** · 동적 import·문자열 런타임 호출 **0건** · 직접 소비자는 `scripts/smoke-synthetic-commerce-universe.mjs` 하나뿐이고 나머지는 과거 설명 문서의 언급이었다. **synthetic 데이터 생성 기능을 없앤 것이 아니다** — `syntheticCommerceUniverse.ts`·`syntheticRevenue.ts` 와 제품의 universe 생성 경로는 **그대로 보존**했다.
+> smoke 는 삭제하지 않고 **같은 manifest 항목으로 유지**했다. facts 출력만 보던 단언은 빈 값에 통과시키지 않고 **universe 원본 사실**로 교체했다(금액 원본 · 결제수단·채널 필드 · 라인 카테고리/브랜드 연결 · 리뷰 평점 형태 · 문의 topic/status). **26 → 29/29 · manifest include 125 / exclude 0 불변.**
+> **전체 `npm test` 는 이번 변경 뒤 실행하지 않았다 — 무회귀 전체를 주장하지 않는다.**
+> **다음 한 작업: Codex 의 `syntheticCommerceFacts` 정리 독립검증 및 전체 게이트 1회.**
+> **고도몰 키가 확보된 사실이 새로 확인되면 다른 후속 대장 항목보다 C 단계를 우선한다.**
 > **DB 공급자 선택이나 서버 어댑터 구현을 다음 작업으로 만들지 않는다.**
 > **현재 단계 C 는 새 고도몰 API 키 발급 대기 상태 그대로다. B-use 나 C 를 다시 열지 않는다.**
 >
@@ -585,7 +588,7 @@ B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch
 
 | 항목 | 출처 | 상태 |
 |---|---|---|
-| `syntheticCommerceFacts` 계약 우회 3건 (제품 import 0) | REBUILD 논쟁 D2 | 미착수 |
+| ~~`syntheticCommerceFacts` 계약 우회 3건 (제품 import 0)~~ | REBUILD 논쟁 D2 | **로컬 구현 완료 · Codex 독립검증 대기 (2026-07-30, 브랜치 `codex/local-migration-synthetic-facts-cleanup`)** — 계약 우회를 **고치는 대신 파일을 제거**했다. 제품 소비자 0건(`api`·`src` 전수 0 · 동적 import 0)이라 우회 자체가 제품 경로에 존재하지 않았다. `syntheticCommerceUniverse`·`syntheticRevenue` 는 활성 경로로 보존. smoke 는 같은 manifest 항목 유지(26 → **29/29**), manifest 125 불변 |
 | ~~`TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리~~ | 감사 2026-07-27 | **완료 · Codex 독립검증 통과 (2026-07-30, 기준 HEAD `6fce721`)** — 아래 `TaskResultModal`·`onSelectTask` 항목과 **같은 뿌리**였다. 5파일(2,337줄) 삭제 + App→MainLayout→OfficeView 죽은 배선 제거. 활성 경로 `TeamTaskPanel → TaskDetailModal` 은 보존. 신규 smoke 0 · manifest 125 불변. 전체 게이트 `npm test` exit 0 · smoke 125/125. 자세한 내용은 `CURRENT_STATE.md` |
 | ~~`TaskResultModal` 하드코딩 데모 문구(재고 2개·매출 894,000원·송장 박*호 등)가 task 와 무관하게 표시됨. 현재 도달 경로 없음~~ | B-use-2 | **완료 · Codex 독립검증 통과 (2026-07-30, 기준 `6fce721`)** — 파일 자체를 삭제해 해소. 도달 경로가 없다는 관측이 맞았고, 끊어진 setter 배선(`OfficeView` 가 `onSelectTask` 를 선언만 하고 쓰지 않음)이 원인이었다 |
 | ~~`OfficeView`→`MainLayout`→`App` 의 `onSelectTask` 배선이 `TaskBoard` 미렌더로 끊겨 있음~~ | B-use-2 | **완료 · Codex 독립검증 통과 (2026-07-30, 기준 `6fce721`)** — 배선 3단 전부 제거. 위 두 항목과 같은 뿌리였다 |

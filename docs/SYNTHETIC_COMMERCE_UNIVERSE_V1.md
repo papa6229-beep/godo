@@ -1,7 +1,17 @@
 # Synthetic Commerce Universe v1
 
+> ## ⚠️ 현재 상태 (2026-07-30 갱신) — 아래 본문은 **2026-06-26 당시 기록**이며 지우지 않는다
+>
+> - **`api/_shared/syntheticCommerceFacts.ts` 는 제거됐다.** 원래 v1 산출물이었으나 **제품 소비자가 0건**이었다(`api/`·`src/` 전수 검색 0건 · 동적 import 0건 · 유일한 직접 소비자는 이 문서의 smoke 하나뿐). Local migration 5(브랜치 `codex/local-migration-synthetic-facts-cleanup`).
+> - **`syntheticCommerceUniverse.ts` 와 `syntheticRevenue.ts` 는 활성 경로이며 그대로 보존한다.** 제품이 쓰는 synthetic universe 생성 경로는 변경되지 않았다.
+> - **이번 삭제로 제품 화면·API 응답·데이터는 바뀌지 않는다.** 사용자가 보는 숫자와 배포 동작에 영향이 없다.
+> - **facts 계산이 다시 필요해지면** 이 파일을 되살리지 말고, **그때의 제품 정본 계약**(`revenueMetricContract`·`inventoryRiskContract`·`claimEventContract`·`inquiryStatusContract` 등)과 **실제 소비 경로**에서 새로 연결한다. 아래 §9 는 당시 helper 가 무엇을 계산했는지 보여 주는 **참고 기록**이다.
+> - smoke `scripts/smoke-synthetic-commerce-universe.mjs` 는 **삭제하지 않고 같은 manifest 항목으로 유지**했다. facts 출력만 보던 단언은 빈 값에 통과시키지 않고 **universe 원본 사실**(금액·결제수단·채널·라인 카테고리/브랜드 연결·리뷰 평점 형태·문의 topic/status)로 교체했다. 현재 **29/29**.
+>
+> ---
+>
 > **작성일**: 2026-06-26 · **브랜치**: `feature/synthetic-commerce-universe-v1`
-> **코드**: `api/_shared/syntheticCommerceUniverse.ts` + `syntheticCommerceFacts.ts` · **smoke**: `scripts/smoke-synthetic-commerce-universe.mjs`(26/26)
+> **코드**: `api/_shared/syntheticCommerceUniverse.ts` + ~~`syntheticCommerceFacts.ts`~~(2026-07-30 제거) · **smoke**: `scripts/smoke-synthetic-commerce-universe.mjs`(당시 26/26 · 현재 29/29)
 
 ## 1. 작업 목적
 실제 쇼핑몰처럼 움직이는 **1년치 가상 commerce 세계**를 생성한다 — 결제·재구매·취소·환불·반품·교환·리뷰·문의·CS 이슈를 하나의 일관된 세계로. 목적은 fake chart가 아니라, GODO AI OS가 이 전부를 **real 전환 시 재사용 가능한 contract/facts flow**로 해석 가능한지 검증하는 것.

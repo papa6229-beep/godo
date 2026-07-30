@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-30 (legacy 업무 UI 제거 Local migration — Codex 독립검증 통과 기록)
+최종 갱신: 2026-07-30 (Local migration 5 — 사용되지 않는 `syntheticCommerceFacts` 제거)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -704,6 +704,56 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 
 **이것은 자동검사 근거다. Preview·Production 을 확인한 것이 아니다.**
 **마운트된 화면 동작을 바꾸지 않은 dead-code 제거이므로 Preview·Vercel·브라우저 검사는 이번 작업에 추가하지 않는다**(Codex 판정).
+
+---
+
+### Local migration 5 — 사용되지 않는 `syntheticCommerceFacts` 제거 (2026-07-30, 브랜치 `codex/local-migration-synthetic-facts-cleanup`) — **로컬 구현 완료 · Codex 독립검증 대기**
+
+**분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `syntheticCommerceFacts 계약 우회 3건(제품 import 0)`). 계약 우회를 **고치는 대신 파일을 제거**했다 — 제품 소비자가 0건이라 그 우회가 제품 경로에 존재하지 않았다.
+
+**이 작업은 synthetic 데이터 생성 기능을 없애는 작업이 아니다.**
+
+**착수 전 독립 재조사 (보고를 전제하지 않고 직접 검색)**
+
+| 확인 | 결과 |
+|---|---|
+| `api/`·`src/` 의 `syntheticCommerceFacts` 참조 | **0건** |
+| 동적 import·문자열 기반 런타임 호출 | **0건** (`import(`/`require(` 전수) |
+| 직접 소비자 | `scripts/smoke-synthetic-commerce-universe.mjs` **한 곳**(`:19` emit · `:26` import) |
+| 나머지 언급 | 과거 설명 문서 **7파일**(`COMMERCE_DATA_CONTRACT_V0` · `CONTRACT_C4_INQUIRY_STATUS` · `DIAG_SIMCATALOG_D12` · `GODOMALL_API_IMPLEMENTATION_ROADMAP_V1` · `SYSTEM_ARCHITECTURE_REPORT` · `PROJECT_HANDOFF` · `SYNTHETIC_COMMERCE_UNIVERSE_V1`) |
+| synthetic universe·revenue 제품 경로 | **끊기지 않음** — 두 모듈은 그대로 |
+
+**삭제**: `api/_shared/syntheticCommerceFacts.ts` 1파일.
+**보존**: `syntheticCommerceUniverse.ts` · `syntheticRevenue.ts` · 제품의 universe 생성 경로 · `smoke-synthetic-commerce-universe.mjs`(같은 manifest 항목) · **manifest include 125 / exclude 0**.
+
+**RED → GREEN** (신규 smoke 파일 없음 · manifest 무변경 · `--discover` 미실행)
+
+| | RED (삭제 전) | GREEN |
+|---|---|---|
+| `26. 제품 소비자 0건이던 facts helper 파일이 없다` | **FAIL** (파일 잔존) | PASS |
+| `27. 제품 코드(api·src) 참조 0건` | **삭제 전에 이미 PASS** — 제품 참조 0건이 검사로 독립 확인됨 | PASS |
+| `28. 활성 생성 모듈은 그대로 있다` | PASS | PASS |
+| 검사 전체 | **28 pass / 1 fail · exit 1** | **29 pass / 0 fail · exit 0** |
+
+**facts 전용 단언 교체 대응표** (빈 값에 통과시키지 않았다 — 각 단언을 *그 계산이 성립할 수 있는 원본 사실*로 옮겼다)
+
+| # | 이전 (facts 출력) | 이후 (universe 원본 사실) |
+|---|---|---|
+| 8 | `facts.averageOrderValue > 0` | 결제완료 주문 존재 + 모든 결제완료 주문에 `totalAmount` 숫자 + smoke 가 직접 계산한 객단가 > 0 |
+| 9 | `facts.paymentMethodDistribution` 길이·pct | **모든 주문**에 `paymentMethodCode \|\| settleKind` 존재 + 값 종류 **≥2**(한 값으로 몰리지 않음) |
+| 10 | `facts.orderChannelDistribution` 길이 | **모든 주문**에 `orderChannel` 존재 + 값 종류 ≥1 |
+| 18 | `orders + facts` JSON 에 PII 없음 | `orders + reviews + inquiries + customers`(실제 분석 대상 자료)에 PII 없음 — **대상 확대** |
+| 19 | `facts.categoryRevenue` 라벨 존재 | 모든 라인의 `categoryCode` 가 입력 카탈로그 코드 집합 안 + **두 카테고리가 모두** 등장 |
+| 20 | `facts.brandRevenue` 라벨 존재 | 라인에 `brandCode` 가 **없음을 고정**하고, `goodsNo` → 입력 상품의 `brandCode` 로 해석 가능 + **두 브랜드가 모두** 등장 |
+| 21 | `facts.averageReviewRating > 0` + `categoryReviewRating` 길이 | 리뷰 `rating` 이 **1~5 정수** + `categoryCode`/`brandCode` 가 알려진 집합 안 + 둘 다 실제로 채워진 리뷰 존재 |
+| 22 | `facts.csTopTopics` 길이 | 문의 `topic` 이 허용 8종 안 + 종류 ≥2 + `status` 가 허용 3종 안이며 **세 상태가 모두** 등장 |
+| — | (없음) | **26·27·28 신규**: helper 파일 부재 · 제품 참조 0건 · 활성 모듈 보존 |
+
+제거만 한 단언은 없다. 단언 수를 맞추려고 의미 없는 검사를 만들지도 않았다(26 → **29**, 순증 3건은 전부 삭제 사실 자체를 고정하는 것).
+
+**이번에 실행한 것**: `smoke-synthetic-commerce-universe` **29/29 exit 0** · `smoke-synthetic-commerce-universe-activation` **10/10 exit 0** · 인접 `smoke-marketing-analysis-facts-core-v0` **34/34** · `smoke-department-data-source-of-truth-v0` **23/23** · `npx tsc -b` exit 0 · `npx tsc -p api/tsconfig.json --noEmit` exit 0 · 변경 파일 lint 0 · `git diff --check` 0 · 변경분 비밀값·외부 WRITE 추가 **0건** · manifest **125/0** 불변.
+**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다** · Preview·Vercel·브라우저 확인(사용자 화면·배포 동작을 바꾸는 작업이 아니다) · main 통합·push·배포·환경변수 변경 · manifest `--discover`.
+**Codex 독립검증 대기.**
 
 ---
 
