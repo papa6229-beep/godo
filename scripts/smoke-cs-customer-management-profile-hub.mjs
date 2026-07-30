@@ -37,7 +37,10 @@ const orders = [
   ord('OA1', 'syn_member_1', 62500, '1001'),
   ord('OA2', 'syn_member_1', 52500, '1002', { hasClaim: true, claimTypes: ['refund'], claimAmount: 50000 }),
   ord('OA3', 'syn_member_1', 12500, '1002', { hasClaim: true, claimTypes: ['cancel'] }, true),
-  ord('OB1', 'syn_member_2', 9000, '1003')
+  ord('OB1', 'syn_member_2', 9000, '1003'),
+  // Local migration 경계값: 결제완료였으나 **취소된** 15만원 주문 1건만 가진 고객.
+  //   주문 수는 1건으로 남고, 구매금액·고액 고객 판정에는 들어가면 안 된다.
+  ord('OZ1', 'syn_member_cancel_only', 150000, '1003', { hasClaim: true, claimTypes: ['cancel'] }, true)
 ];
 const inq = (id, date, status, topic, orderNo, g) => ({ inquiryId: id, createdAt: date, status, urgency: 'low', topic, orderNo, goodsNo: g, title: `${topic} 문의`, excerpt: `${topic} 관련 원문` });
 const inquiries = [
@@ -84,6 +87,20 @@ ok('21+22+23. AI/분석 경로(contacts 없음) PII 없음', (() => { const x = 
 ok('24. fake/synthetic 배지(isSynthetic)', m1.isSynthetic === true);
 ok('   blacklist는 byTag(내부)로 집계', typeof hub.byTag.blacklist === 'number' && typeof hub.byTag.watch === 'number');
 ok('   검색(searchCustomerProfiles) 동작', H.searchCustomerProfiles(hub.items, 'OA1').length >= 1 && H.searchCustomerProfiles(hub.items, '없는검색어zzz').length === 0);
+
+// ── Local migration: 누적 구매금액을 공통 정본 revenueMetricContract 기준으로 ──────
+//   이전에는 `paid === true` 만 봐서 **결제 후 취소된 주문도 구매금액·고액 고객 판정에
+//   포함**됐다. 문자열이 아니라 순수 함수의 실제 반환값으로 확인한다.
+const mCancelOnly = hub.items.find((x) => x.memberKey === 'syn_member_cancel_only');
+ok(`27. [정본] 누적 구매금액 = 결제완료·미취소만(취소 12500 제외) — 기대 115000 / 관측 ${m1.summary.totalOrderAmount}`,
+  m1.summary.orderCount === 3 && m1.summary.totalOrderAmount === 115000);
+ok(`28. [정본] 최근 1년 구매금액도 같은 계약 기준 — 기대 115000 / 관측 ${m1.summary.recentYearOrderAmount}`,
+  m1.summary.recentYearOrderAmount === 115000);
+ok('29. 고액 고객 태그는 교정된 금액(115000 >= 100000)으로 유지 — 기준 100000 불변',
+  m1.tags.includes('고액 고객'));
+ok(`30. [경계] 결제 후 취소만 있는 고객 → 주문 1건 · 구매금액 0 · 최근1년 0 · 고액 태그 없음 (관측 ${mCancelOnly ? `${mCancelOnly.summary.orderCount}건/${mCancelOnly.summary.totalOrderAmount}원/${mCancelOnly.summary.recentYearOrderAmount}원` : '고객 없음'})`,
+  !!mCancelOnly && mCancelOnly.summary.orderCount === 1 && mCancelOnly.summary.totalOrderAmount === 0
+  && mCancelOnly.summary.recentYearOrderAmount === 0 && !mCancelOnly.tags.includes('고액 고객'));
 
 console.log('\n--- m1 summary ---');
 console.log(JSON.stringify({ orders: m1.summary.orderCount, claims: m1.summary.claimCount, risk: m1.summary.riskLevel, tags: m1.tags, completedMerged: !!m1.inquiries.find((q) => q.answerText) }));

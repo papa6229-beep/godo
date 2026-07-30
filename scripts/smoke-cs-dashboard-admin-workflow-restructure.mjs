@@ -33,7 +33,10 @@ const orders = [
   ord('OA2', 'syn_member_1', 52500, '1002', { hasClaim: true, claimTypes: ['refund'], claimAmount: 50000 }),
   ord('OA3', 'syn_member_1', 12500, '1002', { hasClaim: true, claimTypes: ['cancel'], claimAmount: 10000 }),
   ord('OB1', 'syn_member_2', 32500, '1001'),
-  ord('OC1', 'syn_member_3', 9000, '1003')
+  ord('OC1', 'syn_member_3', 9000, '1003'),
+  // Local migration 경계값: 결제완료였으나 **취소된** 15만원 주문 1건만 가진 고객.
+  //   (이 스크립트의 ord 는 claimTypes 에 'cancel' 이 있으면 canceled=true 로 만든다.)
+  ord('OZ1', 'syn_member_cancel_only', 150000, '1003', { hasClaim: true, claimTypes: ['cancel'], claimAmount: 150000 })
 ];
 const inq = (id, date, status, topic, orderNo, goodsNo) => ({ inquiryId: id, createdAt: date, status, urgency: 'low', topic, orderNo, goodsNo, title: `${topic} 문의`, excerpt: `${topic} 관련 문의` });
 const inquiries = [
@@ -84,6 +87,18 @@ ok('16. CS UI 경로(contacts)에서 고객정보 표시 가능', W.customers.it
 ok('17. AI/분석 경로(contacts 없음)엔 고객 PII 없음', !PII_RE.test(JSON.stringify(Wbulk.customers)) && !PII_RE.test(JSON.stringify(Wbulk.resolved)) && Wbulk.customers.items.every((c) => !c.name && !c.phone));
 ok('18. bulk KPI counts엔 PII 없음', !PII_RE.test(JSON.stringify({ u: W.unresolved.count, r: W.resolved.count, a: W.aiAuto.count, c: W.customers.count, bt: W.customers.byTag, bs: W.unresolved.byStage })));
 ok('19. 기존 detail/리비전 helper 무회귀', (() => { const rev = D.buildCsKpiRevision({ inquiries, reviews, orders, goodsNames: names, nowMs: Date.parse('2026-06-27T12:00:00') }); const dash = D.buildCsDashboardFacts({ inquiries, reviews, orders, goodsNames: names }); return rev.intake.unresolvedInquiries + rev.intake.unresolvedReviews === rev.routing.aiProcessable + rev.routing.needsInternalCheck && dash.priorityInquiries.length > 0; })());
+
+// ── Local migration: 고객관리 구매금액도 같은 공통 정본 기준 ────────────────────
+//   프로필 허브(csCustomerManagementFacts)와 이 경로(csTeamDashboardFacts)가 같은 화면에서
+//   다른 금액을 내면 안 된다. 두 번째 활성 소비 경로를 같은 계약으로 고정한다.
+const mCancelOnly2 = W.customers.items.find((c) => c.memberKey === 'syn_member_cancel_only');
+ok(`20. [정본] 고객관리 누적 구매금액 = 결제완료·미취소만(취소 12500 제외) — 기대 115000 / 관측 ${m1 ? m1.totalOrderAmount : '없음'}`,
+  !!m1 && m1.orderCount === 3 && m1.totalOrderAmount === 115000);
+ok('21. 고액 고객 태그·집계는 교정된 금액 기준(기준 100000 불변)',
+  !!m1 && m1.tags.includes('고액 고객') && W.customers.byTag.highValue === 1);
+ok(`22. [경계] 결제 후 취소만 있는 고객 → 주문 1건 · 구매금액 0 · 고액 태그 없음 (관측 ${mCancelOnly2 ? `${mCancelOnly2.orderCount}건/${mCancelOnly2.totalOrderAmount}원` : '고객 없음'})`,
+  !!mCancelOnly2 && mCancelOnly2.orderCount === 1 && mCancelOnly2.totalOrderAmount === 0
+  && !mCancelOnly2.tags.includes('고액 고객'));
 
 console.log('\n--- KPI ---');
 console.log('미처리:', W.unresolved.count, JSON.stringify(W.unresolved.byStage));

@@ -114,7 +114,10 @@
 > **결론은 바뀌지 않았다**: DB **미결정** · 회사·고도몰 서버 조건을 받기 전 공급자 미확정 · **특정 DB 서버 어댑터 미구현** · PostgreSQL 공통분모로 이전 가능성 보존 · 첨부는 DB 내부 base64 가 아니라 object storage 참조 우선 · 최종 선택은 11월 실서버 시험 준비 전.
 > **DB 결정을 `DECISIONS.md` 에 추가하지 않았다.**
 > **Local migration 1건 완료(2026-07-28)**: 오늘의 운영 주문 통계 출처 상태 연결(§14 후속 대장 `OfficeView fetchRevenue 실패 무시` 항목). `불러오는 중 / 실제 주문 0건 / 시험 데이터 / 연결 안 됨` 이 기존 정본 계약으로 구분되고, 연결 실패가 `activeOperationsData` 로 조용히 대체되지 않는다. **제품 코드 2개 + 기존 검사 1개 확장.** 전체 `npm test` 는 이 묶음 경계 또는 통합 직전에 한 번 실행한다 — **이번 건으로 무회귀 전체를 주장하지 않는다.**
-> **다음 한 작업: Codex 가 이 Local migration 을 독립검증하고, 이어서 다음 후속 대장 항목을 선정한다.**
+> **Local migration 2건 완료(2026-07-30)**: ① 오늘의 운영 관제 채팅 헤더의 `실제 주문 0건` 표시 교정 — `usable` 분기가 건수 분기보다 앞서 실제 성공 0건이 `실제 데이터` 로 표시됐다. 문구 선택을 순수 함수 `orderStatsHeaderLabel` 로 분리해 실행 검사를 붙였다(Codex 독립검증 통과). ② **CS 고객 누적 구매금액 계산 정본 단일화**(§14 후속 대장 `계산 우회` 항목). `csCustomerManagementFacts` 와 `csTeamDashboardFacts` **두 활성 경로**가 `paid === true` 만 봐서 결제 후 취소된 주문까지 구매금액·고액 고객 판정에 넣고 있었다 — 둘 다 기존 공통 함수 `computeValidOrderPaymentAmount` 로 바꿨다. **제품 코드 2개 + 기존 검사 2개 확장 · 신규 검사 파일 0 · manifest 125 불변.**
+> **후속 대장 기록의 범위 오류도 함께 교정했다**: `계산 우회 3건` 중 `dataNormalizer.ts`·`agentExecutor.ts` 는 **B-core-2a 에서 이미 해소**돼 있었고, 대신 기록에 없던 활성 중복 소비자 `csTeamDashboardFacts.ts` 가 있었다(헌법 §10 — 새 사실이 아니라 이전 기록의 범위 오류).
+> **전체 `npm test` 는 이 묶음에서 아직 실행하지 않았다 — 무회귀 전체를 주장하지 않는다.**
+> **다음 한 작업: Codex 독립검증 및 Local migration 묶음 전체 게이트 1회.**
 > **DB 공급자 선택이나 서버 어댑터 구현을 다음 작업으로 만들지 않는다.**
 > **DB 가 정해지기 전에는 서버 어댑터를 구현하지 않는다. B-use-2 는 기술 입력·결정자료 준비까지만 끝났고 서버 기록 완료가 아니다.**
 > **시험자료(현재 localStorage 에 쌓인 업무·메시지·승인 기록)를 서버 이관 시 보존할지 버릴지도 미결정이다.** 지금 삭제하거나 변환하지 않는다.
@@ -422,7 +425,7 @@ main 병합·push·배포·환경변수 변경은 하지 않았다.
 |---|---|
 | 리터럴 `marketing` 95곳/41파일 소비자 | 해당 화면·기능이 실제 사용 경로에 들어오기 전 |
 | A세계(`activeOperationsData`) 나머지 소비자 | 해당 기능이 오픈 범위나 실제 사용 경로에 들어오기 전. **사용자가 숫자 불일치를 발견할 때까지 기다리지 않는다** |
-| 계산 우회 3건 (`dataNormalizer.ts` · `agentExecutor.ts` · `csCustomerManagementFacts.ts`) | B-core 완료 직후 (작고 독립적) |
+| ~~계산 우회 3건 (`dataNormalizer.ts` · `agentExecutor.ts` · `csCustomerManagementFacts.ts`)~~ | **완료 (2026-07-30)** — 기록이 현재 코드와 달랐다. `dataNormalizer.ts`·`agentExecutor.ts` 는 **B-core-2a 에서 이미** `inventoryRiskContract` 로 이관돼 있었고, 남은 것은 `csCustomerManagementFacts.ts` 하나였다. 또 기록에 없던 **활성 중복 소비자 `csTeamDashboardFacts.ts`** 가 같은 구매금액 계산을 한 벌 더 갖고 있어(범위 차이) 두 경로를 함께 `revenueMetricContract` 의 `computeValidOrderPaymentAmount` 로 마감했다. 결제 후 취소된 주문이 구매금액·고액 고객 판정에서 제외된다. 자세한 내용·RED→GREEN 값은 `CURRENT_STATE.md` |
 | 미마운트 컴포넌트 정리 (`TaskBoard` 등) | B-use-3 진입 복구 완료 후 |
 
 ---

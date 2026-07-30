@@ -13,6 +13,7 @@ import { composeCsDraftFromOrders, normalizeCsTopic, type CsDraftInquiry, type C
 // C-4: 문의 상태 판정은 공통 계약(inquiryStatusContract)만 사용(원시 문자열 비교·정규식 복붙 금지).
 import { isUnanswered, isAnswered, isUnresolved, isOnHold } from './inquiryStatusContract';
 import { classifyClaimEvent } from './claimEventContract';
+import { computeValidOrderPaymentAmount } from './revenueMetricContract';
 
 // 입력(safe, 연락처 없음). SafeSyntheticInquiry / SafeSyntheticReview 와 구조적 호환.
 export type CsDashInquiry = CsDraftInquiry;
@@ -763,8 +764,9 @@ export function buildCsCustomerManagementFacts(params: {
   for (const r of params.reviews || []) { const mk = r.orderNo ? mkMap.get(r.orderNo) : undefined; if (mk) get(mk).reviews.push(r); }
 
   const items: CsCustomerManagementItem[] = [...map.values()].map((a) => {
-    const paidOrders = a.orders.filter((o) => o.paid);
-    const totalOrderAmount = paidOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+    // Local migration: 프로필 허브와 **같은** 공통 정본(revenueMetricContract)으로 계산한다.
+    //   같은 화면의 두 경로가 다른 금액을 내지 않게 한다. 결제 후 취소된 주문은 제외된다.
+    const totalOrderAmount = computeValidOrderPaymentAmount(a.orders);
     const claimCount = a.orders.filter((o) => o.claim?.hasClaim).length;
     // D-1.2: 공통 분류기로 취소·반품·환불 사건을 센다(제각각 정규식 금지). 교환·확인필요 제외.
     const refundCancelCount = a.orders.filter((o) => {

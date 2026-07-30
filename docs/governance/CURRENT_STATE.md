@@ -471,6 +471,44 @@ Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜
 
 ---
 
+### Local migration — CS 고객 누적 구매금액 계산 정본 단일화 (2026-07-30, 브랜치 `codex/b-use-5-preview-acceptance`)
+
+**분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `계산 우회` 항목). 구조 패치가 아니다 — `revenueMetricContract` 자체를 바꾸지 않고 **소비자 두 곳을 기존 정본 계약에 연결**했다.
+
+**종료조건**: CS 고객 화면의 누적 구매금액이 **두 활성 경로 모두** 공통 정본 `revenueMetricContract` 기준(결제완료·미취소)으로 계산된다.
+
+**교정 전 계산 (직접 확인)**
+
+| 활성 경로 | 함수 | 이전 계산 | 소비 화면 |
+|---|---|---|---|
+| `csCustomerManagementFacts.ts:144-146` | `buildCsCustomerProfileHub` | `orders.filter(o => o.paid)` 합계 — `canceled` 미검사 | 고객 상세·검색 팝업, 통계 |
+| `csTeamDashboardFacts.ts:766-767` | `buildCsCustomerManagementFacts` | 동일 패턴 | `buildCsAdminWorkflow` 고객관리 요약 |
+
+→ **결제 후 취소된 주문이 구매금액과 고액 고객(10만원) 판정에 함께 들어갔다.** 두 경로가 같은 화면에서 각자 계산하므로 한쪽만 고치면 금액이 갈린다.
+
+**조치**: 두 경로 모두 기존 공통 함수 `computeValidOrderPaymentAmount`(= `computeOperationalRevenue`, 판정 `isValidOrder` = `paid && !canceled`)를 호출한다. **새 유효 주문 판정식·별도 helper 0건.** `recentYearOrderAmount` 는 날짜로 최근 365일을 먼저 좁힌 뒤 같은 함수를 적용한다.
+
+**의도적으로 바꾸지 않은 것**: `orderCount`(전체 주문 건수) · 개별 주문 이력의 금액·결제상태 표시 · 클레임·취소·환불 건수와 위험도 판정 · 최근 주문 목록 · PII 게이트 · 검색·정렬·화면 구조 · 고액 고객 기준 `100000원` · `revenueMetricContract` 자체.
+
+**RED → GREEN** (신규 검사 파일 없음 — 기존 2건 확장, manifest **125 불변**)
+
+| 대상 | RED (수정 전 실제 반환값) | GREEN |
+|---|---|---|
+| `syn_member_1` 누적 구매금액 (두 경로) | **127,500**(취소 12,500 포함) | **115,000** (62,500 + 52,500) |
+| `syn_member_1` 최근 1년 구매금액 | **127,500** | **115,000** |
+| `syn_member_1` 주문 수 | 3 (유지) | 3 (유지) |
+| `syn_member_1` 고액 고객 태그 | 있음 | 있음 (115,000 ≥ 100,000) |
+| 경계 고객(결제완료·취소된 150,000원 1건만) | **1건 / 150,000원 / 최근1년 150,000원 / 고액 태그 있음** | **1건 / 0원 / 0원 / 고액 태그 없음** |
+
+검사는 문자열 존재가 아니라 **두 순수 함수의 실제 반환값**으로 확인한다.
+`scripts/smoke-cs-customer-management-profile-hub.mjs` **23 pass/3 fail → 26/26** · `scripts/smoke-cs-dashboard-admin-workflow-restructure.mjs` **20 pass/3 fail → 23/23**.
+
+**이번에 실행한 것**: 위 집중검사 2건 · `npx tsc -b` exit 0 · 변경 4파일 lint 오류 0 · `git diff --check` exit 0 · 변경분 비밀값·외부 WRITE 추가 검색 **0건**.
+**실행하지 않은 것**: **전체 `npm test` 미실행** — **무회귀 전체를 주장하지 않는다.** API 타입검사(api 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포.
+**Codex 독립검증 대기.** 이번 Local migration 묶음의 전체 게이트는 Codex 가 독립검증 후 한 번만 실행한다.
+
+---
+
 ### B-use-5 Preview 인수검사 — **완료 · 실제 Preview 화면 재확인 통과 (브랜치 `codex/b-use-5-preview-acceptance`, 제품 기준 `bcf91a4`, 2026-07-28)**
 
 > **B-use-5 Preview 인수검사는 완료했다.** 사용자가 관측했던 화면 결함 7건이 실제 Preview 화면에서 재확인됐다.
@@ -651,7 +689,18 @@ main 병합·push·배포·환경변수 변경·인증 보존 브랜치 변경�
 
 정본으로 살아 있음: `revenueMetricContract`(`isValidOrder` 5파일 import) · `inventoryRiskContract`(`classifyStockRisk` 4파일) · `claimEventContract`(4파일) · `inquiryStatusContract` · `dataSourceProvenanceContract`
 
-**제품 경로 우회 3건 남음**(Local migration, B-core 완료 직후): `src/utils/dataNormalizer.ts` · `src/engine/nativeAgentRuntime/agentExecutor.ts:70` · `src/services/csCustomerManagementFacts.ts:144-146`
+**제품 경로 우회 — 기록 교정 (2026-07-30, 직접 재조사)**
+
+이전 기록 "**우회 3건 남음**(`dataNormalizer.ts` · `agentExecutor.ts:70` · `csCustomerManagementFacts.ts:144-146`)"은 **현재 코드와 맞지 않았다.** 두 종류의 오류가 있었다(헌법 §10 — 새 사실이 아니라 이전 주장의 오류로 기록).
+
+| # | 이전 기록 | 실측 (2026-07-30) |
+|---|---|---|
+| 1 | `src/utils/dataNormalizer.ts` 우회 | **이미 해소.** `:14` 에서 `inventoryRiskContract` 를 import 하고 `:469` 에서 `classifyStockRiskWithSaleState` 를 호출한다(B-core-2a) |
+| 2 | `src/engine/nativeAgentRuntime/agentExecutor.ts:70` 우회 | **이미 해소.** `:3` import · `:77` `classifyStockRiskWithSaleState` 호출. 직접 임계 비교 제거됨(B-core-2a) |
+| 3 | `src/services/csCustomerManagementFacts.ts:144-146` 우회 | 실재했다. **2026-07-30 Local migration 으로 해소**(아래) |
+| — | **기록에 없던 활성 중복 소비자** | `src/services/csTeamDashboardFacts.ts:766-767` 이 **같은 계산을 한 벌 더** 갖고 있었다. 이전 기록은 한 경로만 적어 **범위가 좁았다.** 같은 화면에서 금액이 갈릴 수 있었으므로 두 경로를 함께 마감했다 |
+
+**현재 남은 계산 계약 우회: 0건**(확인 범위 = 위 4지점 재조사. 저장소 전수 재감사는 하지 않았다.)
 
 ## 9. 미확인 항목
 

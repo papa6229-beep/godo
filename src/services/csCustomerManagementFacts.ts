@@ -11,6 +11,7 @@ import type { CsRiskLevel } from './csDraftComposer';
 import { csTopicKo, type CsDashInquiry, type CsDashReview, type CsDashContact } from './csTeamDashboardFacts';
 import { isAnswered as isAnsweredC } from './inquiryStatusContract';
 import { classifyClaimEvent } from './claimEventContract';
+import { computeValidOrderPaymentAmount } from './revenueMetricContract';
 import type { CsCompletedWorkItem } from './csWorkCompletionState';
 
 export interface CsProfileOrder {
@@ -141,9 +142,11 @@ export function buildCsCustomerProfileHub(params: {
   for (const r of params.reviews || []) { const mk = r.orderNo ? mkByOrder.get(r.orderNo) : undefined; if (mk) get(mk).reviews.push(r); }
 
   const items: CsCustomerProfileHubItem[] = [...map.values()].map((a) => {
-    const paid = a.orders.filter((o) => o.paid);
-    const totalOrderAmount = paid.reduce((s, o) => s + (o.totalAmount || 0), 0);
-    const recentYearOrderAmount = paid.filter((o) => ageDays(o.orderDate, nowMs) <= 365).reduce((s, o) => s + (o.totalAmount || 0), 0);
+    // Local migration: 누적 구매금액은 공통 정본(revenueMetricContract)으로 계산한다.
+    //   이전 `paid === true` 만 보던 계산은 **결제 후 취소된 주문까지 합산**했다.
+    //   최근 1년은 날짜로 먼저 좁힌 뒤 같은 함수를 적용한다(별도 판정식을 만들지 않는다).
+    const totalOrderAmount = computeValidOrderPaymentAmount(a.orders);
+    const recentYearOrderAmount = computeValidOrderPaymentAmount(a.orders.filter((o) => ageDays(o.orderDate, nowMs) <= 365));
     const claimOrders = a.orders.filter((o) => o.claim?.hasClaim || o.canceled);
     const claimCount = claimOrders.length;
     // D-1.2: 공통 분류기로 취소·반품·환불 사건을 센다(제각각 정규식 금지). 교환·확인필요 제외.
