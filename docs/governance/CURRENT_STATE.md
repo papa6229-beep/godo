@@ -1105,6 +1105,29 @@ Codex 의 최초 지시는 `approvalMode:'auto'` 유지 + 수동 실행 즉시 `
 
 **완료로 확대하지 않는 것**: 이번 마케팅 업무는 **시험자료 기반 팀 내부 기록**이며 **실제 마케팅 기능 완주도, E·F 완료도 아니다.** 실제 고도몰 자료가 아니라 **시험자료로 검증**했다. 고도몰 키는 **발급 대기 중**이다.
 
+#### 후속 교정 — 저장된 기본 업무 정책 1회 이관 (`95bc2f1` 뒤 전체 게이트에서 발견, 2026-07-30) · **Codex 독립검증 대기**
+
+**Codex 전체 게이트 1차 (기준 `95bc2f1`)**: 마케팅 집중검사는 전부 통과했으나(agent task runner 86/86 · cross-team revenue parity 20/20 · provenance 42/42 · marketing facts 34/34 · 트리 clean), **전체 smoke 는 124/125 · 실패 1건** — `scripts/smoke-agent-task-store-v0.mjs` 가 옛 기대값 `마케팅=auto` 를 붙잡고 있었다. smoke 실패로 build·lint 단계는 실행되지 않았다.
+실행 기록(삭제하지 않는다): 최초 `npm test` 호출은 **Windows PowerShell 의 `npm.ps1` 실행 제한** 때문에 시작되지 않았다. **코드 실패가 아니며** `npm.cmd test` 결과가 실제 게이트 결과다.
+
+**실제 결함(검사 기대값보다 큰 문제)**: `src/services/agentTaskStore.ts` 의 `loadAgentTasks()` 가 `godo_agent_tasks_v0` 에 저장값이 있으면 `DEFAULT_AGENT_TASKS` 를 보지 않고 **그대로 반환**한다. 그래서 기본 스펙만 바꾼 D-010 적용은 **새 브라우저에만** 걸리고, **이미 앱을 쓴 브라우저에는 옛 정책(`reportTo:'hq'` · 마케팅 `auto`)이 그대로 남는다.**
+
+**조치**: 기본 업무 **보고 정책 1회 이관**을 추가했다(marker `godo_agent_tasks_policy_v1`).
+
+| 규칙 | 구현 |
+|---|---|
+| 저장목록이 있고 marker 가 없을 때만 이관 | `loadAgentTasks()` 가 marker 를 먼저 본다 |
+| 목록 저장 성공 후 marker 저장 · 실패 시 marker 없음 | `saveAgentTasks` 를 `void → boolean` 으로(외부 호출자 0건 · facade 미노출 · `activityLedger.saveActivity` 선례) |
+| marker 이후 강제 교정 없음 | marker 있으면 저장값을 그대로 반환 — **Studio 수정값을 덮어쓰지 않는다** |
+| idempotent | 두 번째 로드에서 저장값 문자열 동일 |
+| `resetAgentTasks()` | 현재 기본값 복원 + marker 일치 |
+
+**보존**: 대상은 **id 가 같은 기본 업무 3종뿐**(팀 이름·제목으로 추측하지 않는다) · **정책 외 필드(제목·담당 AI·시간·focus·reportKind) 무변경** · **사용자 추가 업무 무변경** · **삭제된 기본 업무 재생성 없음** · 업무 결과·활동 원장·승인 이력·메시지 데이터 **무변경**. 이관 표는 `DEFAULT_AGENT_TASKS` 에서 파생해 **손으로 복제한 정책표를 두지 않는다**(드리프트 방지).
+
+**RED → GREEN** (기존 smoke 확장 · 신규 파일 0 · manifest **125/0 불변**): `FAIL 2. 기본 승인모드: … 마케팅=auto` → **7 pass / 1 fail · exit 1** ⇒ **19 pass / 0 fail · exit 0**(기존 8건 + `2b`·`M1~M10`).
+**이번에 실행한 것**: `smoke-agent-task-store-v0` **19/19** · `smoke-agent-task-runner-v0` **86/86**(무회귀) · `npx tsc -b` exit 0 · 변경 2파일 lint 0 · `git diff --check` 0 · 비밀값·외부 WRITE 추가 **0건**.
+**실행하지 않은 것**: **전체 `npm test` — Codex 가 전체 125개 게이트를 한 번 실행** · Preview·Vercel·브라우저(저장 정책·자동검사 교정이며 화면 모양을 바꾸지 않는다) · main 통합·push·배포·환경변수·외부 WRITE.
+
 ---
 
 ### B-use-5 Preview 인수검사 — **완료 · 실제 Preview 화면 재확인 통과 (브랜치 `codex/b-use-5-preview-acceptance`, 제품 기준 `bcf91a4`, 2026-07-28)**
