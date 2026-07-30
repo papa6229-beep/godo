@@ -836,7 +836,7 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 
 ---
 
-### Local migration 7 — 마운트 화면의 미사용 prop 묶음 정리 (2026-07-30, 브랜치 `codex/local-migration-mounted-dead-props-cleanup`) — **로컬 구현 완료 · Codex 독립검증 대기**
+### Local migration 7 — 마운트 화면의 미사용 prop 묶음 정리 (2026-07-30, 브랜치 `codex/local-migration-mounted-dead-props-cleanup`) — **완료 · Codex 독립검증 통과**
 
 **분류**: Local migration. 마운트되어 실제로 쓰이는 두 화면에서 **선언만 있고 쓰이지 않던 prop** 만 걷어냈다. 화면 디자인·동작·계약은 바꾸지 않았다.
 
@@ -868,9 +868,33 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 | 검사 전체 | **51 met / 3 unmet · exit 1** | **54 met / 0 unmet · exit 0** |
 
 **이번에 실행한 것**: `smoke-rc2-app-integration-red-v0` **54/0 exit 0** · `smoke-b-use-5-preview-defects-v0` **71/71 exit 0** · `smoke-data-source-server-01-green-f-screen-state-v0` **exit 0**(BASE 5/5 · RED 30/30) · `npx tsc -b` exit 0 · 변경 5파일 lint 0 · `git diff --check` 0 · manifest **125/0**.
-**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다**(Codex 독립검증 때 판단) · API 타입검사(api 파일 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포 · 환경변수·데이터 변경 · 다른 후속 대장 항목 조사 · 화면 디자인 변경.
+**Claude 가 실행하지 않은 것**: 전체 `npm test` · API 타입검사(api 파일 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포 · 환경변수·데이터 변경 · 다른 후속 대장 항목 조사 · 화면 디자인 변경.
 **제품 동작 영향**: 없음. 네 prop 모두 값이 화면 로직에 닿지 않았다. 달력 수치·승인 목록 진입·승인 처리 경로는 그대로다.
-**Codex 독립검증 대기.**
+
+**→ Codex 독립검증 통과 (기준 HEAD `8481e4bc8a5bcebe8b8f57c6dd37f69a657bb2fa`, 2026-07-30)**
+
+**Codex 가 직접 실행했다.**
+
+| 항목 | 값 |
+|---|---|
+| `smoke-rc2-app-integration-red-v0` | BASE **2/0** · RED **54 met / 0 unmet** |
+| `smoke-b-use-5-preview-defects-v0` | **71/71** |
+| `smoke-data-source-server-01-green-f-screen-state-v0` | BASE **5/5** · RED **30/30** |
+| `npm test` | **exit 0** |
+| 전체 smoke | **125/125 · 128.0초** |
+| manifest | include **125** / exclude **0** |
+| `tsc -b` | 통과 |
+| API 타입검사 | 통과 |
+| Vite build | 통과 |
+| 전체 lint | 통과 |
+| 작업 트리 | clean |
+
+Codex 가 재확인한 보존 항목: `CalendarPanel` 자체 `fetchRevenue` 경로 · `MainLayout` 의 다른 `activeOperationsData` 소비자 · `TeamOperationsBoard` 의 `approvalItems`·`onOpenApprovals` · `lastRunResults`·`lastRunHandoffs` · `OfficeView` 의 다른 활성 `onApprove` 전달 2곳 · 승인 목록 진입·확인 완료·반려 흐름.
+
+**실행 기록 주의(삭제하지 않는다)**: Codex 의 **최초 `npm test` 호출은 실행 제한을 1초로 잘못 설정해 시작 직후 종료**됐다. **코드나 검사 실패가 아니라 실행 설정 오류**다. 충분한 제한으로 다시 실행한 위 결과만 완료 근거로 쓴다.
+
+**이것은 자동검사 근거다. Preview·Production 을 확인한 것이 아니다.**
+**화면 동작을 바꾸지 않은 미사용 prop 정리이므로 Preview·Vercel·브라우저 확인은 하지 않는다**(Codex 판정).
 
 ---
 
