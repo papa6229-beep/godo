@@ -571,7 +571,11 @@ export function runAnalyticsQuery(dataset: AnalyticsDataset, spec: AnalyticsQuer
       if (orders.length === 0) return noData('주문 데이터');
       const m = new Map<string, { name?: string; count: number }>();
       for (const o of orders) {
-        if (!o.claim?.claimTypes?.some((t) => t === 'refund' || t === 'return')) continue;
+        // D-1.2 정본: 원시 claimTypes 문자열을 직접 비교하지 않고 공통 분류기의 **단일 사건**
+        //   결과만 판단 근거로 쓴다(호환 표기 정규화·중복 사건 제거는 계약이 담당).
+        //   포함 = 반품(return)·환불만(refund_only) / 제외 = 취소·교환·확인 불가(unknown).
+        const kind = classifyClaimEvent(o.claim, { paid: o.paid }).eventKind;
+        if (kind !== 'return' && kind !== 'refund_only') continue;
         for (const l of o.lines) { const c = m.get(l.goodsNo) || { name: l.goodsName, count: 0 }; c.count += 1; m.set(l.goodsNo, c); }
       }
       const rows = [...m.entries()].map(([k, v]) => ({ key: k, label: v.name || k, value: v.count })).sort((a, b) => b.value - a.value).slice(0, 10);

@@ -116,8 +116,10 @@
 > **Local migration 1건 완료(2026-07-28)**: 오늘의 운영 주문 통계 출처 상태 연결(§14 후속 대장 `OfficeView fetchRevenue 실패 무시` 항목). `불러오는 중 / 실제 주문 0건 / 시험 데이터 / 연결 안 됨` 이 기존 정본 계약으로 구분되고, 연결 실패가 `activeOperationsData` 로 조용히 대체되지 않는다. **제품 코드 2개 + 기존 검사 1개 확장.** 전체 `npm test` 는 이 묶음 경계 또는 통합 직전에 한 번 실행한다 — **이번 건으로 무회귀 전체를 주장하지 않는다.**
 > **Local migration 2건 완료(2026-07-30)**: ① 오늘의 운영 관제 채팅 헤더의 `실제 주문 0건` 표시 교정 — `usable` 분기가 건수 분기보다 앞서 실제 성공 0건이 `실제 데이터` 로 표시됐다. 문구 선택을 순수 함수 `orderStatsHeaderLabel` 로 분리해 실행 검사를 붙였다(Codex 독립검증 통과). ② **CS 고객 누적 구매금액 계산 정본 단일화**(§14 후속 대장 `계산 우회` 항목). `csCustomerManagementFacts` 와 `csTeamDashboardFacts` **두 활성 경로**가 `paid === true` 만 봐서 결제 후 취소된 주문까지 구매금액·고액 고객 판정에 넣고 있었다 — 둘 다 기존 공통 함수 `computeValidOrderPaymentAmount` 로 바꿨다. **제품 코드 2개 + 기존 검사 2개 확장 · 신규 검사 파일 0 · manifest 125 불변.**
 > **후속 대장 기록의 범위 오류도 함께 교정했다**: `계산 우회 3건` 중 `dataNormalizer.ts`·`agentExecutor.ts` 는 **B-core-2a 에서 이미 해소**돼 있었고, 대신 기록에 없던 활성 중복 소비자 `csTeamDashboardFacts.ts` 가 있었다(헌법 §10 — 새 사실이 아니라 이전 기록의 범위 오류).
-> **전체 `npm test` 는 이 묶음에서 아직 실행하지 않았다 — 무회귀 전체를 주장하지 않는다.**
-> **다음 한 작업: Codex 독립검증 및 Local migration 묶음 전체 게이트 1회.**
+> **위 Local migration 2건은 Codex 독립검증·전체 게이트 1회로 완료했다** (기준 HEAD `814f07c`, 2026-07-30 · Codex 직접 실행): `npm test` **exit 0** · smoke **125/125 · 113.8초** · `tsc -b` · API 타입검사 · Vite build · 전체 lint 통과 · manifest include **125**/exclude **0** · 작업 트리 clean. **자동검사 기준이며 Preview·Production 을 확인한 것이 아니다.**
+> **Local migration 3건째 로컬 구현 완료(2026-07-30, Codex 집중검증 대기)**: **환불 위험 상품의 클레임 판정 정본 연결**(§14 후속 대장 `analyticsQueryEngine:574 클레임 필터 계약화`). 같은 파일이 `classifyClaimEvent` 를 이미 쓰고 있는데 이 한 경로만 원시 `claimTypes` 문자열을 직접 비교해 호환 표기를 놓쳤다 — 공통 분류의 `eventKind` 만 근거로 쓰도록 바꿨다(포함 `return`·`refund_only` / 제외 `cancel`·`exchange`·`unknown`). **제품 코드 1개 + 기존 검사 1개 확장 · 신규 검사 파일 0 · manifest 125 불변.** RED `{}`(빈 결과) → GREEN `{"A":1,"B":1}`.
+> **이 3건째 변경 뒤에는 전체 게이트를 아직 다시 실행하지 않았다 — 무회귀 전체를 주장하지 않는다.**
+> **다음 한 작업: Codex 의 환불 위험 상품 클레임 판정 집중검증 및 B-use 단계 경계 판정.**
 > **DB 공급자 선택이나 서버 어댑터 구현을 다음 작업으로 만들지 않는다.**
 > **DB 가 정해지기 전에는 서버 어댑터를 구현하지 않는다. B-use-2 는 기술 입력·결정자료 준비까지만 끝났고 서버 기록 완료가 아니다.**
 > **시험자료(현재 localStorage 에 쌓인 업무·메시지·승인 기록)를 서버 이관 시 보존할지 버릴지도 미결정이다.** 지금 삭제하거나 변환하지 않는다.
@@ -539,7 +541,7 @@ B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch
 | `TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리 | 감사 2026-07-27 | 미착수 |
 | `TaskResultModal` 하드코딩 데모 문구(재고 2개·매출 894,000원·송장 박*호 등)가 task 와 무관하게 표시됨. 현재 도달 경로 없음 | B-use-2 | 미착수 |
 | `OfficeView`→`MainLayout`→`App` 의 `onSelectTask` 배선이 `TaskBoard` 미렌더로 끊겨 있음 | B-use-2 | 미착수 |
-| `analyticsQueryEngine:574` 클레임 필터 계약화 | REBUILD 논쟁 D2 | 미착수 |
+| `analyticsQueryEngine:574` 클레임 필터 계약화 | REBUILD 논쟁 D2 | **로컬 구현 완료 · Codex 집중검증 대기 (2026-07-30)** — 환불 위험 상품이 원시 `claimTypes` 비교 대신 `claimEventContract.classifyClaimEvent` 의 `eventKind`(`return`·`refund_only` 포함 / `cancel`·`exchange`·`unknown` 제외)만 쓴다. 기존 검사 확장, 신규 파일 0, manifest 125 불변. 이 변경 뒤 전체 게이트 미실행. 자세한 내용은 `CURRENT_STATE.md` |
 | 채팅 원문·마케팅 분석 힌트·API Bridge 로그 서버 이관 | REBUILD 논쟁 D3 | 미착수 |
 | A 세계(`activeOperationsData`) 재설계 | REBUILD 논쟁 D1 | 미착수 |
 | GitHub Actions CI | REBUILD 논쟁 D5 | 미착수 |

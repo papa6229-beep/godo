@@ -93,6 +93,41 @@ ok('23. fake PII 미포함', (() => { const all = ['revenue', 'paymentMethodReve
 ok('24. deterministic', JSON.stringify(q('revenue')) === JSON.stringify(q('revenue')));
 ok('25. registry broad + getAnalyticsMetric', E.listAnalyticsMetrics().length >= 50 && !!E.getAnalyticsMetric('revenue') && E.getAnalyticsMetric('adRoas').supportLevel === 'requires_external_data');
 
+// ── Local migration: 환불 위험 상품의 클레임 판정을 공통 정본으로 ───────────────
+//   이전에는 claimTypes 를 원시 문자열로 직접 비교해(`t === 'refund' || t === 'return'`)
+//   계약이 정규화해 주는 호환 표기(대문자 등)를 놓쳤다. 위 120건 검사는 그대로 두고,
+//   별도의 작은 데이터셋으로 **실제 반환값**을 확인한다(문자열 존재 검사 아님).
+const bOrd = (orderNo, goodsNo, goodsName, claimTypes) => ({
+  orderNo, orderDate: '2026-03-15 10:00:00', totalAmount: 12500, productRevenueByLines: 10000,
+  deliveryFee: 2500, paid: true, canceled: false, memberKey: 'syn_member_b',
+  paymentMethodCode: 'pc', orderChannel: 'shop',
+  claim: { hasClaim: true, claimTypes, claimAmount: 10000 },
+  lines: [{ goodsNo, goodsName, quantity: 1, lineRevenue: 10000, categoryCode: '003', brandCode: '001' }]
+});
+const boundaryOrders = [
+  bOrd('B-A', 'A', '상품 A', ['REFUND']),      // → refund_only  : 포함
+  bOrd('B-B', 'B', '상품 B', ['RETURN']),      // → return       : 포함
+  bOrd('B-C', 'C', '상품 C', ['cancel']),      // → cancel       : 제외
+  bOrd('B-D', 'D', '상품 D', ['exchange']),    // → exchange     : 제외
+  bOrd('B-E', 'E', '상품 E', ['알수없는태그'])  // → unknown      : 제외
+];
+const rB = run({ orders: boundaryOrders, customers: [], reviews: [], inquiries: [], catalog, source: { dataKind: 'synthetic', syntheticSource: 'commerce_universe_v1' } }, { metric: 'refundRiskProducts' });
+const bRows = rB.ok ? rB.rows : [];
+const bKeys = bRows.map((x) => x.key).sort();
+const bByKey = Object.fromEntries(bRows.map((x) => [x.key, x.value]));
+const bTotal = bRows.reduce((s, x) => s + x.value, 0);
+
+ok(`26. [정본][실행] 환불 위험 상품 = 공통 분류 return/refund_only 만 포함 — 기대 {A:1,B:1} / 관측 ${JSON.stringify(bByKey)}`,
+  rB.ok === true && bKeys.length === 2 && bKeys[0] === 'A' && bKeys[1] === 'B' && bByKey.A === 1 && bByKey.B === 1);
+ok(`27. [정본][실행] cancel·exchange·unknown 은 제외 — 관측 키 ${JSON.stringify(bKeys)}`,
+  !bKeys.includes('C') && !bKeys.includes('D') && !bKeys.includes('E'));
+ok(`28. [정본][실행] 총 포함 주문 2건 · 한 주문 중복 집계 없음 — 기대 2 / 관측 ${bTotal}`,
+  bTotal === 2);
+ok('29. 정렬·상위 10개·행 구조 유지(key/label/value)',
+  bRows.every((x) => typeof x.key === 'string' && typeof x.label === 'string' && typeof x.value === 'number')
+  && bRows.length <= 10 && bRows.every((x, i) => i === 0 || bRows[i - 1].value >= x.value)
+  && rB.groupBy === 'product');
+
 console.log(`\n=== 결과: ${pass} pass / ${fail} fail (orders=${orders.length}, metrics=${E.listAnalyticsMetrics().length}) ===`);
 rmSync(tmp, { recursive: true, force: true });
 process.exit(fail === 0 ? 0 : 1);

@@ -46,7 +46,27 @@
 
 **위 기준선 이후 변화(2026-07-28, 브랜치 `codex/b-use-5-preview-acceptance`)**: B-use-5 결함 마감 검사 1건이 추가되어 **manifest include 124 → 125 / exclude 0** 이다.
 **현재 기준선 — Codex 2차 독립검증 (기준 `bcf91a4`, 2026-07-28)**: manifest include **125** / exclude **0** · smoke **125/125 통과 · 125.7초** · build(`tsc -b` + `typecheck:api` + Vite build) 통과 · lint 오류 **0**.
-위 `e599ce2` 표는 그 시점 기록으로 보존한다(삭제하지 않는다). **125개 기준의 현재 값은 이 문단이다.**
+위 `e599ce2` 표는 그 시점 기록으로 보존한다(삭제하지 않는다).
+
+**현재 기준선 — Codex 전체 게이트 (기준 HEAD `814f07c`, 2026-07-30)**
+
+**Codex 가 직접 실행했다.** 이 값이 지금의 전체 게이트 기준선이다.
+
+| 항목 | 값 |
+|---|---|
+| `npm test` | **exit 0** |
+| smoke | **125/125 통과 · 113.8초** |
+| manifest | include **125** / exclude **0** |
+| `tsc -b` | 통과 |
+| API 타입검사 | 통과 |
+| Vite build | 통과 |
+| 전체 lint | 통과 |
+| 작업 트리 | clean |
+
+→ **직전 Local migration 묶음(오늘의 운영 헤더 `실제 주문 0건` 표시 교정 · CS 고객 구매금액 계산 정본 단일화)은 Codex 독립검증 완료다.**
+**이것은 자동검사 기준이다. 이 게이트로 Preview·Production 을 확인한 것이 아니다**(배포·환경변수 무변경).
+
+**이 기준선 이후 변경(아래 `refundRiskProducts` Local migration)에 대해서는 전체 게이트를 아직 다시 실행하지 않았다.**
 
 주의: 과거 과제의 스모크 8건이 `git status --porcelain`으로 **미커밋 작업 트리**를 검사한다. 제품 파일을 고친 뒤 커밋 전에 `npm test`를 돌리면 그 8건이 실패한다(결함 아님, 커밋 후 통과).
 
@@ -504,8 +524,54 @@ Codex 재검증이 같은 근본원인의 잔여 3건을 찾아냈고 이 브랜
 `scripts/smoke-cs-customer-management-profile-hub.mjs` **23 pass/3 fail → 26/26** · `scripts/smoke-cs-dashboard-admin-workflow-restructure.mjs` **20 pass/3 fail → 23/23**.
 
 **이번에 실행한 것**: 위 집중검사 2건 · `npx tsc -b` exit 0 · 변경 4파일 lint 오류 0 · `git diff --check` exit 0 · 변경분 비밀값·외부 WRITE 추가 검색 **0건**.
-**실행하지 않은 것**: **전체 `npm test` 미실행** — **무회귀 전체를 주장하지 않는다.** API 타입검사(api 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포.
-**Codex 독립검증 대기.** 이번 Local migration 묶음의 전체 게이트는 Codex 가 독립검증 후 한 번만 실행한다.
+**당시 실행하지 않은 것**: 전체 `npm test` · API 타입검사(api 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포.
+
+**→ Codex 독립검증 완료 (기준 HEAD `814f07c`, 2026-07-30).** 전체 게이트 수치는 §2 참조(`npm test` exit 0 · smoke 125/125 · 113.8초). **자동검사 기준이며 Preview·Production 확인은 포함하지 않는다.**
+
+---
+
+### Local migration — 환불 위험 상품의 클레임 판정 정본 연결 (2026-07-30, 브랜치 `codex/b-use-5-preview-acceptance`)
+
+**분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `analyticsQueryEngine:574 클레임 필터 계약화`). 구조 패치가 아니다 — `claimEventContract` 자체를 바꾸지 않고 **소비자 한 곳을 기존 정본에 연결**했다.
+
+**종료조건**: 환불 위험 상품이 공통 분류 결과가 `return` 또는 `refund_only` 인 주문만 포함하고, `cancel`·`exchange`·`unknown` 은 제외한다.
+
+**교정 전 (직접 확인)**: `src/services/analyticsQueryEngine.ts:574`
+
+```
+o.claim?.claimTypes?.some((t) => t === 'refund' || t === 'return')
+```
+
+같은 파일이 `:17` 에서 `classifyClaimEvent` 를 **이미 import** 하고 `:517`(클레임율)에서 쓰고 있는데, **이 경로만 원시 문자열을 직접 비교**했다. 계약은 `claimTypes` 를 소문자로 정규화하고 `return > refund_only > exchange > cancel` 우선순위로 **단일 사건**을 확정하므로, 원시 비교는 ① 호환 표기(대문자 등)를 놓치고 ② 계약의 중복 사건 제거를 받지 못했다.
+
+**조치**: 주문별로 `classifyClaimEvent(o.claim, { paid: o.paid }).eventKind` 만 판단 근거로 쓴다. 포함 `return`·`refund_only` / 제외 `cancel`·`exchange`·`unknown`. **별도 정규식·`claimTypes` 직접 비교·새 클레임 판정 helper 0건.**
+
+**바꾸지 않은 것**: `claimEventContract` 자체 · 환불률·취소율·반품률·클레임 금액 등 다른 지표 · 상품 집계 구조(상품별 정렬·상위 10개·행 구조 `key`/`label`/`value` 유지).
+
+**RED → GREEN** (신규 검사 파일 없음 — 기존 `scripts/smoke-analytics-query-engine.mjs` 확장, manifest **125 불변**)
+
+기존 120건 데이터 검사(1~25)는 그대로 두고, 별도의 작은 실행 데이터셋으로 **실제 반환값**을 확인했다.
+
+| 경계 주문 | `claimTypes` | 공통 분류 | 기대 |
+|---|---|---|---|
+| 상품 A | `['REFUND']` | `refund_only` | 포함 |
+| 상품 B | `['RETURN']` | `return` | 포함 |
+| 상품 C | `['cancel']` | `cancel` | 제외 |
+| 상품 D | `['exchange']` | `exchange` | 제외 |
+| 상품 E | `['알수없는태그']` | `unknown` | 제외 |
+
+| | RED (수정 전 실제 반환값) | GREEN (실제 반환값) |
+|---|---|---|
+| 결과 행 | **`{}` (빈 결과)** — 대문자 호환 태그를 원시 비교가 놓쳐 A·B가 모두 빠졌다 | **`{"A":1,"B":1}`** |
+| 결과 키 | `[]` | `["A","B"]` — C·D·E 없음 |
+| 총 포함 주문 | **0** | **2** (한 주문 중복 집계 없음) |
+| 검사 전체 | **27 pass / 2 fail** | **29 pass / 0 fail** (orders=120 · metrics=61) |
+
+기존 `17. refundRiskProducts` 와 `12. claim/refund/cancel rate` 는 RED·GREEN 양쪽에서 PASS — 120건 데이터셋은 전부 소문자 태그라 값이 바뀌지 않는다.
+
+**이번에 실행한 것**: `node scripts/smoke-analytics-query-engine.mjs` **29/29** · `npx tsc -b` exit 0 · 변경 2파일 lint 오류 0 · `git diff --check` exit 0 · 변경분 비밀값·외부 WRITE 추가 검색 **0건**.
+**실행하지 않은 것**: **전체 `npm test` 미실행**(§2 의 `814f07c` 게이트는 **이번 변경 전** 값이다 — 이번 변경 뒤에는 아직 다시 실행하지 않았다) · **무회귀 전체를 주장하지 않는다** · API 타입검사(api 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포.
+**Codex 집중검증 대기.**
 
 ---
 
@@ -687,7 +753,16 @@ main 병합·push·배포·환경변수 변경·인증 보존 브랜치 변경�
 
 ## 8. 계산 계약
 
-정본으로 살아 있음: `revenueMetricContract`(`isValidOrder` 5파일 import) · `inventoryRiskContract`(`classifyStockRisk` 4파일) · `claimEventContract`(4파일) · `inquiryStatusContract` · `dataSourceProvenanceContract`
+정본으로 살아 있음: `revenueMetricContract` · `inventoryRiskContract` · `claimEventContract` · `inquiryStatusContract` · `dataSourceProvenanceContract`
+
+**소비자 수 교정 (2026-07-30 실측)** — 이전 기록 "`isValidOrder` **5파일** import" 는 낡았다.
+
+| 항목 | 값 | 집계 기준(다시 낡지 않도록 명시) |
+|---|---|---|
+| `isValidOrder` 직접 import 소비자 | **6** | `grep -rln "isValidOrder" --include=*.ts --include=*.tsx src api` 결과 **8**파일에서 ① 계약 파일 자신(`revenueMetricContract.ts`) ② 본문 언급이 **주석 1줄뿐**인 `src/types/dataConnector.ts:25` 를 뺀 수. 대상: `analyticsQueryEngine` · `commerceDataQueryEngine` · `departmentDataSourceOfTruth` · `marketingAnalysisExecutor` · `marketingAnalysisFacts` · `marketingChatQueryRouting` |
+| `revenueMetricContract` 모듈 import 파일 | **10** | `grep -rln "from '.*revenueMetricContract'" --include=*.ts --include=*.tsx src api`. 위 6 + `ProductTeamDashboard.tsx` · `departmentMetricContract.ts` + 2026-07-30 신규 연결 `csCustomerManagementFacts.ts` · `csTeamDashboardFacts.ts` |
+
+`departmentDataSourceOfTruth.ts:250` 은 `isValidOrder` 를 **재수출**한다(부서가 같은 판정을 쓰도록). 재수출 경유 소비자는 위 수에 포함하지 않았다.
 
 **제품 경로 우회 — 기록 교정 (2026-07-30, 직접 재조사)**
 
@@ -700,7 +775,9 @@ main 병합·push·배포·환경변수 변경·인증 보존 브랜치 변경�
 | 3 | `src/services/csCustomerManagementFacts.ts:144-146` 우회 | 실재했다. **2026-07-30 Local migration 으로 해소**(아래) |
 | — | **기록에 없던 활성 중복 소비자** | `src/services/csTeamDashboardFacts.ts:766-767` 이 **같은 계산을 한 벌 더** 갖고 있었다. 이전 기록은 한 경로만 적어 **범위가 좁았다.** 같은 화면에서 금액이 갈릴 수 있었으므로 두 경로를 함께 마감했다 |
 
-**현재 남은 계산 계약 우회: 0건**(확인 범위 = 위 4지점 재조사. 저장소 전수 재감사는 하지 않았다.)
+**확인 범위 확장 (2026-07-30 같은 날, 헌법 §10)** — 위 표 직후 적었던 "현재 남은 계산 계약 우회 **0건**" 은 **확인 범위가 `revenueMetricContract`·`inventoryRiskContract` 관련 4지점뿐**이었다. 그 범위를 `claimEventContract` 로 넓히자 **`analyticsQueryEngine.ts:574`(환불 위험 상품)이 원시 `claimTypes` 문자열을 직접 비교**하고 있었다. 결론을 번복한 것이 아니라 **이전 주장의 확인 범위가 좁았던 것**이며, 이 건은 아래 Local migration 으로 마감했다.
+
+**현재 남은 계산 계약 우회: 0건** — 확인 범위 = ① 위 표의 4지점 ② `claimEventContract` 소비 경로. **저장소 전수 재감사는 하지 않았다.**
 
 ## 9. 미확인 항목
 
