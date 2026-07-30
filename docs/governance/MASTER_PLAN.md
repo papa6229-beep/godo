@@ -86,7 +86,46 @@
 
 ## 2. 현재 단계와 다음 한 작업
 
-> **현재 단계: 전체 4단계 — B-use(실제 화면과 업무 흐름 연결)**
+> **현재 단계: 전체 5단계 — C(새 고도몰 실제 계약 검증)**
+> **상태: 시작 조건 대기.** 새 판매몰 **개발자 등록·API 키 발급 대기** 때문이다. 키가 확보된 사실이 확인되면 사용자가 언급하지 않아도 **즉시 C 착수를 제안한다**(§6).
+> **키 대기 중에도 B 를 다시 열지 않는다.** 승인된 `Local migration`(§5-4) 경로의 독립 작업은 계속할 수 있다.
+> **다음 한 작업: Codex 가 미마운트 legacy 업무 컴포넌트 정리 범위를 직접 조사·선정한다.**
+> **DB 공급자 선택이나 서버 어댑터 구현을 다음 작업으로 만들지 않는다.**
+>
+> ---
+>
+> **전체 4단계 B-use — 종료 (2026-07-30, 기준 HEAD `f8a1e9a`)**
+>
+> **최종 전체 게이트 (Codex 직접 실행, 기준 HEAD `f8a1e9a403a4aaad29154ad6e2ee4af6b8aa82df`)**
+> 환불 위험 상품 집중검사 **29/29** · `npm test` **exit 0** · smoke **125/125 통과 · 136.2초** · manifest include **125**/exclude **0** · build(`tsc -b` + API 타입검사 + Vite build) 통과 · 전체 lint 통과 · `git diff --check` 통과 · 작업 트리 clean.
+> → **`analyticsQueryEngine` `refundRiskProducts` 클레임 계약화 Local migration 도 Codex 독립검증 완료다.**
+>
+> **종료조건 충족 근거 (구현 · 자동검사 · Preview 인수검사 세 축)**
+>
+> | 종료조건 | 충족 근거 |
+> |---|---|
+> | 핵심 업무 흐름 시나리오 완주 | **HQ 지시 → 팀장 수락·수행 → 결과 제출 → 팀장 확인 → HQ 최종 확인** 이 화면에서 끊기지 않는다. 원본 메시지·업무·승인·활동 원장이 `inputRefs`·`taskId`·`correlationId` 로 연결된다 |
+> | 인증·권한 | 가입 신청 → `member`+`pending` → 같은 팀장/HQ 승인 → 보호 API·대시보드 이용. 권한 정본 `effectiveIdentity` 한 곳. 시험 역할 전환기가 인증 모드에서 권한·열람 범위를 넓히지 못하고, 계정 전환 시 이전 계정 상세·승인·보고서가 노출되지 않는다 |
+> | 실제 Preview 로그인 흐름 | 2026-07-28 Codex 가 **별도 자동화 브라우저**로 Preview 를 직접 조작해 위 흐름 전체와 결함 7건 마감을 재확인. 최종 앱 흐름 브라우저 콘솔 오류 0 |
+> | 실제·시험·미연결·실제 0건 구분 | `dataSourceProvenanceContract` + `screenStateFromRevenue`/`resolveRealOrdersDisplay` 로 리소스별 판정. 관제 채팅 헤더가 `불러오는 중 / 실제 주문 N건 / 시험 데이터(+실제 주문 연결 안 됨) / 연결 안 됨` 을 구분하고, 연결 실패가 다른 데이터로 조용히 대체되지 않는다 |
+> | 정식 검사 게이트 | **125/125**, manifest include 125 / exclude 0, 사유 없는 제외 0건 |
+>
+> ### B-use 종료가 **뜻하지 않는 것** (완료로 덮지 않는다)
+>
+> - **DB 미결정 · 최종 실행 서버 미확정.** `B_USE_2_DB_OPTIONS_RESEARCH.md` 는 결정자료이지 채택안이 아니다
+> - **서버 공용 업무기록 어댑터 미구현.** 현재 업무·메시지·승인 기록은 **브라우저 localStorage 중심**이다
+> - **시험자료 보존·선택 이관 여부 미결정.** 지금 삭제하거나 변환하지 않는다
+> - **새 고도몰 API 키 발급 대기**
+> - **Production 미배포 · 원격 `main` 미푸시 · 환경변수 무변경**
+> - **실제 고도몰 READ 계약 검증은 전체 5단계 C 의 일이다** — B-use 로 대신하지 않는다
+> - **회사 서버 이식과 실작동 시험은 11월 시험 전에 수행한다**
+>
+> **따라서 "B-use 완료 = 전체 프로젝트 완료" 도, "오픈 준비 완료" 도 아니다.** 오픈 최소 구성 8항목 중 이번에 충족된 것은 §1 매핑표의 B-use 몫뿐이며, 나머지는 C·F·H 로 남는다.
+>
+> ---
+>
+> **B-use 경과 기록 (아래는 각 시점의 기록 — 삭제하지 않는다. 위 종료 판정이 현재 값이다.)**
+>
 > **B-core(전체 3단계)는 완료.** 주문 원본 사실(`orderFacts`) · 재고위험 단일화 · 저장 경계(repository/facade) · actor/executor 분리 · TeamId 정본이 섰다.
 > **결제완료 공식 정본은 전체 5단계(C — 새 고도몰 READ·상태코드 확인)로 명시적 이관한다.** 그전까지 두 규칙의 결과와 `conflicted` 를 함께 보존하며 한쪽을 정본으로 삼지 않는다.
 > **B-use-3 은 Codex 독립검증을 통과했다** (기준 HEAD `c22586b` · smoke 123/123 + build + typecheck:api + lint, exit 0 · manifest include 123/exclude 0). 실제 화면 클릭 확인은 다음 Preview 인수검사에서 다른 화면과 함께 한다.
@@ -107,6 +146,7 @@
 > **판정: 사용자가 관측했던 화면 결함 7건의 실제 Preview 재확인 통과 → B-use-5 Preview 인수검사 완료.**
 > **자동검사 통과와 실제 브라우저 통과는 다른 증거다.** 앞은 배선·계약을, 뒤는 화면 동작을 증명한다. 이번에는 둘 다 있다.
 > **이것은 B-use 전체 완료도 Production 완료도 아니다.** main 미통합 · Production 미배포 · 환경변수 무변경 · 고도몰 새 키 발급 대기.
+> └ **2026-07-30 갱신**: B-use 는 위 종료 판정으로 닫혔고 **local main 통합은 사용자 승인 아래 수행**했다. **원격 push · Production 배포 · 환경변수 변경 · 고도몰 새 키는 그대로 미수행·대기다.**
 > **Codex 의 B-use-2 DB 후보 비교자료 독립검토(2차)에서 사실 교정사항이 발견돼 마감했다** (2026-07-28).
 > 교정 5종: ① 공식 자료가 있는데 `미확인` 으로 둔 5건(Supabase 리전 변경·at-rest 암호화·Vercel Marketplace 통합 존재 / Neon 암호화·IPv4·IPv6) ② 확정처럼 쓴 조건부 값 1건(Neon 직접 연결 상한 — 컴퓨트 구성 종속, 정본은 Console/`SHOW max_connections`) ③ 과장된 동일성 표현("셋 다 표준 PostgreSQL 이라 연결까지 같다" → 풀링 transaction mode 의 세션 기능 제약이 공급자마다 다름) ④ 판단 시점 오류(개인정보 저장 위치는 **첫 실제 개인정보 저장 전** 진입 조건) ⑤ `미확인` 두 종류 분리(우리가 덜 조사한 것 / 공급자가 공개하지 않은 것).
 > **3차 소규모 정합 교정(2026-07-28)**: `Neon 실시간 반영 수단` 을 통째로 `미확인` 으로 둔 것이 공식 원문과 맞지 않아 **조건부 사실로 옮겼다.** 직접 연결의 `LISTEN`/`NOTIFY` 는 **조건부 가능**(N3) · 풀링 연결은 **불가**(N3) · 세션 종료 시 listener 가 사라져(N13) **재연결·재구독 또는 폴링 대안 필요**. **별도 관리형 Realtime 제품의 존재는 여전히 미확인이며 있다고 쓰지 않는다.** `419.66` 계산식과 그 조건부 판정은 다시 바꾸지 않았다.
@@ -118,12 +158,10 @@
 > **후속 대장 기록의 범위 오류도 함께 교정했다**: `계산 우회 3건` 중 `dataNormalizer.ts`·`agentExecutor.ts` 는 **B-core-2a 에서 이미 해소**돼 있었고, 대신 기록에 없던 활성 중복 소비자 `csTeamDashboardFacts.ts` 가 있었다(헌법 §10 — 새 사실이 아니라 이전 기록의 범위 오류).
 > **위 Local migration 2건은 Codex 독립검증·전체 게이트 1회로 완료했다** (기준 HEAD `814f07c`, 2026-07-30 · Codex 직접 실행): `npm test` **exit 0** · smoke **125/125 · 113.8초** · `tsc -b` · API 타입검사 · Vite build · 전체 lint 통과 · manifest include **125**/exclude **0** · 작업 트리 clean. **자동검사 기준이며 Preview·Production 을 확인한 것이 아니다.**
 > **Local migration 3건째 로컬 구현 완료(2026-07-30, Codex 집중검증 대기)**: **환불 위험 상품의 클레임 판정 정본 연결**(§14 후속 대장 `analyticsQueryEngine:574 클레임 필터 계약화`). 같은 파일이 `classifyClaimEvent` 를 이미 쓰고 있는데 이 한 경로만 원시 `claimTypes` 문자열을 직접 비교해 호환 표기를 놓쳤다 — 공통 분류의 `eventKind` 만 근거로 쓰도록 바꿨다(포함 `return`·`refund_only` / 제외 `cancel`·`exchange`·`unknown`). **제품 코드 1개 + 기존 검사 1개 확장 · 신규 검사 파일 0 · manifest 125 불변.** RED `{}`(빈 결과) → GREEN `{"A":1,"B":1}`.
-> **이 3건째 변경 뒤에는 전체 게이트를 아직 다시 실행하지 않았다 — 무회귀 전체를 주장하지 않는다.**
-> **다음 한 작업: Codex 의 환불 위험 상품 클레임 판정 집중검증 및 B-use 단계 경계 판정.**
-> **DB 공급자 선택이나 서버 어댑터 구현을 다음 작업으로 만들지 않는다.**
+> **→ 이 3건째도 기준 HEAD `f8a1e9a` 에서 Codex 최종 게이트로 독립검증 완료했다**(위 종료 판정 참조. 당시 "전체 게이트 미실행" 기록은 그 시점 사실이다).
 > **DB 가 정해지기 전에는 서버 어댑터를 구현하지 않는다. B-use-2 는 기술 입력·결정자료 준비까지만 끝났고 서버 기록 완료가 아니다.**
 > **시험자료(현재 localStorage 에 쌓인 업무·메시지·승인 기록)를 서버 이관 시 보존할지 버릴지도 미결정이다.** 지금 삭제하거나 변환하지 않는다.
-> B-use 전체 인수검사로는 아직 넘어가지 않는다.
+> ~~B-use 전체 인수검사로는 아직 넘어가지 않는다.~~ ← **2026-07-28 시점 기록.** 2026-07-30 기준 HEAD `f8a1e9a` 에서 종료 판정을 냈다(위 참조).
 
 ---
 
@@ -404,9 +442,12 @@ Codex 독립검증에서 발견: 팀 내부 업무는 **계약만 통과**했고
 **미실증**: 실제 Clerk 가입·브라우저 로그인·HQ 부트스트랩·승인 후 화면 진입 · Preview/Production. → **Preview 인수검사에서 실증한다.**
 main 병합·push·배포·환경변수 변경은 하지 않았다.
 
-### B-use-5. 인수검사
+### B-use-5. 인수검사 — **완료 (2026-07-30, 기준 HEAD `f8a1e9a`)**
 
 `npm test` · manifest 등록 검사 전부 통과 · **Preview 수동 인수검사 체크리스트 전 항목 통과** · Production Source 잠금과 실검증 · 실제·시험·연결 안 됨 구분 · 마스터 계획 갱신
+
+충족: `npm test` exit 0 · smoke **125/125(136.2초)** · manifest include 125/exclude 0 · Preview 인수검사 전 항목 통과(2026-07-28 실제 브라우저) · 실제/시험/연결 안 됨/실제 0건 구분 · 마스터 계획 갱신(§2 종료 판정).
+**미충족으로 남기는 것**: **Production Source 잠금과 실검증** — Production 에 배포하지 않았으므로 수행하지 않았다. 이 항목은 **C 이후 실제 배포 시점**으로 넘긴다. B-use 종료가 Production 인수검사를 대신하지 않는다.
 
 ---
 
@@ -538,10 +579,10 @@ B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch
 | 항목 | 출처 | 상태 |
 |---|---|---|
 | `syntheticCommerceFacts` 계약 우회 3건 (제품 import 0) | REBUILD 논쟁 D2 | 미착수 |
-| `TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리 | 감사 2026-07-27 | 미착수 |
+| `TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리 | 감사 2026-07-27 | **다음 한 작업 (2026-07-30)** — Codex 가 미마운트 legacy 업무 컴포넌트 **정리 범위를 직접 조사·선정**한다. 아래 `TaskResultModal`·`onSelectTask` 배선 항목과 같은 뿌리일 수 있으므로 조사 단계에서 함께 본다. 헌법 §6 — 쓰이지 않는 것처럼 보여도 근거 없이 삭제하지 않는다 |
 | `TaskResultModal` 하드코딩 데모 문구(재고 2개·매출 894,000원·송장 박*호 등)가 task 와 무관하게 표시됨. 현재 도달 경로 없음 | B-use-2 | 미착수 |
 | `OfficeView`→`MainLayout`→`App` 의 `onSelectTask` 배선이 `TaskBoard` 미렌더로 끊겨 있음 | B-use-2 | 미착수 |
-| `analyticsQueryEngine:574` 클레임 필터 계약화 | REBUILD 논쟁 D2 | **로컬 구현 완료 · Codex 집중검증 대기 (2026-07-30)** — 환불 위험 상품이 원시 `claimTypes` 비교 대신 `claimEventContract.classifyClaimEvent` 의 `eventKind`(`return`·`refund_only` 포함 / `cancel`·`exchange`·`unknown` 제외)만 쓴다. 기존 검사 확장, 신규 파일 0, manifest 125 불변. 이 변경 뒤 전체 게이트 미실행. 자세한 내용은 `CURRENT_STATE.md` |
+| ~~`analyticsQueryEngine:574` 클레임 필터 계약화~~ | REBUILD 논쟁 D2 | **완료 · Codex 독립검증 통과 (2026-07-30, 기준 HEAD `f8a1e9a`)** — 환불 위험 상품이 원시 `claimTypes` 비교 대신 `claimEventContract.classifyClaimEvent` 의 `eventKind`(`return`·`refund_only` 포함 / `cancel`·`exchange`·`unknown` 제외)만 쓴다. 기존 검사 확장, 신규 파일 0, manifest 125 불변. 최종 게이트 `npm test` exit 0 · smoke 125/125. 자세한 내용은 `CURRENT_STATE.md` |
 | 채팅 원문·마케팅 분석 힌트·API Bridge 로그 서버 이관 | REBUILD 논쟁 D3 | 미착수 |
 | A 세계(`activeOperationsData`) 재설계 | REBUILD 논쟁 D1 | 미착수 |
 | GitHub Actions CI | REBUILD 논쟁 D5 | 미착수 |

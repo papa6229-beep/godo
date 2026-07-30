@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-28 (DB 후보 조사 사실 교정 — Codex 독립검토 반영)
+최종 갱신: 2026-07-30 (B-use 종료 기록 · local main fast-forward 통합)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -12,13 +12,14 @@
 
 | 항목 | 값 | 확인 방법 |
 |---|---|---|
-| local main | `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864` (B-use-3 HQ 지시 흐름까지 fast-forward 통합) | `git rev-parse main` |
-| origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` (**local main보다 뒤**, 미푸시) | `git rev-parse origin/main` |
+| local main | **2026-07-30 사용자 승인 아래 `codex/b-use-5-preview-acceptance` 를 `--ff-only` 로 통합**(merge commit 없음, 27커밋). 통합 시점의 값은 문서에 적지 않는다 — **`git rev-parse main` 직접 관측을 우선한다**. 이전 값은 `364f417454a3c4d5ae7a6a503c6fac0fdc9e3864`(B-use-3 HQ 지시 흐름까지) | `git rev-parse main` |
+| origin/main = Production Source 기준 | `5190f685ebfc0b7bb686817fa9d37216797171e1` — **변경 없음. 원격 push 는 승인받지 않았고 하지 않았다.** local main 이 이보다 앞선다 | `git rev-parse origin/main` |
 | 인증 기능 브랜치 | `fix/auth-foundation-01-red` → `838e2c447f5f7f813845330746e377f156628bde` · **main 미병합** | `git rev-parse` / `git branch --merged main` |
 | 직전 작업 브랜치 | `codex/b-use-3-remaining-route-closure` (`364f417`에서 분기, **main 미통합**) · HEAD `c22586b` · Codex 전체검증 통과 → `codex/b-use-2-server-records-decision-input` (`c22586b`에서 분기) HEAD `61296fb`, 문서 조사만 | `git rev-parse` |
 | B-use-4 구현 브랜치 | `codex/b-use-4-auth-integration` (`61296fb`에서 분기, **main 미통합**) · HEAD **`e599ce2`** — 인증 선별 통합 + 권한 정본 단일화 + 계정 전환 잔여 경로 마감 · **Codex 독립검증 통과** | `git rev-parse` |
 | DB 조사 브랜치 | `codex/b-use-2-db-options-research` (`e599ce2`에서 분기, **main 미통합**) — DB 후보 조사(문서 전용, 제품 코드 0변경) | `git rev-parse` |
-| 현재 작업 브랜치 | `codex/b-use-5-preview-acceptance` (**main 미통합**) — B-use-5 Preview 인수검사 결함 7건 마감 + Codex 지적 4건 교정 · **실제 Preview 화면 재확인 통과(2026-07-28)** | `git rev-parse --abbrev-ref HEAD` |
+| B-use 최종 브랜치 | `codex/b-use-5-preview-acceptance` — B-use-5 Preview 인수검사 결함 7건 마감 + Codex 지적 4건 교정 · 실제 Preview 화면 재확인 통과(2026-07-28) · Local migration 3건. **2026-07-30 local main 에 `--ff-only` 통합됨. 브랜치는 삭제하지 않았다** | `git rev-parse --abbrev-ref HEAD` / `git branch --merged main` |
+| B-use 종료·최종 게이트 기준 | **`f8a1e9a403a4aaad29154ad6e2ee4af6b8aa82df`** — Codex 최종 전체 게이트 통과 지점(§2). **문서 커밋이 뒤에 더 쌓여도 이 값은 그대로다** | `git rev-parse f8a1e9a` |
 | B-use-5 인수검사 Preview | `https://godo-git-codex-b-use-5-preview-f2d73c-taejuns-projects-e5fc4e75.vercel.app` (Target **Preview** · Status **Ready**). **Production 아님** | Codex 자동화 브라우저 실조작 (2026-07-28) |
 | B-use-5 제품 교정·독립검증 기준 | **`bcf91a426c530f07f7d32c0d3454e29fa8c95421`** — Codex 2차 독립검증 통과 지점. **문서 커밋이 뒤에 더 쌓여도 이 값은 그대로다** | `git rev-parse bcf91a4` |
 | 브랜치 HEAD | **이 문서에 적지 않는다.** 문서 커밋이 자기 자신을 낡게 만들기 때문이다. **세션 시작 시 `git rev-parse HEAD` 직접 관측을 우선한다** | 헌법 §2 직접 Git 관측 |
@@ -66,7 +67,50 @@
 → **직전 Local migration 묶음(오늘의 운영 헤더 `실제 주문 0건` 표시 교정 · CS 고객 구매금액 계산 정본 단일화)은 Codex 독립검증 완료다.**
 **이것은 자동검사 기준이다. 이 게이트로 Preview·Production 을 확인한 것이 아니다**(배포·환경변수 무변경).
 
-**이 기준선 이후 변경(아래 `refundRiskProducts` Local migration)에 대해서는 전체 게이트를 아직 다시 실행하지 않았다.**
+**최종 기준선 — Codex 전체 게이트 (기준 HEAD `f8a1e9a`, 2026-07-30) · B-use 종료 판정 근거**
+
+**Codex 가 직접 실행했다. 이 값이 현재 기준선이다.**
+
+| 항목 | 값 |
+|---|---|
+| 환불 위험 상품 집중검사 | **29/29 통과** |
+| `npm test` | **exit 0** |
+| smoke | **125/125 통과 · 136.2초** |
+| manifest | include **125** / exclude **0** |
+| build | `tsc -b` + API 타입검사 + Vite build 통과 |
+| 전체 lint | 통과 |
+| `git diff --check` | 통과 |
+| 작업 트리 | clean |
+
+→ **`analyticsQueryEngine` `refundRiskProducts` 클레임 계약화 Local migration 도 Codex 독립검증 완료.**
+**자동검사 기준이다. 이 게이트로 Preview·Production 을 확인한 것이 아니다**(배포·환경변수 무변경).
+위 `814f07c` 문단은 그 시점 기록으로 보존한다(삭제하지 않는다).
+
+### 전체 4단계 B-use — 종료 (2026-07-30)
+
+관측된 충족 근거(각각 확인 범위를 함께 적는다):
+
+| 항목 | 근거 | 증거의 종류 |
+|---|---|---|
+| 핵심 업무 흐름 완주 | HQ 지시 → 팀장 수락·수행 → 결과 제출 → 팀장 확인 → HQ 최종 확인. 원본 메시지·업무·승인·활동 원장이 `inputRefs`(`teammsg:<id>`)·`taskId`·`correlationId` 로 연결 | 집중검사 실행 + 실제 브라우저 |
+| 인증·권한·계정 전환 | 가입 신청 → `member`+`pending` → 같은 팀장/HQ 승인 → 보호 API·대시보드. 권한 정본 `effectiveIdentity` 한 곳. 시험 역할 전환기가 인증 모드에서 권한·열람 범위를 넓히지 못하고, 계정 전환 시 이전 계정 상세·승인·보고서 노출 차단 | 집중검사 실행 |
+| 실제 Preview 로그인 흐름 | 2026-07-28 Codex 가 **별도 자동화 브라우저**로 Preview 직접 조작. 최종 앱 흐름 브라우저 콘솔 오류 0 | 실제 화면 동작 |
+| 실제·시험·미연결·실제 0건 구분 | `dataSourceProvenanceContract` 리소스별 판정 + `screenStateFromRevenue`/`resolveRealOrdersDisplay`/`realOrdersPhrase`. 관제 채팅 헤더 4상태 실행 검사 | 실행 검사 |
+| 정식 검사 게이트 | `npm test` exit 0 · smoke **125/125** · manifest include 125/exclude 0(사유 없는 제외 0건) | 자동검사 |
+
+**B-use 종료가 뜻하지 않는 것 (완료로 덮지 않는다)**
+
+- **DB 미결정 · 최종 실행 서버 미확정** — `B_USE_2_DB_OPTIONS_RESEARCH.md` 는 결정자료이지 채택안이 아니다
+- **서버 공용 업무기록 어댑터 미구현** — 현재 업무·메시지·승인 기록은 **브라우저 localStorage 중심**이다(§4)
+- **시험자료 보존·선택 이관 여부 미결정** — 지금 삭제하거나 변환하지 않는다
+- **새 고도몰 API 키 발급 대기**
+- **Production 미배포 · 원격 `main` 미푸시 · Vercel 환경변수 무변경**
+- **실제 고도몰 READ 계약 검증은 전체 5단계 C 의 일이다**
+- **회사 서버 이식과 실작동 시험은 11월 시험 전에 수행한다**
+
+**"B-use 완료 = 전체 프로젝트 완료" 도 "오픈 준비 완료" 도 아니다.**
+
+**local main 통합 (2026-07-30, 사용자 명시 승인)**: `codex/b-use-5-preview-acceptance` → `main` **`--ff-only`**, merge commit 없음, 27커밋. **origin push·배포·환경변수·브랜치 삭제·데이터 변경은 승인 범위 밖이며 하지 않았다.**
 
 주의: 과거 과제의 스모크 8건이 `git status --porcelain`으로 **미커밋 작업 트리**를 검사한다. 제품 파일을 고친 뒤 커밋 전에 `npm test`를 돌리면 그 8건이 실패한다(결함 아님, 커밋 후 통과).
 
@@ -570,8 +614,9 @@ o.claim?.claimTypes?.some((t) => t === 'refund' || t === 'return')
 기존 `17. refundRiskProducts` 와 `12. claim/refund/cancel rate` 는 RED·GREEN 양쪽에서 PASS — 120건 데이터셋은 전부 소문자 태그라 값이 바뀌지 않는다.
 
 **이번에 실행한 것**: `node scripts/smoke-analytics-query-engine.mjs` **29/29** · `npx tsc -b` exit 0 · 변경 2파일 lint 오류 0 · `git diff --check` exit 0 · 변경분 비밀값·외부 WRITE 추가 검색 **0건**.
-**실행하지 않은 것**: **전체 `npm test` 미실행**(§2 의 `814f07c` 게이트는 **이번 변경 전** 값이다 — 이번 변경 뒤에는 아직 다시 실행하지 않았다) · **무회귀 전체를 주장하지 않는다** · API 타입검사(api 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포.
-**Codex 집중검증 대기.**
+**당시 실행하지 않은 것**: 전체 `npm test` · API 타입검사(api 무변경) · Preview·Vercel·브라우저 확인 · main 통합·push·배포.
+
+**→ Codex 독립검증 완료 (기준 HEAD `f8a1e9a`, 2026-07-30).** 전체 게이트 수치는 §2 참조(집중검사 29/29 · `npm test` exit 0 · smoke 125/125 · 136.2초). **자동검사 기준이며 Preview·Production 확인은 포함하지 않는다.**
 
 ---
 
