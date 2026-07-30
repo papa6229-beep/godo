@@ -150,6 +150,61 @@ if (S) {
   ok('M10. 손상된 저장값은 기존 fail-safe 로 기본 스펙 반환',
     policyOf(broken, 'task-marketing-daily') === 'marketing/approval'
     && policyOf(notArray, 'task-marketing-daily') === 'marketing/approval');
+
+  // ══════════════════════════════════════════════════════════════════════
+  // 후속 — **새 브라우저의 첫 설정 수정 보존**
+  //   저장목록 없이 현재 기본값을 내줬는데 marker 를 남기지 않으면,
+  //   사용자의 **첫 수정**이 저장된 뒤 다음 로드가 그것을 '옛 자료'로 오인해
+  //   1회 이관을 실행하고 수정을 되돌린다. 기본값을 내주는 순간 이미
+  //   policy_v1 상태이므로 그때 marker 를 남긴다.
+  // ══════════════════════════════════════════════════════════════════════
+  console.log('\n  --- 새 브라우저의 첫 수정 보존 ---');
+
+  // N1. 새 브라우저 최초 로드 뒤 marker 준비
+  store.clear();
+  const freshLoad = S.loadAgentTasks();
+  ok('N1. 새 브라우저 최초 로드 뒤 정책 marker 가 준비된다',
+    store.has(MARKER) && policyOf(freshLoad, 'task-marketing-daily') === 'marketing/approval');
+
+  // N2. 첫 수정이 다음 로드에서도 보존된다 (RED 대상)
+  const mktDefault = freshLoad.find((t) => t.id === 'task-marketing-daily');
+  S.saveUpsertTask({ ...mktDefault, reportTo: 'hq', approvalMode: 'auto' });
+  const afterFirstEdit = S.loadAgentTasks();
+  ok(`N2. 새 브라우저의 첫 수정이 다음 로드에서도 보존된다 (관측 ${policyOf(afterFirstEdit, 'task-marketing-daily')})`,
+    policyOf(afterFirstEdit, 'task-marketing-daily') === 'hq/auto');
+
+  // N3. 손상된 저장값 뒤의 첫 수정도 같은 이유로 보존된다(같은 빈틈, 같은 경로).
+  for (const brokenRaw of ['{ 깨진 JSON', JSON.stringify({ notAnArray: true })]) {
+    store.clear();
+    store.set(KEY, brokenRaw);
+    const recovered = S.loadAgentTasks();
+    const m = recovered.find((t) => t.id === 'task-marketing-daily');
+    S.saveUpsertTask({ ...m, reportTo: 'hq', approvalMode: 'auto' });
+    const reloaded = S.loadAgentTasks();
+    ok(`N3-${brokenRaw.startsWith('{ 깨진') ? '깨진JSON' : '비배열'}. 손상 저장값 복구 뒤 첫 수정도 보존된다 (관측 ${policyOf(reloaded, 'task-marketing-daily')})`,
+      policyOf(reloaded, 'task-marketing-daily') === 'hq/auto');
+  }
+
+  // N4. 목록 저장이 실패하면 marker 를 남기지 않고 다음 로드에서 재시도한다.
+  store.clear();
+  store.set(KEY, JSON.stringify(legacyStored()));
+  const realSetItem = globalThis.window.localStorage.setItem;
+  let blockedWrites = 0;
+  globalThis.window.localStorage.setItem = (k, v) => {
+    if (k === KEY) { blockedWrites += 1; throw new Error('quota exceeded (시험)'); }
+    return realSetItem(k, v);
+  };
+  let failLoad = null;
+  try { failLoad = S.loadAgentTasks(); } finally { globalThis.window.localStorage.setItem = realSetItem; }
+  ok(`N4. 목록 저장 실패 시 marker 를 남기지 않는다 (차단된 쓰기 ${blockedWrites}회 · marker=${store.has(MARKER)})`,
+    blockedWrites >= 1 && !store.has(MARKER)
+    && policyOf(failLoad, 'task-marketing-daily') === 'marketing/approval'
+    && policyOf(readStored(), 'task-marketing-daily') === 'hq/auto');
+  // 저장이 다시 되면 같은 이관을 재시도해 마무리한다.
+  const retried = S.loadAgentTasks();
+  ok('N5. 저장이 복구되면 다음 로드에서 이관을 재시도해 마무리한다',
+    store.has(MARKER) && policyOf(readStored(), 'task-marketing-daily') === 'marketing/approval'
+    && policyOf(retried, 'task-marketing-daily') === 'marketing/approval');
 }
 
 console.log(`\n=== 결과: ${pass} pass / ${fail} fail ===`);

@@ -1128,6 +1128,29 @@ Codex 의 최초 지시는 `approvalMode:'auto'` 유지 + 수동 실행 즉시 `
 **이번에 실행한 것**: `smoke-agent-task-store-v0` **19/19** · `smoke-agent-task-runner-v0` **86/86**(무회귀) · `npx tsc -b` exit 0 · 변경 2파일 lint 0 · `git diff --check` 0 · 비밀값·외부 WRITE 추가 **0건**.
 **실행하지 않은 것**: **전체 `npm test` — Codex 가 전체 125개 게이트를 한 번 실행** · Preview·Vercel·브라우저(저장 정책·자동검사 교정이며 화면 모양을 바꾸지 않는다) · main 통합·push·배포·환경변수·외부 WRITE.
 
+**→ Codex 전체 게이트 통과 (기준 `7f3504c`)**: 저장 이관 집중검사 **19/19** · 업무 실행 무회귀 **86/86** · 전체 smoke **125/125 · 153.4초** · `tsc -b` · API 타입검사 · Vite build · 전체 lint · `git diff --check main..HEAD` 통과 · 작업 트리 clean.
+실행 기록(삭제하지 않는다): 첫 전체 게이트 호출은 Codex 가 **실행 제한을 1초로 잘못 설정**해 시작 직후 종료됐다. **코드 실패가 아니며** 충분한 설정으로 실행한 위 결과가 근거다.
+
+##### 마지막 빈틈 교정 — 새 브라우저의 첫 설정 수정 보존 (2026-07-30) · Codex 독립검증 대기
+
+**결함**: `loadAgentTasks()` 가 저장목록이 없을 때 현재 기본값을 반환하면서 **marker 를 남기지 않았다.** 그래서 새 브라우저에서
+`기본값 로드(저장·marker 없음)` → `Studio 에서 첫 수정` → `목록만 저장(marker 없음)` → **다음 로드가 그 목록을 '옛 자료'로 오인해 1회 이관 실행** → **사용자의 첫 수정이 되돌아갔다.**
+같은 빈틈이 **3경로**에 있었다 — 저장값 없음 · 손상 JSON · 비배열(뒤 둘도 현재 기본값을 그대로 내주는 fail-safe 경로다).
+
+**조치(최소)**: 현재 기본값을 그대로 내주는 세 경로를 `seedCurrentDefaults()` 하나로 모아 **그때 marker 를 남긴다**(내주는 값이 곧 현재 정책이다). 새 버전 체계·저장소 개편 **0건**.
+
+| RED (수정 전 실제 반환) | GREEN |
+|---|---|
+| `N1` 최초 로드 뒤 marker 준비 → **FAIL** | PASS |
+| `N2` 첫 수정 후 재로드 → **관측 `marketing/approval`**(사용자 수정 `hq/auto` 가 되돌아감) | **관측 `hq/auto`** |
+| `N3` 손상 저장값 복구 뒤 첫 수정(깨진 JSON·비배열) → **FAIL 2건** | PASS 2건 |
+| `N4`·`N5` 저장 실패 시 marker 금지·재시도 | **RED 단계에서도 PASS**(안전망) |
+| 검사 전체 | **21 pass / 4 fail · exit 1** → **25 pass / 0 fail · exit 0** |
+
+기존 이관 동작(`M1~M10`)·사용자 추가 업무·삭제한 기본 업무·정책 외 필드·업무 결과/원장/승인 이력/메시지는 **전부 무변경**이다.
+**이번에 실행한 것**: `smoke-agent-task-store-v0` **25/25** · `smoke-agent-task-runner-v0` **86/86**(무회귀) · `npx tsc -b` exit 0 · 변경 2파일 lint 0 · `git diff --check` 0 · 비밀값·외부 WRITE 추가 **0건** · manifest **125/0**.
+**실행하지 않은 것**: 전체 `npm test`(Codex 가 최종 전체 게이트 1회) · Preview·Vercel·브라우저 · main 통합·push·배포·환경변수·외부 WRITE.
+
 ---
 
 ### B-use-5 Preview 인수검사 — **완료 · 실제 Preview 화면 재확인 통과 (브랜치 `codex/b-use-5-preview-acceptance`, 제품 기준 `bcf91a4`, 2026-07-28)**

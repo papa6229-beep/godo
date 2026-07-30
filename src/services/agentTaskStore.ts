@@ -53,6 +53,19 @@ const setPolicyMarker = (): void => {
   try { window.localStorage.setItem(POLICY_MARKER_KEY, 'done'); } catch { /* 실패해도 목록은 이미 옳다 */ }
 };
 
+/**
+ * 지금 **현재 기본값을 그대로 내주는** 경로. 내주는 값이 곧 현재 정책이므로 marker 를 남긴다.
+ *
+ * 이걸 남기지 않으면 새 브라우저에서 빈틈이 생긴다:
+ *   기본값 로드(저장·marker 없음) → 사용자가 Studio 에서 첫 수정 → 목록만 저장(marker 없음)
+ *   → 다음 로드가 그 목록을 **옛 자료로 오인**해 1회 이관을 실행 → **첫 수정이 되돌아간다.**
+ * 손상된 저장값을 fail-safe 로 복구한 경우도 같은 경로다.
+ */
+const seedCurrentDefaults = (): AgentTaskSpec[] => {
+  setPolicyMarker();
+  return [...DEFAULT_AGENT_TASKS];
+};
+
 // 저장된 게 있으면 그것, 없으면 기본 스펙(시드).
 //   저장값이 있고 marker 가 없을 때만 **한 번** 보고 정책을 이관한다.
 export function loadAgentTasks(): AgentTaskSpec[] {
@@ -60,12 +73,12 @@ export function loadAgentTasks(): AgentTaskSpec[] {
   let parsed: unknown;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [...DEFAULT_AGENT_TASKS];               // 저장자료 없음 — 현재 기본값 그대로
+    if (!raw) return seedCurrentDefaults();                   // 저장자료 없음 — 현재 기본값 = 현재 정책
     parsed = JSON.parse(raw);
   } catch {
-    return [...DEFAULT_AGENT_TASKS];                          // 손상된 저장값 — 기존 fail-safe 유지
+    return seedCurrentDefaults();                             // 손상된 저장값 — 기존 fail-safe 유지
   }
-  if (!Array.isArray(parsed)) return [...DEFAULT_AGENT_TASKS];
+  if (!Array.isArray(parsed)) return seedCurrentDefaults();
   const stored = parsed as AgentTaskSpec[];
   if (hasPolicyMarker()) return stored;                       // 이관 끝 — 사용자 값을 강제 교정하지 않는다
 
