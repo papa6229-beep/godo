@@ -777,7 +777,7 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 
 ---
 
-### Local migration 6 — 미사용 고도몰 상품 매퍼 제거 (2026-07-30, 브랜치 `codex/local-migration-godomall-dead-mapper-cleanup`) — **로컬 구현 완료 · Codex 독립검증 대기**
+### Local migration 6 — 미사용 고도몰 상품 매퍼 제거 (2026-07-30, 브랜치 `codex/local-migration-godomall-dead-mapper-cleanup`) — **완료 · Codex 독립검증 통과**
 
 **분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `godomallMapper.mapGoodsToInventory`/`mapGoodsList` dead code). 계약·화면·API 경로를 바꾸지 않고 **호출자 0건인 死코드만** 없앴다.
 
@@ -792,7 +792,7 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 
 → **닫힌 死코드 묶음.** 바깥에서 들어오는 호출이 없다.
 
-**활성 경로는 별개이며 보존됐다(직접 확인)**: `mapGoodsToProducts`(`godomallMapper.ts:109`) ← `godomallResource.ts:14,100,377`(제품) · `deriveInventoryFromProducts`(`godomallInventoryDerive.ts:45`) ← `godomallResource.ts:38,102`(제품). 두 함수와 상품 READ 경로·주문 매퍼·재고위험 계약·전역 기본값 규칙·고도몰 API 경로·환경변수·화면·manifest는 **무변경**.
+**활성 경로는 별개이며 보존됐다(직접 확인)**: `mapGoodsToProducts`(**현재 `godomallMapper.ts:81`** — 처음 이 절에 적었던 `:109` 는 삭제 **전** 위치였다. 위 호출관계 표의 `:45`·`:54`·`:67`·`:74` 는 삭제 전 기록이므로 그대로 둔다) ← `godomallResource.ts:14,100,377`(제품) · `deriveInventoryFromProducts`(`godomallInventoryDerive.ts:45`) ← `godomallResource.ts:38,102`(제품). 두 함수와 상품 READ 경로·주문 매퍼·재고위험 계약·전역 기본값 규칙·고도몰 API 경로·환경변수·화면·manifest는 **무변경**.
 
 **함께 사라진 것**: `godomallMapper.ts:61` 의 `pick(g, ['safetyStock','minStock','soldOutLimit'], '5')` — Goods_Search 응답에 없는 값을 지어내던 **근거 없는 `safetyStock` 기본값 `'5'`**. 안전재고 기본값은 이제 `src/services/inventoryRiskContract` 의 전역 기본값 하나뿐이다(B-core-2a 판정 그대로).
 
@@ -810,9 +810,29 @@ Codex 가 직접 재확인한 것: 삭제 5파일과 줄 수(합계 2,337) · �
 6-1·6-5 는 삭제 사유를 기록한 **주석**까지 훑어 한 번 더 실패했다. 이 저장소의 다른 smoke 와 같이 **코드 줄만** 판정하도록 고쳤다(주석 보존은 헌법 §6, 재도입은 코드 줄에 나타나므로 여전히 잡힌다).
 
 **이번에 실행한 것**: `smoke-b-core-2a-inventory-risk-single-source-v0` **48/48 exit 0** · 인접 고도몰 상품 READ `smoke-godomall-read-gateway` **13/13** · `smoke-godomall-catalog` **15/15** · `smoke-godomall-api-registry` **13/13** · `npx tsc -b` exit 0 · `npx tsc -p api/tsconfig.json --noEmit` exit 0 · 변경 파일 lint 0 · `git diff --check` 0 · 네 이름 코드 잔여 **각 0건** · manifest **125/0**.
-**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다**(Codex 가 다음 경계에서 판단) · Preview·Vercel·브라우저 검사 · push·배포·환경변수 변경 · main 통합 · 다른 후속 대장 항목 조사·수정.
+**Claude 가 실행하지 않은 것**: 전체 `npm test` · Preview·Vercel·브라우저 검사 · push·배포·환경변수 변경 · main 통합 · 다른 후속 대장 항목 조사·수정.
 **제품 동작 영향**: 없음. 삭제한 4종은 제품 실행 경로에 들어가지 않았고, 상품·재고 READ 는 활성 두 함수를 그대로 쓴다.
-**Codex 독립검증 대기.**
+
+**→ Codex 독립검증 통과 (기준 HEAD `359cdf24523c3ac353a85434d8ea62f99ecd340e`, 2026-07-30)**
+
+**Codex 가 직접 실행했다.**
+
+| 항목 | 값 |
+|---|---|
+| 집중검사 | **48/48 통과** |
+| `npm test` | **exit 0** |
+| 전체 smoke | **125/125 통과 · 141.3초** |
+| manifest | include **125** / exclude **0** |
+| `tsc -b` | 통과 |
+| API 타입검사 | 통과 |
+| Vite build | 통과 |
+| 전체 lint | 통과 |
+| `git diff --check` | 통과 |
+| 검증 후 작업 트리 | clean |
+
+**Codex 판정**: 삭제한 네 이름은 **닫힌 미사용 코드 묶음**이었다. 활성 `mapGoodsToProducts → deriveInventoryFromProducts` 경로는 유지됐다. 상품·재고 READ · 주문 매퍼 · 재고위험 계약은 바뀌지 않았다. **화면 동작 변경이 없어 Preview·Vercel·브라우저 검사는 불필요했다.**
+
+**이것은 자동검사 근거다. Preview·Production 을 확인한 것이 아니다.**
 
 ---
 
