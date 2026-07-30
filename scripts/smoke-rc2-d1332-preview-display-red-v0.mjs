@@ -12,12 +12,16 @@
  *   결함4) 팀장이 '내가 직접 처리' 를 고르면 인간 수행자가 '소속 확인 필요' 로 표시된다.
  *
  * 보완(사장님 지시):
- *   1) TaskBoard 의 reviewOnly 확인요청 카드도 제출팀·제출자를 표시해야 한다.
+ *   1) reviewOnly 확인요청 카드도 제출팀·제출자를 표시해야 한다.
  *   2) reviewOnly 뿐 아니라 인간 팀장이 직접 처리해 제출한 일반 업무도
- *      ApprovalListModal·ApprovalDetailModal·TaskBoard 에서 사람 이름으로 표시돼야 한다.
+ *      ApprovalListModal·ApprovalDetailModal 에서 사람 이름으로 표시돼야 한다.
  *   3) requestedByAgentId 를 읽는 제품 소비자를 전수 확인 — 실제 lifecycle 승인자료를 받는
- *      화면(ApprovalDetailModal/ApprovalListModal/TaskBoard/MetricDrilldownModal)에 같은 표시 원칙 적용.
- *   4) TaskResultModal 의 reviewOnly 중단 버튼 부재는 새 UI 없이 렌더 게이트로 잠근다.
+ *      화면(ApprovalDetailModal/ApprovalListModal/MetricDrilldownModal)에 같은 표시 원칙 적용.
+ *   4) reviewOnly 중단 버튼 부재는 새 UI 없이 렌더 게이트로 잠근다.
+ *
+ * ⚠️ Local migration(2026-07-30): 위 1~4 의 원래 대상이던 TaskBoard·TaskResultModal 은
+ *    실제 진입 경로가 없어(도달 불가) 제거됐다. 단언은 활성 화면 기준으로 옮겼고,
+ *    옮길 곳이 없던 A5 는 A3·A4·A6 와 중복이라 삭제했다(본문 주석 참조). 정책은 그대로다.
  *
  * 세 원인:
  *   A) reviewOnly / 인간 제출자 표시 분기 누락  → 승인자료를 받는 모든 화면
@@ -76,9 +80,9 @@ const src = (p) => { try { return readFileSync(path.join(REPO, ...p.split('/')),
 const teamTaskPanel = src('src/components/TeamTaskPanel.tsx');
 const apprDetail = src('src/components/ApprovalDetailModal.tsx');
 const apprList = src('src/components/ApprovalListModal.tsx');
-const taskBoard = src('src/components/TaskBoard.tsx');
+// Local migration(2026-07-30): TaskBoard·TaskResultModal 은 도달 불가능해 삭제했다.
+//   아래 A5(TaskBoard 표시 함수)·B6(TaskResultModal 중단 게이트) 를 활성 화면 기준으로 옮긴다.
 const metricDrill = src('src/components/MetricDrilldownModal.tsx');
-const taskResult = src('src/components/TaskResultModal.tsx');
 const appSource = src('src/App.tsx');
 
 let baseP = 0, baseF = 0, redMet = 0, redUnmet = 0;
@@ -194,9 +198,10 @@ base('B5. 일반/협업 업무의 중단 흐름(요청→수행팀장 중단→�
       && readTask(pair.parent.ref.taskId).status === 'stopped'; })(),
   '협업 중단 흐름 정상');
 
-base('B6(원인4 잠금 현황). TaskResultModal 작업 중단 버튼은 이미 onCancel 유무로 렌더 게이트되고 App 은 reviewOnly 로 onCancel 을 비운다',
-  /onCancel && \(/.test(taskResult) && /reviewOnly/.test(appSource) && /cancelHandlerFor\(/.test(appSource),
-  `TaskResultModal onCancel 게이트=${/onCancel && \(/.test(taskResult)} · App reviewOnly onCancel 차단=${/cancelHandlerFor\(/.test(appSource)}`);
+// B6 이관: 삭제된 TaskResultModal 대신 **활성 중단 경로**(ApprovalDetailModal)로 같은 사실을 고정한다.
+base('B6(원인4 잠금 현황). 활성 중단 버튼은 onCancel 유무로 렌더 게이트되고 App 은 reviewOnly 로 onCancel 을 비운다',
+  /onCancel && [(<]/.test(apprDetail) && /reviewOnly/.test(appSource) && /cancelHandlerFor\(/.test(appSource),
+  `ApprovalDetailModal onCancel 게이트=${/onCancel && [(<]/.test(apprDetail)} · App reviewOnly onCancel 차단=${/cancelHandlerFor\(/.test(appSource)}`);
 
 // ════════════════════════════════════════════════════════════════════════════
 // 원인 C: executorKind 무시 — 인간 수행자가 '소속 확인 필요' 로 표시됨 (결함4)
@@ -316,10 +321,16 @@ red('A4(소비자·결함2). ApprovalListModal 이 공통 표시 함수로 revie
   `approvalActorDisplay 사용=${/approvalActorDisplay/.test(apprList)} (현재 getAgentInfo → '수행자 미정')`,
   'ApprovalListModal 공통 표시 함수 사용');
 
-red('A5(소비자·보완1). TaskBoard 승인 카드가 공통 표시 함수로 reviewOnly·인간을 표시한다',
-  /approvalActorDisplay/.test(taskBoard),
-  `approvalActorDisplay 사용=${/approvalActorDisplay/.test(taskBoard)} (현재 getAgentInfo(item.requestedByAgentId) → '수행자 미정'/'소속 확인 필요')`,
-  'TaskBoard 공통 표시 함수 사용');
+// A5 삭제 — 대상이던 TaskBoard 가 도달 불가능해 제거됐고, **같은 정책의 활성 대체 화면이 없다.**
+//   승인 카드에 수행자를 표시하는 활성 소비자는 A3(ApprovalDetailModal)·A4(ApprovalListModal)·
+//   A6(MetricDrilldownModal) 세 곳이 전부이며 이미 각각 단언돼 있다(전수 검색으로 확인).
+//   즉 A5 는 옮길 곳이 없는 **중복 단언**이라 삭제했다. 정책 자체는 A3·A4·A6 가 그대로 지킨다.
+//   TeamTaskPanel 은 승인 카드가 아니라 업무 카드라 approvalActorDisplay 소비자가 아니다.
+red('A5(소비자·보완1·이관). 승인 표시 함수의 활성 소비자가 빠짐없이 공통 함수를 쓴다',
+  ['ApprovalDetailModal', 'ApprovalListModal', 'MetricDrilldownModal']
+    .every((n) => /approvalActorDisplay/.test(src(`src/components/${n}.tsx`))),
+  '활성 승인 표시 화면 중 공통 함수 미사용 존재',
+  '활성 승인 표시 화면 3곳 전부 approvalActorDisplay 사용');
 
 red('A6(소비자·보완3). MetricDrilldownModal 이 raw requestedByAgentId 대신 공통 표시 함수를 쓴다',
   /approvalActorDisplay/.test(metricDrill),

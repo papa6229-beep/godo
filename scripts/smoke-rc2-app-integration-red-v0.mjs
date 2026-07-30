@@ -65,8 +65,11 @@ try {
 
 const appSource = readFileSync(path.join(REPO, 'src', 'App.tsx'), 'utf8');
 const apprModal = readFileSync(path.join(REPO, 'src', 'components', 'ApprovalDetailModal.tsx'), 'utf8');
-const taskBoard = readFileSync(path.join(REPO, 'src', 'components', 'TaskBoard.tsx'), 'utf8');
-const taskResult = readFileSync(path.join(REPO, 'src', 'components', 'TaskResultModal.tsx'), 'utf8');
+// Local migration(2026-07-30): TaskBoard·TaskResultModal 은 도달 불가능해 삭제했다.
+//   문구 검사 대상을 **활성 화면**으로 옮긴다(범위를 줄이지 않는다).
+const apprList = readFileSync(path.join(REPO, 'src', 'components', 'ApprovalListModal.tsx'), 'utf8');
+const taskDetail = readFileSync(path.join(REPO, 'src', 'components', 'TaskDetailModal.tsx'), 'utf8');
+const teamTaskPanel = readFileSync(path.join(REPO, 'src', 'components', 'TeamTaskPanel.tsx'), 'utf8');
 
 let baseP = 0, baseF = 0, redMet = 0, redUnmet = 0;
 const base = (n, c, cur) => { console.log(`  ${c ? 'PASS' : 'FAIL'} [BASE] ${n}${cur ? `  — ${cur}` : ''}`); c ? baseP++ : baseF++; };
@@ -294,7 +297,10 @@ red('A18. App 이 새 localStorage 직접 호출을 추가하지 않는다(RC-2 
   'App 에 RC-2 localStorage 직접 호출 존재', 'RC-2 저장은 서비스가 단독 소유');
 
 // ── 사용자 문구 정직화 ───────────────────────────────────────────────────────
-const uiSources = { 'ApprovalDetailModal': apprModal, 'TaskBoard': taskBoard, 'TaskResultModal': taskResult };
+const uiSources = {
+  'ApprovalDetailModal': apprModal, 'ApprovalListModal': apprList,
+  'TaskDetailModal': taskDetail, 'TeamTaskPanel': teamTaskPanel
+};
 for (const [name, src] of Object.entries(uiSources)) {
   red(`A19-${name}. '거절 (Reject)' 문구가 없다`, !/거절 \(Reject\)/.test(src), "'거절 (Reject)' 잔존");
 }
@@ -503,10 +509,90 @@ red('A36. 팀장용 "내 확인 대기" 진입로가 기존 승인 모달을 재
   "'내 확인 대기' 진입로 없음");
 
 
+// ════════════════════════════════════════════════════════════════════════════
+// Local migration (L1~L8) — 도달 불가능한 legacy 업무 UI 제거 · 활성 상세 경로 보존
+//
+//   관측된 사실(삭제 근거는 줄 수가 아니라 호출 관계다):
+//     - TaskBoard.tsx        : 제품 코드 import·렌더 호출자 0건
+//     - TaskListModal.tsx    : TaskBoard 에서만 사용
+//     - TaskBoard.css / TaskListModal.css : 각각 위 미마운트 파일에서만 import
+//     - TaskResultModal.tsx  : App 에 조건부 렌더가 있으나 여는 경로가 끊겨 있었다.
+//       유일한 setter 배선 App onSelectTask → MainLayout → OfficeView 인데
+//       OfficeView 는 그 prop 을 **인터페이스에만 선언**하고 구조분해·본문에서 쓰지 않았다.
+//       → selectedTaskForResult 가 사용자 행동으로 설정될 경로가 없었다.
+//
+//   활성 경로는 DepartmentWorkspacePanel → TeamTaskPanel → 카드 [상세] → TaskDetailModal 이며
+//   **보존 대상**이다. 상세 격리는 선택 id 를 현재 teamFlows 에서 다시 찾는 구조가 담당한다.
+// ════════════════════════════════════════════════════════════════════════════
+console.log('');
+console.log('  --- Local migration · legacy 업무 UI 제거 ---');
+{
+  const LEGACY = [
+    'src/components/TaskBoard.tsx', 'src/components/TaskBoard.css',
+    'src/components/TaskListModal.tsx', 'src/components/TaskListModal.css',
+    'src/components/TaskResultModal.tsx'
+  ];
+  const stillThere = LEGACY.filter((p) => existsSync(path.join(REPO, p)));
+  red('L1. 도달 불가능한 legacy 업무 UI 파일 5개가 저장소에 없다',
+    stillThere.length === 0, `잔존 ${stillThere.length}개: ${stillThere.join(', ')}`, '5개 전부 삭제됨');
+
+  // 제품 코드 전수(주석 제외) — 이름 참조가 남아 있으면 삭제가 반쪽이다.
+  const codeFiles = [];
+  (function walk(d) {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const fp = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(fp);
+      else if (/\.tsx?$/.test(e.name)) codeFiles.push(fp);
+    }
+  })('src');
+  const strip = (t) => t.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const hits = (re) => codeFiles.filter((f) => re.test(strip(readFileSync(path.join(REPO, f), 'utf8'))));
+  const nameHits = hits(/TaskBoard|TaskListModal|TaskResultModal/);
+  red('L2. 제품 코드에 TaskBoard·TaskListModal·TaskResultModal 참조 0건',
+    nameHits.length === 0, `${nameHits.length}파일: ${nameHits.join(', ')}`, '참조 0건');
+
+  const wireHits = hits(/selectedTaskForResult|visibleTaskDetail|visibleTaskIds|onSelectTask/);
+  red('L3. 끊어진 배선(selectedTaskForResult·visibleTaskDetail·visibleTaskIds·onSelectTask) 0건',
+    wireHits.length === 0, `${wireHits.length}파일: ${wireHits.join(', ')}`, '죽은 배선 0건');
+
+  // 활성 경로 보존 — 이것이 없어지면 사용자가 업무 상세로 들어갈 길이 사라진다.
+  const teamPanel = readFileSync(path.join(REPO, 'src', 'components', 'TeamTaskPanel.tsx'), 'utf8');
+  red('L4. 활성 상세 경로가 남아 있다(TeamTaskPanel → TaskDetailModal)',
+    /import \{ TaskDetailModal \}/.test(teamPanel) && /<TaskDetailModal/.test(teamPanel),
+    'TeamTaskPanel 이 TaskDetailModal 을 열지 않음', 'TeamTaskPanel → TaskDetailModal 유지');
+  red('L5. 상세 선택값을 현재 teamFlows 안에서 다시 찾는다(열람 범위 밖이면 null)',
+    /teamFlows\.find\(\(f\) => f\.task\.ref\.taskId === detailFor\)/.test(teamPanel)
+    && /\{detailFlow && <TaskDetailModal/.test(teamPanel),
+    '선택한 task 객체를 그대로 들고 있어 계정 전환 후에도 남을 수 있음',
+    'detailFor → teamFlows.find → detailFlow 일 때만 렌더');
+  red('L6. 활성 업무 상세 컴포넌트는 삭제하지 않았다',
+    existsSync(path.join(REPO, 'src', 'components', 'TaskDetailModal.tsx'))
+    && existsSync(path.join(REPO, 'src', 'components', 'TeamTaskPanel.tsx')),
+    '활성 화면까지 삭제됨', 'TaskDetailModal·TeamTaskPanel 보존');
+
+  // 실행 검사 — 계정 전환 시 상세가 실제로 닫히는가(문자열이 아니라 어댑터 반환값으로).
+  red('L7. (실행) 계정 전환 후 현재 열람 범위에서 사라진 업무는 상세로 열 수 없다',
+    (() => {
+      if (!A) return false;
+      const hq = { kind: 'human', teamId: 'hq', label: 'HQ L', userId: 'u-l-hq' };
+      const other = { kind: 'human', teamId: 'cs', label: 'CS 팀원', userId: 'u-l-cs' };
+      const t = A.createDirectiveTask({ title: 'L 상세 격리', targetTeamId: 'design', instructedBy: hq }, ids);
+      // 화면과 같은 규칙: 선택 id 를 **그 계정의 현재 흐름 목록**에서 다시 찾는다.
+      const findDetail = (actor) => A.taskFlowsFor(actor).find((f) => f.task.ref.taskId === t.ref.taskId) ?? null;
+      return !!findDetail(hq) && findDetail(other) === null;
+    })(), noAdapter, 'HQ 에서는 열리고 다른 팀 계정에서는 null');
+
+  red('L8. 저장 자료를 지우지 않았다(업무는 저장소에 그대로)',
+    (() => {
+      if (!A) return false;
+      return S.loadLifecycleTasks().some((x) => x.task?.title === 'L 상세 격리' || x.title === 'L 상세 격리');
+    })(), noAdapter, '삭제 없이 표시만 차단');
+}
+
 console.log('');
 console.log('--- 요약 ---');
 console.log(`[BASE] ${baseP} pass / ${baseF} fail   (전제 — fail>0이면 검사 재작성)`);
-console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (App 실배선 통합 계약 A1~A36)`);
+console.log(`[RED ] ${redMet} met / ${redUnmet} unmet  (App 실배선 통합 계약 A1~A36 + Local migration L1~L8)`);
 rmSync(tmp, { recursive: true, force: true });
 if (baseF > 0 || redUnmet > 0) {
   console.log(`\n✗ 미충족 — BASE fail ${baseF} · RED unmet ${redUnmet}`);

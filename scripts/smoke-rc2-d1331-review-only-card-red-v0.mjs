@@ -63,7 +63,9 @@ try {
 const src = (p) => { try { return readFileSync(path.join(REPO, ...p.split('/')), 'utf8'); } catch { return ''; } };
 const teamTaskPanel = src('src/components/TeamTaskPanel.tsx');
 const apprDetail = src('src/components/ApprovalDetailModal.tsx');
-const taskResult = src('src/components/TaskResultModal.tsx');
+// Local migration(2026-07-30): TaskResultModal 은 도달 불가능해 삭제했다.
+//   "일반 업무의 중단 경로는 활성 화면에 남아 있어야 한다" 는 정책은
+//   실제 중단 버튼이 있는 활성 화면(ApprovalDetailModal)과 App 의 게이트로 확인한다.
 const appSource = src('src/App.tsx');
 
 let baseP = 0, baseF = 0, redMet = 0, redUnmet = 0;
@@ -285,7 +287,10 @@ red('V13. 승인 상세·결과 모달이 확인 카드에 작업 중단을 노�
     //     `onCancel && (`  … 괄호로 감싼 형태
     //     `onCancel && <`  … 엘리먼트를 바로 쓴 형태
     //   확인하는 정책은 그대로다 — 일반 업무에는 중단이 남아 있어야 한다.
-    const keepsGeneralCancel = /onCancel && [(<]/.test(apprDetail) && /onCancel/.test(taskResult);
+    //   활성 화면에 일반 업무 중단이 남아 있는가 + reviewOnly 만 비우는 게이트가 App 에 있는가.
+    const keepsGeneralCancel = /onCancel && [(<]/.test(apprDetail)
+      && /작업 중단/.test(apprDetail)
+      && /const cancelHandlerFor = \(reviewOnly\?: boolean\) => \(reviewOnly \? undefined : handleCancel\)/.test(appSource);
     return appGates && keepsGeneralCancel;
   })(), 'App 이 모든 항목에 같은 onCancel 을 넘겨 확인 카드에도 작업 중단이 뜸',
   '확인 카드만 onCancel 비움 · 일반 업무는 유지');

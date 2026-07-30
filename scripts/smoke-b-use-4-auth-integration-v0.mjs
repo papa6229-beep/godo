@@ -614,17 +614,30 @@ const TABS = ['office', 'agents', 'logs', 'brain', 'studio', 'engine', 'data', '
   const idsB = LA.visibleTasksFor(memActor).map((x) => x.id);
   ok('X-30. 사용자 A 열람 범위에는 있고 B 에는 없다',
     idsA.includes(t.ref.taskId) && !idsB.includes(t.ref.taskId));
-  ok('X-31. 열린 업무 상세는 A 에게만 표시된다',
-    IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsA) === true
-    && IDENT.isTaskVisibleToIdentity(t.ref.taskId, idsB) === false);
+  // Local migration(2026-07-30): 업무 상세 격리 판정 함수(`isTaskVisibleToIdentity`)는
+  //   유일한 소비자가 도달 불가능하던 `TaskResultModal` 이라 제품 코드와 함께 제거했다.
+  //   같은 정책을 **활성 경로**(TeamTaskPanel → teamFlows.find → detailFlow → TaskDetailModal)로 옮긴다.
+  //   아래는 화면과 같은 규칙을 실제 어댑터 반환값에 적용한 실행 검사다.
+  const detailIn = (actor) => LA.taskFlowsFor(actor).find((f) => f.task.ref.taskId === t.ref.taskId) ?? null;
+  ok('X-31. 열린 업무 상세는 A 에게만 표시된다(활성 경로: 현재 teamFlows 에서 다시 찾기)',
+    detailIn(hqActor) !== null && detailIn(memActor) === null);
+  {
+    const panel = codeLines('src/components/TeamTaskPanel.tsx');
+    ok('X-31a. 화면이 선택한 task 객체를 들고 있지 않고 현재 흐름 목록에서 다시 찾는다',
+      /teamFlows\.find\(\(f\) => f\.task\.ref\.taskId === detailFor\)/.test(panel)
+      && /\{detailFlow && <TaskDetailModal/.test(panel));
+  }
   // ⚠️ X-32 는 삭제했다 — "승인 상세도 taskId 가 열람 범위에 있으면 표시" 는 **잘못된 정책**이었다.
   //    쓰던 사례가 다른 팀(design 업무 vs cs 팀원)이라 팀 필터만으로 걸러졌고,
   //    **같은 팀 팀원** 사례를 한 번도 실행하지 않아 누출을 놓쳤다.
   //    올바른 기준(결정 권한)은 아래 [Y] 구간에서 실제 lifecycle 도구로 재현한다.
-  ok('X-33. taskId 가 없거나 빈 값이면 열지 않는다(fail-closed)',
-    IDENT.isTaskVisibleToIdentity(undefined, idsA) === false
-    && IDENT.isTaskVisibleToIdentity(null, idsA) === false
-    && IDENT.isTaskVisibleToIdentity('', idsA) === false);
+  ok('X-33. 선택 id 가 없거나 빈 값이면 상세를 열지 않는다(fail-closed)',
+    (() => {
+      const flows = LA.taskFlowsFor(hqActor);
+      const pick = (id) => (id ? flows.find((f) => f.task.ref.taskId === id) ?? null : null);
+      return pick(undefined) === null && pick(null) === null && pick('') === null
+        && pick('없는-업무-id') === null;
+    })());
   // 보고서: 만든 신원 키와 현재 키가 같을 때만.
   const keyA = idOf(true, view('u_hqX', 'hq', 'hq'), 'hq').key;
   const keyB = idOf(true, view('u_memX', 'member', 'cs'), 'hq').key;
@@ -636,15 +649,17 @@ const TABS = ['office', 'agents', 'logs', 'brain', 'studio', 'engine', 'data', '
     LSTORE.loadLifecycleTasks().some((x) => x.ref.taskId === t.ref.taskId));
   const appBody = codeLines('src/App.tsx');
   ok('X-37. 렌더가 원본 state 가 아니라 검증된 파생값을 쓴다',
-    /\{visibleTaskDetail && \(/.test(appBody) && /\{visibleApprovalDetail && \(/.test(appBody)
+    /\{visibleApprovalDetail && \(/.test(appBody)
     && /\{visibleReport && \(/.test(appBody)
-    && !/\{selectedTaskForResult && \(/.test(appBody) && !/\{selectedApprovalDetail && \(/.test(appBody)
+    && !/\{selectedApprovalDetail && \(/.test(appBody)
     && !/\{report && \(/.test(appBody));
+  ok('X-37a. App 은 업무 상세 state 를 더 이상 들고 있지 않다(도달 불가 경로 제거)',
+    !/selectedTaskForResult|visibleTaskDetail|visibleTaskIds|TaskResultModal/.test(appBody));
   ok('X-38. 보고서 생성 시 소유 신원 키를 함께 기록한다',
     /setReportIdentityKey\(identity\.key\)/.test(appBody));
   ok('X-39. 격리를 effect+setState 로 하지 않는다(파생 판정)',
-    !/useEffect\([^)]*setSelectedTaskForResult/.test(appBody)
-    && !/useEffect\([^)]*setSelectedApprovalDetail/.test(appBody));
+    !/useEffect\([^)]*setSelectedApprovalDetail/.test(appBody)
+    && !/useEffect\([^)]*setReport\(/.test(appBody));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -740,10 +755,18 @@ console.log('\n[Y] 승인 상세 격리 — 같은 팀 팀장 vs 일반 팀원')
   ok('Y-50. App 이 승인 상세를 myPendingApprovals 의 id 집합으로 판정한다',
     /const myPendingApprovalIds = useMemo\(\(\) => myPendingApprovals\.map\(\(a\) => a\.id\)/.test(appBody)
     && /isApprovalVisibleToIdentity\(selectedApprovalDetail\?\.id, myPendingApprovalIds\)/.test(appBody));
-  ok('Y-51. 업무 열람 기준(isTaskVisibleToIdentity + taskId)으로 승인을 판정하지 않는다',
-    !/isTaskVisibleToIdentity\(selectedApprovalDetail/.test(appBody));
-  ok('Y-52. 업무 상세는 기존대로 열람 범위 기준을 유지한다',
-    /isTaskVisibleToIdentity\(selectedTaskForResult\?\.id, visibleTaskIds\)/.test(appBody));
+  // Local migration(2026-07-30) 이후: 업무 열람 기준 자체가 App 에서 사라졌다.
+  //   "승인을 업무 열람 기준으로 판정하지 않는다" 는 정책을 **더 강하게** 고정한다 —
+  //   업무 열람 개념(visibleTaskIds/isTaskVisibleToIdentity)이 App 에 아예 없어야 한다.
+  ok('Y-51. 업무 열람 기준으로 승인을 판정하지 않는다(App 에 업무 열람 판정 자체가 없다)',
+    !/isTaskVisibleToIdentity/.test(appBody) && !/visibleTaskIds/.test(appBody)
+    && /isApprovalVisibleToIdentity\(selectedApprovalDetail\?\.id, myPendingApprovalIds\)/.test(appBody));
+  ok('Y-52. 업무 상세 격리는 활성 경로(TeamTaskPanel → 현재 teamFlows 재조회)가 담당한다',
+    (() => {
+      const panel = codeLines('src/components/TeamTaskPanel.tsx');
+      return /teamFlows\.find\(\(f\) => f\.task\.ref\.taskId === detailFor\)/.test(panel)
+        && /\{detailFlow && <TaskDetailModal/.test(panel);
+    })());
   ok('Y-53. effect 로 승인 모달 상태를 지우지 않는다(파생 판정)',
     !/useEffect\([^)]*setSelectedApprovalDetail/.test(appBody));
   ok('Y-54. 실제 결정은 여전히 applyDecision 도메인 검사를 거친다',

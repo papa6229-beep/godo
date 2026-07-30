@@ -141,18 +141,14 @@ export function resolveActiveTab(requested: AppTab, isHq: boolean): AppTab {
 export const canAccessTab = (tab: AppTab, isHq: boolean): boolean => resolveActiveTab(tab, isHq) === tab;
 
 // ── 상세·보고서 노출 (계정 전환 격리) ─────────────────────────────────────────
-/**
- * 열려 있던 상세를 지금 신원에게 계속 보여도 되는가.
- *
- * 인증 게이트 동안 App 은 마운트 상태를 유지하므로, HQ 가 상세를 연 채 로그아웃하고
- * 다른 직원이 로그인하면 **이전 계정의 객체가 그대로 남아** 다시 표시될 수 있었다.
- * 업무 목록은 새 계정 기준으로 다시 계산되므로, **현재 열람 범위에 있는 것만** 연다.
- * 기존 자료를 지우지 않고 화면 노출만 막는다.
- */
-export const isTaskVisibleToIdentity = (
-  taskId: string | undefined | null,
-  visibleTaskIds: readonly string[]
-): boolean => !!taskId && visibleTaskIds.includes(taskId);
+//
+// ⚠️ **업무 상세** 판정 함수(`isTaskVisibleToIdentity`)는 Local migration(2026-07-30)에서
+//    제거했다. 유일한 소비자가 도달 불가능하던 `TaskResultModal` 표시 판정이었고,
+//    그 경로를 지우면서 제품 호출자가 0건이 됐다. 검사만 붙잡아 두지 않는다.
+//    **활성 경로의 같은 격리**는 화면이 담당한다 —
+//    `TeamTaskPanel` 이 선택한 id 를 현재 `teamFlows` 에서 다시 찾아(`detailFlow`)
+//    열람 범위 밖이면 `null` 이 되어 `TaskDetailModal` 이 아예 렌더되지 않는다.
+//    아래 **승인 상세·보고서** 격리는 App 이 계속 쓰므로 그대로 둔다.
 
 /**
  * 열려 있던 **승인 상세**를 지금 신원에게 계속 보여도 되는가.

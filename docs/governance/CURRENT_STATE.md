@@ -110,7 +110,9 @@
 
 **"B-use 완료 = 전체 프로젝트 완료" 도 "오픈 준비 완료" 도 아니다.**
 
-**local main 통합 (2026-07-30, 사용자 명시 승인)**: `codex/b-use-5-preview-acceptance` → `main` **`--ff-only`**, merge commit 없음, 27커밋. **origin push·배포·환경변수·브랜치 삭제·데이터 변경은 승인 범위 밖이며 하지 않았다.**
+**local main 통합 (2026-07-30, 사용자 명시 승인)**: `codex/b-use-5-preview-acceptance` → `main` **`--ff-only`**, merge commit 없음, **28커밋**(`364f417` → `8ad9557`). **origin push·배포·환경변수·브랜치 삭제·데이터 변경은 승인 범위 밖이며 하지 않았다.**
+
+> **수치 교정 (헌법 §10)**: 이 줄에 처음 적었던 **27커밋**은 기록 수치 오류다. 결론(통합 사실·방식)이 바뀐 것이 아니라 **분모 시점이 달랐다** — 27은 제품 기준 `f8a1e9a` 시점의 `main..HEAD` 값이고, 실제 통합은 그 뒤에 종료 문서 커밋 `8ad9557` 1개가 더 쌓인 상태에서 이뤄져 **28**이 됐다. 통합 직전 재관측값이 28이다.
 
 주의: 과거 과제의 스모크 8건이 `git status --porcelain`으로 **미커밋 작업 트리**를 검사한다. 제품 파일을 고친 뒤 커밋 전에 `npm test`를 돌리면 그 8건이 실패한다(결함 아님, 커밋 후 통과).
 
@@ -620,6 +622,71 @@ o.claim?.claimTypes?.some((t) => t === 'refund' || t === 'return')
 
 ---
 
+### Local migration — 도달 불가능한 legacy 업무 UI 제거 (2026-07-30, 브랜치 `codex/local-migration-legacy-task-ui-cleanup`) — **로컬 구현 완료 · Codex 독립검증 대기**
+
+**분류**: Local migration (`MASTER_PLAN §14` 후속 대장 `TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리). 새 화면을 만들지도, 미마운트 화면을 다시 살리지도 않았다.
+
+**삭제 근거는 줄 수가 아니라 호출 관계다 (직접 관측)**
+
+| 파일 | 관측된 호출 관계 |
+|---|---|
+| `TaskBoard.tsx` | 제품 코드 **import·렌더 호출자 0건** |
+| `TaskListModal.tsx` | `TaskBoard.tsx` 에서만 사용 |
+| `TaskBoard.css` · `TaskListModal.css` | 각각 위 미마운트 파일에서만 import |
+| `TaskResultModal.tsx` | App 에 조건부 렌더는 있었으나 **여는 경로가 끊겨 있었다** |
+
+`TaskResultModal` 의 유일한 setter 배선은 `App onSelectTask` → `MainLayout onSelectTask` → `OfficeView onSelectTask` 였는데, **`OfficeView` 는 그 prop 을 인터페이스(`:38`)에만 선언하고 props 구조분해·본문에서 쓰지 않았다**(파일 전체 등장 1회). 따라서 `selectedTaskForResult` 가 사용자 행동으로 설정되는 경로가 없었다 — 렌더 코드가 있어도 **도달 불가능**했다. 이 화면에는 업무와 무관한 고정 재고·매출·배송 데모 문구도 들어 있었다.
+
+**삭제한 파일 5개** (합계 2,337줄): `TaskBoard.tsx`(474) · `TaskBoard.css`(799) · `TaskListModal.tsx`(122) · `TaskListModal.css`(268) · `TaskResultModal.tsx`(674)
+
+**제거한 끊어진 배선**
+
+| 파일 | 제거 |
+|---|---|
+| `App.tsx` | `TaskResultModal` import · `selectedTaskForResult` state · `visibleTaskIds` · `visibleTaskDetail` · `onSelectTask={...}` 전달 · `TaskResultModal` 렌더 블록 · `isTaskVisibleToIdentity` import |
+| `MainLayout.tsx` | `onSelectTask` prop 선언 · 구조분해 · `OfficeView` 전달 |
+| `OfficeView.tsx` | 쓰이지 않던 `onSelectTask` prop 선언 |
+| `effectiveIdentity.ts` | `isTaskVisibleToIdentity` export (삭제 후 제품 호출자 0건) |
+
+**함께 죽은 것 1건(지정 제거의 직접 낙진)**: `App.approvalHistory` state. 유일한 소비자가 삭제한 `TaskResultModal` 의 `approvalQueue` prop 이었고 읽는 곳이 0건이 됐다(`tsc -b` 가 `TS6133` 로 드러냄). **저장 정본은 건드리지 않았다** — `hydrateAppState().history` 는 그대로라 필요해지면 다시 파생한다.
+
+**보존한 활성 경로**: `DepartmentWorkspacePanel` → `TeamTaskPanel` → 업무 카드/지난 업무 `상세` → `TaskDetailModal`. 상세 격리는 `TeamTaskPanel.tsx:93-94` 가 선택 id 를 **현재 `teamFlows` 에서 다시 찾아**(`detailFlow`) 열람 범위 밖이면 `null` 이 되는 구조가 담당한다(`:431` 에서 `detailFlow` 일 때만 렌더). `OperationTask` 타입·`ApprovalListModal`·`ApprovalDetailModal`·`MetricDrilldownModal`·lifecycle 저장/결정/권한 계약·네 업무 흐름·승인/수정/중단/반송 이력·화면 디자인은 **무변경**.
+
+**RED → GREEN** (신규 smoke 파일 없음 — 기존 7개 교정, manifest **125 불변**)
+
+`smoke-rc2-app-integration-red-v0.mjs` 에 `L1~L8` 을 먼저 넣고 삭제 전 실패를 확인했다.
+
+| | RED (삭제 전 실제 출력) | GREEN |
+|---|---|---|
+| L1 legacy 5파일 부재 | **잔존 5개** (5파일 경로 전부 출력) | 5개 전부 삭제됨 |
+| L2 제품 코드 참조 0 | **4파일**: `App.tsx` · `TaskBoard.tsx` · `TaskListModal.tsx` · `TaskResultModal.tsx` | 참조 0건 |
+| L3 끊어진 배선 0 | **6파일**: `App.tsx` · `MainLayout.tsx` · `OfficeView.tsx` · `TaskBoard.tsx` · `TaskListModal.tsx` · `effectiveIdentity.ts` | 죽은 배선 0건 |
+| L4~L8 (활성 경로·격리 실행·자료 보존) | **RED 단계에서도 MET** — 안전망 | MET 유지 |
+| 검사 전체 | RED 44 met / **3 unmet** · exit 1 | **48 met / 0 unmet** · exit 0 |
+
+**검사를 활성 경로로 옮긴 방식** (파일이 없어졌다고 빈 문자열에 통과시키거나 정책을 삭제하지 않았다)
+
+| 검사 | 이전 대상 | 이후 |
+|---|---|---|
+| `smoke-b-use-4` X-31·X-33 | `isTaskVisibleToIdentity` 실행 | `taskFlowsFor(actor)` 에 **화면과 같은 find 규칙**을 적용한 실행 검사 + `TeamTaskPanel` 구조 단언(X-31a). `212/212` |
+| 〃 X-37·X-39·Y-51·Y-52 | `visibleTaskDetail`·`setSelectedTaskForResult` 문자열 | App 에 업무 열람 판정 **자체가 없음**을 요구(X-37a·Y-51 **강화**) · Y-52 는 활성 경로 구조로 |
+| `smoke-b-use-5` A-14 | TaskBoard·TaskResultModal 의 `onReject` 부재 | 활성 화면 **7곳** 전수. 판정 기준을 선언이 아니라 **호출**(`onReject(` / `onReject?.(`)로 정확화. `71/71` |
+| `smoke-rc2-app-integration` A19 | ApprovalDetailModal + 죽은 2화면 | ApprovalDetailModal·ApprovalListModal·**TaskDetailModal·TeamTaskPanel** (활성 4화면) |
+| `smoke-rc2-d12` P17 | TaskBoard 의 AI 직접 배정 | **활성 생성 경로** `HqDirectiveComposer`·`TeamTaskPanel` 이 AI 선택 입력을 갖지 않고 생성 계약이 제목만 받음 |
+| 〃 P11·P36 | `apprList + taskBoard` | `apprList + MetricDrilldownModal + TeamTaskPanel` |
+| `smoke-rc2-d13` W19 | TaskBoard 정확일치 검색 | `src/components` **전 `.tsx` 전수**로 정확일치 안티패턴 0건(대상 확대) |
+| `smoke-rc2-d1331` V13 | `onCancel` 이 TaskResultModal 에 존재 | 활성 중단 화면 `ApprovalDetailModal` 의 `작업 중단` + App `cancelHandlerFor` 게이트 |
+| `smoke-rc2-d1332` B6 | TaskResultModal 렌더 게이트 | `ApprovalDetailModal` 렌더 게이트 + App reviewOnly 차단 |
+| 〃 **A5** | TaskBoard 의 `approvalActorDisplay` | **삭제.** 승인 표시의 활성 소비자는 A3·A4·A6 세 곳이 전부(전수 검색)이고 옮길 활성 대체 화면이 없어 **중복 단언**이었다. 대신 세 화면을 한 번에 확인하는 단언으로 대체했다 |
+
+**관측했으나 이번에 손대지 않은 것(범위 밖 — Codex 판단 대기)**: `TeamOperationsBoard.tsx:31` 에 `onReject?: (id: string) => void;` **타입 선언만** 남아 있다. 구조분해·호출·전달 **0건**으로 `OfficeView.onSelectTask` 와 같은 종류의 죽은 prop 선언이다. 지시 범위에 없어 삭제하지 않았고, A-14 판정을 "호출" 기준으로 정확히 써서 통과시켰다.
+
+**이번에 실행한 것**: 관련 집중검사 **7종 전부 exit 0**(app-integration 48/48 · b-use-4 212/212 · b-use-5 71/71 · d12 51/51 · d13 30/30 · d1331 15/15 · d1332 11/11) · `npx tsc -b` exit 0 · 변경 파일 lint 오류 0 · `git diff --check` exit 0 · 변경분 비밀값·외부 WRITE 추가 검색 **0건** · manifest include **125** / exclude **0**.
+**실행하지 않은 것**: **전체 `npm test` 미실행 — 무회귀 전체를 주장하지 않는다** · Preview·Vercel·브라우저 확인(마운트된 화면을 바꾸는 작업이 아니다) · main 통합·push·배포·환경변수 변경.
+**Codex 독립검증 대기.**
+
+---
+
 ### B-use-5 Preview 인수검사 — **완료 · 실제 Preview 화면 재확인 통과 (브랜치 `codex/b-use-5-preview-acceptance`, 제품 기준 `bcf91a4`, 2026-07-28)**
 
 > **B-use-5 Preview 인수검사는 완료했다.** 사용자가 관측했던 화면 결함 7건이 실제 Preview 화면에서 재확인됐다.
@@ -789,6 +856,7 @@ main 병합·push·배포·환경변수 변경·인증 보존 브랜치 변경�
 | 예약 실행 | 함수 존재 | **호출자 0건** | E |
 | 마케팅 1팀/2팀 분리 | 없음 (`marketing` 단일) | 리터럴 `'marketing'` **95곳/41파일** | 저장 의미 = B-core-5 / 소비자 이관 = Local migration |
 | 오늘의 운영 주문 통계 출처 표시 | ✅ **2026-07-28 Local migration 으로 해소** | 관제 채팅 헤더에 `주문 통계: 불러오는 중 / 실제 주문 N건 / 시험 데이터(+실제 주문 연결 안 됨) / 연결 안 됨` 표시. 통계 질문이 연결 실패·0건일 때 `activeOperationsData` 로 조용히 대체되지 않음 | 완료(자동검사 기준) |
+| ~~`TaskBoard`·`TaskListModal`·`TaskResultModal` (코드는 있으나 진입 불가)~~ | **2026-07-30 Local migration 으로 삭제** | 세 화면 모두 실제 진입 경로가 없었다(호출자 0건 / 끊어진 setter 배선). 헌법 §6 대상이 **다시 마운트가 아니라 제거**로 해소됐다. 업무 상세의 활성 경로는 위 첫 행 그대로 | 로컬 완료 · Codex 독립검증 대기 |
 
 ## 7. 팀별 기능 — 존재 상태
 

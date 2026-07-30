@@ -67,7 +67,10 @@ try {
 const src = (p) => readFileSync(path.join(REPO, ...p.split('/')), 'utf8');
 const appSource = src('src/App.tsx');
 const chatConsole = src('src/components/ChatConsole.tsx');
-const taskBoard = src('src/components/TaskBoard.tsx');
+// Local migration(2026-07-30): TaskBoard 는 도달 불가능해 삭제했다.
+//   "화면이 AI 를 직접 골라 배정하지 않는다" 정책은 **활성 생성 경로**로 옮긴다.
+const hqComposer = src('src/components/HqDirectiveComposer.tsx');
+const teamTaskPanel = src('src/components/TeamTaskPanel.tsx');
 const agentModal = src('src/components/AgentDetailModal.tsx');
 const apprDetail = src('src/components/ApprovalDetailModal.tsx');
 const apprList = src('src/components/ApprovalListModal.tsx');
@@ -205,9 +208,11 @@ red('P10. 알 수 없는 AI 소속을 HQ 로 자동 승격하지 않는다',
   `teamOfAgent(미상)='${A.teamOfAgent('존재하지_않는_에이전트')}' — 미상이 총괄 권한 팀으로 승격됨`);
 
 // P11 — 내부 ID / '알 수 없음' 노출
+// 삭제된 TaskBoard 대신 승인·업무를 실제로 보여 주는 활성 화면으로 대상을 옮긴다(범위 축소 아님).
 red('P11. 승인 화면에 내부 AI ID 나 "알 수 없음" 이 노출되지 않는다',
-  !/requestedByAgentId\.toUpperCase\(\)/.test(apprDetail) && !/알 수 없음/.test(apprList + taskBoard),
-  "ApprovalDetailModal 이 requestedByAgentId.toUpperCase() 로 내부 ID 노출 · 목록/보드에 '알 수 없음'");
+  !/requestedByAgentId\.toUpperCase\(\)/.test(apprDetail)
+  && !/알 수 없음/.test(apprList + src('src/components/MetricDrilldownModal.tsx') + teamTaskPanel),
+  "ApprovalDetailModal 이 requestedByAgentId.toUpperCase() 로 내부 ID 노출 · 승인 목록/드릴다운/팀 업무판에 '알 수 없음'");
 
 // P12 — AI 자기승인 차단(유지 확인)
 red('P12. AI 는 자기 결과를 승인할 수 없다',
@@ -253,9 +258,15 @@ red('P15. ChatConsole 이 AI 를 직접 골라 업무를 만들지 않는다(빠
 red('P16. ChatConsole 후보 업무가 AI 를 직접 배정하지 않는다',
   !/onAddTask\(candidate\.title, candidate\.agentId\)/.test(chatConsole),
   'ControlTaskCandidate.agentId 로 AI 직접 배정');
-red('P17. TaskBoard 가 AI 를 직접 골라 업무를 만들지 않는다',
-  !/onAddTask\(newTitle, selectedAgentId\)/.test(taskBoard),
-  'TaskBoard 업무 추가가 AI 선택 드롭다운으로 직접 배정');
+// P17 이관: 삭제된 TaskBoard 대신 **실제로 업무를 만드는 활성 화면 두 곳**을 본다.
+//   HQ 지시(HqDirectiveComposer) 와 팀 내부 업무 추가(TeamTaskPanel) 가 AI 를 고르는
+//   입력을 갖지 않고, 생성 계약이 제목(+팀)만 받는지 확인한다.
+red('P17. 활성 생성 경로(HQ 지시·팀 내부 업무 추가)가 AI 를 직접 골라 배정하지 않는다',
+  !/agentId|selectedAgent|onAddTask\([^)]*agent/i.test(hqComposer)
+  && !/agentId|selectedAgent/i.test(teamTaskPanel)
+  && /onCreateTask\?: \(title: string\) => boolean/.test(teamTaskPanel),
+  '활성 생성 화면이 AI 선택 입력으로 직접 배정',
+  'HQ 지시·팀 내부 추가 모두 제목(+팀)만 넘긴다');
 red('P18. AgentDetailModal 이 AI 에게 직접 지시하지 않는다',
   !/onDirectInstruct\(agent\.id, instruction\)/.test(agentModal),
   '에이전트 상세에서 AI 에게 직접 지시 전송');
@@ -470,7 +481,8 @@ red('P35. 협업은 요청팀 부모 + 수행팀 자식으로 기록되고 수�
   })(), noFn('createCollaborationRequest'), '부모·자식 연결 · 반송·사유 보존');
 
 red('P36. 내부 AI ID·"알 수 없음" 이 사용자 화면에 노출되지 않는다',
-  !/requestedByAgentId\.toUpperCase\(\)/.test(apprDetail) && !/알 수 없음/.test(apprList + taskBoard),
+  !/requestedByAgentId\.toUpperCase\(\)/.test(apprDetail)
+  && !/알 수 없음/.test(apprList + src('src/components/MetricDrilldownModal.tsx') + teamTaskPanel),
   '내부 ID / "알 수 없음" 노출 잔존');
 
 // ── A26·A27 교체(잘못된 HQ→AI fixture 폐기) ─────────────────────────────────

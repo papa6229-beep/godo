@@ -88,7 +88,6 @@ interface MainLayoutProps {
   onSelectAgent: (agent: Agent) => void;
   onClearLogs: () => void;
   onApprove: (id: string) => void;
-  onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
   /** B-use-3: HQ 지시 1건 처리(App 소유). 화면은 고른 팀·문구·첨부만 넘긴다. */
   /** B-use-5: 전송 결과를 그대로 통과시킨다(중간 배선이 성공 여부를 삼키지 않는다). */
@@ -174,7 +173,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   onSelectAgent,
   onClearLogs,
   onApprove,
-  onSelectTask,
   onSelectApproval,
   onSendDirective,
   brainKnowledge,
@@ -440,7 +438,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
               onStartSimulation={onStartSimulation}
               onAddTask={onAddTask}
               onApprove={onApprove}
-              onSelectTask={onSelectTask}
               onSelectApproval={onSelectApproval}
               onSendDirective={onSendDirective}
               onOpenApprovals={onOpenApprovals}

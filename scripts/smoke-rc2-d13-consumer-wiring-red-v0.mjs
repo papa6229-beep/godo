@@ -78,7 +78,20 @@ const deptRendersLeadScreen = /<TeamTaskPanel/.test(deptPanel);
 const agentTaskPanel = src('src/components/AgentTaskPanel.tsx');
 const agentTaskRunner = src('src/services/agentTaskRunner.ts');
 const apprList = src('src/components/ApprovalListModal.tsx');
-const taskBoard = src('src/components/TaskBoard.tsx');
+// Local migration(2026-07-30): TaskBoard 는 도달 불가능해 삭제했다.
+//   "화면이 canonical id 를 legacy id 목록에서 정확 일치로 찾지 않는다" 정책은
+//   **남아 있는 활성 화면 전체**를 훑어 확인한다(대상 1곳으로 줄이지 않는다).
+const componentSources = (() => {
+  const out = {};
+  const walk = (d) => {
+    for (const e of readdirSync(path.join(REPO, d), { withFileTypes: true })) {
+      if (e.isDirectory()) walk(`${d}/${e.name}`);
+      else if (e.name.endsWith('.tsx')) out[`${d}/${e.name}`] = src(`${d}/${e.name}`);
+    }
+  };
+  walk('src/components');
+  return out;
+})();
 const apprDetail = src('src/components/ApprovalDetailModal.tsx');
 
 // 제품 소비자 전체(계약 모듈 자신은 제외) — "실제로 호출되는가" 의 근거.
@@ -351,10 +364,12 @@ red('W19. 알려진 AI 가 목록에서 소속 확인 필요로 오표시되지 
   (() => {
     // 정본은 canonical, 화면은 legacy id 로 캐릭터를 찾는다 → 정확 일치 검색이면 못 찾는다.
     const canonical = R.toCanonicalAgentId('stock');            // 'inventory_monitor'
-    const listUsesExactFind = /agents\.find\(\s*a\s*=>\s*a\.id === agentId\s*\)/.test(apprList);
-    const boardUsesExactFind = /agents\.find\(\s*\(a\)\s*=>\s*a\.id === agentId\s*\)/.test(taskBoard);
-    const mapsThroughRegistry = /displayAgentId|isSameAgent/.test(apprList) && /displayAgentId|isSameAgent/.test(taskBoard);
-    return canonical === 'inventory_monitor' && mapsThroughRegistry && !listUsesExactFind && !boardUsesExactFind;
+    // 활성 화면 전수: 정확 일치 검색(별칭표 미경유)이 남아 있으면 실패한다.
+    const exactFind = /agents\.find\(\s*\(?a\)?\s*=>\s*a\.id === agentId\s*\)/;
+    const offenders = Object.entries(componentSources).filter(([, s]) => exactFind.test(s)).map(([f]) => f);
+    // 승인 목록은 실제로 AI 표시명을 만드는 활성 소비자다 — 별칭표를 거쳐야 한다.
+    const mapsThroughRegistry = /displayAgentId|isSameAgent/.test(apprList);
+    return canonical === 'inventory_monitor' && mapsThroughRegistry && offenders.length === 0;
   })(), "화면이 canonical id 를 legacy id 목록에서 정확 일치로 찾아 알려진 AI 도 '소속 확인 필요'로 표시됨",
   '별칭표를 거쳐 표시명 변환');
 

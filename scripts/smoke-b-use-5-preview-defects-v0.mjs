@@ -326,12 +326,16 @@ console.log('\n[A] 승인 화면');
     !/onReject/.test(chat) && /reject_all' \|\| act\.type === 'reject_item'/.test(chat));
   ok('A-13. ChatConsole 이 임의 기본 문구를 만들어 넣지 않고 사유 입력을 안내한다',
     /이유가 한 문장 필요합니다/.test(chat) && !/이번 결과 사용 안 함/.test(chat));
-  ok('A-14. 미채택은 승인 상세 한 경로만 남는다(다른 화면은 즉시 거절 버튼 없음)',
+  // Local migration(2026-07-30): TaskBoard·TaskResultModal 은 도달 불가능해 삭제했다.
+  //   같은 정책을 **남아 있는 활성 화면 전체**로 확인한다(A-11 이 src 전수를 이미 훑고,
+  //   여기서는 승인 상세만 유일한 미채택 경로임을 화면별로 고정한다).
+  ok('A-14. 미채택은 승인 상세 한 경로만 남는다(다른 활성 화면은 즉시 거절 버튼 없음)',
     /onReject\(item\.id, reason\)/.test(codeLines('src/components/ApprovalDetailModal.tsx'))
-    && !/onReject/.test(codeLines('src/components/ApprovalListModal.tsx'))
-    && !/onReject/.test(codeLines('src/components/TaskBoard.tsx'))
-    && !/onReject/.test(codeLines('src/components/TaskResultModal.tsx'))
-    && !/onReject/.test(codeLines('src/components/MetricDrilldownModal.tsx')));
+    //   판정 기준은 **호출**이다(`onReject(` / `onReject?.(`). 타입 선언(`onReject?: (id) => void`)은
+    //   버튼이 아니다 — TeamOperationsBoard 에 쓰이지 않는 선언이 하나 남아 있으나 호출·전달 0건이다.
+    && ['ApprovalListModal', 'MetricDrilldownModal', 'TaskDetailModal', 'TeamTaskPanel',
+      'OperationBriefingModal', 'TeamOperationsBoard', 'ExecutiveBriefing']
+      .every((n) => !/onReject\s*(\?\.)?\(/.test(codeLines(`src/components/${n}.tsx`))));
   ok('A-15. 서비스의 사유 필수 규칙을 약화하지 않았다(결정 이력 보존)',
     /decisionReason/.test(src('src/types/approval.ts')));
 }

@@ -35,7 +35,6 @@ interface OfficeViewProps {
   onStartSimulation: () => void;
   onAddTask: (title: string, agentId: string) => void;
   onApprove: (id: string) => void;
-  onSelectTask?: (task: OperationTask) => void;
   onSelectApproval?: (item: ApprovalItem) => void;
   /**
    * B-use-3: HQ 지시 1건 처리. **App 이 소유한다.**

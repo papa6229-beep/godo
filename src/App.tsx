@@ -5,7 +5,6 @@ import type { OperationTask } from './types/task';
 import type { ApprovalItem } from './types/approval';
 import type { OperationReport } from './types/operation';
 import { initialAgents } from './data/agents';
-import { TaskResultModal } from './components/TaskResultModal';
 import { ApprovalDetailModal } from './components/ApprovalDetailModal';
 import { OpeningScreen } from './components/OpeningScreen';
 import { MainLayout } from './components/MainLayout';
@@ -53,7 +52,7 @@ import type { ViewerRole } from './services/sessionRole';
 // B-use-4: 인증 게이트 + 로그인 신원 → 업무 행위자 연결.
 import { useAuthGate, useServerAccount, isAuthConfigured } from './services/authGate';
 import {
-  computeEffectiveIdentity, isTaskVisibleToIdentity, isApprovalVisibleToIdentity, isReportOwnedBy
+  computeEffectiveIdentity, isApprovalVisibleToIdentity, isReportOwnedBy
 } from './services/effectiveIdentity';
 import type { EffectiveIdentity } from './services/effectiveIdentity';
 // B-use-5: lifecycle 업무 상태를 **원본 팀 메시지**에 반영한다(화면이 추측하지 않는다).
@@ -151,7 +150,10 @@ function App() {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ApprovalItem[]>(() => hydrateAppState().approvalQueue);
   // 결정이 끝난 항목도 이력에서 계속 조회 가능해야 한다(승인 대기열에서만 빠진다).
-  const [approvalHistory, setApprovalHistory] = useState<ApprovalItem[]>(() => hydrateAppState().history);
+  // ⚠️ 결정 이력(`hydrateAppState().history`)의 React 사본은 두지 않는다.
+  //    유일한 소비자가 도달 불가능하던 `TaskResultModal` 의 `approvalQueue` prop 이었고,
+  //    그 경로를 지우면서 읽는 곳이 0건이 됐다(Local migration 2026-07-30).
+  //    **저장 정본은 그대로다** — 필요해지면 `hydrateAppState().history` 로 다시 파생한다.
   // 역할 전환기와 동기화 — 전환 직후 결정 버튼도 새 역할을 사용한다.
   const [viewerRole, setViewerRole] = useState<ViewerRole>(() => loadRole());
   // 시험 역할 전환기 값만 따라간다. **열람 범위 재계산은 아래 identity effect 한 곳**에서만 한다.
@@ -198,7 +200,6 @@ function App() {
   const [report, setReport] = useState<OperationReport | null>(null);
   // B-use-4 보완(3.4): 이 보고서를 **만든 신원**. 계정이 바뀌면 이전 계정 보고서를 보여 주지 않는다.
   const [reportIdentityKey, setReportIdentityKey] = useState<string | null>(null);
-  const [selectedTaskForResult, setSelectedTaskForResult] = useState<OperationTask | null>(null);
   const [selectedApprovalDetail, setSelectedApprovalDetail] = useState<ApprovalItem | null>(null);
 
   // GODO STUDIO MVP 지식/에이전트/스킬/도구/권한 상태 관리 (localStorage 우선)
@@ -784,7 +785,6 @@ function App() {
     // 저장이 일어났음을 알린다 → 위 파생값이 **현재 신원 기준으로** 다시 계산된다.
     setLifecycleRevision((r) => r + 1);
     setApprovalQueue(st.approvalQueue);
-    setApprovalHistory(st.history);
   };
 
   // 업무 지시 — **팀에게** 보낸다. 수행 방식(AI 배정/직접 처리)은 담당 팀장이 고른다.
@@ -1214,10 +1214,9 @@ function App() {
   // ── B-use-4 보완(3.4): 계정 전환 시 이전 계정의 상세·보고서 격리 ──────────
   //   App 은 인증 게이트 동안 마운트를 유지하므로 팝업 상태가 그대로 남는다.
   //   기존 자료를 지우지 않고 **현재 열람 범위·신원으로 표시만** 막는다.
-  //   업무 상세: **열람 범위**(같은 팀이면 팀원도 본다)가 기준이다.
-  const visibleTaskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
-  const visibleTaskDetail =
-    isTaskVisibleToIdentity(selectedTaskForResult?.id, visibleTaskIds) ? selectedTaskForResult : null;
+  //   업무 상세는 App 이 들고 있지 않다 — Local migration(2026-07-30) 으로 도달 불가능하던
+  //   `TaskResultModal` 경로를 제거했고, 활성 경로인 `TeamTaskPanel` 이 선택 id 를
+  //   현재 `teamFlows` 에서 다시 찾아(`detailFlow`) 같은 격리를 담당한다.
   //   승인 상세: **결정 권한**이 기준이다. 열람 범위로 판정하면 팀장이 연 승인 상세가
   //   같은 팀 팀원 계정으로 전환한 뒤에도 남는다(팀원은 업무는 보지만 승인 담당자가 아니다).
   //   업무 단위로 만들어지는 승인 항목이므로 taskId 가 아니라 **고유 id** 로 대조한다.
@@ -1295,7 +1294,6 @@ function App() {
           onClearLogs={handleClearLogs}
           onApprove={handleApprove}
           onSendDirective={handleSendDirective}
-          onSelectTask={(task) => setSelectedTaskForResult(task)}
           onSelectApproval={(appr) => setSelectedApprovalDetail(appr)}
           brainKnowledge={brainKnowledge}
           onUpdateKnowledge={setBrainKnowledge}
@@ -1382,17 +1380,6 @@ function App() {
           activeOperationsData={activeOperationsData}
           setActiveTab={setActiveTab}
           setLastSelectedDate={setLastSelectedDate}
-        />
-      )}
-
-      {visibleTaskDetail && (
-        <TaskResultModal
-          task={visibleTaskDetail}
-          onClose={() => setSelectedTaskForResult(null)}
-          // RC-2 D-1: 결과 화면에는 이력 전체를 넘긴다(승인·미채택·중단도 계속 조회 가능).
-          approvalQueue={approvalHistory}
-          onApprove={handleApprove}
-          onCancel={cancelHandlerFor(visibleTaskDetail.reviewOnly)}
         />
       )}
 

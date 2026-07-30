@@ -89,8 +89,12 @@
 > **현재 단계: 전체 5단계 — C(새 고도몰 실제 계약 검증)**
 > **상태: 시작 조건 대기.** 새 판매몰 **개발자 등록·API 키 발급 대기** 때문이다. 키가 확보된 사실이 확인되면 사용자가 언급하지 않아도 **즉시 C 착수를 제안한다**(§6).
 > **키 대기 중에도 B 를 다시 열지 않는다.** 승인된 `Local migration`(§5-4) 경로의 독립 작업은 계속할 수 있다.
-> **다음 한 작업: Codex 가 미마운트 legacy 업무 컴포넌트 정리 범위를 직접 조사·선정한다.**
+> **Local migration 4건째 로컬 구현 완료 (2026-07-30, 브랜치 `codex/local-migration-legacy-task-ui-cleanup`, Codex 독립검증 대기)**: **도달 불가능한 legacy 업무 UI 제거**(§14 후속 대장 `TaskBoard`·`TaskListModal` 정리 + `TaskResultModal` 데모 문구 + `onSelectTask` 끊어진 배선 — **셋이 한 뿌리**였다).
+> `TaskBoard` 는 제품 import 0건, `TaskListModal`·두 CSS 는 그 미마운트 파일에서만 쓰였고, `TaskResultModal` 은 유일한 setter 배선(`App → MainLayout → OfficeView`)에서 **`OfficeView` 가 prop 을 선언만 하고 쓰지 않아** 사용자 행동으로 열릴 수 없었다. 5파일(2,337줄) 삭제 + 죽은 state·prop 배선 제거. **활성 경로 `TeamTaskPanel → TaskDetailModal` 과 lifecycle 계약·화면 동작은 무변경.** 신규 smoke 파일 0 · **manifest 125 불변** · 기존 검사 7개를 활성 경로 기준으로 교정(약화 없음).
+> **전체 `npm test` 는 이번 변경 뒤 실행하지 않았다 — 무회귀 전체를 주장하지 않는다.**
+> **다음 한 작업: Codex 의 legacy 업무 UI 정리 독립검증.**
 > **DB 공급자 선택이나 서버 어댑터 구현을 다음 작업으로 만들지 않는다.**
+> **현재 단계 C 는 새 고도몰 API 키 발급 대기 상태 그대로다.**
 >
 > ---
 >
@@ -579,9 +583,9 @@ B 완료 뒤 새로 발견된 것은 B를 다시 여는 것이 아니라 **Patch
 | 항목 | 출처 | 상태 |
 |---|---|---|
 | `syntheticCommerceFacts` 계약 우회 3건 (제품 import 0) | REBUILD 논쟁 D2 | 미착수 |
-| `TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리 | 감사 2026-07-27 | **다음 한 작업 (2026-07-30)** — Codex 가 미마운트 legacy 업무 컴포넌트 **정리 범위를 직접 조사·선정**한다. 아래 `TaskResultModal`·`onSelectTask` 배선 항목과 같은 뿌리일 수 있으므로 조사 단계에서 함께 본다. 헌법 §6 — 쓰이지 않는 것처럼 보여도 근거 없이 삭제하지 않는다 |
-| `TaskResultModal` 하드코딩 데모 문구(재고 2개·매출 894,000원·송장 박*호 등)가 task 와 무관하게 표시됨. 현재 도달 경로 없음 | B-use-2 | 미착수 |
-| `OfficeView`→`MainLayout`→`App` 의 `onSelectTask` 배선이 `TaskBoard` 미렌더로 끊겨 있음 | B-use-2 | 미착수 |
+| ~~`TaskBoard`·`TaskListModal` 미마운트 컴포넌트 정리~~ | 감사 2026-07-27 | **로컬 구현 완료 · Codex 독립검증 대기 (2026-07-30, 브랜치 `codex/local-migration-legacy-task-ui-cleanup`)** — 아래 `TaskResultModal`·`onSelectTask` 항목과 **같은 뿌리**였다. 5파일(2,337줄) 삭제 + App→MainLayout→OfficeView 죽은 배선 제거. 활성 경로 `TeamTaskPanel → TaskDetailModal` 은 보존. 신규 smoke 0 · manifest 125 불변. 자세한 내용은 `CURRENT_STATE.md` |
+| ~~`TaskResultModal` 하드코딩 데모 문구(재고 2개·매출 894,000원·송장 박*호 등)가 task 와 무관하게 표시됨. 현재 도달 경로 없음~~ | B-use-2 | **로컬 구현 완료 · Codex 독립검증 대기 (2026-07-30)** — 파일 자체를 삭제해 해소. 도달 경로가 없다는 관측이 맞았고, 끊어진 setter 배선(`OfficeView` 가 `onSelectTask` 를 선언만 하고 쓰지 않음)이 원인이었다 |
+| ~~`OfficeView`→`MainLayout`→`App` 의 `onSelectTask` 배선이 `TaskBoard` 미렌더로 끊겨 있음~~ | B-use-2 | **로컬 구현 완료 · Codex 독립검증 대기 (2026-07-30)** — 배선 3단 전부 제거. 위 두 항목과 같은 뿌리였다 |
 | ~~`analyticsQueryEngine:574` 클레임 필터 계약화~~ | REBUILD 논쟁 D2 | **완료 · Codex 독립검증 통과 (2026-07-30, 기준 HEAD `f8a1e9a`)** — 환불 위험 상품이 원시 `claimTypes` 비교 대신 `claimEventContract.classifyClaimEvent` 의 `eventKind`(`return`·`refund_only` 포함 / `cancel`·`exchange`·`unknown` 제외)만 쓴다. 기존 검사 확장, 신규 파일 0, manifest 125 불변. 최종 게이트 `npm test` exit 0 · smoke 125/125. 자세한 내용은 `CURRENT_STATE.md` |
 | 채팅 원문·마케팅 분석 힌트·API Bridge 로그 서버 이관 | REBUILD 논쟁 D3 | 미착수 |
 | A 세계(`activeOperationsData`) 재설계 | REBUILD 논쟁 D1 | 미착수 |
