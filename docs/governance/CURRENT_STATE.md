@@ -1,7 +1,7 @@
 # 현재 상태 (사실 기준선)
 
 정본 위치: `D:\godo\docs\governance\CURRENT_STATE.md`
-최종 갱신: 2026-07-30 (D-0 — CS 점검 확정 · 마케팅 매출 요약 팀 내부 마감)
+최종 갱신: 2026-08-04 (C — 신규 실몰 키 확보 · 상품·주문 READ 연결 검증 통과 · 계약 실측은 실주문 부재로 미검증)
 
 **규칙**: 이 문서는 **관측된 사실만** 적는다. 계획·의도·추정은 `MASTER_PLAN.md`에 쓴다.
 주장에는 확인 범위를 함께 쓴다(헌법 §10). 확인하지 않은 것은 "미확인"으로 남긴다.
@@ -119,9 +119,52 @@
 ## 3. 고도몰 연결
 
 - 기존 시험몰: 사용자는 **계정 만료**로 알고 있으나, **2026-07-27 07:24~07:25 GMT 관측 시점에 Open API는 정상 응답했다**(아래). 계정 만료와 API 차단 시점이 다를 수 있음 → **사용자 확인 필요**
-- 새 판매몰 계정 생성 완료, **개발자 등록·API 키 발급 대기 중**
+- 새 판매몰 계정 생성 완료. **개발자 등록·API 키 발급 완료 (2026-08-04, 사용자 보고).** 사용자가 보유한 키는 5종(제휴사키 · 사용자키 · 고도몰5 테스트키 · 이나무 테스트키 · 프라이빗 라운지 테스트키)이며, **이번 검증에 쓴 것은 제휴사키 + 신규 판매몰 매칭 사용자키 2종뿐**이다. 나머지 3종은 사용하지 않았다
 - 키는 채팅으로 전달받지 않는다. **Preview 환경변수 등록 → 검증 → Production 등록** 순서
-- 서버 기본 모드: `GODOMALL_API_MODE` 미설정 시 **`mock`** (`api/_shared/secretGuard.ts:25`). **현재 Production은 `real`**, partner/user 키 present (`/api/godomall/health` 관측 — 값 미확인)
+- **첫 검증은 위 순서가 아니라 로컬 전용으로 했다** — 사용자 승인 아래 `D:\godo\.env.local`(git 4중 차단: `.gitignore` `*.local`·`.env.local`·`.env.*.local`·`.env*.local`)에 사용자가 직접 입력하고, `node --env-file` 로 넘겨 실행했다. **Vercel 환경변수는 변경하지 않았다**
+- 서버 기본 모드: `GODOMALL_API_MODE` 미설정 시 **`mock`** (`api/_shared/secretGuard.ts:25`). **현재 Production 은 `real`**, partner/user 키 present (`/api/godomall/health` 관측 — 값 미확인). **이 Production 키는 교체하지 않았으므로 기존 몰을 가리키고 있을 가능성이 크다**(미확인). 교체 대상 변수명은 `GODOMALL_PARTNER_KEY`·`GODOMALL_USER_KEY`이며 교체 시점은 미승인
+- **로컬 개발서버(`npm run dev`, 순수 Vite)는 `/api/godomall/*` 를 띄우지 않는다** — `vite.config.ts:11-91` 이 대신 처리하는 것은 `/api/ai/chat`·`/api/detail/*` 둘뿐이다. 따라서 `.env.local` 만으로는 화면에서 고도몰 경로를 볼 수 없고, 이번 검증은 제품 모듈을 직접 호출하는 방식으로 했다
+
+### 신규 실몰 READ 연결 — **관측 (2026-08-04, 로컬)**
+
+**확인 범위**: `api/` 트리를 컴파일해 **제품 함수를 그대로 호출**했다. 고도몰 호출 **총 2회**(`Goods_Search.php` 1 · `Order_Search.php` 1) · **WRITE 0회** · 저장소 변경 0건 · 스크립트는 세션 스크래치패드에만 두고 저장소에 남기지 않았다.
+**Preview·Production 을 확인한 것이 아니다.** 화면 눈검증도 하지 않았다.
+
+| 항목 | 상품 (`resolveResource('products')`) | 주문 (`Order_Search.php`) |
+|---|---|---|
+| 호출 대상 | `openhub.godo.co.kr` (real) | 같음 |
+| 고도몰 응답 코드 | — (성공) | **`000` / `성공`** |
+| `sourceType` | **`api_proxy_real`** | **`api_proxy_real`** |
+| `live` | `true` | `true` |
+| `count` | **5건** | **0건** |
+| `maskedPiiCount` | 0 | 0 |
+| 소요 | 418 ms | 284 ms |
+
+- **상품 5건은 사용자가 신규 몰의 실제 등록 상품 수와 일치함을 확인했다** → 신규 몰 키 매칭 **확정**. (참고: 기존 시험몰 관측치는 13건이었다 — 아래 B1-0 절)
+- **주문 0건은 "실제 0건"이며 "연결 안 됨"이 아니다.** 응답 코드가 `000 성공`이므로 **권한 거부로 인한 0건이 아니다.** 신규 몰은 현재 주문이 없는 더미 상태(사용자 확인)
+- **유령 주문 가드가 실데이터에서 작동했다** — 빈 응답인데도 `extractList` 는 후보 **1건**(메타 래퍼)을 냈고 `normalizeOrderData` 가 **0건**으로 걸렀다. `GODO-ORDER-MAPPING-01`(`godomallResource.ts:75-78`) 가드가 가정이 아니라 **실제 신규 몰 응답에서** 유령 주문을 막은 첫 관측이다
+
+**상품 필드 실측 (5건 전수 · 값은 열람·기록하지 않았다)**
+
+| 분류 | 필드 |
+|---|---|
+| 값 있음 | `productId`(10자리 숫자) · `productName`(한글) · `price`·`fixedPrice`(정수) · `stock`(정수) · `soldOut`·`stockEnabled`·`sellPc`·`sellMobile`·`displayPc`·`displayMobile`(boolean) · `categoryCode`·`allCategoryCode`(3자리) · `registeredAt`(`YYYY-MM-DD HH:MM:SS`) |
+| 부분 결측 | `brandCode` — 5건 중 **1건 빈값** |
+| **전 건 빈값** | `productCode` · `makerName` · `modifiedAt` · `optionName` · `originName` |
+
+- **재고위험 계약 입력 충족**: `soldOut`·`stockEnabled`·`stock` 이 전 건 존재 → `classifyStockRiskWithSaleState` 의 3단 우선순위가 실데이터에서 성립한다
+- **`safetyStock` 은 응답에 없다** → `inventoryRiskContract` 의 전역 기본값 5 가 적용된다. B-core-2a 판정과 Local migration 6(근거 없는 `safetyStock:'5'` 제거)이 **실측으로 뒷받침됐다**
+- 전 건 빈값 5필드는 **결함이 아니다** — 매퍼가 값을 지어내지 않고 빈 문자열로 보존한 결과다. 이 몰에서 **실측 부재**로 기록한다
+
+**미검증으로 남긴다 (실주문 0건 — 코드 문제가 아니다)**
+
+- 주문 필드 구조(주문번호·상태코드·결제일·라인·배송비 형식)
+- `revenueMetricContract` **결제완료 판정 2규칙 충돌** — B-core 에서 C 로 명시 이관한 항목이며 **실주문이 있어야만** 판정 가능하다
+- `claimEventContract` 클레임·취소·반품·환불 표기 · 매출 계약 전반
+- 관리자 화면 상태 전이 ↔ API 상태코드 대조 · 고도몰 자체 매출통계 기준
+- 문의·리뷰: **라이브 미구현 그대로**(`godomallResource.ts:122-124`, Board_List.php 매핑 전)
+
+**사용자 결정**: 지금 시험 주문을 만들지 않는다(2026-08-04). 따라서 위 미검증 항목은 시험 주문이 준비될 때까지 그대로 둔다.
 
 ### 상품 13건의 출처 — **확정 (B1-0, 2026-07-27)**
 
