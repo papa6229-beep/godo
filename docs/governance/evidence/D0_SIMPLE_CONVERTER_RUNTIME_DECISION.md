@@ -1,0 +1,155 @@
+# 단순형 변환기 통합 — 1단계 실행 구조 판정
+
+작성일 **2026-08-21** · 기준 HEAD `47088fc` (브랜치 `codex/d0-parallel-team-readiness-plan`) · main `8ad9557` · origin/main `5190f685`
+단계: **전체 5단계 C 진행 중 · 이 문서는 병행 가능한 D-0(디자인팀 기능 준비)** — 변환 기능 구현·main 병합·배포는 하지 않았다.
+
+**증거 표시**: **[코드]** 파일:행 직접 확인 · **[실행]** 명령 직접 실행 · **[문서]** Vercel 공식 문서 직접 조회(2026-08-21) · **[미확인]** 확인하지 않음(사실로 쓰지 않는다)
+
+---
+
+## 1. 확인한 사실
+
+### 1-1. 단순형 정본이 보관하는 상태
+
+**메모리(프로세스 안)** **[코드]**
+
+| 무엇 | 위치 | 누가 쓰는가 |
+|---|---|---|
+| `JOBS: dict[str, Job]` | `app/server.py:44` · 생성 `:48-54` | `/api/autofill`(`:431`) · `/api/render`(`:157`) · `/api/save`(`:490`) · `/preview/{jid}`(`:188`) · `/download/{jid}`(`:196`) · `/asset/{jid}/{name}`(`:233`) |
+| `SHEETS: dict[str, excel.Sheet]` | `:45` · 저장 `:97-98` | `/api/convert`(`:132`) |
+| `Job.work.product` (변환 결과 객체) | `:39` · `convert.Work` = `app/convert.py:36-43` | `/api/render` 이 **캡션·태그·상품명·리드·스펙을 이 객체에 직접 덮어쓴다**(`server.py:161-177`) |
+
+**로컬 디스크** **[코드]**
+
+| 무엇 | 경로 | 근거 |
+|---|---|---|
+| 잘라낸 제품컷·광고컷 | `WORK/{jid}/unit_NN.jpg` · `ad_NN.jpg` | `convert.py:74-78, 124, 292, 330` |
+| 캡션 조각(사람이 대조하며 고치는 그림) | `WORK/{jid}/…` | `convert.py:304-306` · 소비 `server.py:440-447` |
+| 렌더 결과 | `WORK/{jid}/detail.html` | `server.py:182` |
+| 상품번호로 모아 둔 결과 | `WORK/out/{code}.html` | `server.py:496-500` · 목록 `:216-218` · 열람 `:221-228` |
+| 원본 이미지 캐시 | `WORK/_cache/<sha1>` | `convert.py:53-61` |
+| 일괄 zip | `WORK/detail_all.zip` | `server.py:522-526` |
+
+**요청이 이어져야 성립한다** **[코드]** — 화면이 부르는 경로는 `/api/excel` · `/api/convert` · `/api/autofill` · `/api/render` · `/api/save` · `/api/made` · `/preview/{jid}` · `/download/{jid}` · `/asset/{jid}/{name}` · `/download/batch/all` 이다(`app/static/index.html` 전수 검색). 이 중 **`/api/convert` 이후 6개는 전부 "이전 요청이 같은 프로세스에 남긴 것"을 전제**한다. 없으면 `404 그 작업을 찾을 수 없다`(`server.py:158-159, 432-433`).
+
+정본은 이 성질을 이미 알고 대응해 두었다 **[코드]** `server.py:202-203`:
+> "난수 작업번호는 서버 메모리에만 있어서 껐다 켜면 미리보기가 통째로 죽는다 — 파일은 멀쩡한데 링크만 끊긴다. 실제로 겪었다."
+→ 그래서 **완성본만** `WORK/out/{code}.html` 로 따로 떨궈 파일 이름으로 찾는다.
+
+**엑셀은 이미 복수 상품이다** **[코드]** `app/excel.py:174-217` 이 시트 전체 행을 `Sheet.rows` 로 읽고, `server.py:102-113` 이 **행마다 사전 신호등(`gate.pre_gate`)을 매겨 목록으로 돌려준다.** 한 파일 = 한 상품이 아니다.
+
+**실측 규모** **[실행]** — 사장님이 실제로 돌린 작업 폴더 **425개 · 958MB**, 완성본 **53개**(`work/out`). 결과 HTML **최소 0.27MB · 평균 0.92MB · 최대 2.17MB**(이미지가 base64 data URI 로 안에 들어간다 — `app/render.py:58-60, 379, 541, 559`).
+
+### 1-2. 현재 GODO 쪽 구조
+
+| 사실 | 근거 |
+|---|---|
+| Vercel 함수 라우트 **11개** (`api/detail/[action].ts:4` 가 "Hobby 함수 예산(≤12)" 을 명시) | **[실행]** `find api -name "*.ts" -not -path "api/_shared/*"` |
+| `api/detail/[action].ts` 의 액션은 **`image-base64` · `image-proxy` 둘뿐**이고 상태를 갖지 않는다 | **[코드]** `:46, 52-89` |
+| 단순형 서버 기동은 **dev 전용 플러그인** — `apply: 'serve'` 라 `vite build`(=Vercel 빌드) 경로에는 붙지 않는다 | **[코드]** `vite.config.ts` `godo-detail-converter-dev` |
+| 그 기동은 **로컬 파이썬 프로세스**를 띄우는 것이다(venv 생성·`uvicorn` spawn·종료 시 정리) | **[코드]** `scripts/detailConverterService.ts:80`(준비) · `:120-155`(기동) · `:157-166`(정리) |
+| 화면은 **`http://127.0.0.1:8000` 상수 하나**를 iframe 으로 연다 | **[코드]** `src/components/ExternalFlowConverterFrame.tsx:12`(상수) · `:51`(iframe src) |
+| 실행환경 용량 **113MB** (numpy 34+21 · PIL 16 · lxml 9.3) | **[실행]** `du -sh tools/.venv-detail-converter` |
+
+→ **현재 iframe 연결은 로컬에서만 성립한다.** Vercel 배포본은 https 이고 대상은 사용자 PC의 http 주소이므로, 지시대로 이 구조 위에 다음 구현을 쌓지 않는다.
+
+### 1-3. Vercel 플랫폼 사실 **[문서]** (2026-08-21 직접 조회)
+
+| 항목 | 값 | 출처 |
+|---|---|---|
+| Python 런타임 | FastAPI(ASGI)를 **프리셋으로 그대로 실행** — "Vercel then runs your app as Vercel Functions and routes every request to it, so the app you run locally deploys as-is." 진입점 `server.py` 의 top-level `app` 인식 | `/docs/functions/runtimes/python` |
+| Python 버전 | 3.12(기본) · **3.13** · 3.14 | 같은 문서 |
+| 번들 상한 | Python **500MB**(비압축). 5GB 는 Large functions(=`VERCEL_SUPPORT_LARGE_FUNCTIONS` 환경변수 opt-in, Fluid 필요) | `/docs/functions/limitations` |
+| 최대 실행시간 | Hobby **300초**(기본이자 최대) | 같은 문서 |
+| **요청·응답 본문 상한** | **4.5MB** (초과 시 413) | 같은 문서 |
+| 동시성 | "Auto-scales up to 30,000" — **여러 인스턴스로 늘어난다** | 같은 문서 |
+| 한 프로젝트에서 파이썬 백엔드+프런트 | "you can use Services. Each part builds independently and routes to a shared domain." | `/docs/functions/runtimes/python` |
+
+**요청 사이에 같은 인스턴스로 이어 붙이는(affinity) 설정은 위 두 문서에서 찾지 못했다.** 공유 파일시스템에 대한 문장도 없었다. → **[미확인]** 으로 남긴다(없다고 단정하지 않는다).
+
+## 2. "그대로" 올릴 수 없는 지점
+
+| # | 지점 | 근거 | 결과 |
+|---|---|---|---|
+| **1** | **요청 간 프로세스 내 상태** — `JOBS`·`SHEETS` 는 모듈 전역 dict | `server.py:44-45` | 인스턴스가 갈리면 `/api/convert` 이후 6개 경로가 `404 그 작업을 찾을 수 없다`(`:158, 433`). 동시성이 자동으로 늘어나는 환경에서 **한 사람이 한 상품을 끝내는 동안 같은 인스턴스에 머무른다는 보장을 문서에서 찾지 못했다** |
+| **2** | **산출물을 로컬 디스크에 쓰고 그 경로로 되돌려 준다** — `/asset/{jid}/{name}` 은 그 작업 폴더의 파일을 그대로 서빙 | `server.py:231-239` · `convert.py:292, 304` | 조각 이미지·캡션 조각·`detail.html` 이 **다음 요청에도 살아 있어야** 손검수 화면이 성립한다 |
+| **3** | **완성본 보관함이 파일시스템** — `WORK/out/*.html` 목록·열람·zip | `server.py:216-228, 504-526` | "지난 회차"(실측 53건) 기능이 인스턴스 로컬 디스크에 묶여 있다 |
+| **4** | **이미지 캐시 재사용 전제** | `convert.py:53-61` | 인스턴스가 갈리면 매번 다시 받는다(원본 CDN 부하·시간) |
+| **5** | 번들 113MB | **[실행]** | Python 상한 500MB **안**이다. 이 항목은 막는 지점이 아니다 |
+| **6** | 응답 4.5MB | **[문서]** vs **[실행]** 53건 0.27~2.17MB | **현재 표본에서는 상한 아래**다. 표본 밖은 **[미확인]** |
+| **7** | 300초 상한 | **[문서]** | 상품 1건 변환 wall-time 을 **측정하지 않았다** → **[미확인]** |
+
+**요약**: 막는 것은 라이브러리 크기도 파이썬 지원 여부도 아니다. **막는 것은 ①요청 간 상태와 ②로컬 디스크 산출물, 둘뿐이다.**
+
+## 3. A / B 비교
+
+- **A** — GODO는 Vercel에 두고, 단순형 FastAPI는 **별도 Python 서비스 1대**로 운영
+- **B** — 단순형을 **Vercel Python 함수**와 별도 저장소 구조로 이식
+
+| 평가 기준 | A | B |
+|---|---|---|
+| **Vercel 디자인팀 화면에서 실제 사용 가능한가** | 성립한다. 단 **https 주소 1개가 필요**하고 그 주소를 어디에 둘지가 미결정이다(D-008: 실행 장소 미확정). 화면 쪽 변경은 상수 1개(`ExternalFlowConverterFrame.tsx:12`)를 주소 계약으로 바꾸는 것 | 성립한다. GODO 배포에 얹히므로 **새 호스팅 결정이 필요 없다** |
+| **정본의 성공한 변환 규칙을 훼손하지 않는가** | **26파일 0수정.** 지금 로컬에서 도는 것과 같은 프로세스 모양 | `excel.py`·`convert.py`·`render.py`·`gate.py`·`slicer/` 는 **보존 가능**(전부 인자로 받고 전역 상태를 안 쓴다 — `convert.convert(row, workdir, cache)` `convert.py:337`, `render.render(product, assets)` `render.py:398`, `gate.pre_gate/post_check` `gate.py:65, 85`). 그러나 **`server.py`(상태·라우팅)와 `index.html`(호출 흐름)은 반드시 고쳐야 한다** — §2의 ①②가 그 두 파일에 있다 |
+| **복수 상품 Excel · HTML 반환 · 신호등 유지** | 전부 그대로. 목록 신호등(`server.py:102-113`)·손검수 루프(`/api/render` 재호출)·`work/out` 보관함이 지금 모양 그대로 산다 | HTML 반환은 실측 크기상 가능(4.5MB 아래). 목록 신호등도 `pre_gate` 가 순수 함수라 가능. **손검수 루프(캡션 고쳐 다시 렌더)와 `work/out` 보관함은 상태를 옮길 곳을 새로 만들어야 유지된다** |
+| **기본형 + 혼합 Excel 한 버튼으로 가는 길** | 열린다. 두 변환기가 각자 HTTP 경계를 갖게 되므로 GODO가 행 단위로 분배하면 된다 | 열린다. 같은 배포 안이라 호출이 더 단순하다 |
+| **이번 프로젝트의 미결정과의 충돌** | **호스팅 1건**(D-008 실행 장소 미확정)에 걸린다 | **저장소 1건**(작업 상태·조각 이미지를 둘 곳)에 걸린다. DB·Blob 은 D-008 에서 **미결정으로 명시 보류** 중이다 |
+
+## 4. 추천안 — **A**
+
+**이유는 세 가지다.**
+
+1. **막는 것이 코드가 아니라 상태이기 때문이다.** §2에서 확인한 두 지점(요청 간 상태·로컬 디스크)은 B에서 **반드시** 다시 설계해야 한다. 그 재설계는 `render`·`gate` 자체는 건드리지 않지만, **사람이 캡션을 고쳐 다시 렌더하는 손검수 루프가 정확히 그 상태 위에 서 있다**(`server.py:161-183` 이 메모리의 `product` 를 고쳐 다시 렌더한다). 지금 "49개 실물 검토"로 맞춰 놓은 것이 그 루프다.
+2. **A는 정본 26파일 0수정으로 성립한다.** 오늘 로컬에서 실제로 도는 그 프로세스를 그대로 한 대 세우는 것뿐이다. 실패해도 되돌릴 것이 없다.
+3. **B가 요구하는 결정이 더 무겁다.** B는 공유 저장소(작업 상태 + 조각 이미지)를 지금 정해야 하고, 그것은 D-008에서 **의도적으로 미룬** 결정이다. A가 요구하는 것은 "파이썬 한 대를 어디에 둘 것인가" 하나이며, 이 결정은 어차피 11월 실서버 이식에서 하게 된다.
+
+**A를 고른다고 B를 버리는 것이 아니다.** A로 실사용을 열어 두고, 상품 수가 늘어 한 대로 부족해지면 그때 B(또는 컨테이너)로 옮긴다. 그때도 `excel`·`convert`·`render`·`gate`·`slicer` 는 그대로 간다.
+
+## 5. A가 성립하려면 다음 단계에서 새로 만들어야 하는 **최소 경계** (지금 만들지 않았다)
+
+| # | 경계 | 왜 필요한가 | 지금 상태 |
+|---|---|---|---|
+| 1 | **주소 계약 1개** — 화면이 읽는 단순형 base URL | 지금은 코드 상수 `http://127.0.0.1:8000` 하나다 | **[코드]** `ExternalFlowConverterFrame.tsx:12` |
+| 2 | **https** | Vercel 페이지(https)는 http 를 내장하지 못한다 | 현재 http 고정 |
+| 3 | **접근 통제** | 정본 서버는 **전 라우트 무인증**이다(`server.py` 전수 검색 `auth|token|bearer|login|permission` 4건은 **전부 `max_tokens`** 이며 인증 코드는 0건). 공개 주소에 그대로 두면 누구나 변환·자동채우기를 호출한다 | GODO는 이미 `protectedHandler` 를 쓰지만 이 서비스는 그 밖이다 |
+| 4 | **AI 키 경계** | `/api/autofill` 은 브라우저가 보낸 키 또는 서버 환경변수를 쓴다(`server.py:428` · `llm.key_from_env` `llm.py:52-58`). GODO의 `aiKeyVault` 와 어느 쪽을 정본으로 할지 정해야 한다 | 두 경로가 공존 |
+| 5 | **결과물 귀속** | `work/out/{code}.html` 은 서비스 로컬 파일이다. 팀 업무기록·활동 원장 연결은 **0건** | 연결 없음 |
+
+이 다섯은 **경계 목록**이지 구현 지시가 아니다. 이번 작업에서 하나도 만들지 않았다.
+
+## 6. 아직 확인하지 못한 것 **[미확인]**
+
+1. **Vercel Services 가 파이썬 백엔드에 요청 간 상태·지속 디스크를 주는지** — 문서에서 "Services … routes to a shared domain" 문장만 확인했고, 상태·디스크 성질은 조회하지 않았다.
+2. **요청 간 인스턴스 고정(affinity) 수단의 존재 여부** — 위 두 문서에서 찾지 못했다는 것뿐이며, 없다고 단정하지 않는다.
+3. **상품 1건 변환 wall-time** — 측정하지 않았다. 300초 상한과의 관계를 말할 수 없다.
+4. **표본 밖 상품의 결과 HTML 크기가 4.5MB 를 넘는지** — 실측 53건은 최대 2.17MB.
+5. **단순형 서비스를 둘 장소** — 회사 서버·고도몰 서버 조건 전부 미확인(D-008 그대로).
+6. **동시 사용자·병렬 변환 요구량** — 사장님 1인 사용 외의 수요를 모른다.
+7. **혼합 엑셀에서 기본형/단순형을 가르는 규칙** — 이번 범위 밖이며 조사하지 않았다.
+
+## 7. 다음 작은 실증의 정확한 종료 조건
+
+**질문 하나만 답한다: "정본을 고치지 않은 채 Vercel 위에 한 대 세울 수 있는가."** 이 답에 따라 A의 호스팅이 Vercel 안이냐 밖이냐가 갈린다.
+
+**실증 절차**(사용자 승인 필요 — 배포 행위다)
+1. `tools/detail-page-converter` **26파일 무수정**으로 Python 런타임 Preview 배포 1회.
+2. 배포된 주소에 **연속 3요청**: `POST /api/excel`(엑셀 1개) → `POST /api/convert`(같은 `sheet` 키 + 1행) → `GET /preview/{jid}`.
+
+**종료 조건 — 다음 둘 중 하나를 관측하면 끝난다.**
+- **성립**: 3요청이 모두 200이고 `/preview/{jid}` 가 HTML 을 돌려준다 → **A를 Vercel 안에서 한다.** 이어서 §5의 경계 1·2·3을 설계한다.
+- **불성립**: 어느 한 요청이라도 `404 그 작업을 찾을 수 없다`(`server.py:158-159`) 또는 `400 먼저 엑셀을 올려야 한다`(`:134`) 를 낸다 → **§2의 ①이 실증됐다는 뜻이다.** A는 상시 실행 호스트가 필요하고, 그 장소 결정을 사용자에게 올린다.
+
+**함께 계측할 두 숫자**: 상품 1건 변환 wall-time(초) · 결과 HTML 바이트. 위 §6-3·6-4의 미확인을 그 자리에서 지운다.
+
+**이 실증에서 하지 않는 것**: 정본 파일 수정 · GODO 함수 추가 · 새 저장소·DB·Blob · 환경변수 변경 · Production 배포 · 실상품 대량 변환.
+
+---
+
+## 부록 — 이 문서의 확인 범위
+
+**직접 읽음** **[코드]**: `app/server.py`(전문) · `app/excel.py:143-217` · `app/convert.py:1-140, 280-394`(구간) · `app/render.py`(함수 목록·`data_uri` 구간) · `app/gate.py`(전문) · `requirements.txt` · `app/static/index.html`(호출 경로 전수 검색) · `api/detail/[action].ts` · `vite.config.ts` · `scripts/detailConverterService.ts` · `src/components/ExternalFlowConverterFrame.tsx`
+
+**직접 실행** **[실행]**: `git ls-tree`/`rev-parse` · 화면 호출 경로 검색 · `du -sh tools/.venv-detail-converter` · `find api -name "*.ts"` · `work/out` 53건 크기 집계 · `work` 폴더 수·용량
+
+**직접 조회** **[문서]**: `vercel.com/docs/functions/runtimes/python` · `vercel.com/docs/functions/limitations` (2026-08-21)
+
+**하지 않음**: 코드 변경 0 · 배포 0 · 실상품 변환 0 · AI 호출 0 · `npm test` 미실행(이 문서 작업의 종료 조건이 아니다) · Vercel 대시보드·요금제 확인 0
