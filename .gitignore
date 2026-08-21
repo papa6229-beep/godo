@@ -52,3 +52,6 @@ docs/*.pdf
 # 단순형 정본 변환기 사용본의 실행환경·작업 결과 (소스만 추적한다)
 /tools/.venv-detail-converter/
 /tools/converter-work/
+
+# 파이썬 실행 중 생기는 캐시
+__pycache__/
