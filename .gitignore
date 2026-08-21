@@ -48,3 +48,7 @@ docs/*.pdf
 
 # 변환 샘플 작업 폴더(대용량 이미지 오감 · 추적 불필요)
 /test/
+
+# 단순형 정본 변환기 사용본의 실행환경·작업 결과 (소스만 추적한다)
+/tools/.venv-detail-converter/
+/tools/converter-work/

@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 import { handleAiChat } from './api/_shared/aiProviderServer'
 import type { AiChatServerRequest } from './api/_shared/aiProviderServer'
 import { fetchImageBytes } from './api/_shared/detailImageFetch'
+import { startDetailConverter, stopDetailConverter } from './scripts/detailConverterService'
 
 // dev(순수 vite)에서는 api/ 서버리스 함수가 뜨지 않으므로, /api/ai/chat 를
 // 같은 handleAiChat 로직으로 처리하는 미들웨어를 붙인다. (Production은 api/ai/chat.ts 사용)
@@ -90,9 +91,26 @@ function detailImageDevPlugin(): Plugin {
   }
 }
 
+// GODO 를 로컬에서 평소처럼 띄우면(`npm run dev`) 단순형 정본 변환기도 함께 준비·기동한다.
+// 디자인팀 → [단순형 변환기(정본)] 이 별도 `실행.bat` 없이 바로 열리게 하는 것이 목적이다.
+// 준비는 백그라운드로 돌려 dev 서버 기동을 막지 않는다. 실패해도 GODO 는 그대로 뜬다.
+function detailConverterDevPlugin(): Plugin {
+  return {
+    name: 'godo-detail-converter-dev',
+    apply: 'serve',
+    configureServer(server) {
+      void startDetailConverter()
+      server.httpServer?.once('close', stopDetailConverter)
+      process.once('exit', stopDetailConverter)
+      process.once('SIGINT', () => { stopDetailConverter(); process.exit(0) })
+      process.once('SIGTERM', () => { stopDetailConverter(); process.exit(0) })
+    }
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), aiChatDevPlugin(), detailImageDevPlugin()],
+  plugins: [react(), aiChatDevPlugin(), detailImageDevPlugin(), detailConverterDevPlugin()],
   // 이식된 상세페이지 생성기의 react-rnd(react-draggable) 드래그 복구.
   // react-draggable/build/cjs/Draggable.js 의 log()가 `process.env.DRAGGABLE_DEBUG`를
   // 참조하는데, 브라우저엔 process가 없어 드래그 시작 시 ReferenceError로 드래그가 죽음.
