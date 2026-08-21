@@ -178,6 +178,8 @@ code{background:var(--field);border:1px solid var(--rule);border-radius:4px;padd
 <script>
 const $ = s => document.querySelector(s);
 let sheetKey = null, job = null;
+// 상품 자료 보관함(행 번호 → 변환 자료). 올려 둔 엑셀이 서버에서 사라져도 변환을 잇는다.
+let rowData = {};
 
 const post = async (url, body) => {
   const r = await fetch(url, {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(body)});
@@ -207,7 +209,11 @@ $('#btnXlsx').onclick = async () => {
   const miss = d.missing.length ? ` · 못 찾은 항목: ${d.missing.join(', ')}` : '';
   $('#sheetMsg').textContent = `${d.rows.length}개 행, 헤더 ${d.headers.length}개${miss}`;
   const tb = $('#tbl tbody'); tb.innerHTML = '';
+  // 상품별 자료를 화면이 들고 있는다. 서버가 여러 실행 공간에 흩어져 뜨면 요청
+  // 사이에 올려 둔 엑셀이 사라지는데(SHEETS), 그때 이 값을 함께 보내 변환을 잇는다.
+  rowData = {};
   d.rows.forEach(row => {
+    if (row.row_data) rowData[row.i] = row.row_data;
     const tr = document.createElement('tr');
     tr.dataset.ok = row.ok;
     tr.dataset.code = row.code; tr.dataset.i = row.i;
@@ -216,7 +222,7 @@ $('#btnXlsx').onclick = async () => {
       <td class="num">${row.captions}</td><td class="num">${row.options}</td><td>${row.adapter}</td>
       <td><span class="pill ${row.ok?'ok':'no'}">${row.ok?'통과':(row.reason||'보류')}</span></td>
       <td><button class="ghost" data-i="${row.i}">변환</button></td>`;
-    tr.querySelector('button').onclick = () => runConvert({sheet:sheetKey, row:row.i});
+    tr.querySelector('button').onclick = () => runConvert({sheet:sheetKey, row:row.i, row_data:rowData[row.i]});
     tb.appendChild(tr);
   });
   $('#listCard').classList.remove('hide');
@@ -347,7 +353,7 @@ $('#btnBatch').onclick = async () => {
     $('#batchMsg').className='msg';
     $('#batchMsg').textContent = `${n+1}/${picked.length} · ${code} 변환 중…`;
     try {
-      const d = await post('/api/convert', {sheet:sheetKey, row:Number(tr.dataset.i)});
+      const d = await post('/api/convert', {sheet:sheetKey, row:Number(tr.dataset.i), row_data:rowData[Number(tr.dataset.i)]});
       const caps = d.units.map(u => u.caption || '');
       let kept = '';
       // 기준선을 만들 때는 모델을 부르지 않는다. 문구가 돌릴 때마다 조금씩 달라져

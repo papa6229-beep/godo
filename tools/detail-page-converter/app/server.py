@@ -87,6 +87,53 @@ def index() -> str:
     return (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 
 
+def _row_data(row) -> dict:
+    """상품 한 건을 **변환에 필요한 만큼만** 담는다.
+
+    `raw`(엑셀 원본 행 전체)는 변환이 쓰지 않으므로 보내지 않는다.
+
+    왜 보내는가: 서버를 여러 실행 공간에 나눠 띄우면(예: 서버리스) 요청 사이에
+    `SHEETS` 가 사라진다. 그러면 화면에 상품 목록이 그대로 있는데 변환만 "먼저
+    엑셀을 올려야 한다" 로 죽는다. 화면이 이 값을 들고 있다가 함께 보내면 같은
+    `Row` 를 되살려 변환을 잇는다.
+    """
+    return {
+        "code": row.code,
+        "name": row.name,
+        "brand": row.brand,
+        "maker": row.maker,
+        "price": row.price,
+        "cost": row.cost,
+        "category": row.category,
+        "thumb": row.thumb,
+        "body": row.body,
+        "url": row.url,
+        "options": [
+            {"name": o.name, "values": list(o.values), "numbers": list(o.numbers)}
+            for o in row.options
+        ],
+    }
+
+
+def _row_from_data(data: dict) -> excel.Row:
+    """`_row_data` 가 담아 준 것을 그대로 `excel.Row` 로 되살린다."""
+    options = []
+    for item in data.get("options") or []:
+        if not isinstance(item, dict):
+            continue
+        options.append(excel.Option(
+            name=str(item.get("name") or ""),
+            values=[str(v) for v in (item.get("values") or [])],
+            numbers=[str(n) for n in (item.get("numbers") or [])],
+        ))
+    text = lambda key: str(data.get(key) or "")  # noqa: E731
+    return excel.Row(
+        code=text("code"), name=text("name"), brand=text("brand"), maker=text("maker"),
+        price=text("price"), cost=text("cost"), category=text("category"),
+        thumb=text("thumb"), body=text("body"), url=text("url"), options=options,
+    )
+
+
 @app.post("/api/excel")
 async def api_excel(file: UploadFile):
     try:
@@ -109,6 +156,7 @@ async def api_excel(file: UploadFile):
             "options": len(r.option_values),
             "adapter": "조각형" if len(keep) >= 2 else ("통이미지형" if keep else "—"),
             "ok": v.ok, "reason": v.text,
+            "row_data": _row_data(r),
         })
     return {"sheet": key, "headers": sheet.headers, "missing": sheet.missing, "rows": rows}
 
@@ -116,6 +164,8 @@ async def api_excel(file: UploadFile):
 class ConvertReq(BaseModel):
     sheet: str | None = None
     row: int | None = None
+    #: 화면이 들고 있는 그 상품의 자료. `SHEETS` 가 사라졌을 때만 쓰는 예비 경로다.
+    row_data: dict | None = None
     url: str | None = None
     name: str | None = None
     brand: str | None = None
@@ -129,10 +179,16 @@ def api_convert(req: ConvertReq):
             meta = Meta(name=req.name or "", brand=req.brand or "")
             job.work = convert.convert_url(req.url.strip(), job.dir, CACHE, meta)
         else:
+            # ① 올려 둔 엑셀이 이 실행 공간에 그대로 있으면 지금까지처럼 그것을 쓴다.
             sheet = SHEETS.get(req.sheet or "")
-            if sheet is None or req.row is None or req.row >= len(sheet.rows):
+            if sheet is not None and req.row is not None and req.row < len(sheet.rows):
+                job.row = sheet.rows[req.row]
+            # ② 엑셀이 사라졌어도 화면이 들고 있던 그 상품 자료가 있으면 되살려 잇는다.
+            elif req.row_data:
+                job.row = _row_from_data(req.row_data)
+            # ③ 둘 다 없을 때만 예전 그대로 돌려보낸다.
+            else:
                 raise HTTPException(400, "먼저 엑셀을 올려야 한다")
-            job.row = sheet.rows[req.row]
             job.work = convert.convert(job.row, job.dir, CACHE)
     except HTTPException:
         raise
