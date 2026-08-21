@@ -125,7 +125,7 @@ export const startDetailConverter = async (): Promise<void> => {
 
     // 준비를 먼저 한다. 포트가 막혀 오늘 못 띄우더라도 실행환경은 갖춰 두어야
     // "평소 실행만으로 준비된다"가 참이 된다.
-    if (!ensureEnvironment()) return
+    if (!(await ensureEnvironment())) return
 
     if (await portInUse(CONVERTER_PORT)) {
       say(`${CONVERTER_HOST}:${CONVERTER_PORT} 은 이미 다른 프로그램이 쓰고 있습니다.`)
