@@ -1,8 +1,27 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/flow-convert.py": {
+    "api/flow.py": {
+      "includeFiles": "tools/detail-page-converter/**",
       "excludeFiles": "{node_modules/**,dist/**,.worktrees/**,.superpowers/**,docs/**,test/**,sessions/**,public/**,assets/**,src/**,scripts/**,tools/.venv-detail-converter/**,tools/converter-work/**,tools/detail-page-converter/tests/**}"
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/flow", "destination": "/api/flow?p=/" },
+    { "source": "/flow/", "destination": "/api/flow?p=/" },
+    { "source": "/api/excel", "destination": "/api/flow?p=/api/excel" },
+    { "source": "/api/convert", "destination": "/api/flow?p=/api/convert" },
+    { "source": "/api/render", "destination": "/api/flow?p=/api/render" },
+    { "source": "/api/autofill/available", "destination": "/api/flow?p=/api/autofill/available" },
+    { "source": "/api/autofill", "destination": "/api/flow?p=/api/autofill" },
+    { "source": "/api/save", "destination": "/api/flow?p=/api/save" },
+    { "source": "/api/made", "destination": "/api/flow?p=/api/made" },
+    { "source": "/api/reset", "destination": "/api/flow?p=/api/reset" },
+    { "source": "/preview/:jid", "destination": "/api/flow?p=/preview/:jid" },
+    { "source": "/download/batch/all", "destination": "/api/flow?p=/download/batch/all" },
+    { "source": "/download/:jid", "destination": "/api/flow?p=/download/:jid" },
+    { "source": "/out/:code/file", "destination": "/api/flow?p=/out/:code/file" },
+    { "source": "/out/:code", "destination": "/api/flow?p=/out/:code" },
+    { "source": "/asset/:jid/:name", "destination": "/api/flow?p=/asset/:jid/:name" }
+  ]
 }
