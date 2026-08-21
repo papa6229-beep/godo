@@ -3,6 +3,7 @@ import './DesignTeamDashboard.css';
 import { inboxFor } from '../services/repositories/teamMessageRepository';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, TEAM_MESSAGE_STATUS_META, type TeamMessage } from '../types/teamMessage';
 import DetailPageBuilder from './detailBuilder/DetailPageBuilder';
+import ExternalFlowConverterFrame from './ExternalFlowConverterFrame';
 import { getAgentBrainChoice, setAgentBrainChoice, isBrainConnected, getGlobalBrainSelection, providerLabel } from '../services/aiBrainSettings';
 import type { BrainProviderId } from '../types/aiProvider';
 
@@ -14,12 +15,22 @@ const DESIGN_AGENT_ID = 'design';
 
 interface Props { messages: TeamMessage[] }
 
+// 작업창에 담기는 도구. 'externalFlow' 만 고도 코드가 아니라 외부 정본 앱(별도 실행) 화면이다.
+type BuilderMode = 'bananamall' | 'godo' | 'godoFlow' | 'externalFlow';
+
+const BUILDER_TITLE: Record<BuilderMode, string> = {
+  godo: '🛍️ 고도몰 상세페이지 생성기',
+  godoFlow: '🔄 단순형 변환기',
+  externalFlow: '🧩 단순형 변환기(정본)',
+  bananamall: '🖼️ 메인몰 상세페이지 생성기',
+};
+
 const shortTime = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [builderMode, setBuilderMode] = useState<'bananamall' | 'godo' | 'godoFlow'>('godo');
-  const openBuilder = (mode: 'bananamall' | 'godo' | 'godoFlow') => { setBuilderMode(mode); setBuilderOpen(true); };
+  const [builderMode, setBuilderMode] = useState<BuilderMode>('godo');
+  const openBuilder = (mode: BuilderMode) => { setBuilderMode(mode); setBuilderOpen(true); };
   const requests = useMemo(() => inboxFor(messages, 'design'), [messages]);
   const open = requests.filter((m) => m.status !== 'done');
   const doneCount = requests.length - open.length;
@@ -84,6 +95,16 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
         <button type="button" className="dtd-gen-open" onClick={() => openBuilder('godoFlow')}>변환기 열기 →</button>
       </div>
 
+      {/* 단순형 변환기(정본) — 외부 정본 앱 화면을 이 작업창 안에서 그대로 쓴다(고도가 변환하지 않는다) */}
+      <div className="dtd-generator-slot">
+        <div className="dtd-gen-icon">🧩</div>
+        <div className="dtd-gen-body">
+          <h3 className="dtd-gen-title">단순형 변환기(정본)</h3>
+          <p className="dtd-gen-desc">별도로 켜 둔 <b>단순형 변환기 정본</b> 화면을 이 작업창 안에서 그대로 사용합니다. 변환 규칙·검수 신호등은 그쪽 프로그램의 것이며 고도가 다시 판정하지 않습니다.</p>
+        </div>
+        <button type="button" className="dtd-gen-open" onClick={() => openBuilder('externalFlow')}>정본 변환기 열기 →</button>
+      </div>
+
       {/* 메인몰(기존) 상세페이지 생성기 */}
       <div className="dtd-generator-slot">
         <div className="dtd-gen-icon">🖼️</div>
@@ -98,11 +119,13 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
       {builderOpen && (
         <div className="dtd-builder-overlay">
           <div className="dtd-builder-bar">
-            <span className="dtd-builder-bar-title">{builderMode === 'godo' ? '🛍️ 고도몰 상세페이지 생성기' : builderMode === 'godoFlow' ? '🔄 단순형 변환기' : '🖼️ 메인몰 상세페이지 생성기'}</span>
+            <span className="dtd-builder-bar-title">{BUILDER_TITLE[builderMode]}</span>
             <button type="button" className="dtd-builder-close" onClick={() => setBuilderOpen(false)}>✕ 닫기</button>
           </div>
           <div className="dtd-builder-body">
-            <DetailPageBuilder layoutMode={builderMode} />
+            {builderMode === 'externalFlow'
+              ? <ExternalFlowConverterFrame />
+              : <DetailPageBuilder layoutMode={builderMode} />}
           </div>
         </div>
       )}
