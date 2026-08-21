@@ -1,0 +1,14 @@
+# api/flow-convert.py (단순형 정본 변환 어댑터)가 런타임에 쓰는 것만 적는다.
+#
+# 정본 `tools/detail-page-converter/requirements.txt` 에서 실제로 필요한 것만 골랐다.
+# `app/excel.py`=openpyxl · `app/convert.py`·`slicer/*`=numpy+Pillow · `app/render.py`=Pillow.
+# `app/source.py` 는 정규식으로 HTML 을 읽으므로 bs4·lxml 은 부르지 않는다(전수 확인).
+#
+# **fastapi·uvicorn 은 넣지 않는다.** 파이썬 프레임워크 프리셋이 잡히면 `/api` 의
+# 파일 기반 함수가 전부 사라진다("A Python framework preset takes precedence over
+# file-based functions" — vercel.com/docs/functions/runtimes/python/api-directory).
+# 그 둘은 정본 서버(`app/server.py`)만 쓰는데 이 경로는 그 파일을 import 하지 않는다.
+
+numpy>=1.24
+Pillow>=10.0
+openpyxl>=3.1

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/flow-convert.py": {
+      "excludeFiles": "{node_modules/**,dist/**,.worktrees/**,.superpowers/**,docs/**,test/**,sessions/**,public/**,assets/**,src/**,scripts/**,tools/.venv-detail-converter/**,tools/converter-work/**,tools/detail-page-converter/tests/**}"
+    }
+  }
+}

@@ -3,7 +3,7 @@ import './DesignTeamDashboard.css';
 import { inboxFor } from '../services/repositories/teamMessageRepository';
 import { DEPT_TEAM_META, TEAM_MESSAGE_KIND_META, TEAM_MESSAGE_STATUS_META, type TeamMessage } from '../types/teamMessage';
 import DetailPageBuilder from './detailBuilder/DetailPageBuilder';
-import ExternalFlowConverterFrame from './ExternalFlowConverterFrame';
+import FlowConverterPanel from './FlowConverterPanel';
 import { getAgentBrainChoice, setAgentBrainChoice, isBrainConnected, getGlobalBrainSelection, providerLabel } from '../services/aiBrainSettings';
 import type { BrainProviderId } from '../types/aiProvider';
 
@@ -95,12 +95,12 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
         <button type="button" className="dtd-gen-open" onClick={() => openBuilder('godoFlow')}>변환기 열기 →</button>
       </div>
 
-      {/* 단순형 변환기(정본) — 외부 정본 앱 화면을 이 작업창 안에서 그대로 쓴다(고도가 변환하지 않는다) */}
+      {/* 단순형 변환기(정본) — 엑셀 1건을 서버에서 정본 모듈로 변환한다 */}
       <div className="dtd-generator-slot">
         <div className="dtd-gen-icon">🧩</div>
         <div className="dtd-gen-body">
           <h3 className="dtd-gen-title">단순형 변환기(정본)</h3>
-          <p className="dtd-gen-desc">별도로 켜 둔 <b>단순형 변환기 정본</b> 화면을 이 작업창 안에서 그대로 사용합니다. 변환 규칙·검수 신호등은 그쪽 프로그램의 것이며 고도가 다시 판정하지 않습니다.</p>
+          <p className="dtd-gen-desc">엑셀을 올려 상품 하나를 고르면 <b>단순형 정본 규칙</b>으로 상세페이지 HTML을 만듭니다. 변환·검수 신호등 판정은 정본 코드가 그대로 합니다.</p>
         </div>
         <button type="button" className="dtd-gen-open" onClick={() => openBuilder('externalFlow')}>정본 변환기 열기 →</button>
       </div>
@@ -124,7 +124,7 @@ export const DesignTeamDashboard: React.FC<Props> = ({ messages }) => {
           </div>
           <div className="dtd-builder-body">
             {builderMode === 'externalFlow'
-              ? <ExternalFlowConverterFrame />
+              ? <FlowConverterPanel />
               : <DetailPageBuilder layoutMode={builderMode} />}
           </div>
         </div>

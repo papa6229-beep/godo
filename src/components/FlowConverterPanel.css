@@ -1,0 +1,49 @@
+/* 단순형 정본 변환기(P1) — 고도 작업창(.dtd-builder-body) 안을 채운다. */
+
+.fcp { display: flex; width: 100%; height: 100%; background: var(--bg-app); color: var(--text-primary); }
+
+.fcp-side { flex: 0 0 380px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-right: 1px solid var(--line-subtle); overflow-y: auto; }
+.fcp-head { display: flex; flex-direction: column; gap: 4px; }
+.fcp-title { margin: 0; font-size: 15px; font-weight: 700; }
+.fcp-sub { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+
+.fcp-file { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px dashed var(--line-subtle); border-radius: 10px; cursor: pointer; }
+.fcp-file input { display: none; }
+.fcp-file-btn { flex-shrink: 0; font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 8px; background: var(--accent-primary, #31D6C4); color: #08221f; }
+.fcp-file-name { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fcp-msg { margin: 0; font-size: 12px; color: var(--text-secondary); }
+.fcp-error { margin: 0; font-size: 12px; line-height: 1.6; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, #ef4444 12%, transparent); color: #ef4444; }
+.fcp-count { margin: 4px 0 0; font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+
+.fcp-rows { display: flex; flex-direction: column; gap: 6px; }
+.fcp-row { display: flex; align-items: flex-start; gap: 9px; text-align: left; padding: 10px; border: 1px solid var(--line-subtle); border-radius: 10px; background: var(--bg-surface); color: inherit; cursor: pointer; }
+.fcp-row.on { border-color: var(--accent-primary, #31D6C4); background: var(--accent-soft); }
+.fcp-row:hover { border-color: var(--accent-primary, #31D6C4); }
+.fcp-dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; }
+.fcp-dot.ok { background: #22c55e; }
+.fcp-dot.bad { background: #ef4444; }
+.fcp-row-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fcp-row-name { font-size: 12px; font-weight: 700; line-height: 1.5; }
+.fcp-row-meta { font-size: 11px; color: var(--text-secondary); }
+.fcp-row-why { font-size: 11px; color: #ef4444; }
+
+.fcp-go { margin-top: 4px; font-size: 13px; font-weight: 700; padding: 10px; border: none; border-radius: 9px; background: var(--accent-primary, #31D6C4); color: #08221f; cursor: pointer; }
+.fcp-go:disabled { opacity: .5; cursor: default; }
+.fcp-note { margin: 0; font-size: 11px; line-height: 1.6; color: var(--text-secondary); }
+
+.fcp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fcp-empty { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--text-secondary); }
+
+.fcp-result { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-subtle); background: var(--bg-surface); }
+.fcp-badge { font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px; }
+.fcp-badge.ok { background: color-mix(in srgb, #22c55e 16%, transparent); color: #16a34a; }
+.fcp-badge.no { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #b45309; }
+.fcp-badge.bad { background: color-mix(in srgb, #ef4444 16%, transparent); color: #dc2626; }
+.fcp-result-name { font-size: 12px; font-weight: 700; }
+.fcp-result-meta { font-size: 11px; color: var(--text-secondary); }
+.fcp-result-why { font-size: 11px; color: #b45309; }
+.fcp-result-note { font-size: 11px; color: var(--text-secondary); }
+.fcp-dl { margin-left: auto; font-size: 12px; font-weight: 700; padding: 7px 13px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-primary); text-decoration: none; border: 1px solid var(--line-subtle); }
+
+.fcp-preview { flex: 1; width: 100%; border: 0; background: #ffffff; }
