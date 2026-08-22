@@ -33,16 +33,27 @@ export interface BasicBandRef {
   metrics?: BasicSlotMetrics;
 }
 
-// ── AI(Claude 1콜)가 돌려주는 의미 지도 — 픽셀 좌표 없음 ──────────────────────
-export interface AiTextItem { kind: 'text'; text: string }
-export interface AiMediaItem { kind: 'media'; index: number; composite?: boolean; reviewNote?: string }
-export type AiSectionItem = AiTextItem | AiMediaItem;
-export interface AiBodySection { number?: string; title?: string; items?: AiSectionItem[] }
+// ── AI(Claude 1콜)가 돌려주는 "밴드 장부" — 픽셀 좌표 없음 ────────────────────
+//   섹션 배열을 AI 가 자유 조립하던 계약을 버리고, 각 밴드를 정확히 한 번 기재하는 장부로 바꿨다
+//   (2026-08-22 3사례 교정). 섹션은 코드가 장부를 원본 인덱스 순서로 훑어 만든다 → 재배열·병합·분실 불가.
+export type BandRole = 'summary' | 'body' | 'tail' | 'exclude';
+export type BandKind = 'text' | 'media' | 'composite';
+export type BandAsset = 'product_cut' | 'package_box' | 'components' | 'usage' | 'diagram' | 'other';
+export interface AiBandEntry {
+  index: number;            // 원본 밴드 인덱스
+  role?: BandRole;          // 위치 역할
+  kind?: BandKind;          // 표현 종류
+  asset?: BandAsset;        // 자산 종류(상단 슬롯 자격 검증에 쓴다)
+  sectionStart?: boolean;   // 새 설명 섹션 시작
+  sectionTitle?: string;    // 원본 섹션 제목(있을 때만)
+  text?: string;            // 직접 타이핑할 독립 설명문(kind=text)
+  reviewNote?: string;      // 복합 이미지 손검수 사유
+}
 export interface BasicSlotRequest {
   mainIndex: number;
   featureIndex: number;
   packageIndex: number;
-  summarySourceIndexes?: number[];   // 원본 "요약정보" 영역에서 온 밴드들(본문 재사용 금지)
+  ledger?: NormalizedBandEntry[];    // 자산 종류로 슬롯 자격을 검증하기 위한 장부(없으면 종전대로)
   /**
    * 메인으로 고른 컷이 "흰 배경 + 제품 단독"인가(AI 판단).
    * false = 손·사람·소품·글자 등이 섞였지만 더 나은 후보가 없어 그대로 쓴 경우 → 손검수 안내를 남긴다.
@@ -64,9 +75,11 @@ export interface BasicBodyMediaItem {
 export type BasicBodyItem = BasicBodyTextItem | BasicBodyMediaItem;
 export interface BasicBodySection {
   id: string;
-  number: string;          // 원본 번호("01"…). 없을 수 있다
+  number: string;          // 원본 번호("01"…). 없을 수 있다 — 화면 주 번호는 배열 순서(bodyPointLabel)
   title: string;           // 원본 섹션 제목. 없을 수 있다
   items: BasicBodyItem[];  // 원본 위→아래 순서
+  /** 이 섹션 안에서 "설명 없는 제품컷 나열부(tail)"가 시작되는 항목 위치. 없으면 undefined. */
+  tailStart?: number;
 }
 
 /** dHash 해밍 ≤ 이 값이면 같은 컷(실측: 동일 0~3 vs 다른 27+). */
@@ -123,11 +136,26 @@ export const selectBasicSlots = (req: BasicSlotRequest, bands: BasicBandRef[]): 
     return null;
   };
 
-  // 단일 역할(패키지): 차단 대상이면 거부 → 빈 슬롯.
-  const validateRole = (requested: number, role: string): number => {
+  // 장부의 자산 종류로 "긍정 자격"을 확인한다(장부가 없으면 종전대로 통과).
+  //   패키지 슬롯은 package_box 만 허용 — 구성품(파우치·케이블) 사진을 패키지로 쓰지 않는다.
+  const assetOf = (i: number): BandAsset | undefined => req.ledger?.find((e) => e.index === i)?.asset;
+  const assetAllows = (i: number, allowed: BandAsset[]): boolean => {
+    const a = assetOf(i);
+    return a === undefined ? true : allowed.includes(a);
+  };
+
+  // 단일 역할(패키지): 차단 대상이거나 자산 종류가 맞지 않으면 거부 → 빈 슬롯.
+  const validateRole = (requested: number, role: string, allowed: BandAsset[]): number => {
     const block = blockReason(requested);
     if (block) {
       decisions.push({ role, requested, result: inRange(requested, n) ? 'rejected→empty' : 'none', final: -1, reason: block });
+      return -1;
+    }
+    if (!assetAllows(requested, allowed)) {
+      decisions.push({ role, requested, result: 'rejected→empty', final: -1, reason: `asset_not_allowed(${assetOf(requested)})` });
+      notes.push(role === 'package'
+        ? '패키지 박스 사진이 없어 패키지 영역을 비웠습니다(구성품 사진은 패키지로 쓰지 않습니다).'
+        : `${role} 자산 종류가 맞지 않아 비웠습니다.`);
       return -1;
     }
     used.add(requested);
@@ -138,6 +166,7 @@ export const selectBasicSlots = (req: BasicSlotRequest, bands: BasicBandRef[]): 
   const metricsOf = (i: number): BasicSlotMetrics | undefined => (inRange(i, n) ? bands[i].metrics : undefined);
   const cleanEligible = (i: number, avoid: number[]): boolean => {
     if (blockReason(i) || used.has(i)) return false;
+    if (!assetAllows(i, ['product_cut'])) return false;   // 메인·KEY FEATURE 는 제품컷만
     const m = metricsOf(i);
     if (!m) return false;
     const t = CLEAN_CUT_THRESHOLDS;
@@ -174,15 +203,17 @@ export const selectBasicSlots = (req: BasicSlotRequest, bands: BasicBandRef[]): 
   };
 
   // 패키지 먼저(메인/피처가 패키지와 같은 컷을 피할 수 있게), 그다음 메인 → 피처.
-  const packageIndex = validateRole(req.packageIndex, 'package');
+  const packageIndex = validateRole(req.packageIndex, 'package', ['package_box']);
   const mainIndex = selectClean(req.mainIndex, 'main', [packageIndex]);
   const featureIndex = selectClean(req.featureIndex, 'feature', [packageIndex, mainIndex]);
 
-  // 본문 재사용 금지: 원본 요약정보 영역 밴드 + 상단에 쓴 패키지 자산.
+  // 본문 재사용 금지: 장부에서 summary 로 표시된 원본 요약 영역 + 상단에 쓴 패키지 자산.
   const reserved = new Set<number>();
-  for (const i of req.summarySourceIndexes ?? []) if (inRange(i, n)) reserved.add(i);
+  for (const e of req.ledger ?? []) if (e.role === 'summary' && inRange(e.index, n)) reserved.add(e.index);
   if (packageIndex >= 0) reserved.add(packageIndex);
-  if (!(req.summarySourceIndexes ?? []).length) notes.push('요약정보 원본 밴드 표시 없음 — 본문 중복 여부를 눈으로 확인하세요.');
+  if (req.ledger && !req.ledger.some((e) => e.role === 'summary')) {
+    notes.push('요약정보 원본 밴드 표시 없음 — 본문 중복 여부를 눈으로 확인하세요.');
+  }
   // 제품 단독 컷이 부족해 손·사람·소품이 섞인 컷을 메인으로 쓴 경우: 변환은 계속하고 검수 신호만 남긴다.
   if (mainIndex >= 0 && req.mainIsSoloProductCut === false) notes.push('메인 이미지에 제품 외 요소 포함 — 손검수 필요.');
 
@@ -193,13 +224,86 @@ export interface BodyDecision { section: string; requested: number; result: stri
 export interface BasicBodyResult { sections: BasicBodySection[]; notes: string[]; decisions: BodyDecision[] }
 export interface AssembleOptions { reserved?: Set<number> }
 
+// ── 밴드 장부 정규화 ─────────────────────────────────────────────────────────
+export interface NormalizedBandEntry {
+  index: number;
+  role: BandRole;
+  kind: BandKind;
+  asset: BandAsset;
+  sectionStart: boolean;
+  sectionTitle: string;
+  text: string;
+  reviewNote: string;
+}
+export interface LedgerResult { ledger: NormalizedBandEntry[]; notes: string[]; decisions: BodyDecision[] }
+
+const ROLES: BandRole[] = ['summary', 'body', 'tail', 'exclude'];
+const KINDS: BandKind[] = ['text', 'media', 'composite'];
+const ASSETS: BandAsset[] = ['product_cut', 'package_box', 'components', 'usage', 'diagram', 'other'];
+
 /**
- * AI 의 섹션 지도 → 화면 렌더용 본문 섹션 배열.
- *   원본의 섹션 개수·순서·항목 순서를 그대로 둔다(정렬·병합·자동 생성 없음).
- *   미디어 항목은 로컬 검증을 통과한 것만 남고, 제외되면 사유가 decisions 에 남는다.
+ * AI 장부를 "밴드 하나당 정확히 한 줄, 원본 인덱스 순서" 로 정규화한다.
+ *   · 로컬이 이미 판정한 홍보 GIF 는 AI 판단과 무관하게 exclude.
+ *   · 중복 기재는 첫 줄만 채택하고, 누락 밴드는 보수적 기본값으로 채운다 — 둘 다 정확한 인덱스로 notes 에 남긴다.
+ *   · 순서는 AI 가 어떻게 적어 보내든 원본 인덱스 순으로 강제한다(재배열 불가).
  */
-export const assembleBasicBody = (
-  aiSections: AiBodySection[],
+export const normalizeBandLedger = (aiBands: AiBandEntry[], bands: BasicBandRef[]): LedgerResult => {
+  const notes: string[] = [];
+  const decisions: BodyDecision[] = [];
+  const n = bands.length;
+  const byIndex = new Map<number, AiBandEntry>();
+  const duplicated: number[] = [];
+  const outOfRange: number[] = [];
+
+  for (const raw of Array.isArray(aiBands) ? aiBands : []) {
+    const idx = typeof raw?.index === 'number' ? raw.index : Number.parseInt(String(raw?.index), 10);
+    if (!inRange(idx, n)) { if (Number.isFinite(idx)) outOfRange.push(idx); continue; }
+    if (byIndex.has(idx)) { duplicated.push(idx); continue; }   // 먼저 온 줄만 채택
+    byIndex.set(idx, raw);
+  }
+
+  const missing: number[] = [];
+  const ledger: NormalizedBandEntry[] = [];
+  for (let i = 0; i < n; i++) {
+    const raw = byIndex.get(i);
+    if (!raw) missing.push(i);
+    const promo = bands[i].promo;
+    const isTextBand = bands[i].type === 'TEXT';
+    const role: BandRole = promo ? 'exclude'
+      : (ROLES.includes(raw?.role as BandRole) ? (raw!.role as BandRole) : (raw ? 'body' : 'exclude'));
+    let kind: BandKind = KINDS.includes(raw?.kind as BandKind) ? (raw!.kind as BandKind) : (isTextBand ? 'text' : 'media');
+    // 글자만 있는 밴드를 이미지로 싣지 않는다(중복 출력 방지) — 로컬 최종 판정.
+    if (isTextBand && kind !== 'text') {
+      decisions.push({ section: '-', requested: i, result: 'coerced', reason: 'text_band_forced_to_text' });
+      kind = 'text';
+    }
+    if (bands[i].type === 'MIXED' && kind === 'media') kind = 'composite';
+    ledger.push({
+      index: i,
+      role,
+      kind,
+      asset: ASSETS.includes(raw?.asset as BandAsset) ? (raw!.asset as BandAsset) : 'other',
+      sectionStart: raw?.sectionStart === true,
+      sectionTitle: (raw?.sectionTitle ?? '').toString().trim(),
+      text: (raw?.text ?? '').toString().trim(),
+      reviewNote: (raw?.reviewNote ?? '').toString().trim(),
+    });
+  }
+
+  if (missing.length) notes.push(`판독 장부에 빠진 밴드 ${missing.length}건(인덱스 ${missing.join(', ')}) — 본문에서 제외했습니다. 손검수 필요.`);
+  if (duplicated.length) notes.push(`판독 장부에 두 번 기재된 밴드 ${duplicated.length}건(인덱스 ${[...new Set(duplicated)].join(', ')}) — 첫 기재만 사용했습니다. 손검수 필요.`);
+  if (outOfRange.length) notes.push(`판독 장부의 범위 밖 인덱스 ${[...new Set(outOfRange)].join(', ')} — 무시했습니다.`);
+  return { ledger, notes, decisions };
+};
+
+/**
+ * 장부 → 화면 렌더용 본문 섹션 배열. 코드가 원본 인덱스 순서로 한 번 훑으며 조립한다.
+ *   · body 밴드의 sectionStart 에서 새 섹션을 연다(원본 번호가 없어도 열린다).
+ *   · tail 밴드(설명 없는 제품컷 나열부)는 마지막 섹션 뒤에 이어 붙이고 tailStart 로 구분 위치를 남긴다.
+ *   · summary/exclude 는 본문에 넣지 않는다. AI 가 순서를 바꿀 수 없다(장부 순회가 곧 원본 순서).
+ */
+export const assembleBodyFromLedger = (
+  ledger: NormalizedBandEntry[],
   bands: BasicBandRef[],
   opts: AssembleOptions = {},
 ): BasicBodyResult => {
@@ -207,59 +311,56 @@ export const assembleBasicBody = (
   const decisions: BodyDecision[] = [];
   const notes: string[] = [];
   const sections: BasicBodySection[] = [];
-  const usedMedia = new Set<number>();          // 본문 전체에서 같은 밴드를 두 번 쓰지 않는다
+  const usedMedia = new Set<number>();
   const n = bands.length;
 
   const dropReason = (i: number): string | null => {
     if (!inRange(i, n)) return 'out_of_range';
     if (bands[i].promo) return 'bananamall_promo_gif';
-    if (bands[i].type === 'TEXT') return 'text_band_not_allowed_for_image_slot';
     if (reserved.has(i)) return 'reserved_for_summary_or_package';
     if (usedMedia.has(i)) return 'duplicate_in_body';
     for (const r of reserved) if (isSameCut(bands[i].metrics, bands[r]?.metrics)) return 'duplicate_of_reserved_cut';
     return null;
   };
+  const openSection = (title: string): BasicBodySection => {
+    const sec: BasicBodySection = { id: `godo-body-${sections.length + 1}`, number: '', title, items: [] };
+    sections.push(sec);
+    return sec;
+  };
+  const current = (): BasicBodySection => (sections.length ? sections[sections.length - 1] : openSection(''));
 
-  (Array.isArray(aiSections) ? aiSections : []).forEach((sec, si) => {
-    const number = (sec?.number ?? '').toString().trim();
-    const title = (sec?.title ?? '').toString().trim();
-    const label = number || title || `${si + 1}`;
-    const items: BasicBodyItem[] = [];
+  let tailOpened = false;
+  for (const e of [...ledger].sort((a, b) => a.index - b.index)) {
+    if (e.role === 'summary' || e.role === 'exclude') continue;
 
-    for (const raw of Array.isArray(sec?.items) ? sec.items! : []) {
-      if (!raw || typeof raw !== 'object') continue;
-      if (raw.kind === 'text') {
-        const text = (raw.text ?? '').toString().trim();
-        if (text) items.push({ kind: 'text', text });
-        continue;
-      }
-      if (raw.kind !== 'media') continue;
-      const idx = typeof raw.index === 'number' ? raw.index : Number.parseInt(String(raw.index), 10);
-      const reason = dropReason(idx);
-      if (reason) {
-        decisions.push({ section: label, requested: idx, result: 'dropped', reason });
-        continue;
-      }
-      const band = bands[idx];
-      usedMedia.add(idx);
-      const reviewNote = (raw.reviewNote ?? '').toString().trim();
-      items.push({
-        kind: 'media',
-        src: band.src,
-        mediaType: band.isGif ? 'gif' : 'image',
-        composite: raw.composite === true || band.type === 'MIXED',
-        ...(reviewNote ? { reviewNote } : {}),
-      });
-      decisions.push({ section: label, requested: idx, result: 'kept', reason: band.type });
+    if (e.role === 'body' && e.sectionStart) openSection(e.sectionTitle);
+    const sec = current();
+    if (e.role === 'body' && !e.sectionStart && e.sectionTitle && !sec.title) sec.title = e.sectionTitle;
+
+    if (e.kind === 'text') {
+      if (e.text) { sec.items.push({ kind: 'text', text: e.text }); decisions.push({ section: sec.title || sec.id, requested: e.index, result: 'kept', reason: 'text' }); }
+      else decisions.push({ section: sec.title || sec.id, requested: e.index, result: 'dropped', reason: 'empty_text' });
+      continue;
     }
+    const reason = dropReason(e.index);
+    if (reason) { decisions.push({ section: sec.title || sec.id, requested: e.index, result: 'dropped', reason }); continue; }
+    // 설명 없는 제품컷 나열부(tail) 는 앞 설명 섹션과 한 번만 구분한다.
+    if (e.role === 'tail' && !tailOpened) { sec.tailStart = sec.items.length; tailOpened = true; }
+    usedMedia.add(e.index);
+    sec.items.push({
+      kind: 'media',
+      src: bands[e.index].src,
+      mediaType: bands[e.index].isGif ? 'gif' : 'image',
+      composite: e.kind === 'composite',
+      ...(e.reviewNote ? { reviewNote: e.reviewNote } : {}),
+    });
+    decisions.push({ section: sec.title || sec.id, requested: e.index, result: 'kept', reason: `${e.role}/${e.kind}` });
+  }
 
-    if (!items.length) notes.push(`본문 ${label} 섹션에 남은 자료가 없습니다 — 손검수 필요.`);
-    sections.push({ id: `godo-body-${si + 1}-${number || 'x'}`, number, title, items });
-  });
-
+  for (const sec of sections) if (!sec.items.length) notes.push(`본문 ${sec.title || sec.id} 섹션에 남은 자료가 없습니다 — 손검수 필요.`);
   if (!sections.length) notes.push('AI 가 본문 섹션을 인식하지 못했습니다 — 손검수 필요.');
   const dropped = decisions.filter((d) => d.result === 'dropped').length;
-  if (dropped) notes.push(`본문에서 ${dropped}건 제외(요약 원본·홍보 GIF·텍스트 밴드·중복).`);
+  if (dropped) notes.push(`본문에서 ${dropped}건 제외(요약 원본·홍보 GIF·중복·빈 설명).`);
 
   return { sections, notes, decisions };
 };

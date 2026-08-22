@@ -304,7 +304,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
     const sizeSection = isSizeSection(sec);
     // 마지막 섹션에서 "마지막 설명문 뒤에 제품 컷만 2장 이상" 연속되면 그 앞에 구분선 1개.
     const isLastSection = i === (all ? all.length : 0) - 1;
-    const runStart = trailingMediaRunStart(sec, isLastSection);
+    // 판독 장부가 표시한 tail 시작을 우선 쓰고, 표시가 없으면 종전 규칙으로 판단한다.
+    const runStart = typeof sec.tailStart === 'number' ? sec.tailStart : trailingMediaRunStart(sec, isLastSection);
     return (
       <React.Fragment key={sec.id || sid}>
         {i > 0 && (

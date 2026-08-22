@@ -6,7 +6,7 @@ import { chatWithProvider } from '../../../services/aiProviderAdapter';
 import { hasProviderKey } from '../../../services/aiKeyVault';
 import type { ChatContentPart } from '../../../types/aiProvider';
 import type { BasicBandType } from './basicBandTagger';
-import type { AiBodySection, AiSectionItem } from './basicBodyAssembly';
+import type { AiBandEntry } from './basicBodyAssembly';
 
 // 변환기 브레인 = Claude(클라우드) 고정. 생성기 문구용 로컬 Gemma(design 두뇌)와 분리 —
 // design 두뇌에 묶으면 로컬 LM Studio로 가서 대용량 이미지에 HTTP 400. 변환기는 항상 Claude.
@@ -25,8 +25,7 @@ export interface BasicVisionResult {
   featureIndex: number;    // KEY FEATURE 이미지. 없으면 -1
   packageIndex: number;    // 패키지 박스. 없으면 -1
   mainIsSoloProductCut: boolean;    // 메인이 "흰 배경 + 제품 단독" 컷인가(false = 손검수 안내)
-  summarySourceIndexes: number[];   // 원본 "요약정보" 영역에서 온 밴드(본문에 다시 넣지 않는다)
-  sections: AiBodySection[];        // 원본 순서를 유지한 본문 섹션·항목 지도(픽셀 좌표 없음)
+  bands: AiBandEntry[];             // 밴드 장부 — 유효 밴드마다 정확히 한 줄(섹션은 코드가 조립한다)
   notes: string[];
 }
 
@@ -88,41 +87,44 @@ const SYSTEM = [
   '  · 여기서도 깨끗한 제품 컷이 우선이지만 조건은 mainIndex 보다 완화해도 된다(손이 나온 컷도 허용).',
   '  ⚠️ 배경색·그림·장식 문양이 깔렸거나 설명 문구가 이미지로 박힌 밴드(요약정보 영역의 컬러 배경 메인컷 포함)는',
   '     mainIndex·featureIndex 후보가 아니다.',
-  '- packageIndex: 패키지(박스) 컷. 원본 요약영역에 있으면 그것을 쓴다. 없으면 -1.',
+  '- packageIndex: 패키지(박스) 컷. 원본 요약영역에 있으면 그것을 쓴다. **패키지 박스가 없으면 -1** —',
+  '  파우치·케이블 등 구성품 사진을 패키지로 쓰지 말 것(우리 코드도 asset="package_box" 가 아니면 거부한다).',
   '- keyFeatures: 핵심 특징 3가지 {title(짧은 제목 1줄), desc(짧은 설명 1줄)}.',
   '  원본 요약정보 아래 3줄 설명을 우선 근거로 쓰고, 부족할 때만 본문 섹션 제목·설명으로 보충한다. 길게 쓰지 말 것.',
   '- summary.type(타입)·material(재질)·weight(무게)·power(전원)·feature(한줄특징)·maker(제조사): 읽히면 채우고 아니면 "".',
-  '- summarySourceIndexes: 원본 "요약정보" 영역(상품명·요약표·3줄 카피·패키지 등 상단 구성에 쓴 원본)에서 온 밴드 번호 전부.',
-  '  본문에 다시 넣지 않기 위한 목록이다.',
+  '- 원본 "요약정보" 영역(상품명·요약표·3줄 카피·패키지 등 상단 구성에 쓴 원본) 밴드는 아래 장부에서 role="summary" 로 표시한다.',
+  '  (본문에 다시 넣지 않기 위한 표시다.)',
   '',
-  '[본문 sections — 원본 그대로]',
-  '- sections: 원본 본문의 섹션들을 "있던 개수·있던 순서 그대로" 나열한다. 합치거나 빼거나 새로 만들지 말 것.',
-  '- 각 섹션 = {number(원본 번호 "01" 등, 없으면 ""), title(원본 섹션 제목, 없으면 ""), items:[...]}.',
-  '- 섹션의 끝은 "다음 번호 또는 다음 섹션 제목이 시작되는 지점"이다.',
-  '- items 는 원본 위→아래 순서 그대로. 두 종류만 쓴다.',
-  '  · {"kind":"text","text":"…"}  = 이미지와 독립된 섹션 안내문·일반 설명 문단(글자로 옮긴다).',
-  '  · {"kind":"media","index":N,"composite":false} = 그 자리에 있던 이미지/움짤 밴드 번호.',
-  '- 판단 기준은 하나다 — **이미지에서 떼어도 그 문장만으로 읽히는가.**',
-  '  · 읽힌다(제목·안내 라벨·일반 설명·주석 등 별도 줄에 적힌 문장) → {"kind":"text"} 로 옮긴다.',
-  '    예: "전원 · 진동 버튼" / "충전" / "USB연결형으로 건전지 걱정없이! 충전해서 사용할 수 있습니다." / "* 리모컨은 CR2032 건전지 1개를 사용합니다."',
-  '  · 읽히지 않는다(제품의 특정 부위·기능을 이미지 안에서 가리키거나 배치로 설명하는 글자·선·화살표·표식)',
-  '    → 글자로 옮기지 말고 그 밴드를 media 로 두고 "composite":true 로 표시한다.',
-  '- ⚠️ 라벨이 (MIXED) 여도 **실제 제품 사진·사람·제품 도해·일러스트가 하나도 없고** 제목·색상 띠·일반 설명 문장만',
-  '  있는 밴드는 media 가 아니라 text 로 옮긴다(색 배경 제목 띠도 마찬가지 — 글자 이미지를 그대로 싣지 말 것).',
-  '  · 그 밴드에서 제목으로 쓸 문구는 그 섹션의 title 에만 넣고 items 의 text 로 중복해서 넣지 않는다.',
-  '  · 제품 사진이나 제품 도해가 조금이라도 함께 있는 밴드는 이 규칙 대상이 아니다(그대로 media).',
-  '- ⚠️ 제품 이미지와 한 시각 구성으로 묶인 텍스트·아이콘·표식은 화살표나 선의 유무와 관계없이 "이미지의 일부"다.',
-  '- 분리 여부가 애매하면 자르거나 삭제하지 말고 복합 이미지 하나로 보존하고 "reviewNote"에 손검수 사유를 한 줄 남긴다.',
-  '  · 예: 제품 사진 + 설명 문구 + 사이즈 도해가 한 배경(색 배경 포함)에 결합된 밴드',
-  '    → {"kind":"media","index":N,"composite":true,"reviewNote":"제품·설명·사이즈가 한 이미지에 결합됨 — 손검수 필요"}',
-  '- 사이즈·전원 섹션도 원본에 있던 그 위치에 그대로 둔다. 별도의 사이즈 섹션을 새로 만들지 말 것.',
-  '- 번호·섹션 제목은 items 에 다시 넣지 말 것(number/title 필드가 이미 담는다).',
+  '[본문 bands — 밴드 장부]',
+  '- bands: 위에서 받은 밴드마다 **정확히 한 줄씩** 적는다. 빠뜨리거나 두 번 적지 말 것.',
+  '  · 순서를 바꾸지 말 것 — 원본 인덱스 오름차순으로 적는다(섹션 조립은 우리 코드가 한다).',
+  '- 각 줄 = {"index":N,"role":..,"kind":..,"asset":..,"sectionStart":false,"sectionTitle":"","text":"","reviewNote":""}',
+  '- role(위치 역할)',
+  '  · "summary" = 원본 상단 요약정보 영역(상품명·요약표·3줄 카피·패키지 컷 등). 본문에 다시 넣지 않는다.',
+  '  · "body"    = 설명 섹션 본문.',
+  '  · "tail"    = 마지막에 설명 없이 이어지는 제품컷 나열부.',
+  '  · "exclude" = 쇼핑몰 홍보 움짤 등 쓰지 않을 밴드.',
+  '- kind(표현 종류)',
+  '  · "text"      = 이미지에서 떼어도 그 문장만으로 읽히는 제목·안내 라벨·설명·주석 → 글자로 옮긴다(text 필드).',
+  '  · "media"     = 글자 없는 사진/움짤.',
+  '  · "composite" = 제품 부위·기능·사이즈를 사진과 함께 설명하는 글자·선·표식이 한 장에 결합된 이미지.',
+  '    → 이미지 한 장으로 보존하고, 그 안의 문구를 text 로 또 적지 않는다(같은 설명이 두 번 나오면 실패다).',
+  '    → reviewNote 에 손검수 사유를 한 줄(예: "제품·설명·사이즈가 한 이미지에 결합됨 — 손검수 필요").',
+  '  ⚠️ 라벨이 (MIXED) 여도 실제 제품 사진·사람·제품 도해·일러스트가 하나도 없고 제목·색상 띠·설명 문장만',
+  '     있으면 media/composite 가 아니라 "text" 다(색 배경 제목 띠 포함 — 글자 이미지를 그대로 싣지 말 것).',
+  '- asset(자산 종류) = "product_cut"(제품 단독컷) · "package_box"(패키지 박스) · "components"(파우치·케이블 등 구성품)',
+  '  · "usage"(사용 장면) · "diagram"(도해·일러스트) · "other".',
+  '  ⚠️ 파우치·충전 케이블 같은 구성품 사진은 절대 "package_box" 가 아니다. 패키지 박스가 없으면 packageIndex 는 -1.',
+  '- sectionStart: 이 밴드에서 새 설명 섹션이 시작되면 true(원본에 번호가 없어도 제목 띠·구분 표시면 true).',
+  '- sectionTitle: 그 섹션의 원본 제목이 있으면 적는다(없으면 ""). 제목 문구를 text 로 중복해서 넣지 말 것.',
+  '- text: kind 가 "text" 일 때만 쓴다(라이트 리라이트한 문장).',
   '',
   '[출력] 아래 JSON "하나만" 출력(코드펜스/설명/머리말 금지):',
-  '{"productNameKr":"..\\n..","productNameEn":"..","summary":{"feature":"","type":"","material":"","weight":"","power":"","maker":""},',
+  '{"productNameKr":"..\n..","productNameEn":"..","summary":{"feature":"","type":"","material":"","weight":"","power":"","maker":""},',
   '"keyFeatures":[{"title":"","desc":""},{"title":"","desc":""},{"title":"","desc":""}],',
-  '"mainIndex":0,"featureIndex":0,"packageIndex":0,"mainIsSoloProductCut":true,"summarySourceIndexes":[0],',
-  '"sections":[{"number":"01","title":"제품특징","items":[{"kind":"text","text":"..\\n.."},{"kind":"media","index":3,"composite":false}]}],',
+  '"mainIndex":0,"featureIndex":0,"packageIndex":-1,"mainIsSoloProductCut":true,',
+  '"bands":[{"index":0,"role":"summary","kind":"text","asset":"other","sectionStart":false,"sectionTitle":"","text":"","reviewNote":""},',
+  '{"index":1,"role":"body","kind":"composite","asset":"product_cut","sectionStart":true,"sectionTitle":"제품특징","text":"","reviewNote":"…"}],',
   '"notes":[]}',
 ].join('\n');
 
@@ -140,23 +142,23 @@ const parseResult = (raw: string): BasicVisionResult => {
   const m = text.match(/\{[\s\S]*\}/);
   const obj = m ? JSON.parse(m[0]) : {};
   const feats = Array.isArray(obj.keyFeatures) ? obj.keyFeatures : [];
-  // 본문 섹션 지도: 개수·순서를 그대로 보존한다(정렬·병합·상한 절단 없음).
-  //   여기서는 형태만 강제하고, 실제 배제(홍보 GIF·TEXT·요약 원본·중복)는 basicBodyAssembly가 한다.
-  const sectionItem = (raw: any): AiSectionItem | null => {
+  // 밴드 장부: 여기서는 형태만 강제한다. 누락·중복·순서·홍보 GIF 최종 판정은 normalizeBandLedger 가 한다.
+  const bandEntry = (raw: any): AiBandEntry | null => {
     if (!raw || typeof raw !== 'object') return null;
-    if (raw.kind === 'text') { const t = str(raw.text); return t.trim() ? { kind: 'text', text: t } : null; }
-    if (raw.kind === 'media') {
-      const index = num(raw.index);
-      if (index < 0) return null;
-      const reviewNote = str(raw.reviewNote);
-      return { kind: 'media', index, composite: raw.composite === true, ...(reviewNote ? { reviewNote } : {}) };
-    }
-    return null;
+    const index = num(raw.index);
+    if (index < 0) return null;
+    return {
+      index,
+      role: str(raw.role) as AiBandEntry['role'],
+      kind: str(raw.kind) as AiBandEntry['kind'],
+      asset: str(raw.asset) as AiBandEntry['asset'],
+      sectionStart: raw.sectionStart === true,
+      sectionTitle: str(raw.sectionTitle),
+      text: str(raw.text),
+      reviewNote: str(raw.reviewNote),
+    };
   };
-  const sections: AiBodySection[] = (Array.isArray(obj.sections) ? obj.sections : []).map((s: any) => ({
-    number: str(s?.number), title: str(s?.title),
-    items: (Array.isArray(s?.items) ? s.items : []).map(sectionItem).filter(Boolean) as AiSectionItem[],
-  }));
+  const bands: AiBandEntry[] = (Array.isArray(obj.bands) ? obj.bands : []).map(bandEntry).filter(Boolean) as AiBandEntry[];
   return {
     productNameKr: str(obj.productNameKr),
     productNameEn: str(obj.productNameEn),
@@ -168,9 +170,7 @@ const parseResult = (raw: string): BasicVisionResult => {
     mainIndex: num(obj.mainIndex), featureIndex: num(obj.featureIndex), packageIndex: num(obj.packageIndex),
     // 미회신이면 true(=문제 없음)로 본다. 명시적으로 false 일 때만 손검수 안내를 남긴다.
     mainIsSoloProductCut: obj.mainIsSoloProductCut !== false,
-    summarySourceIndexes: (Array.isArray(obj.summarySourceIndexes) ? obj.summarySourceIndexes : [])
-      .map((v: unknown) => num(v)).filter((v: number) => v >= 0),
-    sections,
+    bands,
     notes: Array.isArray(obj.notes) ? obj.notes.map(str).filter(Boolean) : [],
   };
 };
@@ -199,7 +199,7 @@ export const readBasicLayout = async (
       `영문명: ${ctx.productNameEn || ''}\n브랜드: ${ctx.brandName || ''}\n` +
       (ctx.introText ? `상세 상단 요약 텍스트(근거): ${ctx.introText.slice(0, 600)}\n` : '') +
       `\n아래 밴드 ${small.length}장을 위→아래 순서로 봅니다. 각 밴드 옆의 타입 규칙(규칙6·7)을 지키고,\n`
-      + '본문 sections 는 원본에 있던 섹션 개수·순서·항목 순서를 그대로 옮겨 JSON 하나만 출력하세요.',
+      + '본문 bands 장부는 밴드마다 정확히 한 줄씩, 원본 인덱스 오름차순으로 적어 JSON 하나만 출력하세요.',
   }];
   small.forEach((s, i) => {
     const label = excluded(i) ? `[${i}](BANANAMALL_워터마크·이미지금지)` : `[${i}](${typeOf(i)})`;

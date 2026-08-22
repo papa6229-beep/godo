@@ -10,7 +10,9 @@ import { toProxyUrl } from './exportImagePrep';
 import { readBasicLayout } from './basicVisionReader';
 import { tagBasicBands, type BasicBandType, type TaggedBand } from './basicBandTagger';
 import { normalizePackageImage, isBananamallPromoGif, normalizeHeroMainImage } from './basicAssetNormalize';
-import { selectBasicSlots, assembleBasicBody, buildBasicSummaryInfo, type BasicBandRef } from './basicBodyAssembly';
+import {
+  selectBasicSlots, normalizeBandLedger, assembleBodyFromLedger, buildBasicSummaryInfo, type BasicBandRef,
+} from './basicBodyAssembly';
 
 export interface BasicConvertInput {
   productNameKr: string;
@@ -233,8 +235,9 @@ export const convertBasicWithAI = async (
   if (DEV) {
     // eslint-disable-next-line no-console
     console.log('[기본형 Claude응답] 요청 인덱스 → main:%o feature:%o package:%o | 요약원본:%o | 본문 섹션:%o',
-      r.mainIndex, r.featureIndex, r.packageIndex, r.summarySourceIndexes,
-      r.sections.map((s) => `${s.number || '-'} ${s.title || ''}(${(s.items || []).length})`));
+      r.mainIndex, r.featureIndex, r.packageIndex,
+      r.bands.filter((b) => b.role === 'summary').map((b) => b.index),
+      r.bands.map((b) => `${b.index}:${b.role || '-'}/${b.kind || '-'}/${b.asset || '-'}${b.sectionStart ? '★' : ''}`));
   }
 
   // ③ 로컬 검증(Layer C) + 본문 조립 — 판정 규칙은 basicBodyAssembly(순수)가 정본이다.
@@ -249,11 +252,15 @@ export const convertBasicWithAI = async (
   }));
   const at = (i: number): string | null => (i >= 0 && i < bandRefs.length ? bandRefs[i].src : null);
 
-  // 상단 요약 슬롯(메인·Key Feature·패키지) — 깨끗한 제품 단독컷 자격을 로컬에서 다시 검사한다.
+  // 밴드 장부 정규화 — 밴드 하나당 한 줄·원본 순서 강제. 누락·중복은 인덱스와 함께 notes 로 남는다.
+  const ledgerOut = normalizeBandLedger(r.bands, bandRefs);
+  notes.push(...ledgerOut.notes);
+
+  // 상단 요약 슬롯(메인·Key Feature·패키지) — 장부의 자산 종류 + 기존 픽셀 자격으로 검증한다.
   const slots = selectBasicSlots(
     {
       mainIndex: r.mainIndex, featureIndex: r.featureIndex, packageIndex: r.packageIndex,
-      summarySourceIndexes: r.summarySourceIndexes, mainIsSoloProductCut: r.mainIsSoloProductCut,
+      ledger: ledgerOut.ledger, mainIsSoloProductCut: r.mainIsSoloProductCut,
     },
     bandRefs,
   );
@@ -262,8 +269,8 @@ export const convertBasicWithAI = async (
   const featureIndexV = slots.featureIndex;
   const packageIndexV = slots.packageIndex;
 
-  // 본문: 원본 섹션 개수·순서·항목 순서 그대로(고정 Point 01·02·SIZE 슬롯에 압축하지 않는다).
-  const bodyOut = assembleBasicBody(r.sections, bandRefs, { reserved: slots.reserved });
+  // 본문: 장부를 원본 인덱스 순서로 훑어 코드가 섹션을 조립한다(AI 가 재배열·병합할 수 없다).
+  const bodyOut = assembleBodyFromLedger(ledgerOut.ledger, bandRefs, { reserved: slots.reserved });
   notes.push(...bodyOut.notes);
 
   if (DEV) {

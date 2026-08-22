@@ -74,9 +74,12 @@ export const cleanProductName = (raw: string): string => {
 //   끝의 (코드)(약자)는 버림. 없는 조각은 빈 문자열(사람이 개별 입력창에서 보정).
 // 코드 괄호 = 알려진 벤더약자(NPR 등) 또는 '숫자 포함' 코드(OH-3036·바코드). 하이픈이 숫자 앞뒤 어디 있어도 매칭.
 // 순수 알파벳(ROMP·Moving 등)은 코드로 보지 않음 → 실제 영문/브랜드명 보호(모호하면 사람이 개별 입력창에서 보정).
-//   NTS 추가(2026-08-22 글랜스 실측): `… - NVTOYS(WS-NV565) (NTS)` 에서 (NTS) 가 남으면 반복 제거가
-//   첫 바퀴에 멈춰 (WS-NV565) 제거·브랜드 분리·영문명 추출이 연쇄로 실패했다(nameEn 이 'NTS' 가 됨).
-const CODE_PAREN = /\s*\((?:NPR|TJ|SWL|SNN|LVH|NTS|[A-Za-z0-9./-]*\d[A-Za-z0-9./-]*)\)\s*$/;
+// 2026-08-22(3사례 실측): 상품별 약자를 목록에 하나씩 추가하는 방식을 버리고 **구조**로 판정한다.
+//   `(SWL)(TJ)`·`(NPR)`·`(NTS)`·`(BIR)` 처럼 끝에 붙는 꼬리표는 전부 "공백 없는 대문자 토큰"이고,
+//   **그 앞에 이미 다른 괄호나 ' - 브랜드' 구분이 있다**는 공통 구조를 가진다.
+//   반대로 진짜 영문·일본어 상품명은 그 상품의 **유일한 괄호**이거나 공백을 포함한다(ROMP Free·Moving Ball).
+const CODE_PAREN_NUM = /\s*\([A-Za-z0-9./-]*\d[A-Za-z0-9./-]*\)\s*$/;   // 숫자 포함 = 상품/바코드 코드
+const CODE_PAREN_ABBR = /\s*\(([A-Z][A-Z0-9./-]{0,6})\)\s*$/;           // 공백 없는 대문자 꼬리표 후보
 export const parseProductName = (
   raw: string,
 ): { eyebrow: string; nameKr: string; nameEn: string; brandInline: string } => {
@@ -87,9 +90,18 @@ export const parseProductName = (
   const eb = s.match(/^\s*\[([^\]]+)\]\s*/);
   if (eb) { eyebrow = eb[1].trim(); s = s.slice(eb[0].length).trim(); }
 
-  // 2) 끝의 코드 괄호 반복 제거: (OH-3036)(NPR) …
+  // 2) 끝의 코드 괄호 반복 제거: (OH-3036)(NPR) · (WS-NV565)(NTS) · (BI-040031)(BIR) …
   let prev = '';
-  while (s !== prev) { prev = s; s = s.replace(CODE_PAREN, '').trim(); }
+  while (s !== prev) {
+    prev = s;
+    if (CODE_PAREN_NUM.test(s)) { s = s.replace(CODE_PAREN_NUM, '').trim(); continue; }
+    const m = s.match(CODE_PAREN_ABBR);
+    if (!m) continue;
+    const head = s.slice(0, m.index).trim();
+    // 앞쪽에 다른 괄호나 브랜드 구분(' - ')이 있으면 이 대문자 토큰은 꼬리표(코드)다.
+    //   괄호가 이것 하나뿐이면 진짜 영문 상품명이므로 건드리지 않는다(예: `롬프 프리 (ROMP)`).
+    if (/[()]/.test(head) || /\s[-–—]\s/.test(head)) s = head;
+  }
 
   // 3) 끝의 '- 브랜드'(양옆 공백 있는 하이픈만 — 한글 중간 하이픈 오탐 방지)
   let brandInline = '';
