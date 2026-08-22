@@ -74,7 +74,9 @@ export const cleanProductName = (raw: string): string => {
 //   끝의 (코드)(약자)는 버림. 없는 조각은 빈 문자열(사람이 개별 입력창에서 보정).
 // 코드 괄호 = 알려진 벤더약자(NPR 등) 또는 '숫자 포함' 코드(OH-3036·바코드). 하이픈이 숫자 앞뒤 어디 있어도 매칭.
 // 순수 알파벳(ROMP·Moving 등)은 코드로 보지 않음 → 실제 영문/브랜드명 보호(모호하면 사람이 개별 입력창에서 보정).
-const CODE_PAREN = /\s*\((?:NPR|TJ|SWL|SNN|LVH|[A-Za-z0-9./-]*\d[A-Za-z0-9./-]*)\)\s*$/;
+//   NTS 추가(2026-08-22 글랜스 실측): `… - NVTOYS(WS-NV565) (NTS)` 에서 (NTS) 가 남으면 반복 제거가
+//   첫 바퀴에 멈춰 (WS-NV565) 제거·브랜드 분리·영문명 추출이 연쇄로 실패했다(nameEn 이 'NTS' 가 됨).
+const CODE_PAREN = /\s*\((?:NPR|TJ|SWL|SNN|LVH|NTS|[A-Za-z0-9./-]*\d[A-Za-z0-9./-]*)\)\s*$/;
 export const parseProductName = (
   raw: string,
 ): { eyebrow: string; nameKr: string; nameEn: string; brandInline: string } => {

@@ -315,8 +315,10 @@ export const convertBasicWithAI = async (
   const summaryInfo = buildBasicSummaryInfo(r.summary, { brandName: input.brandName });
 
   const data: Partial<ProductData> = {
-    productNameKr: r.productNameKr || input.productNameKr,
-    productNameEn: r.productNameEn || input.productNameEn || '',
+    // 상품명 정본 = 엑셀(파서) 값. AI 판독은 엑셀 값이 없을 때만 보조로 쓴다
+    //   (이미지에서 읽은 이름이 원본 상품명을 덮어써 브랜드·영문명이 흔들리지 않게 한다).
+    productNameKr: input.productNameKr || r.productNameKr,
+    productNameEn: input.productNameEn || r.productNameEn || '',
     brandName: input.brandName || '',
     ...(input.themeColor ? { themeColor: input.themeColor } : {}),
     summaryInfo,

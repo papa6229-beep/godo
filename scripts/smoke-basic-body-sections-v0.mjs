@@ -42,7 +42,7 @@ compile('src/components/detailBuilder/constants.ts');
 const mod = await import(pathToFileURL(path.join(outDir, 'services/basicBodyAssembly.js')).href);
 const {
   selectBasicSlots, assembleBasicBody, buildBasicSummaryInfo, hasDynamicBody, BODY_DUP_HAMMING,
-  isSizeSection, isWeightLine, trailingMediaRunStart,
+  isSizeSection, isWeightLine, trailingMediaRunStart, bodyPointLabel,
 } = mod;
 ok('모듈이 다섯 진입점을 내보낸다',
   [selectBasicSlots, assembleBasicBody, buildBasicSummaryInfo, hasDynamicBody].every((f) => typeof f === 'function') && BODY_DUP_HAMMING === 10);
@@ -340,6 +340,76 @@ console.log('[8-d] ③ 독립 설명문은 text · 이미지 결합 설명은 �
     s04items.map((i) => i.kind).join(',') === 'text,media,text,media,text,text,media,media,media,media,media');
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// [P3] 글랜스 2차 호환 Patch (2026-08-22) — A 상품명 정본 · B 고정 Point 번호 · C 글자 전용 밴드
+// ══════════════════════════════════════════════════════════════════════════
+console.log('[8-e] A. 상품명 정본(엑셀 파서) — 글랜스 (NTS) 코드 괄호');
+{
+  const parserOut = mkdtempSync(path.join(tmpdir(), 'godo-parser-'));
+  execFileSync(process.execPath,
+    [tscBin, path.join(repo, 'src/components/detailBuilder/services/mainMallExcelParser.ts'),
+      '--outDir', parserOut, '--module', 'esnext', '--target', 'ES2022',
+      '--moduleResolution', 'bundler', '--skipLibCheck', '--lib', 'ES2022,DOM'],
+    { stdio: 'pipe', cwd: tmpdir() });
+  const P = await import(pathToFileURL(path.join(parserOut, 'mainMallExcelParser.js')).href);
+  const g = P.parseProductName('[10단 진동] 글랜스 페니스 트레이너(Glans Penis Trainer) - NVTOYS(WS-NV565) (NTS)');
+  ok('A-1. 글랜스 한글 상품명', g.nameKr === '글랜스 페니스 트레이너', g && g.nameKr);
+  ok('A-2. 글랜스 영문 상품명(= NTS 가 아니다)', g.nameEn === 'Glans Penis Trainer');
+  ok('A-3. 글랜스 브랜드', g.brandInline === 'NVTOYS');
+  ok('A-4. 대괄호 태그 보존', g.eyebrow === '10단 진동');
+  const f = P.parseProductName('[10단 티클링+진동] 핑거 위글 전립선 마사져 (Finger Wiggle Prostate Massager) - SECWELL(SW1064-2) (SWL)(TJ)');
+  ok('A-5. 핑거위글 결과 불변', f.nameKr === '핑거 위글 전립선 마사져' && f.nameEn === 'Finger Wiggle Prostate Massager' && f.brandInline === 'SECWELL');
+  const t = P.parseProductName('[일본 직수입] 모에 구멍 트리니티 (萌あなトリニティ) - 라이드재팬 (OH-3036)(NPR)');
+  ok('A-6. 기존 일본어 상품명 불변', t.nameKr === '모에 구멍 트리니티' && t.nameEn === '萌あなトリニティ');
+  const r1 = P.parseProductName('롬프 프리 (ROMP Free) - 롬프');
+  const r2 = P.parseProductName('무빙 볼 (Moving Ball)');
+  ok('A-7. 코드가 아닌 실제 영문 괄호 상품명은 보존(ROMP Free · Moving Ball)',
+    r1.nameEn === 'ROMP Free' && r2.nameEn === 'Moving Ball');
+  ok('A-8. 광범위 정규식으로 바뀌지 않았다(알려진 벤더 목록 + 숫자 포함 코드만)',
+    /NPR\|TJ\|SWL\|SNN\|LVH\|NTS/.test(readFileSync(path.join(repo, 'src/components/detailBuilder/services/mainMallExcelParser.ts'), 'utf8')));
+}
+
+console.log('[8-f] B. 본문 제목은 배열 순서 고정(Point 01·02·03…)');
+ok('B-1. 번호가 없어도 배열 순서대로 Point 01~03', [0, 1, 2].map(bodyPointLabel).join(',') === 'Point 01,Point 02,Point 03');
+ok('B-2. 두 자리 표기', bodyPointLabel(0) === 'Point 01' && bodyPointLabel(9) === 'Point 10');
+ok('B-3. 원본 번호가 빈 섹션 3개도 순서·개수 그대로 조립된다', (() => {
+  const r = assembleBasicBody(
+    [{ title: '파트너를 위한 진동 자극', items: [{ kind: 'text', text: '설명' }] },
+      { title: '', items: [{ kind: 'media', index: 8 }] },
+      { title: '', items: [{ kind: 'media', index: 11 }] }],
+    BANDS, { reserved: new Set() },
+  );
+  return r.sections.length === 3 && r.sections.every((s) => s.number === '')
+    && r.sections[0].title === '파트너를 위한 진동 자극' && r.sections[1].title === '' && r.sections[2].title === '';
+})());
+
+console.log('[8-g] C. 제품이 없는 글자 전용 밴드 · 파란 복합 이미지');
+{
+  // 33 = 파란 제목 띠 + 설명만 있는 글자 전용 밴드(태거는 색·행점유로 MIXED 로 본다)
+  // 34 = 제품 사진 + 설명 + 사이즈 도해가 한 파란 배경에 결합된 밴드
+  const GB = BANDS.concat([
+    band(33, 'MIXED', { color: 0.42, smallCC: 44, largestCC: 0.06, height: 260 }),
+    band(34, 'MIXED', { color: 0.38, smallCC: 52, largestCC: 0.21, height: 900 }),
+  ]);
+  const r = assembleBasicBody([
+    { number: '', title: '파트너를 위한 진동 자극', items: [
+      { kind: 'text', text: '진동은 파트너에게도 그대로 전달됩니다.' },   // 글자 전용 밴드 → text 로 옮겨진 결과
+      { kind: 'media', index: 34, composite: true, reviewNote: '제품·설명·사이즈가 한 이미지에 결합됨 — 손검수 필요' },
+    ] },
+  ], GB, { reserved: new Set() });
+  const items = r.sections[0].items;
+  ok('C-1. 글자 전용 영역은 text 항목', items[0].kind === 'text' && items[0].text.includes('진동은 파트너'));
+  ok('C-2. 제목 문구는 섹션 보조 제목에만(항목 텍스트로 중복 없음)',
+    r.sections[0].title === '파트너를 위한 진동 자극' && !items.some((i) => i.kind === 'text' && i.text.trim() === '파트너를 위한 진동 자극'));
+  ok('C-3. 파란 복합 이미지는 media·composite 로 보존', items[1].kind === 'media' && items[1].composite === true);
+  ok('C-4. reviewNote 원문 보존(새 경고 UI 없이 기존 경로)', items[1].reviewNote === '제품·설명·사이즈가 한 이미지에 결합됨 — 손검수 필요');
+  ok('C-5. 항목 개수·순서 불변(분해하지 않는다)', items.length === 2 && items.map((i) => i.kind).join(',') === 'text,media');
+  ok('C-6. MIXED 라벨을 로컬에서 강제 변환하지 않는다(판독 결과를 그대로 존중)', (() => {
+    const m = assembleBasicBody([{ number: '', title: 'x', items: [{ kind: 'media', index: 33 }] }], GB, { reserved: new Set() });
+    return m.sections[0].items.length === 1 && m.sections[0].items[0].composite === true;
+  })());
+}
+
 console.log('[9/9] 결선 · 계약 대조(소스)');
 const read = (p) => readFileSync(path.join(repo, p), 'utf8');
 const convertSrc = read('src/components/detailBuilder/services/godoBasicConvert.ts');
@@ -374,6 +444,19 @@ ok('결선) 렌더러가 사이즈 섹션·무게 알약·나열부 판정을 �
   /isSizeSection/.test(previewSrc) && /isWeightLine/.test(previewSrc) && /trailingMediaRunStart/.test(previewSrc));
 ok('결선) 나열부에 새 제목·번호를 만들지 않는다', !/제품 이미지<\/h2>|>제품 이미지</.test(previewSrc));
 ok('결선) 사이즈 섹션 미디어만 무테로 분기한다', /noBorder \? undefined : \{ border: IMG_BORDER \}/.test(previewSrc));
+// 글랜스 2차 호환 Patch 결선
+ok('결선) 본문 주 번호를 원본 sec.number 가 아니라 배열 순서로 렌더한다',
+  /bodyPointLabel\(i\)/.test(previewSrc) && !/\{sec\.number\}<\/h2>/.test(previewSrc));
+ok('결선) 원본 제목이 있을 때만 보조 제목을 렌더한다', /\(sec\.title \|\| ''\)\.trim\(\) && \(/.test(previewSrc));
+ok('결선) 상품명 정본은 엑셀 값이 먼저다', /productNameKr: input\.productNameKr \|\| r\.productNameKr/.test(convertSrc)
+  && /productNameEn: input\.productNameEn \|\| r\.productNameEn/.test(convertSrc));
+ok('결선) 판독 지시에 "제품 없는 MIXED 는 text" 규칙이 있다',
+  /제품 사진·사람·제품 도해·일러스트가 하나도 없고/.test(readerSrc) && /title 에만 넣고/.test(readerSrc));
+ok('결선) 판독 지시에 파란 복합 이미지 reviewNote 예시가 있다',
+  /제품·설명·사이즈가 한 이미지에 결합됨 — 손검수 필요/.test(readerSrc));
+ok('결선) 태거·분할기·단순형은 이번에 손대지 않았다(판정 상수 불변)',
+  /TEXT_MAX_LARGEST_CC: 0\.08/.test(read('src/components/detailBuilder/services/basicBandTagger.ts'))
+  && /minSegPx \?\? 48/.test(read('src/components/detailBuilder/services/flowImageSplitter.ts')));
 ok('결선) AI 에게 픽셀 좌표를 묻지 않는다', !/"?(cropY|cropX|bbox|pixel)"?/.test(readerSrc));
 
 // 13. 기존 자동 섬네일 기능의 입력·출력 계약이 변하지 않는다.

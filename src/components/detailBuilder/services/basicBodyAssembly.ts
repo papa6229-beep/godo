@@ -299,6 +299,12 @@ export const hasDynamicBody = (data?: { godoBodySections?: BasicBodySection[] } 
 // ── 렌더 규칙(순수 판정 — 화면은 이 결과만 쓴다) ─────────────────────────────
 
 /**
+ * 본문 섹션의 화면 제목 — 배열 순서로 고정한다("Point 01", "Point 02" …).
+ * 원본 번호(sec.number)는 상품마다 없거나 형식이 달라 주 번호로 쓰지 않는다(원본 제목은 보조 제목으로 남는다).
+ */
+export const bodyPointLabel = (index: number): string => `Point ${String(index + 1).padStart(2, '0')}`;
+
+/**
  * 원본의 "사이즈" 섹션인가. 상품마다 번호는 달라도 제목은 사이즈/SIZE 로 적힌다.
  * 이 섹션에서만 무게 표시를 알약(pill)로, 도해 이미지를 무테로 렌더한다(다른 섹션 무영향).
  */

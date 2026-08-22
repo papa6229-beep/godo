@@ -6,7 +6,7 @@
 import React, { forwardRef } from 'react';
 import { Rnd } from 'react-rnd';
 import type { ProductData } from '../types';
-import { hasDynamicBody, isSizeSection, isWeightLine, trailingMediaRunStart } from '../services/basicBodyAssembly';
+import { hasDynamicBody, isSizeSection, isWeightLine, trailingMediaRunStart, bodyPointLabel } from '../services/basicBodyAssembly';
 
 // 고도몰 브랜딩 단일 소스(footer·섬네일 공용). ⚠️ 사장님 확정 시 이 한 곳만 교체(현재 플레이스홀더).
 export const GODO_BRAND = {
@@ -314,7 +314,8 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
           style={{ paddingTop: gapVal(`${sid}-sec`, 'section'), paddingBottom: gapVal(`${sid}-sec`, 'section') }}>
           <SectionGap id={`${sid}-sec`} />
           <Dot color={accent} size={22} />
-          {(sec.number || '').trim() && <h2 className={`${SECTION_HEADING} mt-4`}>{sec.number}</h2>}
+          {/* 주 번호는 원본 번호가 아니라 본문 배열 순서로 고정한다(번호가 없는 원본도 항상 나온다) */}
+          <h2 className={`${SECTION_HEADING} mt-4`}>{bodyPointLabel(i)}</h2>
           {(sec.title || '').trim() && (
             <p className="flex items-center gap-2 text-2xl font-black text-gray-900 mt-3 break-keep">
               {sec.title} <Dot color={accent} size={12} />
