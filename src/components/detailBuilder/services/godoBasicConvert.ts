@@ -1,13 +1,16 @@
 // 기본형(통이미지 baked) → 고도몰 섹션형 ProductData 조립 (2026-07-13 Claude 브레인판).
-//   흐름: 통이미지 여백분할(밴드) → Claude 비전 1콜(읽기+슬롯배정+라이트리라이트) → Partial<ProductData> 조립.
+//   흐름: 통이미지 여백분할(밴드) → Claude 비전 1콜(읽기+슬롯배정+본문 섹션 지도) → Partial<ProductData> 조립.
 //   결과를 loadTemporary({...prev,...data})로 주입하면 좌측 입력부+PreviewGodo까지 편집가능 상태.
-//   ⚠️ 사진 보고 글 생성 금지(basicVisionReader 규칙). godo 슬롯=고정 그릇, 기본형 밴드=재료.
-import type { ProductData, SummaryInfo } from '../types';
+//   ⚠️ 사진 보고 글 생성 금지(basicVisionReader 규칙). 상단 요약=고정 그릇, 본문=원본 섹션 그대로(가변).
+//   2026-08-22 1차 패치: 본문을 Point 01·02·SIZE 고정 슬롯에 욱여넣지 않고
+//     원본 섹션 배열(godoBodySections)로 옮긴다. 판정·조립 규칙은 basicBodyAssembly(순수)가 정본.
+import type { ProductData } from '../types';
 import { splitImageByWhitespace, extractProductImages } from './flowImageSplitter';
 import { toProxyUrl } from './exportImagePrep';
 import { readBasicLayout } from './basicVisionReader';
-import { tagBasicBands, dhashHamming, type BasicBandType, type TaggedBand } from './basicBandTagger';
+import { tagBasicBands, type BasicBandType, type TaggedBand } from './basicBandTagger';
 import { normalizePackageImage, isBananamallPromoGif, normalizeHeroMainImage } from './basicAssetNormalize';
+import { selectBasicSlots, assembleBasicBody, buildBasicSummaryInfo, type BasicBandRef } from './basicBodyAssembly';
 
 export interface BasicConvertInput {
   productNameKr: string;
@@ -25,6 +28,36 @@ export interface BasicConvertResult {
 export interface BasicProgress { phase: string }
 
 const DEV = import.meta.env.DEV;   // 개발 모드에서만 밴드/검증 디버그 로그 출력
+
+// 여백분할 최소 조각 높이(기본형 AI 읽기 전용). 공용 기본값 48은 짧은 텍스트 줄(무게 pill·버튼 라벨·
+//   한 줄 주석)을 노이즈로 버려 본문에서 사라지게 한다 → 20으로 낮춰 읽을 수 있게 한다.
+//   구분선(6~10px)은 여전히 걸러진다. 근거: 핑거위글 800×12272 실측(21 → 27밴드, 2026-08-22).
+const BASIC_MIN_SEG_PX = 20;
+const IS_GIF_URL = /\.gif(\?|#|$)/i;
+
+// GIF 첫 프레임만 정지 이미지로 굽는다(AI 전송용). 원본 GIF는 그대로 본문에 남는다.
+const rasterizeFirstFrame = (src: string, maxPx = 760, quality = 0.85): Promise<string | null> =>
+  new Promise((resolve) => {
+    if (typeof document === 'undefined' || !src) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if (!w || !h) return resolve(null);
+        const scale = Math.min(1, maxPx / Math.max(w, h));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * scale));
+        c.height = Math.max(1, Math.round(h * scale));
+        const ctx = c.getContext('2d');
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', quality));
+      } catch { resolve(null); }   // CORS taint 등 → 일반 분할 경로로 폴백
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 
 // ── 패키지 자동 배치(수동 이동 불필요): 히어로 제품 bbox를 canvas로 읽어 우하단 안 가리는 위치 계산 ──
 //    base64(분할 밴드)면 OK, CORS taint 시 null(폴백=기본 위치).
@@ -95,10 +128,8 @@ export const buildBasicStructure = async (
   if (!cuts.length) throw new Error('상세 통이미지에서 제품 컷을 추출하지 못했습니다. (이미지 URL/프록시 확인)');
 
   const at = (i: number): string | null => (i >= 0 && i < cuts.length ? cuts[i] : null);
-  const summaryInfo: SummaryInfo = {
-    feature: '', type: '', material: '', size: '상세페이지 참조', weight: '', power: '',
-    maker: input.brandName || '',
-  };
+  //   치수 고정('상세페이지 참조')·제조사 우선순위는 조립 모듈이 정본(여기서 따로 만들지 않는다).
+  const summaryInfo = buildBasicSummaryInfo({}, { brandName: input.brandName });
   const data: Partial<ProductData> = {
     productNameKr: input.productNameKr,
     productNameEn: input.productNameEn || '',
@@ -138,16 +169,30 @@ export const convertBasicWithAI = async (
 
   // ① 통이미지 여백분할 → 밴드(텍스트 밴드 포함: 스펙·설명 읽기용). 순서 유지.
   //    각 밴드가 온 원본 URL의 "바나나몰 홍보 GIF" 여부(promoFlags)를 병렬 추적 — 이미지 슬롯 전면 차단용.
+  //    본문 기능 GIF는 자르지 않고 원본을 통째 보존한다(정지 JPG 변환 금지) — AI에는 첫 프레임만 보낸다.
   onProgress?.({ phase: '통이미지 분할' });
-  const bands: string[] = [];
+  const bands: string[] = [];        // AI 전송용 정지 이미지(밴드와 1:1)
+  const bandSrc: string[] = [];      // 화면·본문에 실제로 쓰는 자산(GIF는 원본 URL)
+  const bandIsGif: boolean[] = [];
   const promoFlags: boolean[] = [];
   for (const url of input.detailImageUrls) {
     const proxied = toProxyUrl(url);
     let promo = false;
     try { promo = (await isBananamallPromoGif(url, proxied)).isPromo; } catch { promo = false; }
+    if (!promo && IS_GIF_URL.test(url)) {
+      const still = await rasterizeFirstFrame(proxied);
+      if (still) {
+        bands.push(still); bandSrc.push(url); bandIsGif.push(true); promoFlags.push(false);
+        notes.push('본문 GIF 원본 보존(정지 이미지로 바꾸지 않음).');
+        continue;
+      }
+      notes.push(`GIF 첫 프레임을 읽지 못해 일반 분할로 처리: ${url.slice(0, 60)}…`);
+    }
     try {
-      const segs = await splitImageByWhitespace(proxied);
-      for (const s of segs) { bands.push(s.dataUrl); promoFlags.push(promo); }
+      // minSegPx 20: 기본값 48은 "무게 pill·버튼 라벨·한 줄 주석" 같은 짧은 텍스트 줄을 통째로 버린다
+      //   (핑거위글 실측 2026-08-22: 21밴드 → 27밴드, 회복 6건). 공용 분할 함수는 수정하지 않고 옵션만 준다.
+      const segs = await splitImageByWhitespace(proxied, { minSegPx: BASIC_MIN_SEG_PX });
+      for (const s of segs) { bands.push(s.dataUrl); bandSrc.push(s.dataUrl); bandIsGif.push(false); promoFlags.push(promo); }
       if (promo) notes.push('바나나몰 홍보 GIF 감지 → 이미지 슬롯에서 제외(캡션 근거로도 미사용).');
     } catch {
       notes.push(`이미지 분할 실패(건너뜀): ${url.slice(0, 60)}…`);
@@ -187,155 +232,51 @@ export const convertBasicWithAI = async (
   mark('claude_request_ms');
   if (DEV) {
     // eslint-disable-next-line no-console
-    console.log('[기본형 Claude응답] 요청 인덱스 → main:%o feature:%o size:%o package:%o | point1:%o point2:%o',
-      r.mainIndex, r.featureIndex, r.sizeIndex, r.packageIndex,
-      r.point1.blocks.map((b) => b.index), r.point2.blocks.map((b) => b.index));
+    console.log('[기본형 Claude응답] 요청 인덱스 → main:%o feature:%o package:%o | 요약원본:%o | 본문 섹션:%o',
+      r.mainIndex, r.featureIndex, r.packageIndex, r.summarySourceIndexes,
+      r.sections.map((s) => `${s.number || '-'} ${s.title || ''}(${(s.items || []).length})`));
   }
 
-  // ③ 로컬 검증(Layer C): TEXT 밴드는 어떤 <img> 슬롯에도 못 들어간다. Claude가 실수해도 여기서 차단.
-  //    (캡션/설명은 그대로 유지 — 라이브 HTML 설명은 살리고 "중복 텍스트 이미지"만 제거하는 게 목표.)
-  onProgress?.({ phase: '슬롯 검증·조립·패키지 배치' });
-  const at = (i: number): string | null => (i >= 0 && i < bands.length ? bands[i] : null);
-  const typeAt = (i: number): BasicBandType | null => (i >= 0 && i < bandTypes.length ? bandTypes[i] : null);
-  // 이미지 슬롯 차단 사유(허용이면 null): 바나나몰 홍보 GIF 또는 TEXT 밴드.
-  const imageBlockReason = (i: number): string | null => {
-    if (i < 0 || i >= bands.length) return 'out_of_range';
-    if (promoFlags[i]) return 'bananamall_promo_gif';
-    if (typeAt(i) === 'TEXT') return 'text_band_not_allowed_for_image_slot';
-    return null;
-  };
-  type Decision = { role: string; requested: number; reqType: string; result: string; final: number; reason: string };
-  const decisions: Decision[] = [];
-  const usedImg = new Set<number>();
+  // ③ 로컬 검증(Layer C) + 본문 조립 — 판정 규칙은 basicBodyAssembly(순수)가 정본이다.
+  //    Claude 응답을 그대로 믿지 않는다: 홍보 GIF·TEXT 밴드·요약 원본·중복은 여기서 막는다.
+  onProgress?.({ phase: '슬롯 검증·본문 조립·패키지 배치' });
+  const bandRefs: BasicBandRef[] = bands.map((_, i) => ({
+    src: bandSrc[i],
+    type: bandTypes[i] ?? 'UNKNOWN',
+    promo: !!promoFlags[i],
+    isGif: !!bandIsGif[i],
+    metrics: tagged[i]?.metrics,
+  }));
+  const at = (i: number): string | null => (i >= 0 && i < bandRefs.length ? bandRefs[i].src : null);
 
-  // 단일 역할 슬롯(main/feature/size/package): 차단대상(TEXT/promo)이면 거부 → 빈 슬롯(잘못된 사진보다 빈 슬롯이 안전).
-  const validateRole = (reqIndex: number, role: string): number => {
-    if (reqIndex < 0 || reqIndex >= bands.length) {
-      decisions.push({ role, requested: reqIndex, reqType: '-', result: 'none', final: -1, reason: '요청 없음/범위 밖' });
-      return -1;
-    }
-    const t = typeAt(reqIndex)!;
-    const block = imageBlockReason(reqIndex);
-    if (block) {
-      decisions.push({ role, requested: reqIndex, reqType: promoFlags[reqIndex] ? 'PROMO_GIF' : t, result: 'rejected→empty', final: -1, reason: block });
-      return -1;
-    }
-    usedImg.add(reqIndex);
-    decisions.push({ role, requested: reqIndex, reqType: t, result: 'accepted', final: reqIndex, reason: 'ok' });
-    return reqIndex;
-  };
-  // feature/size/package 먼저 검증(HERO가 이들을 피하고 dHash 참조로 쓰기 위해). feature 선정 로직은 무변경.
-  const featureIndexV = validateRole(r.featureIndex, 'feature');
-  const sizeIndexV = validateRole(r.sizeIndex, 'size');
-  const packageIndexV = validateRole(r.packageIndex, 'package');
+  // 상단 요약 슬롯(메인·Key Feature·패키지) — 깨끗한 제품 단독컷 자격을 로컬에서 다시 검사한다.
+  const slots = selectBasicSlots(
+    { mainIndex: r.mainIndex, featureIndex: r.featureIndex, packageIndex: r.packageIndex, summarySourceIndexes: r.summarySourceIndexes },
+    bandRefs,
+  );
+  notes.push(...slots.notes);
+  const mainIndexV = slots.mainIndex;
+  const featureIndexV = slots.featureIndex;
+  const packageIndexV = slots.packageIndex;
 
-  // ── Step 3: HERO = 깨끗한 제품 누끼컷 자동 선정 (요약정보 합성밴드/패키지/컬러배너 제외) ──
-  //   Claude mainIndex를 clean 자격 검사 → 통과하면 존중, 실패하면 후보풀 최고점. feature와 다른 컷 선호.
-  //   실측 임계(핑거위글): color>0.20=배너/합성, smallCC>10=baked텍스트, fill>0.62=박스(패키지),
-  //   largestCC<0.12=제품작음, packageIndex/sizeIndex와 dHash≤10=중복 패키지/사이즈.
-  const hashOf = (i: number): boolean[] => (i >= 0 && i < tagged.length ? tagged[i].metrics.dhash : []);
-  const heroExcludeRefs = [packageIndexV, sizeIndexV].filter((x) => x >= 0);
-  const heroEligible = (i: number): boolean => {
-    if (i < 0 || i >= bands.length || usedImg.has(i) || promoFlags[i]) return false;   // 이미 feature/size/package로 예약된 것 제외
-    if (typeAt(i) === 'TEXT') return false;
-    const m = tagged[i].metrics;
-    if (m.color > 0.20 || m.smallCC > 10 || m.largestCC < 0.12 || m.fillRatio > 0.62) return false;
-    for (const ex of heroExcludeRefs) if (dhashHamming(hashOf(i), hashOf(ex)) <= 10) return false;  // 패키지/사이즈 중복컷
-    return true;
-  };
-  const heroScore = (i: number): number => { const m = tagged[i].metrics; return m.largestCC * 2 - m.color - m.smallCC * 0.02 + Math.min(m.height, 700) / 2000; };
-  const heroDupFeature = (i: number): boolean => featureIndexV >= 0 && dhashHamming(hashOf(i), hashOf(featureIndexV)) <= 10;
-  const selectHeroIndex = (claudeMain: number): number => {
-    const reqType = claudeMain >= 0 && claudeMain < bands.length ? (promoFlags[claudeMain] ? 'PROMO_GIF' : (typeAt(claudeMain) ?? '-')) : '-';
-    const pool = bands.map((_, i) => i).filter(heroEligible);
-    if (!pool.length) {
-      decisions.push({ role: 'main', requested: claudeMain, reqType, result: 'no-clean→empty', final: -1, reason: '깨끗한 제품컷 후보 없음 → 수동 지정 필요' });
-      return -1;
-    }
-    let chosen: number;
-    if (heroEligible(claudeMain) && !heroDupFeature(claudeMain)) chosen = claudeMain;   // Claude 픽이 적격+feature와 다름 → 존중
-    else chosen = [...pool].sort((a, b) => (heroDupFeature(a) !== heroDupFeature(b) ? (heroDupFeature(a) ? 1 : -1) : heroScore(b) - heroScore(a)))[0];
-    usedImg.add(chosen);
-    const cm = tagged[chosen].metrics;
-    decisions.push({ role: 'main', requested: claudeMain, reqType, result: chosen === claudeMain ? 'accepted(clean)' : 'reselected(clean)', final: chosen, reason: `largestCC ${cm.largestCC.toFixed(3)}·color ${cm.color.toFixed(3)}·fill ${cm.fillRatio.toFixed(2)}·smallCC ${cm.smallCC}${heroDupFeature(chosen) ? ' (feature와 동일 — 단일후보)' : ''}` });
-    return chosen;
-  };
-  const mainIndexV = selectHeroIndex(r.mainIndex);
-
-  // Point 이미지: dedup-aware 2패스. Point 01+02 "전체"를 통틀어 동일/근접 사진 1회만·같은 밴드 인덱스 재사용 금지.
-  //   패스1 = Claude 직접 픽(차단X·인덱스 미사용·전체 Point 근접중복X면 채택). ← 교차(01↔02) 중복도 금지.
-  //   패스2 = 거부분만 ±1~2에서 [차단X·미사용·어떤 Point와도 근접중복X·PHOTO/MIXED] "유일" 후보로 대체, 애매/없으면 비움.
-  const DUP_HAMMING = 10;                                 // dHash 해밍 ≤ 이 값이면 동일 사진(실측: 동일 0~3 vs 다른 27+)
-  const hashAt = (i: number): boolean[] => tagged[i]?.metrics.dhash ?? [];
-  const usedPointImgs: { idx: number; point: number }[] = [];   // 지금까지 Point에 배정된 이미지(중복판정용)
-  const pointNum = (role: string): number => (role.startsWith('point1') ? 1 : 2);
-  const dupWith = (i: number, scopePoint: number | null): boolean =>   // scopePoint=null이면 전체 Point 대상
-    usedPointImgs.some((u) => (scopePoint === null || u.point === scopePoint)
-      && (u.idx === i || dhashHamming(hashAt(i), hashAt(u.idx)) <= DUP_HAMMING));
-  const reservePoint = (i: number, point: number): void => { usedImg.add(i); usedPointImgs.push({ idx: i, point }); };
-
-  const p1 = r.point1.blocks;
-  const p2 = r.point2.blocks;
-  const pointSlots = [
-    { role: 'point1-1', reqIndex: p1[0]?.index ?? -1 },
-    { role: 'point1-2', reqIndex: p1[1]?.index ?? -1 },
-    { role: 'point1-3', reqIndex: p1[2]?.index ?? -1 },
-    { role: 'point2-1', reqIndex: p2[0]?.index ?? -1 },
-    { role: 'point2-2', reqIndex: p2[1]?.index ?? -1 },
-    { role: 'point2-3', reqIndex: p2[2]?.index ?? -1 },
-  ];
-  const finalPoint: Record<string, number> = {};
-  const rejectedSlots: { role: string; reqIndex: number }[] = [];
-  for (const s of pointSlots) {                          // 패스1(Claude 직접 픽)
-    const pt = pointNum(s.role);
-    if (s.reqIndex < 0 || s.reqIndex >= bands.length) { finalPoint[s.role] = -1; continue; }
-    const t = typeAt(s.reqIndex)!;
-    if (imageBlockReason(s.reqIndex)) { rejectedSlots.push(s); finalPoint[s.role] = -1; continue; }  // TEXT/promo
-    if (usedImg.has(s.reqIndex)) {                        // 같은 밴드 인덱스 재사용 → 대체 시도
-      rejectedSlots.push(s); finalPoint[s.role] = -1;
-      decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'rejected(reuse)', final: -1, reason: 'already_used_index → 대체 시도' });
-      continue;
-    }
-    if (dupWith(s.reqIndex, null)) {                      // Point 01+02 전체에서 동일사진 → 대체 시도(교차 중복도 금지)
-      rejectedSlots.push(s); finalPoint[s.role] = -1;
-      decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'rejected(dup)', final: -1, reason: 'Point 전체 동일사진(dHash) → 대체 시도' });
-      continue;
-    }
-    reservePoint(s.reqIndex, pt);
-    finalPoint[s.role] = s.reqIndex;
-    decisions.push({ role: s.role, requested: s.reqIndex, reqType: t, result: 'accepted', final: s.reqIndex, reason: 'ok' });
-  }
-  for (const s of rejectedSlots) {                       // 패스2(보수적 대체 — 어떤 Point와도 중복없는 유일 후보만)
-    const pt = pointNum(s.role);
-    const cands: number[] = [];
-    for (let d = 1; d <= 2; d++) for (const j of [s.reqIndex - d, s.reqIndex + d]) {
-      if (j >= 0 && j < bands.length && !usedImg.has(j) && !imageBlockReason(j)) {
-        const tj = typeAt(j);
-        if ((tj === 'PHOTO' || tj === 'MIXED') && !dupWith(j, null)) cands.push(j);
-      }
-    }
-    const rt = promoFlags[s.reqIndex] ? 'PROMO_GIF' : (typeAt(s.reqIndex) ?? 'TEXT');
-    const uniq = [...new Set(cands)];
-    if (uniq.length === 1) {
-      reservePoint(uniq[0], pt);
-      finalPoint[s.role] = uniq[0];
-      decisions.push({ role: s.role, requested: s.reqIndex, reqType: rt, result: 'rejected→fallback', final: uniq[0], reason: `±2 유일·중복없는 ${typeAt(uniq[0])} 밴드 ${uniq[0]}` });
-    } else {
-      finalPoint[s.role] = -1;
-      decisions.push({ role: s.role, requested: s.reqIndex, reqType: rt, result: 'rejected→empty', final: -1, reason: uniq.length ? `±2 후보 다수/모호(${uniq.join(',')}) → 비움` : '±2 유일·중복없는 후보 없음 → 비움' });
-    }
-  }
+  // 본문: 원본 섹션 개수·순서·항목 순서 그대로(고정 Point 01·02·SIZE 슬롯에 압축하지 않는다).
+  const bodyOut = assembleBasicBody(r.sections, bandRefs, { reserved: slots.reserved });
+  notes.push(...bodyOut.notes);
 
   if (DEV) {
     // eslint-disable-next-line no-console
-    console.groupCollapsed('[기본형 검증] 이미지 슬롯 결정');
+    console.groupCollapsed('[기본형 검증] 상단 슬롯 결정');
     // eslint-disable-next-line no-console
-    console.table(decisions);
+    console.table(slots.decisions);
+    // eslint-disable-next-line no-console
+    console.groupEnd();
+    // eslint-disable-next-line no-console
+    console.groupCollapsed(`[기본형 본문] 섹션 ${bodyOut.sections.length}개 · 항목 ${bodyOut.sections.reduce((n, sec) => n + sec.items.length, 0)}개`);
+    // eslint-disable-next-line no-console
+    console.table(bodyOut.decisions);
     // eslint-disable-next-line no-console
     console.groupEnd();
   }
-  const rejectedCount = decisions.filter((d) => d.result.startsWith('rejected')).length;
-  if (rejectedCount) notes.push(`TEXT 밴드 ${rejectedCount}건을 이미지 슬롯에서 차단(설명 중복 방지).`);
   mark('response_validation_ms');
 
   // ── Step 3-b: HERO 메인이미지 영역 정규화 — 선정된 밴드를 정사각 우선 캔버스에 제품 중앙·크게 재배치. ──
@@ -351,7 +292,6 @@ export const convertBasicWithAI = async (
     }
   }
   const featureImage = at(featureIndexV);
-  const sizeImage = at(sizeIndexV);
 
   // ── Step 2-1: 패키지 여백 정규화 — 선택 로직은 그대로, 선택된 패키지 밴드의 가장자리 배경만 트림. ──
   //    PreviewGodo·썸네일이 공유하는 canonical field(packageImage)에 정규화 결과를 저장(별도 자산 X).
@@ -368,15 +308,8 @@ export const convertBasicWithAI = async (
   }
   mark('package_normalization_ms');
 
-  const summaryInfo: SummaryInfo = {
-    feature: r.summary.feature ?? '',
-    type: r.summary.type ?? '',
-    material: r.summary.material ?? '',
-    size: '상세페이지 참조',                          // 규칙: 옵션별 치수 다양·픽셀 부정확 → 고정
-    weight: r.summary.weight ?? '',
-    power: r.summary.power ?? '',
-    maker: input.brandName || r.summary.maker || '',
-  };
+  // 치수 고정('상세페이지 참조')·제조사 우선순위는 조립 모듈이 정본.
+  const summaryInfo = buildBasicSummaryInfo(r.summary, { brandName: input.brandName });
 
   const data: Partial<ProductData> = {
     productNameKr: r.productNameKr || input.productNameKr,
@@ -387,25 +320,19 @@ export const convertBasicWithAI = async (
     ...(r.keyFeatures.length === 3 ? { keyFeatures: r.keyFeatures } : {}),
     mainImage,
     featureImage,
-    sizeImage,
     packageImage,
     isPackageImageEnabled: !!packageImage,   // 제약6: 패키지 없으면 명시적 비활성(직전 상품 값 잔류 방지)
 
-    point1Title: r.point1.title || '',
-    aiPoint1Desc: p1[0]?.caption ?? '',
-    aiPoint1Desc2: p1[1]?.caption ?? '',
-    aiPoint1Desc3: p1[2]?.caption ?? '',
-    point1Image1: at(finalPoint['point1-1']),
-    point1Image2: at(finalPoint['point1-2']),
-    point1Image3: at(finalPoint['point1-3']),
+    // 본문 정본 — 원본 섹션 배열. PreviewGodo가 이 순서대로 반복 렌더한다.
+    godoBodySections: bodyOut.sections,
 
-    point2Title: r.point2.title || '',
-    aiPoint2Desc: p2[0]?.caption ?? '',
-    aiPoint2Desc2: p2[1]?.caption ?? '',
-    aiPoint2Desc3: p2[2]?.caption ?? '',
-    point2Image1: at(finalPoint['point2-1']),
-    point2Image2: at(finalPoint['point2-2']),
-    point2Image3: at(finalPoint['point2-3']),
+    // 고정 Point 01·02·SIZE 슬롯은 이 경로에서 더 쓰지 않는다(본문이 원본 순서를 그대로 담는다).
+    //   ①구조 배치 결과나 직전 상품 값이 남아 같은 자료가 두 번 보이지 않도록 명시적으로 비운다.
+    sizeImage: null,
+    point1Title: '', aiPoint1Desc: '', aiPoint1Desc2: '', aiPoint1Desc3: '',
+    point1Image1: null, point1Image2: null, point1Image3: null,
+    point2Title: '', aiPoint2Desc: '', aiPoint2Desc2: '', aiPoint2Desc3: '',
+    point2Image1: null, point2Image2: null, point2Image3: null,
   };
 
   if (mainImage && packageImage) {
@@ -414,7 +341,7 @@ export const convertBasicWithAI = async (
     else notes.push('패키지 자동배치 계산 실패 — 기본 위치 사용(필요시 수동 조정).');
   }
   if (r.keyFeatures.length !== 3) notes.push(`keyFeatures ${r.keyFeatures.length}개(3 아님) — 메인특징 수동 보완 필요.`);
-  if (!mainImage) notes.push('메인 이미지 후보 없음 — 수동 지정 필요.');
+  notes.push(`본문 ${bodyOut.sections.length}개 섹션 인식 — ${bodyOut.sections.map((s) => `${s.number || '·'} ${s.title || ''}(${s.items.length})`).join(' / ') || '없음'}`);
 
   // ── 기준선 계측 마감: 패키지 자동배치 계산 + 총합. (validation/package_normalization은 위에서 별도 마킹) ──
   mark('package_layout_ms');

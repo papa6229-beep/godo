@@ -37,9 +37,9 @@ const compile = (relFile) => execFileSync(
 );
 
 console.log('[1/9] 컴파일');
-compile('src/components/detailBuilder/services/basicBodyAssembly.ts');
+// constants.ts → types.ts → services/basicBodyAssembly.ts 가 한 프로그램으로 함께 컴파일된다.
 compile('src/components/detailBuilder/constants.ts');
-const mod = await import(pathToFileURL(path.join(outDir, 'components/detailBuilder/services/basicBodyAssembly.js')).href);
+const mod = await import(pathToFileURL(path.join(outDir, 'services/basicBodyAssembly.js')).href);
 const {
   selectBasicSlots, assembleBasicBody, buildBasicSummaryInfo, hasDynamicBody, BODY_DUP_HAMMING,
 } = mod;
@@ -310,7 +310,7 @@ ok('결선) 리더가 sections · summarySourceIndexes 를 요청한다', /secti
 ok('결선) AI 에게 픽셀 좌표를 묻지 않는다', !/"?(cropY|cropX|bbox|pixel)"?/.test(readerSrc));
 
 // 13. 기존 자동 섬네일 기능의 입력·출력 계약이 변하지 않는다.
-const consts = await import(pathToFileURL(path.join(outDir, 'components/detailBuilder/constants.js')).href);
+const consts = await import(pathToFileURL(path.join(outDir, 'constants.js')).href);
 ok('13) 섬네일 프리셋 4종 유지', consts.THUMBNAIL_PRESETS.length === 4);
 ok('13) 프리셋 규격 202/400/500/274x411 유지',
   consts.THUMBNAIL_PRESETS.map((p) => `${p.width}x${p.height}`).join(',') === '202x202,400x400,500x500,274x411');

@@ -6,6 +6,7 @@
 import React, { forwardRef } from 'react';
 import { Rnd } from 'react-rnd';
 import type { ProductData } from '../types';
+import { hasDynamicBody } from '../services/basicBodyAssembly';
 
 // 고도몰 브랜딩 단일 소스(footer·섬네일 공용). ⚠️ 사장님 확정 시 이 한 곳만 교체(현재 플레이스홀더).
 export const GODO_BRAND = {
@@ -292,6 +293,63 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
     );
   };
 
+  // ===== 본문 동적 섹션(기본형 변환 결과) =====
+  //   원본 상세페이지의 섹션 개수·순서·항목 순서를 그대로 반복 렌더한다.
+  //   Point 01·02·SIZE 고정 슬롯에 압축하지 않는다 → 사이즈·전원 섹션도 원본 위치에 그대로 나온다.
+  //   동적 섹션이 없으면(수동 편집·구조 배치만) 아래 기존 고정 렌더가 그대로 동작한다(무회귀).
+  const bodySections = hasDynamicBody(data) ? data.godoBodySections : null;
+  const renderBodySection = (sec, i) => {
+    const sid = `preview-body-${i + 1}`;
+    return (
+      <React.Fragment key={sec.id || sid}>
+        {i > 0 && (
+          <div className="px-[50px]"><Hairline color="#111827" thickness={1} /></div>
+        )}
+        <section id={sid} className="px-[50px] relative group"
+          style={{ paddingTop: gapVal(`${sid}-sec`, 'section'), paddingBottom: gapVal(`${sid}-sec`, 'section') }}>
+          <SectionGap id={`${sid}-sec`} />
+          <Dot color={accent} size={22} />
+          {(sec.number || '').trim() && <h2 className={`${SECTION_HEADING} mt-4`}>{sec.number}</h2>}
+          {(sec.title || '').trim() && (
+            <p className="flex items-center gap-2 text-2xl font-black text-gray-900 mt-3 break-keep">
+              {sec.title} <Dot color={accent} size={12} />
+            </p>
+          )}
+          <GapBar kind="heading" id={`${sid}-head`} />
+          <div className="flex flex-col">
+            {(sec.items || []).map((item, k) => {
+              const prev = k > 0 ? sec.items[k - 1] : null;
+              // 설명 ↔ 바로 아래 자기 이미지는 가깝게(12px 고정), 그 밖의 항목 사이는 드래그 가능한 블록 간격.
+              const tightPair = prev && prev.kind === 'text' && item.kind === 'media';
+              return (
+                <React.Fragment key={k}>
+                  {k > 0 && (tightPair
+                    ? <div style={{ height: BLOCK_INNER_GAP }} />
+                    : <GapBar kind="element" id={`${sid}-el-${k}`} />)}
+                  {item.kind === 'text' ? (
+                    <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep" style={{ maxWidth: 420 }}>
+                      {renderHighlightText(item.text, themeColor)}
+                    </p>
+                  ) : (
+                    <div className="relative w-full overflow-hidden" style={{ border: IMG_BORDER }}>
+                      <img src={item.src} className="w-full h-auto block" alt={`${sec.number || 'body'}-${k + 1}`} />
+                      {/* 손검수 사유는 화면에서 hover 시에만 — 저장 이미지에는 남지 않는다 */}
+                      {item.reviewNote && (
+                        <span className="absolute left-2 top-2 z-30 px-2 py-1 rounded bg-amber-500/90 text-white text-[11px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                          검수 필요 · {item.reviewNote}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </section>
+      </React.Fragment>
+    );
+  };
+
   // 패키지 오버레이 기본값(히어로 영역 우하단). 이제 히어로 전체가 bounds → 메인이미지 밖으로도 이동 가능.
   const pkg = data.packageLayout || { x: 468, y: 430, width: 210, height: 250 };
 
@@ -460,21 +518,24 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
           </section>
         )}
 
-        {/* ===== POINT 01 / 02 (01-02 사이 가로라인 ⑦) ===== */}
-        {renderPoint('01', 'preview-point1', point1Title, [
+        {/* ===== 본문 — 원본 섹션 그대로(기본형 변환 결과가 있을 때) ===== */}
+        {bodySections && bodySections.map(renderBodySection)}
+
+        {/* ===== POINT 01 / 02 (01-02 사이 가로라인 ⑦) — 동적 본문이 없을 때만 ===== */}
+        {!bodySections && renderPoint('01', 'preview-point1', point1Title, [
           [aiPoint1Desc, data.point1Image1, 'point1Image1'],
           [data.aiPoint1Desc2, data.point1Image2, 'point1Image2'],
           [data.aiPoint1Desc3, data.point1Image3, 'point1Image3'],
         ], false)}
-        {renderPoint('02', 'preview-point2', point2Title, [
+        {!bodySections && renderPoint('02', 'preview-point2', point2Title, [
           [aiPoint2Desc, data.point2Image1, 'point2Image1'],
           [data.aiPoint2Desc2, data.point2Image2, 'point2Image2'],
           [data.aiPoint2Desc3, data.point2Image3, 'point2Image3'],
         ], true)}
 
-        {/* ===== SIZE ===== */}
-        {!(sizeImage || (summaryInfo?.weight || '').trim()) && <div id="preview-size" />}
-        {(sizeImage || (summaryInfo?.weight || '').trim()) && (
+        {/* ===== SIZE — 동적 본문이 있으면 원본 위치의 사이즈 섹션이 이미 있으므로 렌더하지 않는다 ===== */}
+        {!(bodySections) && !(sizeImage || (summaryInfo?.weight || '').trim()) && <div id="preview-size" />}
+        {!bodySections && (sizeImage || (summaryInfo?.weight || '').trim()) && (
           <React.Fragment>
           {/* ③ 영문명 마퀴 밴드 — SIZE 위에도 동일 렌더(섹션 구분용) */}
           <MarqueeBand />

@@ -14,7 +14,10 @@
 //     · 사이즈 도해(band11):      largestCC 0.127,       smallCC 31   → MIXED(제품 있음 → 이미지 사용가능)
 //   → largestCC(가장 큰 연결요소 면적)가 TEXT↔제품컷을 완벽 분리하는 핵심 지표.
 
-export type BasicBandType = 'PHOTO' | 'TEXT' | 'MIXED' | 'UNKNOWN';
+// 밴드 타입·dHash 비교는 순수 모듈(basicBodyAssembly)이 정본 — 여기서 다시 정의하지 않고 재수출한다.
+//   (Node 에서 실행 검사가 가능하도록 DOM 없는 쪽에 두었다. 기존 import 경로는 그대로 쓸 수 있다.)
+export type { BasicBandType } from './basicBodyAssembly';
+import type { BasicBandType } from './basicBodyAssembly';
 
 export interface BasicBandMetrics {
   width: number;
@@ -32,13 +35,8 @@ export interface BasicBandMetrics {
   dhash: boolean[];     // 9x8 difference hash(64bit) — "같은 사진 다른 밴드" 중복 판정용
 }
 
-// 두 dHash의 해밍 거리(다른 비트 수). 길이 다르면 최대치(64) 반환(비교 불가 = 다름).
-export const dhashHamming = (a: boolean[], b: boolean[]): number => {
-  if (!a?.length || !b?.length || a.length !== b.length) return 64;
-  let d = 0;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
-  return d;
-};
+// 두 dHash의 해밍 거리(다른 비트 수) — 정본은 basicBodyAssembly. 기존 소비자를 위해 재수출한다.
+export { dhashHamming } from './basicBodyAssembly';
 
 export interface TaggedBand {
   dataUrl: string;
