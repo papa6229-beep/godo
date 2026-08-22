@@ -6,7 +6,7 @@
 import React, { forwardRef } from 'react';
 import { Rnd } from 'react-rnd';
 import type { ProductData } from '../types';
-import { hasDynamicBody } from '../services/basicBodyAssembly';
+import { hasDynamicBody, isSizeSection, isWeightLine, trailingMediaRunStart } from '../services/basicBodyAssembly';
 
 // 고도몰 브랜딩 단일 소스(footer·섬네일 공용). ⚠️ 사장님 확정 시 이 한 곳만 교체(현재 플레이스홀더).
 export const GODO_BRAND = {
@@ -298,8 +298,13 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
   //   Point 01·02·SIZE 고정 슬롯에 압축하지 않는다 → 사이즈·전원 섹션도 원본 위치에 그대로 나온다.
   //   동적 섹션이 없으면(수동 편집·구조 배치만) 아래 기존 고정 렌더가 그대로 동작한다(무회귀).
   const bodySections = hasDynamicBody(data) ? data.godoBodySections : null;
-  const renderBodySection = (sec, i) => {
+  const renderBodySection = (sec, i, all) => {
     const sid = `preview-body-${i + 1}`;
+    // 사이즈 섹션: 무게 한 줄은 가운데 알약(pill)으로, 도해 이미지는 사각 테두리 없이(원본 내용은 그대로).
+    const sizeSection = isSizeSection(sec);
+    // 마지막 섹션에서 "마지막 설명문 뒤에 제품 컷만 2장 이상" 연속되면 그 앞에 구분선 1개.
+    const isLastSection = i === (all ? all.length : 0) - 1;
+    const runStart = trailingMediaRunStart(sec, isLastSection);
     return (
       <React.Fragment key={sec.id || sid}>
         {i > 0 && (
@@ -321,17 +326,36 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
               const prev = k > 0 ? sec.items[k - 1] : null;
               // 설명 ↔ 바로 아래 자기 이미지는 가깝게(12px 고정), 그 밖의 항목 사이는 드래그 가능한 블록 간격.
               const tightPair = prev && prev.kind === 'text' && item.kind === 'media';
+              const weightPill = sizeSection && item.kind === 'text' && isWeightLine(item.text);
+              const noBorder = sizeSection && item.kind === 'media';   // 사이즈 도해·무게 그래픽은 무테
               return (
                 <React.Fragment key={k}>
-                  {k > 0 && (tightPair
-                    ? <div style={{ height: BLOCK_INNER_GAP }} />
-                    : <GapBar kind="element" id={`${sid}-el-${k}`} />)}
+                  {k === runStart
+                    // 제품 이미지 나열부 시작: 위 여백 + 구분선 1개(새 제목·번호는 만들지 않는다)
+                    ? (
+                      <div style={{ paddingTop: gapVal(`${sid}-run`, 'section') }}>
+                        <Hairline color="#d1d5db" thickness={1} />
+                      </div>
+                    )
+                    : k > 0 && (tightPair
+                      ? <div style={{ height: BLOCK_INNER_GAP }} />
+                      : <GapBar kind="element" id={`${sid}-el-${k}`} />)}
                   {item.kind === 'text' ? (
-                    <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep" style={{ maxWidth: 420 }}>
-                      {renderHighlightText(item.text, themeColor)}
-                    </p>
+                    weightPill ? (
+                      // 무게 한 줄: 가로 중앙 · 내용 길이에 맞춘 폭(3~4자리도 잘리지 않음) · 둥근 테두리 유지
+                      <div className="flex justify-center">
+                        <div className="inline-flex items-center justify-center rounded-full border-2 bg-white px-12 py-5 whitespace-nowrap"
+                          style={{ borderColor: isGradient(accent) ? '#c7d2fe' : accent }}>
+                          <span className="text-2xl font-black text-gray-900">{item.text.trim()}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-base font-medium text-gray-600 leading-relaxed whitespace-pre-line break-keep" style={{ maxWidth: 420 }}>
+                        {renderHighlightText(item.text, themeColor)}
+                      </p>
+                    )
                   ) : (
-                    <div className="relative w-full overflow-hidden" style={{ border: IMG_BORDER }}>
+                    <div className="relative w-full overflow-hidden" style={noBorder ? undefined : { border: IMG_BORDER }}>
                       <img src={item.src} className="w-full h-auto block" alt={`${sec.number || 'body'}-${k + 1}`} />
                       {/* 손검수 사유는 화면에서 hover 시에만 — 저장 이미지에는 남지 않는다 */}
                       {item.reviewNote && (
@@ -519,7 +543,7 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
         )}
 
         {/* ===== 본문 — 원본 섹션 그대로(기본형 변환 결과가 있을 때) ===== */}
-        {bodySections && bodySections.map(renderBodySection)}
+        {bodySections && bodySections.map((sec, i) => renderBodySection(sec, i, bodySections))}
 
         {/* ===== POINT 01 / 02 (01-02 사이 가로라인 ⑦) — 동적 본문이 없을 때만 ===== */}
         {!bodySections && renderPoint('01', 'preview-point1', point1Title, [

@@ -251,7 +251,10 @@ export const convertBasicWithAI = async (
 
   // 상단 요약 슬롯(메인·Key Feature·패키지) — 깨끗한 제품 단독컷 자격을 로컬에서 다시 검사한다.
   const slots = selectBasicSlots(
-    { mainIndex: r.mainIndex, featureIndex: r.featureIndex, packageIndex: r.packageIndex, summarySourceIndexes: r.summarySourceIndexes },
+    {
+      mainIndex: r.mainIndex, featureIndex: r.featureIndex, packageIndex: r.packageIndex,
+      summarySourceIndexes: r.summarySourceIndexes, mainIsSoloProductCut: r.mainIsSoloProductCut,
+    },
     bandRefs,
   );
   notes.push(...slots.notes);

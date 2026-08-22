@@ -42,9 +42,12 @@ compile('src/components/detailBuilder/constants.ts');
 const mod = await import(pathToFileURL(path.join(outDir, 'services/basicBodyAssembly.js')).href);
 const {
   selectBasicSlots, assembleBasicBody, buildBasicSummaryInfo, hasDynamicBody, BODY_DUP_HAMMING,
+  isSizeSection, isWeightLine, trailingMediaRunStart,
 } = mod;
 ok('모듈이 다섯 진입점을 내보낸다',
   [selectBasicSlots, assembleBasicBody, buildBasicSummaryInfo, hasDynamicBody].every((f) => typeof f === 'function') && BODY_DUP_HAMMING === 10);
+ok('렌더 규칙 판정 3종도 순수 함수로 내보낸다',
+  [isSizeSection, isWeightLine, trailingMediaRunStart].every((f) => typeof f === 'function'));
 
 // ── 핑거위글 밴드 fixture (실측 순서) ────────────────────────────────────────
 //  0..4  = 요약정보 원본(1667813618_0.jpg) 5밴드
@@ -285,6 +288,58 @@ ok('번호 없는 섹션도 순서를 유지한다', (() => {
   return r.sections.length === 2 && r.sections[0].title === '가' && r.sections[1].title === '나';
 })());
 
+// ══════════════════════════════════════════════════════════════════════════
+// [P2] 1차 결과 교정 Patch (2026-08-22) — ① 메인 컷 ② 사이즈 섹션 ③ 텍스트/복합 ④ 나열부 구분
+// ══════════════════════════════════════════════════════════════════════════
+console.log('[8-b] ① 메인 = 제품 단독 컷 · 손이 든 컷은 KEY FEATURE 로');
+{
+  // 8=손+제품(핑거위글 실제 01 섹션), 28=제품 단독. "어느 컷이 단독인가"는 판독(AI)이 정하고,
+  //   로컬은 그 선택이 깨끗한 컷 자격을 지키는지 검증만 한다(새 이미지 분석기·사람 감지 없음).
+  const s = selectBasicSlots({ ...VISION, mainIndex: 28, featureIndex: 8, mainIsSoloProductCut: true }, BANDS);
+  ok('①-1. 제품 단독 컷이 메인', s.mainIndex === 28);
+  ok('①-2. 손이 포함된 컷도 KEY FEATURE 로는 사용 가능', s.featureIndex === 8);
+  ok('①-3. 메인 ≠ KEY FEATURE 유지', s.mainIndex !== s.featureIndex);
+  ok('①-4. 단독 컷일 때는 손검수 안내가 없다', !s.notes.some((n) => n.includes('제품 외 요소')));
+}
+{
+  // 단독 컷이 부족해 AI 가 mainIsSoloProductCut:false 로 알려온 경우 — 변환은 계속되고 note 만 남는다.
+  const s = selectBasicSlots({ ...VISION, mainIsSoloProductCut: false }, BANDS);
+  ok('①-5. 단독 컷 부족: 변환 계속(메인 비우지 않음)', s.mainIndex >= 0);
+  ok('①-6. 손검수 note 를 남긴다', s.notes.includes('메인 이미지에 제품 외 요소 포함 — 손검수 필요.'));
+  ok('①-7. 미회신(undefined)이면 note 를 만들지 않는다', !selectBasicSlots(VISION, BANDS).notes.some((n) => n.includes('제품 외 요소')));
+}
+
+console.log('[8-c] ② 사이즈 섹션 · ④ 나열부 구분 판정');
+ok('②-1. 사이즈 섹션만 대상', isSizeSection({ title: '제품 사이즈' }) === true
+  && isSizeSection({ title: 'SIZE' }) === true
+  && isSizeSection({ title: '제품 전원' }) === false && isSizeSection({ title: '제품특징' }) === false);
+ok('②-2. 무게 한 줄만 알약 대상', isWeightLine('무게 : 약 97g') === true && isWeightLine('무게 : 약 1,250g') === true);
+ok('②-3. 무게가 섞인 주석 문장은 알약 대상 아님',
+  isWeightLine('*위 사이즈와 무게는 모두 수작업으로 측정되어 오차가 있을 수 있습니다.') === false);
+ok('②-4. 무게와 무관한 문장·빈 값은 대상 아님', isWeightLine('전원 · 진동 버튼') === false && isWeightLine('') === false && isWeightLine(undefined) === false);
+ok('④-1. 마지막 섹션: 마지막 텍스트 뒤 미디어 2장 이상 → 그 시작 위치 1곳', trailingMediaRunStart(body.sections[3], true) === 6);
+ok('④-2. 중간 섹션(02: 설명에 소속된 연속 이미지)은 구분 대상 아님', trailingMediaRunStart(body.sections[1], false) === -1);
+ok('④-2b. 마지막 섹션 조건을 빼면 아예 판정하지 않는다(기본값 false)', trailingMediaRunStart(body.sections[3]) === -1);
+ok('④-3. 마지막이 미디어 1장뿐이면 구분하지 않는다',
+  trailingMediaRunStart({ items: [{ kind: 'text', text: 'a' }, { kind: 'media', src: 'x' }] }, true) === -1);
+ok('④-4. 설명이 하나도 없으면 구분 기준이 없다',
+  trailingMediaRunStart({ items: [{ kind: 'media', src: 'x' }, { kind: 'media', src: 'y' }] }, true) === -1);
+ok('④-5. 03 사이즈 섹션은 텍스트로 끝나 구분 없음', trailingMediaRunStart(body.sections[2], true) === -1);
+
+console.log('[8-d] ③ 독립 설명문은 text · 이미지 결합 설명은 복합 미디어');
+{
+  // 핑거위글 04 섹션에서 문제가 된 네 문장이 text 항목으로 남는지(순서·개수 불변)
+  const s04items = body.sections[3].items;
+  const texts = s04items.filter((i) => i.kind === 'text').map((i) => i.text);
+  ok('③-1. "전원 · 진동 버튼" 이 text', texts.includes('전원 · 진동 버튼'));
+  ok('③-2. "충전" 이 text', texts.includes('충전'));
+  ok('③-3. USB 안내 문장이 text', texts.some((t) => t.startsWith('USB연결형으로')));
+  ok('③-4. CR2032 주석이 text', texts.some((t) => t.startsWith('*리모컨은 CR2032')));
+  ok('③-5. 지시선이 붙은 설명은 복합 이미지 1장 그대로', s04items.filter((i) => i.kind === 'media' && i.composite).length === 1);
+  ok('③-6. 04 섹션 항목 순서·개수 불변(교정 전과 동일)',
+    s04items.map((i) => i.kind).join(',') === 'text,media,text,media,text,text,media,media,media,media,media');
+}
+
 console.log('[9/9] 결선 · 계약 대조(소스)');
 const read = (p) => readFileSync(path.join(repo, p), 'utf8');
 const convertSrc = read('src/components/detailBuilder/services/godoBasicConvert.ts');
@@ -307,6 +362,18 @@ ok('결선) PreviewGodo 가 hasDynamicBody 로 고정 Point/SIZE 를 가른다',
 ok('결선) 변환기가 동적 섹션을 ProductData 에 싣는다', /godoBodySections/.test(convertSrc));
 ok('결선) 변환기가 조립 모듈을 쓴다(중복 구현 없음)', /assembleBasicBody|selectBasicSlots|buildBasicSummaryInfo/.test(convertSrc));
 ok('결선) 리더가 sections · summarySourceIndexes 를 요청한다', /sections/.test(readerSrc) && /summarySourceIndexes/.test(readerSrc));
+// 1차 결과 교정 Patch 결선
+ok('결선) 판독 지시에 "제품 단독 컷 우선 · 손/사람 배제 · 단독 컷 없으면 계속" 이 있다',
+  /제품만 단독/.test(readerSrc) && /손·사람/.test(readerSrc) && /mainIsSoloProductCut/.test(readerSrc));
+ok('결선) 판독 지시에 텍스트/복합 구분 기준(떼어도 읽히는가)이 있다', /떼어도/.test(readerSrc));
+ok('결선) 변환기가 단독 컷 여부를 슬롯 선정에 넘긴다', /mainIsSoloProductCut/.test(convertSrc));
+ok('결선) 새 이미지 분석기·사람 감지기를 만들지 않았다(임계값 상수 불변)',
+  /MAX_COLOR: 0\.20/.test(assemblySrc) && /MAX_SMALL_CC: 10/.test(assemblySrc)
+  && /MIN_LARGEST_CC: 0\.12/.test(assemblySrc) && /MAX_FILL_RATIO: 0\.62/.test(assemblySrc));
+ok('결선) 렌더러가 사이즈 섹션·무게 알약·나열부 판정을 순수 함수로 받는다',
+  /isSizeSection/.test(previewSrc) && /isWeightLine/.test(previewSrc) && /trailingMediaRunStart/.test(previewSrc));
+ok('결선) 나열부에 새 제목·번호를 만들지 않는다', !/제품 이미지<\/h2>|>제품 이미지</.test(previewSrc));
+ok('결선) 사이즈 섹션 미디어만 무테로 분기한다', /noBorder \? undefined : \{ border: IMG_BORDER \}/.test(previewSrc));
 ok('결선) AI 에게 픽셀 좌표를 묻지 않는다', !/"?(cropY|cropX|bbox|pixel)"?/.test(readerSrc));
 
 // 13. 기존 자동 섬네일 기능의 입력·출력 계약이 변하지 않는다.

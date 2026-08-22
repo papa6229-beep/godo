@@ -24,6 +24,7 @@ export interface BasicVisionResult {
   mainIndex: number;       // 히어로(깨끗한 단독 누끼). 없으면 -1
   featureIndex: number;    // KEY FEATURE 이미지. 없으면 -1
   packageIndex: number;    // 패키지 박스. 없으면 -1
+  mainIsSoloProductCut: boolean;    // 메인이 "흰 배경 + 제품 단독" 컷인가(false = 손검수 안내)
   summarySourceIndexes: number[];   // 원본 "요약정보" 영역에서 온 밴드(본문에 다시 넣지 않는다)
   sections: AiBodySection[];        // 원본 순서를 유지한 본문 섹션·항목 지도(픽셀 좌표 없음)
   notes: string[];
@@ -80,8 +81,11 @@ const SYSTEM = [
   '   (본문 안에서 기능·사용법을 보여주는 움짤은 이와 다르다 — 그런 밴드는 본문 media 로 그대로 유지한다.)',
   '',
   '[상단 요약 슬롯]',
-  '- mainIndex: 흰 배경의 깨끗한 제품 단독 컷(가장 대표적인 컷).',
+  '- mainIndex: **흰 배경에 제품만 단독으로 놓인 컷**을 최우선으로 고른다.',
+  '  · 손·사람·신체 일부·소품·연출 배경·설명 글자·장식이 함께 찍힌 컷은 뒤로 미룬다(제품 단독 컷이 있으면 그것을 쓴다).',
+  '  · 그런 단독 컷이 정말 없으면 가장 나은 컷을 고르고 "mainIsSoloProductCut": false 로 알려라(빈칸·실패로 만들지 말 것).',
   '- featureIndex: KEY FEATURE용 제품 컷 — mainIndex 와 "반드시 다른 컷".',
+  '  · 여기서도 깨끗한 제품 컷이 우선이지만 조건은 mainIndex 보다 완화해도 된다(손이 나온 컷도 허용).',
   '  ⚠️ 배경색·그림·장식 문양이 깔렸거나 설명 문구가 이미지로 박힌 밴드(요약정보 영역의 컬러 배경 메인컷 포함)는',
   '     mainIndex·featureIndex 후보가 아니다.',
   '- packageIndex: 패키지(박스) 컷. 원본 요약영역에 있으면 그것을 쓴다. 없으면 -1.',
@@ -98,8 +102,12 @@ const SYSTEM = [
   '- items 는 원본 위→아래 순서 그대로. 두 종류만 쓴다.',
   '  · {"kind":"text","text":"…"}  = 이미지와 독립된 섹션 안내문·일반 설명 문단(글자로 옮긴다).',
   '  · {"kind":"media","index":N,"composite":false} = 그 자리에 있던 이미지/움짤 밴드 번호.',
-  '- ⚠️ 제품 이미지와 같은 시각 구성 안에서 특정 부위·기능·수치·상태·사용법을 설명하는 텍스트·아이콘·표식은',
-  '  화살표나 선의 유무와 관계없이 "이미지의 일부"다. 글자로 옮기지 말고 그 밴드를 media 로 두고 "composite":true 로 표시한다.',
+  '- 판단 기준은 하나다 — **이미지에서 떼어도 그 문장만으로 읽히는가.**',
+  '  · 읽힌다(제목·안내 라벨·일반 설명·주석 등 별도 줄에 적힌 문장) → {"kind":"text"} 로 옮긴다.',
+  '    예: "전원 · 진동 버튼" / "충전" / "USB연결형으로 건전지 걱정없이! 충전해서 사용할 수 있습니다." / "* 리모컨은 CR2032 건전지 1개를 사용합니다."',
+  '  · 읽히지 않는다(제품의 특정 부위·기능을 이미지 안에서 가리키거나 배치로 설명하는 글자·선·화살표·표식)',
+  '    → 글자로 옮기지 말고 그 밴드를 media 로 두고 "composite":true 로 표시한다.',
+  '- ⚠️ 제품 이미지와 한 시각 구성으로 묶인 텍스트·아이콘·표식은 화살표나 선의 유무와 관계없이 "이미지의 일부"다.',
   '- 분리 여부가 애매하면 자르거나 삭제하지 말고 복합 이미지 하나로 보존하고 "reviewNote"에 손검수 사유를 한 줄 남긴다.',
   '- 사이즈·전원 섹션도 원본에 있던 그 위치에 그대로 둔다. 별도의 사이즈 섹션을 새로 만들지 말 것.',
   '- 번호·섹션 제목은 items 에 다시 넣지 말 것(number/title 필드가 이미 담는다).',
@@ -107,7 +115,7 @@ const SYSTEM = [
   '[출력] 아래 JSON "하나만" 출력(코드펜스/설명/머리말 금지):',
   '{"productNameKr":"..\\n..","productNameEn":"..","summary":{"feature":"","type":"","material":"","weight":"","power":"","maker":""},',
   '"keyFeatures":[{"title":"","desc":""},{"title":"","desc":""},{"title":"","desc":""}],',
-  '"mainIndex":0,"featureIndex":0,"packageIndex":0,"summarySourceIndexes":[0],',
+  '"mainIndex":0,"featureIndex":0,"packageIndex":0,"mainIsSoloProductCut":true,"summarySourceIndexes":[0],',
   '"sections":[{"number":"01","title":"제품특징","items":[{"kind":"text","text":"..\\n.."},{"kind":"media","index":3,"composite":false}]}],',
   '"notes":[]}',
 ].join('\n');
@@ -152,6 +160,8 @@ const parseResult = (raw: string): BasicVisionResult => {
     },
     keyFeatures: feats.map((f: any) => ({ title: str(f?.title), desc: str(f?.desc) })).filter((f: any) => f.title).slice(0, 3),
     mainIndex: num(obj.mainIndex), featureIndex: num(obj.featureIndex), packageIndex: num(obj.packageIndex),
+    // 미회신이면 true(=문제 없음)로 본다. 명시적으로 false 일 때만 손검수 안내를 남긴다.
+    mainIsSoloProductCut: obj.mainIsSoloProductCut !== false,
     summarySourceIndexes: (Array.isArray(obj.summarySourceIndexes) ? obj.summarySourceIndexes : [])
       .map((v: unknown) => num(v)).filter((v: number) => v >= 0),
     sections,

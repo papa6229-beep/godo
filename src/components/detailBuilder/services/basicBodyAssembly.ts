@@ -43,6 +43,12 @@ export interface BasicSlotRequest {
   featureIndex: number;
   packageIndex: number;
   summarySourceIndexes?: number[];   // 원본 "요약정보" 영역에서 온 밴드들(본문 재사용 금지)
+  /**
+   * 메인으로 고른 컷이 "흰 배경 + 제품 단독"인가(AI 판단).
+   * false = 손·사람·소품·글자 등이 섞였지만 더 나은 후보가 없어 그대로 쓴 경우 → 손검수 안내를 남긴다.
+   * (변환을 실패시키거나 빈칸으로 만들지 않는다.)
+   */
+  mainIsSoloProductCut?: boolean;
 }
 
 // ── 화면이 렌더하는 본문 정본 ────────────────────────────────────────────────
@@ -177,6 +183,8 @@ export const selectBasicSlots = (req: BasicSlotRequest, bands: BasicBandRef[]): 
   for (const i of req.summarySourceIndexes ?? []) if (inRange(i, n)) reserved.add(i);
   if (packageIndex >= 0) reserved.add(packageIndex);
   if (!(req.summarySourceIndexes ?? []).length) notes.push('요약정보 원본 밴드 표시 없음 — 본문 중복 여부를 눈으로 확인하세요.');
+  // 제품 단독 컷이 부족해 손·사람·소품이 섞인 컷을 메인으로 쓴 경우: 변환은 계속하고 검수 신호만 남긴다.
+  if (mainIndex >= 0 && req.mainIsSoloProductCut === false) notes.push('메인 이미지에 제품 외 요소 포함 — 손검수 필요.');
 
   return { mainIndex, featureIndex, packageIndex, reserved, decisions, notes };
 };
@@ -287,3 +295,40 @@ export const buildBasicSummaryInfo = (
 /** 동적 본문이 있으면 그것이 본문 정본이다(고정 Point 01·02·SIZE 렌더를 함께 쓰지 않는다). */
 export const hasDynamicBody = (data?: { godoBodySections?: BasicBodySection[] } | null): boolean =>
   !!data && Array.isArray(data.godoBodySections) && data.godoBodySections.length > 0;
+
+// ── 렌더 규칙(순수 판정 — 화면은 이 결과만 쓴다) ─────────────────────────────
+
+/**
+ * 원본의 "사이즈" 섹션인가. 상품마다 번호는 달라도 제목은 사이즈/SIZE 로 적힌다.
+ * 이 섹션에서만 무게 표시를 알약(pill)로, 도해 이미지를 무테로 렌더한다(다른 섹션 무영향).
+ */
+export const isSizeSection = (sec?: { title?: string } | null): boolean =>
+  /사이즈|size/i.test((sec?.title ?? '').trim());
+
+/**
+ * "무게 : 약 97g" 처럼 무게 값만 담긴 짧은 한 줄인가(알약 렌더 대상).
+ * 주석 문장("*위 사이즈와 무게는 …")은 대상이 아니다 — 별표로 시작하거나 길면 제외한다.
+ */
+export const isWeightLine = (text?: string): boolean => {
+  const t = (text ?? '').trim();
+  if (!t || t.startsWith('*') || t.length > 24) return false;
+  return /무게|weight/i.test(t) && /\d/.test(t);
+};
+
+/**
+ * "마지막 본문 섹션에서 · 마지막 설명문 뒤에 · 미디어가 2장 이상 연속" 되는 나열부의 시작 위치. 없으면 -1.
+ * 중간 섹션(02 처럼 설명에 소속된 연속 이미지)은 대상이 아니다 — `isLastSection` 이 그 경계다.
+ */
+export const trailingMediaRunStart = (
+  sec?: { items?: BasicBodyItem[] } | null,
+  isLastSection = false,
+): number => {
+  if (!isLastSection) return -1;
+  const items = sec?.items ?? [];
+  let lastText = -1;
+  for (let i = 0; i < items.length; i++) if (items[i].kind === 'text') lastText = i;
+  if (lastText < 0) return -1;                       // 설명이 하나도 없으면 나열부를 가를 기준이 없다
+  const start = lastText + 1;
+  const run = items.length - start;
+  return run >= 2 ? start : -1;
+};
