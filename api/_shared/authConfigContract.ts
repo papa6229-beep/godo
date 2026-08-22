@@ -86,11 +86,20 @@ export interface AuthConfigInput {
   protectedEnv: boolean;
 }
 
+/**
+ * ★ 2026-08-22 사용자 결정(구조 패치): **GODO 는 로그인 기능을 쓰지 않는다.**
+ *   공개키(브라우저 SDK 키)가 없으면 로그인 화면 자체가 존재할 수 없다 = 이 배포는 인증을 쓰지 않는다.
+ *   그러므로 서버에 secret 조각이 남아 있어도 **인증을 활성화·강제하지 않는다**(= `off`).
+ *   `partial`(=보호환경에서 503 으로 닫는 상태)은 **공개키가 있는 배포**, 곧 "로그인을 쓰겠다고
+ *   선언했는데 설정이 덜 찬" 경우로만 좁힌다. 그 fail-closed 는 그대로 유지된다.
+ */
 export function deriveAuthConfigState(i: AuthConfigInput): AuthConfigState {
   const hasSecret = !!i.secretKey;
   const hasPublishable = !!i.publishableKey;
-  if (!hasSecret && !hasPublishable) return 'off';
-  if (!hasSecret || !hasPublishable) return 'partial';
+  // 공개키 없음 = 로그인 미사용 배포(secret 잔여물이 있어도 인증을 켜지 않는다).
+  if (!hasPublishable) return 'off';
+  // 아래부터는 "로그인을 쓰려는 배포"다 — 설정이 덜 찼으면 partial(보호환경에서 닫는다).
+  if (!hasSecret) return 'partial';
   // 보호환경에서 허용 출처를 비워 두면 세션 검증 대상 origin 을 특정할 수 없다.
   if (i.protectedEnv && i.authorizedParties.length === 0) return 'partial';
   return 'complete';

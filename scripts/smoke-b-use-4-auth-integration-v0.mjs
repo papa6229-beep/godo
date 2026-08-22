@@ -57,7 +57,7 @@ ok('0-3. 어댑터가 정적 import(비리터럴 지정자 트릭 없음)',
   && !/\[['"]@clerk['"]/.test(src('api/_shared/clerkAuthAdapter.ts')));
 
 // ── 컴파일 ───────────────────────────────────────────────────────────────────
-let AC, AA, AD, CFG, AUTHROUTE, ordersRevenue, ordersAdmin, marketing, health, ADAPTER;
+let AC, AA, AD, CFG, AUTHROUTE, ordersRevenue, ordersAdmin, marketing, health, ADAPTER, aiChat;
 let AG, AF, ACTOR, LC, LA, LSTORE, IDENT;
 try {
   execFileSync(process.execPath, [tscBin,
@@ -71,6 +71,7 @@ try {
     path.join(REPO, 'api', 'godomall', 'orders-admin.ts'),
     path.join(REPO, 'api', 'godomall', 'health.ts'),
     path.join(REPO, 'api', 'marketing', '[action].ts'),
+    path.join(REPO, 'api', 'ai', 'chat.ts'),
     '--ignoreConfig', '--rootDir', path.join(REPO, 'api'), '--outDir', tmp,
     '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck', '--types', 'node'],
     { stdio: 'pipe' });
@@ -85,7 +86,7 @@ try {
     '--ignoreConfig', '--rootDir', path.join(REPO, 'src'), '--outDir', path.join(tmp, 'cli'),
     '--module', 'esnext', '--moduleResolution', 'bundler', '--target', 'ES2022', '--skipLibCheck', '--jsx', 'react-jsx', '--types', 'node'],
     { stdio: 'pipe' });
-  for (const sub of ['_shared', 'auth', 'godomall', 'marketing',
+  for (const sub of ['_shared', 'auth', 'godomall', 'marketing', 'ai',
     path.join('cli', 'services'), path.join('cli', 'data'), path.join('cli', 'types'), path.join('cli', 'utils'), path.join('cli', 'engine')]) {
     const dir = path.join(tmp, sub); let files = [];
     try { files = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
@@ -116,6 +117,7 @@ try {
   ordersAdmin = (await imp('godomall', 'orders-admin.js')).default;
   health = (await imp('godomall', 'health.js')).default;
   marketing = (await imp('marketing', '[action].js')).default;
+  aiChat = (await imp('ai', 'chat.js')).default;
   AG = await imp(path.join('cli', 'services'), 'authGate.js');
   AF = await imp(path.join('cli', 'services'), 'authorizedFetch.js');
   ACTOR = await imp(path.join('cli', 'services'), 'authAccountActor.js');
@@ -174,19 +176,21 @@ ok('F-13. Vercel 변수가 전부 없어도 허용 출처가 만들어진다(유
   parties({ raw: 'https://ops.example.co.kr' }).length === 1);
 
 // 실제 보호 라우트로 재현
-console.log('\n[F-라우트] 실 handler 로 재현한 fail-closed 매트릭스');
+//   ★ 2026-08-22 사용자 결정 반영: 공개 Clerk 키가 없는 배포 = 로그인 미사용 → 인증을 켜지 않는다(open).
+//     fail-closed 503 은 "공개키가 있는데 설정이 덜 찬" 경우로 좁혔다(F-24·F-26).
+console.log('\n[F-라우트] 실 handler 로 재현한 인증 활성화 매트릭스');
 setEnv({ NODE_ENV: 'development' });
 ok('F-20. 명시적 로컬 개발 + 키 없음 → 200(기존 개발 화면 허용)', (await callRoute(ordersRevenue, OR_REQ())).status === 200);
 setEnv({ VERCEL_ENV: 'production' });
-ok('F-21. Vercel Production + 키 없음 → 503', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+ok('F-21. Vercel Production + 공개키 없음 → 200(로그인 미사용 배포는 열린다)', (await callRoute(ordersRevenue, OR_REQ())).status === 200);
 setEnv({ VERCEL_ENV: 'preview', CLERK_SECRET_KEY: 'sk_test_matrix' });
-ok('F-22. Vercel Preview + 부분설정(secret 만) → 503(크래시 아님)', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+ok('F-22. Vercel Preview + secret 잔여물만 → 200(인증 활성화 안 함 · 503 아님)', (await callRoute(ordersRevenue, OR_REQ())).status === 200);
 setEnv({ NODE_ENV: 'production' });
-ok('F-23. 회사 서버형 production + 키 없음 → 503', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+ok('F-23. 회사 서버형 production + 공개키 없음 → 200', (await callRoute(ordersRevenue, OR_REQ())).status === 200);
 setEnv({ NODE_ENV: 'production', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_matrix' });
-ok('F-24. 회사 서버형 production + 부분설정(publishable 만) → 503', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+ok('F-24. 회사 서버형 production + 공개키만(=로그인 쓰려는데 secret 없음) → 503 유지', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
 setEnv({});
-ok('F-25. 환경 불명 + 키 없음 → 503(fail-closed)', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
+ok('F-25. 환경 불명 + 공개키 없음 → 200(로그인 미사용)', (await callRoute(ordersRevenue, OR_REQ())).status === 200);
 setEnv({ NODE_ENV: 'production', CLERK_SECRET_KEY: 'sk_test_x', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_x' });
 ok('F-26. 두 키 + 보호환경 + 허용출처 0 → 503(azp 생략 금지)', (await callRoute(ordersRevenue, OR_REQ())).status === 503);
 
@@ -217,6 +221,56 @@ ok('F-29. 완전설정 + 무세션 → 401(실 어댑터 경로, 크래시 아�
   ok('F-32. 계정 조회가 throw 해도 503(디렉터리 장애 시 통과 금지)',
     dirBroken.status === 503 && dirBroken.body?.ran !== true, `status=${dirBroken.status}`);
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// [G] 로그인 미사용 배포(공개 Clerk 키 없음)에서 보호 API 가 열린다 — 2026-08-22 사용자 결정
+//     GODO 는 로그인 기능을 쓰지 않는다. 공개키가 없으면 남은 secret 조각으로 인증을 켜지 않는다.
+//     "공개키가 있는데 설정이 덜 찬" 배포의 fail-closed 503 은 그대로 유지한다.
+// ══════════════════════════════════════════════════════════════════════════
+console.log('\n[G] 공개키 없는 배포 = 로그인 미사용 → 인증 비활성(설정 판정)');
+const stateOf = (i) => CFG.deriveAuthConfigState({ secretKey: undefined, publishableKey: undefined, authorizedParties: [], protectedEnv: true, ...i });
+ok('G-1. 키 없음 → off', stateOf({}) === 'off');
+ok('G-2. secret 잔여물만 있어도 off(인증 활성화 금지)', stateOf({ secretKey: 'sk_test_x' }) === 'off');
+ok('G-3. 공개키만 있으면 partial(로그인을 쓰려는 배포 — 설정 미완)', stateOf({ publishableKey: 'pk_test_x' }) === 'partial');
+ok('G-4. 두 키 + 보호환경 + 허용출처 0 → partial(무회귀)',
+  stateOf({ secretKey: 'sk_test_x', publishableKey: 'pk_test_x' }) === 'partial');
+ok('G-5. 두 키 + 허용출처 → complete(무회귀)',
+  stateOf({ secretKey: 'sk_test_x', publishableKey: 'pk_test_x', authorizedParties: ['https://ops.example.co.kr'] }) === 'complete');
+ok('G-6. 보호환경이 아니어도 판정은 동일(환경이 상태를 바꾸지 않는다)',
+  CFG.deriveAuthConfigState({ secretKey: 'sk_test_x', publishableKey: undefined, authorizedParties: [], protectedEnv: false }) === 'off');
+
+console.log('\n[G-라우트] Preview + secret 잔여물 = 실제 증상 조건');
+const AI_REQ = (apiKey) => ({
+  method: 'POST', headers: {}, url: '/api/ai/chat',
+  body: { providerId: 'openai_api', apiKey, modelId: 'gpt-4o-mini', messages: [{ role: 'user', content: 'ping' }], purpose: 'connection_test' }
+});
+setEnv({ VERCEL_ENV: 'preview', CLERK_SECRET_KEY: 'sk_test_matrix' });
+{
+  // 종료조건: /api/ai/chat 이 AUTH_NOT_CONFIGURED 503 으로 막히지 않고 AI 공급자 단계까지 도달한다.
+  //   외부 호출 없이 확인하려고 키를 빈 값으로 보낸다 → handleAiChat 이 network 이전에 missing_key 로 답한다.
+  const r = await callRoute(aiChat, AI_REQ(''));
+  ok('G-10. Preview + secret 만: /api/ai/chat 이 503 AUTH_NOT_CONFIGURED 아님',
+    r.status !== 503 && r.body?.errorCode !== 'AUTH_NOT_CONFIGURED', `status=${r.status} code=${r.body?.errorCode ?? '-'}`);
+  ok('G-11. AI 공급자 단계까지 도달(빈 키 → missing_key)',
+    r.status === 200 && r.body?.errorKind === 'missing_key', `status=${r.status} kind=${r.body?.errorKind ?? '-'}`);
+  ok('G-12. 같은 조건에서 다른 보호 라우트도 내부 handler 진입',
+    (await callRoute(ordersRevenue, OR_REQ())).status === 200);
+  ok('G-13. 같은 조건에서 마케팅 보호 라우트도 503 아님',
+    (await callRoute(marketing, { method: 'GET', headers: {}, url: '/api/marketing/summary' })).status !== 503);
+  // 로그인 기능을 되살린 것이 아니다 — 계정 API 는 complete 가 아니면 그대로 닫혀 있다.
+  const authRes = makeRes();
+  await AUTHROUTE.default({ method: 'GET', headers: {}, url: '/api/auth/me' }, authRes);
+  ok('G-14. 계정/로그인 API 는 여전히 닫혀 있다(로그인 기능 복구 아님)', authRes._get().status === 503, `status=${authRes._get().status}`);
+}
+setEnv({ VERCEL_ENV: 'preview', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_matrix' });
+ok('G-15. 공개키가 있는 미완 설정에서는 /api/ai/chat 이 종전대로 503(fail-closed 유지)',
+  (await callRoute(aiChat, AI_REQ(''))).status === 503);
+setEnv({ NODE_ENV: 'production', CLERK_SECRET_KEY: 'sk_test_matrix', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_matrix', AUTH_AUTHORIZED_PARTIES: 'https://ops.example.co.kr' });
+{
+  const r = await callRoute(aiChat, AI_REQ(''));
+  ok('G-16. 인증이 완전히 구성되면 /api/ai/chat 은 무세션에서 401(보호 무회귀)', r.status === 401, `status=${r.status}`);
+}
+setEnv({});
 setEnv({});
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -941,8 +995,17 @@ ok('P-1. health 공개 유지(회사 서버 fail-closed 중에도 200)',
   const be = await callRoute(marketing, { method: 'OPTIONS', headers: { origin: 'https://x' }, url: '/api/marketing/behavior-events' });
   ok('P-2. behavior-events 공개 유지(방문자 수집)', be.status !== 401 && be.status !== 403 && be.status !== 503, `status=${be.status}`);
 }
-ok('P-3. behavior-summary 는 보호(미설정 → 503)',
-  (await callRoute(marketing, { method: 'GET', headers: {}, url: '/api/marketing/behavior-summary' })).status === 503);
+// P-3: behavior-summary 는 "보호 라우트"다. 2026-08-22 결정 이후 "보호"의 뜻은
+//   ① 공개키 있는 미완 설정(보호환경) → 503  ② 완전설정 + 무세션 → 401 이다.
+//   (공개키가 없는 로그인 미사용 배포에서 열리는 것은 P-2 의 '공개 경로'와 다른 사유다.)
+const BS_REQ = () => ({ method: 'GET', headers: {}, url: '/api/marketing/behavior-summary' });
+setEnv({ NODE_ENV: 'production', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_matrix' });
+ok('P-3. behavior-summary 는 보호 — 공개키 있는 미완 설정 → 503',
+  (await callRoute(marketing, BS_REQ())).status === 503);
+setEnv({ NODE_ENV: 'production', CLERK_SECRET_KEY: 'sk_test_matrix', VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_matrix', AUTH_AUTHORIZED_PARTIES: 'https://ops.example.co.kr' });
+ok('P-3b. behavior-summary 는 보호 — 완전설정 + 무세션 → 401',
+  (await callRoute(marketing, BS_REQ())).status === 401);
+setEnv({ NODE_ENV: 'production' });   // 이후 검사(P-4)의 기존 조건 복원
 {
   const oa = await callRoute(ordersAdmin, { method: 'GET', headers: {} });
   ok('P-4. orders-admin 403 ADMIN_ACCESS_DISABLED 유지', oa.status === 403 && oa.body?.errorCode === 'ADMIN_ACCESS_DISABLED');

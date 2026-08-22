@@ -30,9 +30,10 @@ export interface AuthDeps { session: AuthSessionPort; directory: AccountDirector
 
 // ── 구성 상태(공통 계약 기반) ─────────────────────────────────────────────────
 // 단일 키 유무가 아니라 authConfigContract 로 complete/partial/off 를 판정한다.
-//   - complete                  → 인증 강제(401/403)
-//   - partial/off + 보호환경    → 안전한 503(익명 open 금지)
-//   - partial/off + 명시적 로컬 → 현행 open(개발 편의)
+//   - complete               → 인증 강제(401/403)
+//   - partial + 보호환경     → 안전한 503(로그인을 쓰려다 설정이 덜 찬 배포 — 익명 open 금지)
+//   - off                    → 로그인 미사용 배포(공개키 없음) → 기존처럼 연다
+//   - partial + 명시적 로컬  → 현행 open(개발 편의)
 //
 // ★ B-use-4: 보호환경 판정을 `VERCEL_ENV` 하나에서 `resolveProtectedEnv` 로 넓혔다.
 //   최종 실행 장소가 미확정이고 유력 방향이 회사 서버·고도몰 전용 서버이므로,
@@ -122,12 +123,16 @@ export function protectedHandler<R extends IncomingMessage>(
     if (!depsOverride) {
       const cfg = resolveServerAuthConfig();
       if (cfg.state !== 'complete') {
-        if (cfg.protectedEnv) {
-          // 보호환경 미완전 설정: 익명 open 도, SDK/키 오류 크래시도 아닌 정적 503 으로 닫는다.
+        if (cfg.state === 'partial' && cfg.protectedEnv) {
+          // 로그인을 쓰겠다고 선언(공개키 존재)했는데 설정이 덜 찬 보호환경:
+          //   익명 open 도, SDK/키 오류 크래시도 아닌 정적 503 으로 닫는다(fail-closed 유지).
           //   Vercel Preview/Production · NODE_ENV=production(회사 서버형) · AUTH_ENFORCE · 환경 불명 전부 포함.
           return sendErrorResponse(res, 'AUTH_NOT_CONFIGURED', '서버 인증 설정이 완료되지 않아 이 기능이 잠시 닫혀 있습니다. 관리자에게 문의하세요.', 503);
         }
-        return inner(req, res); // **명시적** 로컬 개발 환경만 현행 open 허용
+        // state === 'off' = 공개 Clerk 키가 없다 = 이 배포는 로그인을 쓰지 않는다(사용자 결정).
+        //   보호환경이어도 인증을 활성화하지 않고 기존 동작 그대로 연다.
+        //   (state === 'partial' + 명시적 로컬 개발도 종전과 같이 open.)
+        return inner(req, res);
       }
     }
     const deps = depsOverride ?? (await loadDefaultAuthDeps());
