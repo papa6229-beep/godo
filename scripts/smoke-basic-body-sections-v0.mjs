@@ -749,6 +749,87 @@ console.log('[9-c] 본문 시작 경계 · 상단 슬롯 기계 확인');
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// [9-d] 본문 시작점 = 3줄 요약 직후 (2026-08-24 Patch · 프리티 러브 브루스)
+//   확정된 원인: 옛 지시의 "패키지·옵션까지 메인섹션" 표현이 너무 넓어서,
+//     메인섹션 뒤의 `제품특징` 블록과 Point 01 구성품 이미지까지 메인으로 간주됐다
+//     → 본문 크롭 시작점이 너무 아래로 내려가 본문 첫 두 덩어리가 잘렸다.
+//   새 기준: 메인섹션 = 메인이미지 + 요약정보 + 3줄 요약 (+ 3줄 요약에 바로 붙은 실제 패키지 박스).
+//     `제품특징`·`Point`·구성품 소개가 시작되면 그 지점부터 본문이다.
+//   ⚠️ 유료 AI 호출 0회 — AI 응답은 stub 숫자로만 들어간다.
+// ══════════════════════════════════════════════════════════════════════════
+console.log('[9-d] 본문 시작점 = 3줄 요약 직후 · 제품특징/Point 01 보존');
+{
+  const f = (src, opts = {}) => ({ src, isGif: !!opts.isGif, promo: !!opts.promo });
+  const org = (sourceIndex, y, opts = {}) => ({ sourceIndex, y, isGif: !!opts.isGif, promo: !!opts.promo });
+
+  // 프리티형: 원본이 **한 장의 긴 이미지**이고 아래 순서로 이어진다.
+  const PRETTY_SRC = 'https://cdn/banana_img/product_image/woman/pretty_love_bruce_detail.jpg';
+  const LAYOUT = [
+    { name: '메인 이미지', y: 0 },
+    { name: '요약정보', y: 900 },
+    { name: '3줄 요약', y: 1600 },
+    { name: '제품특징', y: 2000 },            // ← 본문 시작점(새 기준)
+    { name: 'Point 01 구성품 사진', y: 2600 },
+    { name: 'Point 02', y: 3400 },
+  ];
+  const IDX = Object.fromEntries(LAYOUT.map((b, i) => [b.name, i]));
+  const origins = LAYOUT.map((b) => org(0, b.y));
+  const sources = [f(PRETTY_SRC)];
+
+  const runBody = (bodyStartIndex) => {
+    const plan = planBodyBoundary(bodyStartIndex, origins, sources.length);
+    const bounded = applyBodyBoundary(sources, plan);
+    const cutAt = bounded.sources.findIndex((x) => x.cropFromY > 0);
+    const bodySources = cutAt >= 0
+      ? bounded.sources.map((x, i) => (i === cutAt ? { ...x, src: `${x.src}#cut@${x.cropFromY}` } : x))
+      : bounded.sources;
+    const body = assembleBodyFromSourceImages(bodySources);
+    return { plan, body, items: body.sections.flatMap((s) => s.items) };
+  };
+  /** 크롭 결과(= y>=cropY 구간)에 그 밴드가 남아 있는가. */
+  const survives = (plan, name) => plan.applied && LAYOUT[IDX[name]].y >= plan.cropY;
+
+  // ── 본문 시작점은 `제품특징` 이다. ──
+  const BODY_START = IDX['제품특징'];
+  const r = runBody(BODY_START);
+  ok('BD-8. 본문 시작점 = `제품특징`(3줄 요약 직후) · 원본 파일 0 · y 2000',
+    r.plan.applied === true && r.plan.sourceIndex === 0 && r.plan.cropY === LAYOUT[BODY_START].y,
+    JSON.stringify({ applied: r.plan.applied, s: r.plan.sourceIndex, y: r.plan.cropY }));
+  ok('BD-8b. `제품특징`이 크롭 결과에 남는다', survives(r.plan, '제품특징'));
+  ok('BD-8c. Point 01 구성품 사진이 크롭 결과에 남는다', survives(r.plan, 'Point 01 구성품 사진'));
+  ok('BD-8d. Point 02 도 남는다(본문 뒷부분 유실 없음)', survives(r.plan, 'Point 02'));
+  ok('BD-8e. 메인섹션 3종(메인이미지·요약정보·3줄 요약)은 본문에서 빠진다',
+    ['메인 이미지', '요약정보', '3줄 요약'].every((n) => !survives(r.plan, n)));
+  ok('BD-8f. 한 장 원본이므로 본문 항목은 1장(밴드 6장으로 재조립되지 않는다)',
+    r.items.length === 1 && r.items[0].src === `${PRETTY_SRC}#cut@2000`, `실제 ${r.items.length}개`);
+
+  // ── 음성 변형: 옛 넓은 기준(패키지·옵션까지 메인섹션)이 내던 답을 넣으면 실제로 잘린다. ──
+  //    이 대조가 실패하면 위 검사는 "무엇이든 통과하는 검사"라는 뜻이다.
+  const wrong = runBody(IDX['Point 02']);
+  ok('BD-8g. [음성 대조] 옛 넓은 기준의 답(Point 02)이면 제품특징·Point 01 이 실제로 잘린다',
+    wrong.plan.applied === true && wrong.plan.cropY === 3400
+    && !survives(wrong.plan, '제품특징') && !survives(wrong.plan, 'Point 01 구성품 사진'),
+    JSON.stringify({ y: wrong.plan.cropY }));
+  ok('BD-8h. [음성 대조] 구성품 사진을 패키지로 오인한 답(Point 01)도 제품특징을 잘라먹는다',
+    !survives(runBody(IDX['Point 01 구성품 사진']).plan, '제품특징'));
+
+  // ── 3줄 요약 바로 아래에 실제 패키지 박스가 붙은 원본은 그 패키지까지 메인섹션이다. ──
+  {
+    const WITH_BOX = [
+      { name: '메인 이미지', y: 0 }, { name: '요약정보', y: 800 }, { name: '3줄 요약', y: 1500 },
+      { name: '패키지 박스', y: 1900 }, { name: '제품특징', y: 2300 }, { name: 'Point 01', y: 2900 },
+    ];
+    const oIdx = Object.fromEntries(WITH_BOX.map((b, i) => [b.name, i]));
+    const o = WITH_BOX.map((b) => org(0, b.y));
+    const plan = planBodyBoundary(oIdx['제품특징'], o, 1);
+    ok('BD-8i. 3줄 요약에 붙은 실제 패키지 박스는 메인섹션 · 본문은 그 다음 `제품특징`부터',
+      plan.applied === true && plan.cropY === 2300
+      && WITH_BOX[oIdx['패키지 박스']].y < plan.cropY
+      && WITH_BOX[oIdx['Point 01']].y >= plan.cropY);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // [10] 결선 · 계약 대조(소스)
 // ══════════════════════════════════════════════════════════════════════════
 console.log('[10/10] 결선 · 계약 대조');
@@ -798,6 +879,27 @@ ok('WR-9h. 리더가 bodyStartIndex 를 함께 요청·해석한다(추가 호�
   /bodyStartIndex/.test(readerSrc) && /"bodyStartIndex"/.test(readerSrc)
   && /bodyStartIndex: num\(obj\.bodyStartIndex\)/.test(readerSrc)
   && (readerSrc.match(/await chatWithProvider\(/g) || []).length === 2);   // readBasicLayout · readBakedFlow 각 1콜
+// ── 본문 시작점 지시 교정 (2026-08-24 Patch) ──
+//   프리티 러브 브루스에서 본문 첫 두 덩어리가 잘린 원인은 "패키지·옵션까지 메인섹션"이라는
+//   넓은 표현이었다. 지시문에서 그 표현이 사라지고 좁은 기준이 들어갔는지 소스로 확인한다.
+ok('WR-9i. 메인섹션 정의가 좁다(메인이미지 + 요약정보 + 3줄 요약에서 끝난다)',
+  /메인섹션"은 \*\*메인 이미지 \+ 요약정보 \+ 원본의 3줄 요약\*\*으로 끝난다/.test(readerSrc)
+  && /그 이상 넓히지 말 것/.test(readerSrc));
+ok('WR-9j. 실제 패키지 박스는 3줄 요약에 바로 붙었을 때만 메인섹션에 포함한다',
+  /3줄 요약 \*\*바로 위 또는 바로 아래\*\*에 붙어 있을 때만/.test(readerSrc)
+  && /파우치·케이블·구성품을 함께 찍은 사진·제품 특징 사진은 \*\*패키지가 아니다\*\*/.test(readerSrc));
+ok('WR-9k. 제품특징·Point·구성품 소개가 시작되면 본문으로 넘긴다',
+  /`제품특징`·`제품 포인트`·`Point`·번호·기능 설명·사용 설명·구성품 소개가 시작되면/.test(readerSrc)
+  && /여백이 없거나 이미지와 글자가 겹쳐 보여도 \*\*본문으로 넘긴다\.\*\*/.test(readerSrc));
+ok('WR-9l. 옛 넓은 표현("옵션까지 메인섹션")이 지시문에서 사라졌다',
+  !/\(옵션 영역이 있으면\) 옵션까지/.test(readerSrc)
+  && !/옵션 영역은 메인섹션에 붙어 있으면/.test(readerSrc)
+  && /"옵션"이라는 넓은 표현으로 본문 시작을 \*\*뒤로 미루지 말 것\.\*\*/.test(readerSrc));
+ok('WR-9m. 본문 시작점 지시만 고쳤다 — 경계 처리·본문 조립 코드는 무변경',
+  /const plan = planBodyBoundary\(r\.bodyStartIndex, origins, sources\.length\)/.test(convertSrc)
+  && /const bounded = applyBodyBoundary\(sources, plan\)/.test(convertSrc)
+  && (convertSrc.match(/await cropSourceFromY\(/g) || []).length === 1
+  && /export const applyBodyBoundary/.test(assemblySrc));
 ok('WR-9b. 장부·상단 슬롯 검증은 그대로 남아 있다(요약·슬롯 전용)',
   /normalizeBandLedger\(/.test(convertSrc) && /selectBasicSlots\(/.test(convertSrc));
 ok('WR-9c. 장부 섹션 조립 코드는 삭제하지 않고 보존한다',
