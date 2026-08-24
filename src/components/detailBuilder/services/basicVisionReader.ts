@@ -24,6 +24,7 @@ export interface BasicVisionResult {
   mainIndex: number;       // 히어로(깨끗한 단독 누끼). 없으면 -1
   featureIndex: number;    // KEY FEATURE 이미지. 없으면 -1
   packageIndex: number;    // 패키지 박스. 없으면 -1
+  bodyStartIndex: number;  // 원본 메인섹션이 끝난 뒤 처음 시작되는 본문 밴드 번호. 못 정하면 -1
   mainIsSoloProductCut: boolean;    // 메인이 "흰 배경 + 제품 단독" 컷인가(false = 손검수 안내)
   bands: AiBandEntry[];             // 밴드 장부 — 유효 밴드마다 정확히 한 줄(섹션은 코드가 조립한다)
   notes: string[];
@@ -79,14 +80,29 @@ const SYSTEM = [
   '   → 상단 슬롯·본문 어디에도 절대 넣지 말 것. 근거로도 쓰지 말 것.',
   '   (본문 안에서 기능·사용법을 보여주는 움짤은 이와 다르다 — 그런 밴드는 본문 media 로 그대로 유지한다.)',
   '',
+  '[본문 시작 경계 — bodyStartIndex]',
+  '- 원본 "메인섹션"은 보통 이렇게 구성된다: 원본 메인이미지 → 요약정보(요약표) → 제품 요약 3줄',
+  '  → (실제 패키지 박스 이미지가 있으면) 패키지 영역 → (옵션 영역이 있으면) 옵션까지.',
+  '- bodyStartIndex = **그 메인섹션이 끝난 바로 다음에 처음 시작되는 본문 밴드 번호**.',
+  '  · 파란 테두리의 쇼핑몰 홍보 움짤이 있으면 보통 그 아래부터가 본문이다.',
+  '  · 홍보 움짤이 없어도 원본 메인섹션이 끝난 다음부터가 본문이다.',
+  '  · 옵션 영역은 메인섹션에 붙어 있으면 bodyStartIndex 보다 **위**다(옵션 내용을 해석할 필요는 없다).',
+  '  · 정말 판단할 수 없으면 -1. 추측으로 아무 번호나 적지 말 것.',
+  '- 본문의 섹션 개수·제목·설명·이미지 순서는 정하지 않는다. 시작 위치 하나만 답한다.',
+  '',
   '[상단 요약 슬롯]',
-  '- mainIndex: **흰 배경에 제품만 단독으로 놓인 컷**을 최우선으로 고른다.',
-  '  · 손·사람·신체 일부·소품·연출 배경·설명 글자·장식이 함께 찍힌 컷은 뒤로 미룬다(제품 단독 컷이 있으면 그것을 쓴다).',
-  '  · 그런 단독 컷이 정말 없으면 가장 나은 컷을 고르고 "mainIsSoloProductCut": false 로 알려라(빈칸·실패로 만들지 말 것).',
-  '- featureIndex: KEY FEATURE용 제품 컷 — mainIndex 와 "반드시 다른 컷".',
-  '  · 여기서도 깨끗한 제품 컷이 우선이지만 조건은 mainIndex 보다 완화해도 된다(손이 나온 컷도 허용).',
-  '  ⚠️ 배경색·그림·장식 문양이 깔렸거나 설명 문구가 이미지로 박힌 밴드(요약정보 영역의 컬러 배경 메인컷 포함)는',
-  '     mainIndex·featureIndex 후보가 아니다.',
+  '- mainIndex: 새 상단 메인이미지로 쓸 밴드. **원본 메인섹션·본문 설명 영역·최하단 제품 이미지 나열부 전체**에서 찾는다.',
+  '  · 흰색이거나 제품과 겹치지 않는 깨끗한 단색 배경일 것.',
+  '  · 제품만 단독으로 보이는 컷일 것.',
+  '  · 손·사람·신체·소품·패키지·설명 글자·장식·색상 배경이 없는 컷을 우선한다.',
+  '  · 원본 메인섹션의 메인이미지도 이 조건을 충족하면 그대로 써도 된다.',
+  '  · 조건에 맞는 이미지가 하나도 없으면 -1.',
+  '  · 조건을 다 채우지 못한 컷을 어쩔 수 없이 골랐다면 "mainIsSoloProductCut": false 로 알려라.',
+  '- featureIndex: KEY FEATURE 이미지 — mainIndex 와 "반드시 다른 이미지".',
+  '  · 흰색 또는 제품과 겹치지 않는 깨끗한 배경.',
+  '  · 설명 글자·장식·컬러 배경이 없는 컷.',
+  '  · 손이나 신체 일부가 함께 나온 사용 장면은 허용한다(메인보다 조건이 느슨하다).',
+  '  · 원본 메인섹션·본문·최하단 나열부 전체에서 찾는다. 적합한 이미지가 없으면 -1.',
   '- packageIndex: 패키지(박스) 컷. 원본 요약영역에 있으면 그것을 쓴다. **패키지 박스가 없으면 -1** —',
   '  파우치·케이블 등 구성품 사진을 패키지로 쓰지 말 것(우리 코드도 asset="package_box" 가 아니면 거부한다).',
   '- keyFeatures: 핵심 특징 3가지 {title(짧은 제목 1줄), desc(짧은 설명 1줄)}.',
@@ -122,7 +138,7 @@ const SYSTEM = [
   '[출력] 아래 JSON "하나만" 출력(코드펜스/설명/머리말 금지):',
   '{"productNameKr":"..\n..","productNameEn":"..","summary":{"feature":"","type":"","material":"","weight":"","power":"","maker":""},',
   '"keyFeatures":[{"title":"","desc":""},{"title":"","desc":""},{"title":"","desc":""}],',
-  '"mainIndex":0,"featureIndex":0,"packageIndex":-1,"mainIsSoloProductCut":true,',
+  '"bodyStartIndex":6,"mainIndex":0,"featureIndex":0,"packageIndex":-1,"mainIsSoloProductCut":true,',
   '"bands":[{"index":0,"role":"summary","kind":"text","asset":"other","sectionStart":false,"sectionTitle":"","text":"","reviewNote":""},',
   '{"index":1,"role":"body","kind":"composite","asset":"product_cut","sectionStart":true,"sectionTitle":"제품특징","text":"","reviewNote":"…"}],',
   '"notes":[]}',
@@ -168,6 +184,7 @@ const parseResult = (raw: string): BasicVisionResult => {
     },
     keyFeatures: feats.map((f: any) => ({ title: str(f?.title), desc: str(f?.desc) })).filter((f: any) => f.title).slice(0, 3),
     mainIndex: num(obj.mainIndex), featureIndex: num(obj.featureIndex), packageIndex: num(obj.packageIndex),
+    bodyStartIndex: num(obj.bodyStartIndex),
     // 미회신이면 true(=문제 없음)로 본다. 명시적으로 false 일 때만 손검수 안내를 남긴다.
     mainIsSoloProductCut: obj.mainIsSoloProductCut !== false,
     bands,
@@ -199,7 +216,9 @@ export const readBasicLayout = async (
       `영문명: ${ctx.productNameEn || ''}\n브랜드: ${ctx.brandName || ''}\n` +
       (ctx.introText ? `상세 상단 요약 텍스트(근거): ${ctx.introText.slice(0, 600)}\n` : '') +
       `\n아래 밴드 ${small.length}장을 위→아래 순서로 봅니다. 각 밴드 옆의 타입 규칙(규칙6·7)을 지키고,\n`
-      + '본문 bands 장부는 밴드마다 정확히 한 줄씩, 원본 인덱스 오름차순으로 적어 JSON 하나만 출력하세요.',
+      + '본문 bands 장부는 밴드마다 정확히 한 줄씩, 원본 인덱스 오름차순으로 적어 JSON 하나만 출력하세요.\n'
+      + '이번에 위치를 고르는 값은 bodyStartIndex · mainIndex · featureIndex 세 가지입니다'
+      + '(본문의 섹션 나누기·제목·순서는 정하지 마세요).',
   }];
   small.forEach((s, i) => {
     const label = excluded(i) ? `[${i}](BANANAMALL_워터마크·이미지금지)` : `[${i}](${typeOf(i)})`;

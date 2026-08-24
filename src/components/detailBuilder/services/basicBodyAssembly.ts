@@ -124,9 +124,9 @@ const inRange = (i: number, n: number): boolean => Number.isInteger(i) && i >= 0
 
 /**
  * 상단 요약 슬롯(메인 · Key Feature · 패키지) 선정 + 본문 재사용 금지 목록.
- *   · 패키지는 AI 지목을 검증만 한다(차단 대상이면 빈 슬롯 — 잘못된 사진보다 빈 슬롯이 안전).
- *   · 메인/Key Feature 는 "흰 배경의 깨끗한 제품 단독 컷" 자격을 로컬에서 다시 검사한다.
- *     AI 픽이 자격을 통과하면 존중하고, 아니면 후보풀에서 재선정한다. 둘은 서로 다른 컷이어야 한다.
+ *   · 패키지는 AI 지목을 검증만 한다(차단 대상·자산 종류 불일치면 빈 슬롯 — 기존 계약 그대로).
+ *   · 메인/Key Feature 는 **AI 가 고른 인덱스를 그대로 쓴다.** 코드는 범위·홍보 GIF·자산 존재만 확인하고
+ *     KEY FEATURE 가 메인과 같은 인덱스일 때만 비운다. 픽셀 임계값·후보 재점수로 되탈락시키지 않는다.
  */
 export const selectBasicSlots = (req: BasicSlotRequest, bands: BasicBandRef[]): BasicSlotResult => {
   const decisions: SlotDecision[] = [];
@@ -168,49 +168,46 @@ export const selectBasicSlots = (req: BasicSlotRequest, bands: BasicBandRef[]): 
     return requested;
   };
 
-  const metricsOf = (i: number): BasicSlotMetrics | undefined => (inRange(i, n) ? bands[i].metrics : undefined);
-  const cleanEligible = (i: number, avoid: number[]): boolean => {
-    if (blockReason(i) || used.has(i)) return false;
-    if (!assetAllows(i, ['product_cut'])) return false;   // 메인·KEY FEATURE 는 제품컷만
-    const m = metricsOf(i);
-    if (!m) return false;
-    const t = CLEAN_CUT_THRESHOLDS;
-    if (m.color > t.MAX_COLOR || m.smallCC > t.MAX_SMALL_CC) return false;
-    if (m.largestCC < t.MIN_LARGEST_CC || m.fillRatio > t.MAX_FILL_RATIO) return false;
-    for (const ex of avoid) if (ex >= 0 && isSameCut(m, metricsOf(ex))) return false;
-    return true;
-  };
-  const cleanScore = (i: number): number => {
-    const m = metricsOf(i);
-    if (!m) return -999;
-    return m.largestCC * 2 - m.color - m.smallCC * 0.02 + Math.min(m.height, 700) / 2000;
-  };
-  const selectClean = (requested: number, role: string, avoid: number[]): number => {
-    if (cleanEligible(requested, avoid)) {
-      used.add(requested);
-      decisions.push({ role, requested, result: 'accepted(clean)', final: requested, reason: 'AI 픽이 자격 통과' });
-      return requested;
-    }
-    const pool = bands.map((_, i) => i).filter((i) => cleanEligible(i, avoid));
-    if (!pool.length) {
-      decisions.push({ role, requested, result: 'no-clean→empty', final: -1, reason: '깨끗한 제품컷 후보 없음 → 수동 지정 필요' });
-      notes.push(role === 'main' ? '메인 이미지 후보 없음 — 수동 지정 필요.' : 'KEY FEATURE 이미지 후보 없음 — 수동 지정 필요.');
+  // ── 메인·KEY FEATURE : **AI 가 고르고 코드는 기계적 확인만** (2026-08-24 3차 지시) ──────────
+  //   왜 바꿨나: 예전에는 AI 가 고른 뒤 cleanEligible(색·글자·연결요소·채움비 임계값)이 다시 탈락시키고
+  //     후보풀에서 재점수로 다시 골랐다 — 판단 주체가 둘이라 "AI 는 맞게 골랐는데 화면은 빈칸"이 났다.
+  //   이제 허용되는 확인은 세 가지뿐이다: ① 인덱스가 범위 안인가 ② 홍보 GIF 가 아닌가 ③ 자산이 있는가.
+  //     (+ KEY FEATURE 는 메인과 같은 인덱스면 비운다 — 같은 사진이 두 자리에 들어가지 않게.)
+  //   픽셀 임계값(CLEAN_CUT_THRESHOLDS)·dHash 중복·자산 종류(asset)로 되탈락시키지 않는다.
+  const validateHero = (requested: number, role: string, avoidIndex: number): number => {
+    if (!inRange(requested, n)) {
+      decisions.push({ role, requested, result: 'none', final: -1, reason: 'out_of_range' });
+      if (Number.isInteger(requested) && requested >= 0) {
+        notes.push(role === 'main'
+          ? '메인 이미지 지목이 밴드 범위 밖 — 빈 슬롯(수동 지정 필요).'
+          : 'KEY FEATURE 지목이 밴드 범위 밖 — 빈 슬롯(수동 지정 필요).');
+      }
       return -1;
     }
-    const chosen = [...pool].sort((a, b) => cleanScore(b) - cleanScore(a))[0];
-    used.add(chosen);
-    const m = metricsOf(chosen)!;
-    decisions.push({
-      role, requested, result: 'reselected(clean)', final: chosen,
-      reason: `largestCC ${m.largestCC.toFixed(3)}·color ${m.color.toFixed(3)}·fill ${m.fillRatio.toFixed(2)}·smallCC ${m.smallCC}`,
-    });
-    return chosen;
+    if (bands[requested].promo) {
+      decisions.push({ role, requested, result: 'rejected→empty', final: -1, reason: 'bananamall_promo_gif' });
+      notes.push(`${role === 'main' ? '메인' : 'KEY FEATURE'} 지목이 바나나몰 홍보 GIF — 빈 슬롯.`);
+      return -1;
+    }
+    if (!bands[requested].src) {
+      decisions.push({ role, requested, result: 'rejected→empty', final: -1, reason: 'asset_missing' });
+      notes.push(`${role === 'main' ? '메인' : 'KEY FEATURE'} 이미지 자산이 없어 비웠습니다.`);
+      return -1;
+    }
+    if (avoidIndex >= 0 && requested === avoidIndex) {
+      decisions.push({ role, requested, result: 'rejected→empty', final: -1, reason: 'same_as_main' });
+      notes.push('KEY FEATURE 가 메인과 같은 이미지라 비웠습니다 — 수동 지정 필요.');
+      return -1;
+    }
+    used.add(requested);
+    decisions.push({ role, requested, result: 'accepted', final: requested, reason: 'AI 선택 그대로(기계 확인 통과)' });
+    return requested;
   };
 
-  // 패키지 먼저(메인/피처가 패키지와 같은 컷을 피할 수 있게), 그다음 메인 → 피처.
+  // 패키지 먼저(기존 계약 그대로: package_box 만 허용), 그다음 메인 → KEY FEATURE.
   const packageIndex = validateRole(req.packageIndex, 'package', ['package_box']);
-  const mainIndex = selectClean(req.mainIndex, 'main', [packageIndex]);
-  const featureIndex = selectClean(req.featureIndex, 'feature', [packageIndex, mainIndex]);
+  const mainIndex = validateHero(req.mainIndex, 'main', -1);
+  const featureIndex = validateHero(req.featureIndex, 'feature', mainIndex);
 
   // 본문 재사용 금지: 장부에서 summary 로 표시된 원본 요약 영역 + 상단에 쓴 패키지 자산.
   const reserved = new Set<number>();
@@ -377,6 +374,101 @@ export interface BasicSourceImage {
   isGif: boolean;
   promo: boolean;   // 바나나몰 홍보 GIF(파란 테두리·도메인) — 유일한 제외 대상
 }
+
+// ── 본문 시작 경계 : AI 밴드 번호 → 원본 파일·y (2026-08-24 3차 패치) ──────────
+//   AI 는 "몇 번 밴드부터 본문인가"(bodyStartIndex) 하나만 답한다. 좌표를 묻지 않는다.
+//   코드는 그 밴드가 **어느 원본 파일의 몇 px 에서 시작했는지**를 분할 단계 기록에서 찾아
+//   원본을 딱 한 번 자를 위치로 바꾼다. 새 이미지 분석기·좌표 추측 규칙은 만들지 않는다.
+
+/** 밴드 1장의 출처. `y` 는 splitImageByWhitespace 가 이미 돌려준 값 그대로다. */
+export interface BasicBandOrigin {
+  sourceIndex: number;   // 몇 번째 원본 상세이미지 파일에서 왔는가
+  y: number;             // 그 원본 파일 안에서 시작한 y(px)
+  isGif: boolean;        // 원본 파일이 GIF 인가
+  promo: boolean;        // 바나나몰 홍보 GIF 인가
+}
+
+/** 본문 시작 경계 계획. `applied=false` 면 아무 것도 자르지 않고 원본 전체를 보존한다. */
+export interface BodyBoundaryPlan {
+  applied: boolean;
+  sourceIndex: number;   // 본문이 시작되는 원본 파일(applied=false 면 -1)
+  cropY: number;         // 그 파일에서 잘라낼 시작 y(0 이면 자르지 않는다)
+  reason: string;
+  notes: string[];
+  decisions: BodyDecision[];
+}
+
+/** 경계를 적용하지 못했을 때 남기는 유일한 안내 문구(지시서 고정 문구 — 바꾸지 않는다). */
+export const BODY_BOUNDARY_FALLBACK_NOTE = '본문 시작 경계를 적용하지 못해 원본 전체를 보존했습니다 — 손검수 필요.';
+
+/**
+ * AI 가 고른 본문 시작 밴드 번호 → 원본 파일 인덱스 + 자를 y.
+ *   범위 밖·출처 미상·좌표 없음은 **실패**로 처리하고 원본 전체를 보존한다(본문을 지우지 않는다).
+ *   GIF 원본은 자르면 움짤이 깨지므로 자르지 않고 그 파일을 통째로 남긴다(cropY=0).
+ */
+export const planBodyBoundary = (
+  bodyStartIndex: number,
+  origins: BasicBandOrigin[],
+  sourceCount: number,
+): BodyBoundaryPlan => {
+  const notes: string[] = [];
+  const decisions: BodyDecision[] = [];
+  const fail = (reason: string): BodyBoundaryPlan => {
+    notes.push(BODY_BOUNDARY_FALLBACK_NOTE);
+    decisions.push({ section: 'boundary', requested: bodyStartIndex, result: 'not_applied', reason });
+    return { applied: false, sourceIndex: -1, cropY: 0, reason, notes, decisions };
+  };
+
+  if (!Number.isInteger(bodyStartIndex) || bodyStartIndex < 0) return fail('out_of_range');
+  if (bodyStartIndex >= origins.length) return fail('out_of_range');
+  const o = origins[bodyStartIndex];
+  if (!o) return fail('origin_missing');
+  if (!Number.isInteger(o.sourceIndex) || o.sourceIndex < 0 || o.sourceIndex >= sourceCount) return fail('source_not_found');
+  if (!Number.isFinite(o.y) || o.y < 0) return fail('origin_y_missing');
+
+  const cropY = o.isGif ? 0 : Math.round(o.y);
+  if (o.isGif && o.y > 0) notes.push('본문 시작이 GIF 파일 중간이라 그 GIF 는 자르지 않고 통째로 유지합니다.');
+  decisions.push({ section: 'boundary', requested: bodyStartIndex, result: 'applied', reason: `source ${o.sourceIndex} · y ${cropY}` });
+  return { applied: true, sourceIndex: o.sourceIndex, cropY, reason: 'ok', notes, decisions };
+};
+
+/** 경계를 적용한 뒤 본문에 실을 원본 파일 목록. `cropFromY>0` 인 항목은 **정확히 하나**뿐이다. */
+export interface PlannedBodySource extends BasicSourceImage { cropFromY: number }
+
+/**
+ * 계획대로 원본 파일 목록을 줄인다(자르기 자체는 하지 않는다 — 픽셀 처리는 호출부 한 곳).
+ *   · 본문 시작 파일보다 앞의 파일: 제외(원본 메인섹션)
+ *   · 본문 시작 파일: cropFromY 표시(0 이면 통째로)
+ *   · 그 뒤 파일: 자르지 않고 원래 순서 그대로
+ */
+export const applyBodyBoundary = (
+  sources: BasicSourceImage[],
+  plan: BodyBoundaryPlan,
+): { sources: PlannedBodySource[]; notes: string[]; decisions: BodyDecision[] } => {
+  const notes: string[] = [];
+  const decisions: BodyDecision[] = [];
+  if (!plan.applied) {
+    return { sources: sources.map((s) => ({ ...s, cropFromY: 0 })), notes, decisions };
+  }
+  const out: PlannedBodySource[] = [];
+  sources.forEach((s, i) => {
+    if (i < plan.sourceIndex) {
+      decisions.push({ section: 'boundary', requested: i, result: 'dropped', reason: 'before_body_start' });
+      return;
+    }
+    const cropFromY = i === plan.sourceIndex ? plan.cropY : 0;
+    decisions.push({
+      section: 'boundary', requested: i,
+      result: cropFromY > 0 ? 'cropped' : 'kept',
+      reason: cropFromY > 0 ? `y>=${cropFromY}` : 'source_file_preserved',
+    });
+    out.push({ ...s, cropFromY });
+  });
+  const dropped = sources.length - out.length;
+  if (dropped > 0) notes.push(`원본 메인섹션에 해당하는 원본 파일 ${dropped}장을 본문에서 제외했습니다.`);
+  if (plan.cropY > 0) notes.push(`본문 시작 파일을 y=${plan.cropY}px 에서 한 번만 잘라 본문에 싣습니다.`);
+  return { sources: out, notes, decisions };
+};
 
 /**
  * 본문 = 원본 상세이미지 **파일을 원래 순서 그대로** 한 장씩.

@@ -4,8 +4,12 @@
 //   ⚠️ 사진 보고 글 생성 금지(basicVisionReader 규칙). 상단 요약=고정 그릇, 본문=원본 자료 그대로.
 //   2026-08-22 1차 패치: 본문을 Point 01·02·SIZE 고정 슬롯에 욱여넣지 않고 원본 배열(godoBodySections)로 옮겼다.
 //   2026-08-24 2차(구조 패치): 본문 = **원본 상세이미지 파일 그대로**. 분할·태거·장부를 본문에 쓰지 않는다.
-//     메인·KEY FEATURE 자동선정은 전 상품 공통 OFF(빈 슬롯). 패키지·요약·스펙·상품명·섬네일은 무변경.
 //     분할·태거·AI 1콜은 요약/스펙/패키지 판정용으로만 남는다.
+//   2026-08-24 3차: AI 1콜이 **위치 세 가지(bodyStartIndex·mainIndex·featureIndex)**를 더 고른다.
+//     · 본문 = 원본 파일 그대로이되 **원본 메인섹션은 제외**한다 — 경계가 걸친 파일 하나만 y 에서 한 번 자른다.
+//     · 메인·KEY FEATURE 자동선정 재활성화(AUTO_HERO_SLOTS=true). AI 가 고르고 코드는
+//       범위·홍보 GIF·자산 존재·중복만 확인한다(픽셀 임계값 되탈락 없음).
+//     · 본문의 섹션 수·제목·순서·tail 은 여전히 아무도 판단하지 않는다. 밴드 재조립 0건.
 //   2026-08-24 1차 본문 보존 패치(구조 패치): 본문은 **AI 판단을 전혀 쓰지 않는다.**
 //     장부(normalizeBandLedger)와 섹션 조립(assembleBodyFromLedger)의 role·kind·sectionStart 결과가
 //     본문의 포함·제외·순서·섹션 수를 정하던 것을 끊고, 원본 밴드를 순서대로 그대로 싣는다
@@ -19,7 +23,8 @@ import { tagBasicBands, type BasicBandType, type TaggedBand } from './basicBandT
 import { normalizePackageImage, isBananamallPromoGif, normalizeHeroMainImage } from './basicAssetNormalize';
 import {
   selectBasicSlots, normalizeBandLedger, assembleBodyFromSourceImages, buildBasicSummaryInfo,
-  CLEAN_CUT_THRESHOLDS, type BasicBandRef, type BasicSourceImage,
+  planBodyBoundary, applyBodyBoundary, BODY_BOUNDARY_FALLBACK_NOTE,
+  type BasicBandRef, type BasicSourceImage, type BasicBandOrigin,
 } from './basicBodyAssembly';
 
 export interface BasicConvertInput {
@@ -39,11 +44,11 @@ export interface BasicProgress { phase: string }
 
 const DEV = import.meta.env.DEV;   // 개발 모드에서만 밴드/검증 디버그 로그 출력
 
-// 메인·KEY FEATURE 자동선정 스위치 — 2026-08-24 2차 지시로 **전 상품 공통 OFF**.
-//   선정 규칙(selectBasicSlots)·픽셀 임계값·HERO 정규화·패키지 자동배치 코드는 지우지 않고 그대로 둔다.
-//   끈 상태에서도 진단 3줄이 "자동선정이 무엇을 골랐을지·어느 관문에서 탈락했는지"를 계속 기록한다.
-//   타입을 boolean 으로 고정해 두 갈래가 모두 컴파일된다(다시 켤 때 이 값만 바꾼다).
-const AUTO_HERO_SLOTS: boolean = false;
+// 메인·KEY FEATURE 자동선정 스위치 — 2026-08-24 3차 지시로 **전 상품 공통 ON**.
+//   새 계약: AI 가 고르고 코드는 범위·홍보 GIF·자산 존재·중복만 확인한다(selectBasicSlots).
+//   예전처럼 픽셀 임계값·후보 재점수가 AI 선택을 다시 막는 이중 판단 구조는 복구하지 않는다.
+//   타입을 boolean 으로 고정해 두 갈래가 모두 컴파일된다(끌 때 이 값만 바꾼다).
+const AUTO_HERO_SLOTS: boolean = true;
 
 // 여백분할 최소 조각 높이(기본형 AI 읽기 전용). 공용 기본값 48은 짧은 텍스트 줄(무게 pill·버튼 라벨·
 //   한 줄 주석)을 노이즈로 버려 본문에서 사라지게 한다 → 20으로 낮춰 읽을 수 있게 한다.
@@ -70,6 +75,32 @@ const rasterizeFirstFrame = (src: string, maxPx = 760, quality = 0.85): Promise<
         ctx.drawImage(img, 0, 0, c.width, c.height);
         resolve(c.toDataURL('image/jpeg', quality));
       } catch { resolve(null); }   // CORS taint 등 → 일반 분할 경로로 폴백
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+
+/**
+ * 원본 상세이미지 파일 한 장을 `y` 부터 아래 끝까지 **딱 한 번** 잘라 낸다.
+ *   이 파일에서 픽셀을 자르는 곳은 여기 한 곳뿐이다(본문을 밴드로 다시 쪼개지 않는다).
+ *   실패(로드 실패·CORS taint·y 가 이미지 밖)면 null → 호출부가 원본 전체 보존으로 되돌린다.
+ */
+const cropSourceFromY = (src: string, y: number): Promise<string | null> =>
+  new Promise((resolve) => {
+    if (typeof document === 'undefined' || !src || y <= 0) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if (!w || !h || y >= h) return resolve(null);
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h - y;
+        const ctx = c.getContext('2d');
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, y, w, h - y, 0, 0, w, h - y);
+        resolve(c.toDataURL('image/jpeg', 0.92));
+      } catch { resolve(null); }
     };
     img.onerror = () => resolve(null);
     img.src = src;
@@ -138,7 +169,7 @@ const collectSourceImages = async (
 /**
  * ① 구조 변환 (AI 없음, 즉시, 키 불필요) — 단순형처럼 "일단 작동".
  *   본문 = 원본 상세이미지 파일 그대로(자르지 않는다). 상품명·브랜드는 엑셀에서.
- *   메인·KEY FEATURE 자동선정은 전 상품 공통 OFF. 문구·스펙은 그다음 AI 읽기 단계에서 채운다.
+ *   메인·KEY FEATURE 와 본문 시작 경계는 AI 읽기 단계에서 정한다(여기서는 빈 슬롯 + 원본 전량).
  */
 export const buildBasicStructure = async (
   input: BasicConvertInput,
@@ -161,7 +192,7 @@ export const buildBasicStructure = async (
     summaryInfo,
     // 본문 정본 — 원본 파일을 원래 순서 그대로.
     godoBodySections: bodyOut.sections,
-    // 메인·KEY FEATURE 자동선정 OFF(전 상품 공통) — 빈 슬롯으로 두고 사람이 지정한다.
+    // 메인·KEY FEATURE 는 AI 읽기 단계에서 정한다 — 구조 단계(AI 0콜)에서는 빈 슬롯이다.
     mainImage: null,
     featureImage: null,
     // 고정 Point 01·02·SIZE 슬롯은 쓰지 않는다(본문이 원본 파일을 그대로 담는다).
@@ -205,14 +236,19 @@ export const convertBasicWithAI = async (
   const bandSrc: string[] = [];      // 화면·본문에 실제로 쓰는 자산(GIF는 원본 URL)
   const bandIsGif: boolean[] = [];
   const promoFlags: boolean[] = [];
-  for (const url of input.detailImageUrls) {
+  // 밴드 출처 장부 — "이 밴드는 몇 번째 원본 파일의 y 몇 px 에서 시작했나". 좌표는 분할기가 준 값 그대로다.
+  //   본문 시작 경계(bodyStartIndex)를 원본 파일 한 번 자르기로 되돌리는 데만 쓴다.
+  const origins: BasicBandOrigin[] = [];
+  for (const [sourceIndex, url] of input.detailImageUrls.entries()) {
     const proxied = toProxyUrl(url);
+    const srcIsGif = IS_GIF_URL.test(url);
     let promo = false;
     try { promo = (await isBananamallPromoGif(url, proxied)).isPromo; } catch { promo = false; }
-    if (!promo && IS_GIF_URL.test(url)) {
+    if (!promo && srcIsGif) {
       const still = await rasterizeFirstFrame(proxied);
       if (still) {
         bands.push(still); bandSrc.push(url); bandIsGif.push(true); promoFlags.push(false);
+        origins.push({ sourceIndex, y: 0, isGif: true, promo: false });
         notes.push('본문 GIF 원본 보존(정지 이미지로 바꾸지 않음).');
         continue;
       }
@@ -222,7 +258,10 @@ export const convertBasicWithAI = async (
       // minSegPx 20: 기본값 48은 "무게 pill·버튼 라벨·한 줄 주석" 같은 짧은 텍스트 줄을 통째로 버린다
       //   (핑거위글 실측 2026-08-22: 21밴드 → 27밴드, 회복 6건). 공용 분할 함수는 수정하지 않고 옵션만 준다.
       const segs = await splitImageByWhitespace(proxied, { minSegPx: BASIC_MIN_SEG_PX });
-      for (const s of segs) { bands.push(s.dataUrl); bandSrc.push(s.dataUrl); bandIsGif.push(false); promoFlags.push(promo); }
+      for (const s of segs) {
+        bands.push(s.dataUrl); bandSrc.push(s.dataUrl); bandIsGif.push(false); promoFlags.push(promo);
+        origins.push({ sourceIndex, y: s.y, isGif: srcIsGif, promo });
+      }
       if (promo) notes.push('바나나몰 홍보 GIF → 판정 근거에서도 제외.');
     } catch {
       notes.push(`판정용 분할 실패(본문 출력에는 영향 없음): ${url.slice(0, 60)}…`);
@@ -301,40 +340,40 @@ export const convertBasicWithAI = async (
   //   · 판정에 되먹이지 않는다: 아래 코드는 notes 에만 쓰고, 어떤 선택값도 다시 계산하거나 덮지 않는다.
   //   · DEV 콘솔이 아니라 notes 에 넣는다 — DEV 블록은 `vite build` 에서 통째로 사라져 Preview 에 없다.
   //   · 임계값을 여기서 다시 적지 않고 조립 모듈 상수를 그대로 읽는다(수치 이중 관리 금지).
+  // ── 본문 시작 경계 (2026-08-24 3차) — AI 가 고른 밴드 하나를 원본 파일·y 로 되돌린다. ──
+  //   AI 가 정하는 것: bodyStartIndex 하나. 코드가 정하는 것: 어느 파일을 빼고 어디를 한 번 자를지.
+  //   실패하면 원본 전체를 그대로 보존한다(본문을 지우지 않는다).
+  const plan = planBodyBoundary(r.bodyStartIndex, origins, sources.length);
+  notes.push(...plan.notes);
+  const bounded = applyBodyBoundary(sources, plan);
+  notes.push(...bounded.notes);
+  let bodySources: BasicSourceImage[] = bounded.sources;
+  const cutAt = bounded.sources.findIndex((s) => s.cropFromY > 0);
+  if (cutAt >= 0) {
+    const cut = await cropSourceFromY(bounded.sources[cutAt].src, bounded.sources[cutAt].cropFromY);
+    if (cut) bodySources = bounded.sources.map((s, i) => (i === cutAt ? { ...s, src: cut } : s));
+    else { bodySources = sources; notes.push(BODY_BOUNDARY_FALLBACK_NOTE); }   // 자르지 못하면 전량 보존
+  }
+
   notes.push(`[진단] AI 지목 main=${r.mainIndex} feature=${r.featureIndex} package=${r.packageIndex}`
+    + ` bodyStart=${r.bodyStartIndex}`
     + ` → 자동선정 main=${mainIndexV} feature=${featureIndexV} package=${packageIndexV}`
-    + ` (메인·KEY FEATURE 자동선정 OFF — 출력은 빈 슬롯. 아래 값은 원인 확인용 기록이다)`);
+    + ` · 본문시작 파일=${plan.sourceIndex}(y=${plan.cropY}, ${plan.applied ? '적용' : `미적용:${plan.reason}`})`);
   const slotLine = (role: string): string => {
     const ds = slots.decisions.filter((d) => d.role === role);
     if (!ds.length) return `${role}: 결정기록 없음`;
     return ds.map((d) => `${role}: ${d.result}(요청 ${d.requested}→최종 ${d.final}) ${d.reason}`).join(' / ');
   };
-  notes.push(`[진단] ${slotLine('main')} || ${slotLine('feature')}`);
-  // 밴드별 "첫 탈락 관문" — selectBasicSlots 의 cleanEligible 과 같은 순서로 훑어 사유 하나만 적는다.
-  //   ⚠️ 이미 쓴 슬롯(used)·같은 컷(dHash) 배제는 선택 순서에 따라 달라지는 상태값이라 이 목록에 넣지 않는다.
-  //      그 두 가지의 실제 결과는 바로 위 슬롯 결정 줄이 보여준다.
-  const TH = CLEAN_CUT_THRESHOLDS;
-  const assetOfBand = (i: number): string => ledgerOut.ledger.find((x) => x.index === i)?.asset ?? '-';
-  const firstBlock = (i: number): string => {
-    const b = bandRefs[i];
-    if (b.promo) return 'promo';
-    if (b.type === 'TEXT') return 'TEXT';
-    const a = assetOfBand(i);
-    if (a !== '-' && a !== 'product_cut') return 'asset';
-    const m = b.metrics;
-    if (!m) return 'metrics없음';
-    if (m.color > TH.MAX_COLOR) return `color${m.color.toFixed(2)}`;
-    if (m.smallCC > TH.MAX_SMALL_CC) return `smallCC${m.smallCC}`;
-    if (m.largestCC < TH.MIN_LARGEST_CC) return `largestCC${m.largestCC.toFixed(2)}`;
-    if (m.fillRatio > TH.MAX_FILL_RATIO) return `fill${m.fillRatio.toFixed(2)}`;
-    return 'OK';
-  };
-  notes.push(`[진단] 밴드별 첫 탈락 관문 — ${bandRefs
-    .map((b, i) => `${i}:${b.type}/${assetOfBand(i)}/${firstBlock(i)}`).join(' · ')}`);
+  notes.push(`[진단] ${slotLine('main')} || ${slotLine('feature')} || ${slotLine('package')}`);
+  // 밴드별 기계 확인 결과 — 픽셀 임계값이 아니라 **범위·홍보 GIF·자산 존재**만 본다(새 계약).
+  //   출처(파일·y)를 함께 적어 "본문 시작이 왜 저 파일 저 위치인가"를 화면에서 그대로 읽게 한다.
+  notes.push(`[진단] 밴드별 기계 확인 — ${bandRefs
+    .map((b, i) => `${i}:${origins[i] ? `f${origins[i].sourceIndex}@${origins[i].y}` : 'f?'}/${b.promo ? 'promo' : (b.src ? 'ok' : '자산없음')}`)
+    .join(' · ')}`);
 
-  // 본문: 원본 상세이미지 **파일**을 원래 순서 그대로. 밴드·태거·장부·AI 본문 판단을 전혀 보지 않는다.
-  //   상단 슬롯 결과(reserved)도 본문에 영향을 주지 않는다 — 본문 보존이 우선이다(2026-08-24 지시).
-  const bodyOut = assembleBodyFromSourceImages(sources);
+  // 본문: 원본 상세이미지 **파일**을 원래 순서 그대로(경계 파일만 한 번 잘린다).
+  //   밴드·태거·장부·AI 의 본문 판단(섹션 수·제목·순서)은 전혀 보지 않는다.
+  const bodyOut = assembleBodyFromSourceImages(bodySources);
   notes.push(...bodyOut.notes);
 
   if (DEV) {
@@ -353,8 +392,8 @@ export const convertBasicWithAI = async (
   }
   mark('response_validation_ms');
 
-  // ── 메인·KEY FEATURE (AUTO_HERO_SLOTS=false → 전 상품 공통 빈 슬롯) ──────────
-  //    HERO 정규화는 자동선정을 다시 켰을 때를 위해 그대로 남겨 둔다.
+  // ── 메인·KEY FEATURE (AUTO_HERO_SLOTS=true → AI 선택 + 기계 확인만) ──────────
+  //    HERO 정규화(여백 정리)는 선정 뒤의 기계 처리라 그대로 유지한다.
   let mainImage: string | null = AUTO_HERO_SLOTS ? at(mainIndexV) : null;
   if (AUTO_HERO_SLOTS && mainImage) {
     const hero = await normalizeHeroMainImage(mainImage);
@@ -421,7 +460,8 @@ export const convertBasicWithAI = async (
     notes.push('패키지는 기본 위치에 배치됩니다 — 메인 이미지를 지정하면 자동배치가 계산됩니다.');
   }
   if (r.keyFeatures.length !== 3) notes.push(`keyFeatures ${r.keyFeatures.length}개(3 아님) — 메인특징 수동 보완 필요.`);
-  notes.push(`본문 원본 보존 — 밴드 ${bandRefs.length}장 중 ${bodyOut.sections.reduce((n, s) => n + s.items.length, 0)}건을 원래 순서 그대로 출력(제외는 바나나몰 홍보 GIF만).`);
+  notes.push(`본문 원본 보존 — 원본 파일 ${sources.length}장 중 ${bodyOut.sections.reduce((n, s) => n + s.items.length, 0)}건을 원래 순서 그대로 출력`
+    + `(제외는 원본 메인섹션 파일과 바나나몰 홍보 GIF뿐이고, 경계 파일만 한 번 잘립니다).`);
 
   // ── 기준선 계측 마감: 패키지 자동배치 계산 + 총합. (validation/package_normalization은 위에서 별도 마킹) ──
   mark('package_layout_ms');

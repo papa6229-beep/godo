@@ -51,6 +51,7 @@ const mod = await import(pathToFileURL(path.join(outDir, 'services/basicBodyAsse
 const {
   selectBasicSlots, normalizeBandLedger, assembleBodyFromLedger, assembleBodyPreserved,
   assembleBodyFromSourceImages, buildBasicSummaryInfo,
+  planBodyBoundary, applyBodyBoundary, BODY_BOUNDARY_FALLBACK_NOTE,
   hasDynamicBody, BODY_DUP_HAMMING, isSizeSection, isWeightLine, trailingMediaRunStart, bodyPointLabel,
 } = mod;
 const parserDir = mkdtempSync(path.join(tmpdir(), 'godo-parser-'));
@@ -61,6 +62,9 @@ ok('조립 모듈이 장부 계약 진입점을 내보낸다',
   [normalizeBandLedger, assembleBodyFromLedger, selectBasicSlots, buildBasicSummaryInfo].every((f) => typeof f === 'function'));
 ok('본문 진입점 2종을 내보낸다(파일 단위=제품 정본 · 밴드 단위=보존 자산)',
   typeof assembleBodyFromSourceImages === 'function' && typeof assembleBodyPreserved === 'function');
+ok('본문 시작 경계 순수 함수 2종 + 고정 안내 문구를 내보낸다',
+  typeof planBodyBoundary === 'function' && typeof applyBodyBoundary === 'function'
+  && BODY_BOUNDARY_FALLBACK_NOTE === '본문 시작 경계를 적용하지 못해 원본 전체를 보존했습니다 — 손검수 필요.');
 ok('렌더 규칙 판정 4종도 순수 함수로 내보낸다',
   [isSizeSection, isWeightLine, trailingMediaRunStart, bodyPointLabel].every((f) => typeof f === 'function') && BODY_DUP_HAMMING === 10);
 
@@ -552,6 +556,199 @@ console.log('[9-b/10] 본문 = 원본 파일 그대로');
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// [9-c] 본문 시작 경계 + 메인·KEY FEATURE 새 계약 (2026-08-24 3차)
+//   AI 가 정하는 값은 셋뿐: bodyStartIndex · mainIndex · featureIndex.
+//   코드가 하는 일: 원본 파일 목록을 경계에서 한 번만 자르고, 슬롯은 기계 확인만 한다.
+//   ⚠️ 유료 AI 호출 0회 — AI 응답은 아래 stub 숫자로만 들어간다.
+// ══════════════════════════════════════════════════════════════════════════
+console.log('[9-c] 본문 시작 경계 · 상단 슬롯 기계 확인');
+{
+  const f = (src, opts = {}) => ({ src, isGif: !!opts.isGif, promo: !!opts.promo });
+  const org = (sourceIndex, y, opts = {}) => ({ sourceIndex, y, isGif: !!opts.isGif, promo: !!opts.promo });
+  const itemsOf = (res) => res.sections.flatMap((sec) => sec.items);
+  // 제품 경로와 같은 순서: plan → apply → (경계 파일만 한 번 자르기) → 파일 단위 본문 조립.
+  //   실제 픽셀 자르기는 DOM(canvas)이라 여기서는 "잘린 파일"을 src 치환으로 대신한다(계약 검사).
+  const runBody = (bodyStartIndex, origins, sources) => {
+    const plan = planBodyBoundary(bodyStartIndex, origins, sources.length);
+    const bounded = applyBodyBoundary(sources, plan);
+    const cutAt = bounded.sources.findIndex((x) => x.cropFromY > 0);
+    const bodySources = cutAt >= 0
+      ? bounded.sources.map((x, i) => (i === cutAt ? { ...x, src: `${x.src}#cut@${x.cropFromY}` } : x))
+      : bounded.sources;
+    const body = assembleBodyFromSourceImages(bodySources);
+    return { plan, bounded, body, items: itemsOf(body), notes: [...plan.notes, ...bounded.notes, ...body.notes] };
+  };
+
+  // ── BD-1. 한 장짜리 긴 원본(프리티형): 같은 파일 중간을 가리키면 그 y 에서 한 번만 자른다. ──
+  {
+    const only = 'https://cdn/banana_img/product_image/man/2421655_detail_20170719.jpg';
+    const origins = Array.from({ length: 21 }, (_, i) => org(0, i * 600));
+    const r = runBody(3, origins, [f(only)]);
+    ok('BD-1. 한 장 원본 → 경계 적용 · 파일 0 · y 1800',
+      r.plan.applied === true && r.plan.sourceIndex === 0 && r.plan.cropY === 1800,
+      JSON.stringify({ a: r.plan.applied, s: r.plan.sourceIndex, y: r.plan.cropY }));
+    ok('BD-1b. 결과 본문 항목은 정확히 1장(밴드 21장으로 쪼개지지 않는다)',
+      r.items.length === 1 && r.items[0].src === `${only}#cut@1800`, `실제 ${r.items.length}개`);
+    ok('BD-1c. 자르는 지점은 한 곳뿐(cropFromY>0 인 파일이 1개)',
+      r.bounded.sources.filter((x) => x.cropFromY > 0).length === 1);
+    ok('BD-1d. y=0 을 가리키면 자르지 않는다(원본 파일 그대로)',
+      runBody(0, origins, [f(only)]).items[0].src === only);
+  }
+
+  // ── BD-2. 여러 파일(핑거위글형): 메인 파일 → 홍보 GIF → 본문 파일. ──
+  {
+    const urls = ['https://cdn/goodsm/1667813618_0.jpg', 'https://cdn/goodsm/1667813619_1.gif', 'https://cdn/goodsm/1667813619_2.jpg'];
+    const sources = [f(urls[0]), f(urls[1], { isGif: true, promo: true }), f(urls[2])];
+    // 밴드: 파일0 에서 5장(요약) · 파일1 홍보 GIF 1장 · 파일2 에서 27장(본문)
+    const origins = [
+      ...Array.from({ length: 5 }, (_, i) => org(0, i * 400)),
+      org(1, 0, { isGif: true, promo: true }),
+      ...Array.from({ length: 27 }, (_, i) => org(2, i * 450)),
+    ];
+    const r = runBody(6, origins, sources);   // 6 = 파일2 의 첫 밴드(y=0)
+    ok('BD-2. 앞 메인 파일과 홍보 GIF 가 빠지고 본문 파일만 남는다',
+      r.items.length === 1 && r.items[0].src === urls[2], r.items.map((i) => i.src).join(' , '));
+    ok('BD-2b. 본문 파일은 통째로 유지된다(자르지 않음)', r.plan.cropY === 0 && r.plan.sourceIndex === 2);
+    ok('BD-2c. 제외 사실을 사용자에게 알린다', r.notes.some((n) => n.includes('원본 메인섹션') && n.includes('2장')));
+
+    // 본문 파일이 2장이면 둘 다 원래 순서 그대로 남는다.
+    const four = [f(urls[0]), f(urls[1], { isGif: true, promo: true }), f(urls[2]), f('https://cdn/goodsm/1667813619_3.jpg')];
+    const origins4 = [...origins, ...Array.from({ length: 4 }, (_, i) => org(3, i * 500))];
+    const r4 = runBody(6, origins4, four);
+    ok('BD-2d. 본문 파일 2장은 자르지 않고 원래 순서로',
+      r4.items.length === 2 && r4.items[0].src === urls[2] && r4.items[1].src === 'https://cdn/goodsm/1667813619_3.jpg');
+
+    // 경계가 본문 파일 중간이면 그 파일 하나만 잘리고, 뒤 파일은 그대로.
+    const r5 = runBody(8, origins4, four);   // 파일2 의 3번째 밴드 → y=900
+    ok('BD-2e. 경계 파일만 한 번 잘리고 뒤 파일은 원본 그대로',
+      r5.items.length === 2 && r5.items[0].src === `${urls[2]}#cut@900`
+      && r5.items[1].src === 'https://cdn/goodsm/1667813619_3.jpg', r5.items.map((i) => i.src).join(' , '));
+    ok('BD-2e-1. 자를 파일로 표시된 것은 경계 파일 하나뿐(뒤 파일은 cropFromY 0)',
+      r5.bounded.sources.filter((x) => x.cropFromY > 0).length === 1
+      && r5.bounded.sources[0].cropFromY === 900
+      && r5.bounded.sources.slice(1).every((x) => x.cropFromY === 0),
+      r5.bounded.sources.map((x) => x.cropFromY).join(','));
+
+    // 일반 본문 GIF 는 살아남고 홍보 GIF 만 빠진다.
+    const withGif = [f(urls[0]), f(urls[1], { isGif: true, promo: true }), f(urls[2]), f('https://cdn/usage_demo.gif', { isGif: true })];
+    const originsG = [...origins, org(3, 0, { isGif: true })];
+    const rg = runBody(6, originsG, withGif);
+    ok('BD-2f. 일반 본문 GIF 는 gif 원본으로 유지 · 홍보 GIF 만 제외',
+      rg.items.length === 2 && rg.items[1].src === 'https://cdn/usage_demo.gif' && rg.items[1].mediaType === 'gif'
+      && !rg.items.some((i) => i.src === urls[1]));
+    ok('BD-2g. 경계가 GIF 파일 중간이어도 GIF 는 자르지 않는다', (() => {
+      const originsMid = originsG.slice(0, -1).concat([org(3, 120, { isGif: true })]);
+      const rr = runBody(originsMid.length - 1, originsMid, withGif);
+      return rr.plan.applied === true && rr.plan.cropY === 0
+        && rr.items.length === 1 && rr.items[0].src === 'https://cdn/usage_demo.gif';
+    })());
+  }
+
+  // ── BD-3. 경계 실패: 본문을 지우지 않고 원본 전체 보존 + 고정 안내 문구. ──
+  {
+    const urls = ['https://cdn/a.jpg', 'https://cdn/promo.gif', 'https://cdn/b.jpg'];
+    const sources = [f(urls[0]), f(urls[1], { isGif: true, promo: true }), f(urls[2])];
+    const origins = [org(0, 0), org(1, 0, { isGif: true, promo: true }), org(2, 0)];
+    for (const [label, bad] of [['범위 밖(99)', 99], ['음수(-1)', -1], ['정수 아님', 1.5], ['NaN', Number.NaN]]) {
+      const r = runBody(bad, origins, sources);
+      ok(`BD-3(${label}) 경계 미적용 · 원본 전량 보존 · 손검수 note`,
+        r.plan.applied === false && r.plan.sourceIndex === -1 && r.plan.cropY === 0
+        && r.items.length === 2 && r.items[0].src === urls[0] && r.items[1].src === urls[2]
+        && r.notes.includes(BODY_BOUNDARY_FALLBACK_NOTE),
+        `items ${r.items.length}`);
+    }
+    ok('BD-3b. 출처 파일 번호가 원본 개수를 넘으면 실패로 보존', (() => {
+      const r = runBody(0, [org(9, 0)], sources);
+      return r.plan.applied === false && r.items.length === 2 && r.notes.includes(BODY_BOUNDARY_FALLBACK_NOTE);
+    })());
+    ok('BD-3c. 실패 안내는 지시서 문장 그대로 정확히 1줄',
+      runBody(99, origins, sources).notes.filter((n) => n === BODY_BOUNDARY_FALLBACK_NOTE).length === 1);
+  }
+
+  // ── BD-4. 메인·KEY FEATURE: AI 가 고른 인덱스를 픽셀 임계값이 다시 탈락시키지 않는다. ──
+  {
+    // FW[1] color 0.59(> MAX_COLOR 0.20) · FW[3] fillRatio 0.72(> MAX_FILL_RATIO 0.62)
+    //   → 예전 cleanEligible 은 둘 다 탈락시키고 다른 밴드로 재선정했다. 새 계약에서는 그대로 쓴다.
+    const norm = normalizeBandLedger(FW_LEDGER, FW);
+    const s1 = selectBasicSlots({ mainIndex: 1, featureIndex: 3, packageIndex: 3, ledger: norm.ledger }, FW);
+    ok('BD-4. 색·채움비 임계값을 넘는 AI 픽도 그대로 배치된다',
+      s1.mainIndex === 1 && s1.featureIndex === 3, `main ${s1.mainIndex} / feature ${s1.featureIndex}`);
+    ok('BD-4b. 결정 기록이 "AI 선택 그대로"임을 남긴다',
+      s1.decisions.filter((d) => (d.role === 'main' || d.role === 'feature'))
+        .every((d) => d.result === 'accepted' && d.reason.includes('AI 선택 그대로')));
+    // 자산 종류(product_cut)로도 되탈락시키지 않는다 — FW[3] 은 장부상 package_box 다.
+    ok('BD-4c. 자산 종류(asset)로 메인·KEY FEATURE 를 되탈락시키지 않는다',
+      norm.ledger[3].asset === 'package_box' && s1.featureIndex === 3);
+    // 밴드 타입(TEXT) 같은 픽셀 태그로도 되탈락시키지 않는다.
+    const s2 = selectBasicSlots({ mainIndex: 6, featureIndex: 27, packageIndex: 3, ledger: norm.ledger }, FW);
+    ok('BD-4d. 픽셀 태그(TEXT)로도 되탈락시키지 않는다', FW[6].type === 'TEXT' && s2.mainIndex === 6);
+    // 후보 재점수·재선정 경로가 남아 있지 않다.
+    ok('BD-4e. 재선정 결과값이 나오지 않는다(reselected 0건)',
+      !s1.decisions.some((d) => String(d.result).includes('reselected'))
+      && !s2.decisions.some((d) => String(d.result).includes('reselected')));
+  }
+
+  // ── BD-5. 잘못된 인덱스 · 같은 이미지 중복. ──
+  {
+    const norm = normalizeBandLedger(FW_LEDGER, FW);
+    const outOfRange = selectBasicSlots({ mainIndex: 999, featureIndex: 13, packageIndex: 3, ledger: norm.ledger }, FW);
+    ok('BD-5. 범위 밖 메인은 그 슬롯만 빈칸 · KEY FEATURE·패키지는 그대로',
+      outOfRange.mainIndex === -1 && outOfRange.featureIndex === 13 && outOfRange.packageIndex === 3
+      && outOfRange.notes.some((n) => n.includes('범위 밖')));
+    const dup = selectBasicSlots({ mainIndex: 13, featureIndex: 13, packageIndex: 3, ledger: norm.ledger }, FW);
+    ok('BD-5b. 같은 인덱스면 KEY FEATURE 만 비운다',
+      dup.mainIndex === 13 && dup.featureIndex === -1 && dup.packageIndex === 3
+      && dup.notes.some((n) => n.includes('메인과 같은 이미지')));
+    const promoPick = selectBasicSlots({ mainIndex: 5, featureIndex: 13, packageIndex: 3, ledger: norm.ledger }, FW);
+    ok('BD-5c. 홍보 GIF 지목은 빈칸(유일하게 남은 이미지 차단)',
+      FW[5].promo === true && promoPick.mainIndex === -1 && promoPick.featureIndex === 13);
+    const noAsset = selectBasicSlots({ mainIndex: 0, featureIndex: 13, packageIndex: 3 },
+      FW.map((b, i) => (i === 0 ? { ...b, src: '' } : b)));
+    ok('BD-5d. 자산이 없으면 그 슬롯만 빈칸', noAsset.mainIndex === -1 && noAsset.featureIndex === 13);
+    // 본문은 슬롯 결과와 무관하다(구조적 차단 — 인자를 받지 않는다).
+    const bodyA = assembleBodyFromSourceImages([f('https://cdn/x.jpg'), f('https://cdn/y.jpg')]);
+    ok('BD-5e. 슬롯이 무엇이든 본문 출력은 같다(본문은 슬롯을 인자로 받지 않는다)',
+      assembleBodyFromSourceImages.length === 1 && bodyA.sections[0].items.length === 2);
+  }
+
+  // ── BD-6. 패키지 무회귀: 실제 패키지 박스는 유지 · 구성품뿐이면 비활성. ──
+  {
+    const fwNorm = normalizeBandLedger(FW_LEDGER, FW);
+    const fwSlots = selectBasicSlots({ mainIndex: 27, featureIndex: 13, packageIndex: 3, ledger: fwNorm.ledger }, FW);
+    ok('BD-6. 실제 패키지 박스 fixture 는 그대로 선정(핑거위글 3)', fwSlots.packageIndex === 3);
+    const glNorm = normalizeBandLedger(GL_LEDGER, GL);
+    ok('BD-6b. 글랜스 패키지도 그대로(3)',
+      selectBasicSlots({ mainIndex: 23, featureIndex: 9, packageIndex: 3, ledger: glNorm.ledger }, GL).packageIndex === 3);
+    const prNorm = normalizeBandLedger(PR_LEDGER, PR);
+    const prSlots = selectBasicSlots({ mainIndex: 17, featureIndex: 19, packageIndex: 15, ledger: prNorm.ledger }, PR);
+    ok('BD-6c. 구성품만 있는 fixture 는 패키지 비활성(프리티)',
+      prSlots.packageIndex === -1 && prSlots.notes.some((n) => n.includes('구성품')));
+    ok('BD-6d. 패키지 비활성이어도 메인·KEY FEATURE 는 정상 배치',
+      prSlots.mainIndex === 17 && prSlots.featureIndex === 19);
+  }
+
+  // ── BD-7. 본문 무가공 계약: 경계 이후 파일의 순서·개수·GIF 원본이 그대로. ──
+  {
+    const urls = ['https://cdn/m.jpg', 'https://cdn/p.gif', 'https://cdn/b1.jpg', 'https://cdn/b2.gif', 'https://cdn/b3.jpg'];
+    const sources = [f(urls[0]), f(urls[1], { isGif: true, promo: true }), f(urls[2]), f(urls[3], { isGif: true }), f(urls[4])];
+    const origins = [org(0, 0), org(1, 0, { isGif: true, promo: true }), org(2, 0), org(3, 0, { isGif: true }), org(4, 0)];
+    const r = runBody(2, origins, sources);
+    ok('BD-7. 경계 이후 파일 순서·개수 그대로',
+      r.items.map((i) => i.src).join(',') === [urls[2], urls[3], urls[4]].join(','), r.items.map((i) => i.src).join(','));
+    ok('BD-7b. GIF 는 원본 주소·gif 타입 그대로', r.items[1].src === urls[3] && r.items[1].mediaType === 'gif');
+    ok('BD-7c. 밴드 재조립 0건 — 항목 수는 파일 수와 같다(밴드 수와 무관)',
+      r.items.length === 3 && origins.length === 5);
+    ok('BD-7d. 제목·번호·구분선·텍스트 생성 0건',
+      r.body.sections.length === 1 && r.body.sections[0].preserved === true
+      && r.body.sections[0].title === '' && r.body.sections[0].number === ''
+      && r.body.sections[0].tailStart === undefined
+      && r.items.every((i) => i.kind === 'media' && i.composite === false && !i.reviewNote));
+    ok('BD-7e. 경계 함수는 픽셀·밴드 지표를 받지 않는다(구조적 차단)',
+      planBodyBoundary.length === 3 && applyBodyBoundary.length === 2);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // [10] 결선 · 계약 대조(소스)
 // ══════════════════════════════════════════════════════════════════════════
 console.log('[10/10] 결선 · 계약 대조');
@@ -576,11 +773,31 @@ ok('WR-7. 이미지 해상도·토큰 예산 불변(760px · maxTokens 4000)', /
 ok('WR-8. 리더가 밴드 장부를 요청한다(자유 섹션 조립 계약 제거)',
   /밴드 장부/.test(readerSrc) && /"bands"/.test(readerSrc) && !/AiBodySection/.test(readerSrc));
 ok('WR-9. 변환기 본문은 원본 "파일" 경로만 쓴다(밴드·태거·장부는 본문에서 끊겼다)',
-  (convertSrc.match(/assembleBodyFromSourceImages\(sources\)/g) || []).length === 2   // ①구조 · ②AI 둘 다
+  (convertSrc.match(/assembleBodyFromSourceImages\(/g) || []).length === 2            // ①구조 · ②AI 둘 다
+  && /assembleBodyFromSourceImages\(sources\)/.test(convertSrc)                       // ①구조 = 원본 전량
+  && /assembleBodyFromSourceImages\(bodySources\)/.test(convertSrc)                   // ②AI = 경계 적용 결과
   && !/assembleBodyFromLedger\s*\(/.test(convertSrc)            // 장부 섹션 조립 호출 0건
   && !/assembleBodyPreserved\s*\(/.test(convertSrc)             // 밴드 단위 보존 호출 0건
   && !/assembleBody\w*\(bandRefs\)/.test(convertSrc)            // 본문이 밴드에서 오지 않는다
   && (convertSrc.match(/const bodyOut = /g) || []).length === 2);  // bodyOut 은 파일 경로에서만 만들어진다
+// ── 본문 시작 경계 (2026-08-24 3차) ──
+ok('WR-9d. 본문 경계는 순수 계획 → 적용 → 한 번 자르기 순서로만 배선된다',
+  /const plan = planBodyBoundary\(r\.bodyStartIndex, origins, sources\.length\)/.test(convertSrc)
+  && /const bounded = applyBodyBoundary\(sources, plan\)/.test(convertSrc)
+  && /const cropSourceFromY = \(src: string, y: number\)/.test(convertSrc)          // 자르기 함수 정의 1곳
+  && (convertSrc.match(/await cropSourceFromY\(/g) || []).length === 1);            // 호출 1곳뿐
+ok('WR-9e. 자르기는 경계 파일 하나뿐이고 실패하면 원본 전량으로 되돌린다',
+  /const cutAt = bounded\.sources\.findIndex\(\(s\) => s\.cropFromY > 0\)/.test(convertSrc)
+  && /bodySources = sources; notes\.push\(BODY_BOUNDARY_FALLBACK_NOTE\)/.test(convertSrc));
+ok('WR-9f. 밴드 출처(파일·y)는 분할기 반환값을 그대로 쓴다(좌표 추측 규칙 0건)',
+  /origins\.push\(\{ sourceIndex, y: s\.y, isGif: srcIsGif, promo \}\)/.test(convertSrc)
+  && !/estimate|guess|추정 y|approxY/.test(convertSrc));
+ok('WR-9g. 조립 모듈의 경계 계획은 순수하다(DOM·네트워크 0건)',
+  /export const planBodyBoundary/.test(assemblySrc) && /export const applyBodyBoundary/.test(assemblySrc));
+ok('WR-9h. 리더가 bodyStartIndex 를 함께 요청·해석한다(추가 호출 없이 같은 1콜)',
+  /bodyStartIndex/.test(readerSrc) && /"bodyStartIndex"/.test(readerSrc)
+  && /bodyStartIndex: num\(obj\.bodyStartIndex\)/.test(readerSrc)
+  && (readerSrc.match(/await chatWithProvider\(/g) || []).length === 2);   // readBasicLayout · readBakedFlow 각 1콜
 ok('WR-9b. 장부·상단 슬롯 검증은 그대로 남아 있다(요약·슬롯 전용)',
   /normalizeBandLedger\(/.test(convertSrc) && /selectBasicSlots\(/.test(convertSrc));
 ok('WR-9c. 장부 섹션 조립 코드는 삭제하지 않고 보존한다',
@@ -608,8 +825,9 @@ ok('WR-20. 선택 진단 3줄이 notes 로 남는다(DEV 게이트 밖 → Previ
   const devBlocks = convertSrc.match(/if \(DEV\) \{[\s\S]*?\n  \}/g) || [];
   return !devBlocks.some((b) => b.includes('[진단]'))            // DEV 블록 안이 아니다
     && /AI 지목 main=\$\{r\.mainIndex\}/.test(convertSrc)         // ① AI 지목 ↔ 최종
+    && /bodyStart=\$\{r\.bodyStartIndex\}/.test(convertSrc)      // ①-b 본문 시작 경계도 같은 줄에
     && /slots\.decisions\.filter/.test(convertSrc)                // ② 슬롯 결정·거절 사유
-    && /밴드별 첫 탈락 관문/.test(convertSrc);                     // ③ 밴드별 첫 탈락 관문
+    && /밴드별 기계 확인/.test(convertSrc);                        // ③ 범위·홍보 GIF·자산 존재
 })());
 ok('WR-21. 진단은 선택값을 다시 계산하거나 덮어쓰지 않는다',
   (convertSrc.match(/mainIndexV\s*=[^=]/g) || []).length === 1
@@ -617,13 +835,18 @@ ok('WR-21. 진단은 선택값을 다시 계산하거나 덮어쓰지 않는다'
   && (convertSrc.match(/packageIndexV\s*=[^=]/g) || []).length === 1
   && !/slots\.(mainIndex|featureIndex|packageIndex)\s*=[^=]/.test(convertSrc));
 // ── 메인·KEY FEATURE 자동선정 OFF (2026-08-24 2차, 전 상품 공통) ──
-ok('WR-23. 자동 메인·KEY FEATURE 선정이 하나의 스위치로 꺼져 있다',
-  /const AUTO_HERO_SLOTS: boolean = false;/.test(convertSrc)
+ok('WR-23. 자동 메인·KEY FEATURE 선정이 전 상품 공통으로 켜져 있다',
+  /const AUTO_HERO_SLOTS: boolean = true;/.test(convertSrc)
   && /AUTO_HERO_SLOTS \? at\(mainIndexV\) : null/.test(convertSrc)
-  && /AUTO_HERO_SLOTS \? at\(featureIndexV\) : null/.test(convertSrc));
-ok('WR-24. ①구조 경로도 메인·KEY FEATURE 를 비운다(AI 실패해도 빈 슬롯 동일)',
-  /\/\/ 메인·KEY FEATURE 자동선정 OFF\(전 상품 공통\)[\s\S]{0,120}mainImage: null,\s*\n\s*featureImage: null,/.test(convertSrc));
-ok('WR-25. 선정 규칙·임계값·HERO 정규화·패키지 자동배치 코드는 지우지 않았다',
+  && /AUTO_HERO_SLOTS \? at\(featureIndexV\) : null/.test(convertSrc)
+  && !/AUTO_HERO_SLOTS[\s\S]{0,200}productName|상품별|if \(input\./.test(convertSrc.split('const AUTO_HERO_SLOTS')[0]));
+ok('WR-23b. 조립 모듈이 메인·KEY FEATURE 를 기계 확인 3종 + 중복만으로 판정한다',
+  /const validateHero =/.test(assemblySrc)
+  && /out_of_range/.test(assemblySrc) && /bananamall_promo_gif/.test(assemblySrc)
+  && /asset_missing/.test(assemblySrc) && /same_as_main/.test(assemblySrc));
+ok('WR-24. ①구조 경로(AI 0콜)는 메인·KEY FEATURE 를 비운다',
+  /메인·KEY FEATURE 는 AI 읽기 단계에서 정한다[\s\S]{0,120}mainImage: null,\s*\n\s*featureImage: null,/.test(convertSrc));
+ok('WR-25. 선정 진입점·HERO 정규화·패키지 자동배치 코드는 지우지 않았다',
   /selectBasicSlots\(/.test(convertSrc) && /normalizeHeroMainImage\(/.test(convertSrc)
   && /computePackageLayout\(/.test(convertSrc)
   && /export const selectBasicSlots/.test(assemblySrc)
@@ -636,9 +859,11 @@ ok('WR-27. 본문에 분할·태거를 쓰지 않는다(요약·판정용으로�
   /splitImageByWhitespace\(/.test(convertSrc) && /tagBasicBands\(/.test(convertSrc)   // 판정용으로는 유지
   && !/godoBodySections: [^\n]*band/i.test(convertSrc)
   && /godoBodySections: bodyOut\.sections/.test(convertSrc));
-ok('WR-22. 진단이 임계값을 새로 적지 않고 조립 모듈 상수를 읽는다',
-  /CLEAN_CUT_THRESHOLDS/.test(convertSrc)
-  && !/MAX_COLOR:|MAX_SMALL_CC:|MIN_LARGEST_CC:|MAX_FILL_RATIO:/.test(convertSrc));
+ok('WR-22. 변환기가 픽셀 임계값으로 AI 선택을 다시 거르지 않는다(이중 판단 금지)',
+  !/CLEAN_CUT_THRESHOLDS/.test(convertSrc)
+  && !/MAX_COLOR|MAX_SMALL_CC|MIN_LARGEST_CC|MAX_FILL_RATIO/.test(convertSrc)
+  && !/cleanEligible|cleanScore|selectClean|reselected/.test(convertSrc)
+  && !/const cleanEligible|const cleanScore|const selectClean/.test(assemblySrc));
 ok('WR-19. 보존 본문 이미지는 무테로 이어 붙인다(없던 구분선 생성 금지)',
   /const noBorder = preserved \|\| \(sizeSection && item\.kind === 'media'\)/.test(previewSrc)
   && /\{preserved \? null : k === runStart/.test(previewSrc));
