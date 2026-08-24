@@ -522,6 +522,24 @@ ok('WR-18. 렌더러는 보존 본문에 Point 제목·섹션 제목·구분선�
   && /\{!preserved && <h2 /.test(previewSrc)
   && /\{i > 0 && !preserved && \(/.test(previewSrc)
   && /const runStart = preserved[\s\S]{0,20}\? -1/.test(previewSrc));
+// ── 선택 진단 3줄 (2026-08-24) — 원인 확인용. 판정에 되먹이지 않는다. ──
+ok('WR-20. 선택 진단 3줄이 notes 로 남는다(DEV 게이트 밖 → Preview 화면에서 보인다)', (() => {
+  const diagPush = convertSrc.match(/notes\.push\(`\[진단\]/g) || [];
+  if (diagPush.length !== 3) return false;
+  const devBlocks = convertSrc.match(/if \(DEV\) \{[\s\S]*?\n  \}/g) || [];
+  return !devBlocks.some((b) => b.includes('[진단]'))            // DEV 블록 안이 아니다
+    && /AI 지목 main=\$\{r\.mainIndex\}/.test(convertSrc)         // ① AI 지목 ↔ 최종
+    && /slots\.decisions\.filter/.test(convertSrc)                // ② 슬롯 결정·거절 사유
+    && /밴드별 첫 탈락 관문/.test(convertSrc);                     // ③ 밴드별 첫 탈락 관문
+})());
+ok('WR-21. 진단은 선택값을 다시 계산하거나 덮어쓰지 않는다',
+  (convertSrc.match(/mainIndexV\s*=[^=]/g) || []).length === 1
+  && (convertSrc.match(/featureIndexV\s*=[^=]/g) || []).length === 1
+  && (convertSrc.match(/packageIndexV\s*=[^=]/g) || []).length === 1
+  && !/slots\.(mainIndex|featureIndex|packageIndex)\s*=[^=]/.test(convertSrc));
+ok('WR-22. 진단이 임계값을 새로 적지 않고 조립 모듈 상수를 읽는다',
+  /CLEAN_CUT_THRESHOLDS/.test(convertSrc)
+  && !/MAX_COLOR:|MAX_SMALL_CC:|MIN_LARGEST_CC:|MAX_FILL_RATIO:/.test(convertSrc));
 ok('WR-19. 보존 본문 이미지는 무테로 이어 붙인다(없던 구분선 생성 금지)',
   /const noBorder = preserved \|\| \(sizeSection && item\.kind === 'media'\)/.test(previewSrc)
   && /\{preserved \? null : k === runStart/.test(previewSrc));

@@ -15,7 +15,8 @@ import { readBasicLayout } from './basicVisionReader';
 import { tagBasicBands, type BasicBandType, type TaggedBand } from './basicBandTagger';
 import { normalizePackageImage, isBananamallPromoGif, normalizeHeroMainImage } from './basicAssetNormalize';
 import {
-  selectBasicSlots, normalizeBandLedger, assembleBodyPreserved, buildBasicSummaryInfo, type BasicBandRef,
+  selectBasicSlots, normalizeBandLedger, assembleBodyPreserved, buildBasicSummaryInfo,
+  CLEAN_CUT_THRESHOLDS, type BasicBandRef,
 } from './basicBodyAssembly';
 
 export interface BasicConvertInput {
@@ -272,6 +273,40 @@ export const convertBasicWithAI = async (
   const mainIndexV = slots.mainIndex;
   const featureIndexV = slots.featureIndex;
   const packageIndexV = slots.packageIndex;
+
+  // ── 진단 전용 3줄 (2026-08-24) — "왜 빈칸인가"를 화면에서 그대로 읽기 위한 기록이다. ──
+  //   · 판정에 되먹이지 않는다: 아래 코드는 notes 에만 쓰고, 어떤 선택값도 다시 계산하거나 덮지 않는다.
+  //   · DEV 콘솔이 아니라 notes 에 넣는다 — DEV 블록은 `vite build` 에서 통째로 사라져 Preview 에 없다.
+  //   · 임계값을 여기서 다시 적지 않고 조립 모듈 상수를 그대로 읽는다(수치 이중 관리 금지).
+  notes.push(`[진단] AI 지목 main=${r.mainIndex} feature=${r.featureIndex} package=${r.packageIndex}`
+    + ` → 최종 main=${mainIndexV} feature=${featureIndexV} package=${packageIndexV}`);
+  const slotLine = (role: string): string => {
+    const ds = slots.decisions.filter((d) => d.role === role);
+    if (!ds.length) return `${role}: 결정기록 없음`;
+    return ds.map((d) => `${role}: ${d.result}(요청 ${d.requested}→최종 ${d.final}) ${d.reason}`).join(' / ');
+  };
+  notes.push(`[진단] ${slotLine('main')} || ${slotLine('feature')}`);
+  // 밴드별 "첫 탈락 관문" — selectBasicSlots 의 cleanEligible 과 같은 순서로 훑어 사유 하나만 적는다.
+  //   ⚠️ 이미 쓴 슬롯(used)·같은 컷(dHash) 배제는 선택 순서에 따라 달라지는 상태값이라 이 목록에 넣지 않는다.
+  //      그 두 가지의 실제 결과는 바로 위 슬롯 결정 줄이 보여준다.
+  const TH = CLEAN_CUT_THRESHOLDS;
+  const assetOfBand = (i: number): string => ledgerOut.ledger.find((x) => x.index === i)?.asset ?? '-';
+  const firstBlock = (i: number): string => {
+    const b = bandRefs[i];
+    if (b.promo) return 'promo';
+    if (b.type === 'TEXT') return 'TEXT';
+    const a = assetOfBand(i);
+    if (a !== '-' && a !== 'product_cut') return 'asset';
+    const m = b.metrics;
+    if (!m) return 'metrics없음';
+    if (m.color > TH.MAX_COLOR) return `color${m.color.toFixed(2)}`;
+    if (m.smallCC > TH.MAX_SMALL_CC) return `smallCC${m.smallCC}`;
+    if (m.largestCC < TH.MIN_LARGEST_CC) return `largestCC${m.largestCC.toFixed(2)}`;
+    if (m.fillRatio > TH.MAX_FILL_RATIO) return `fill${m.fillRatio.toFixed(2)}`;
+    return 'OK';
+  };
+  notes.push(`[진단] 밴드별 첫 탈락 관문 — ${bandRefs
+    .map((b, i) => `${i}:${b.type}/${assetOfBand(i)}/${firstBlock(i)}`).join(' · ')}`);
 
   // 본문: 원본 밴드를 원래 순서 그대로 싣는다. 장부(role·kind·sectionStart)도, 상단 슬롯 결과(reserved)도
   //   본문에 영향을 주지 않는다 — 상단에 쓰인 컷이 본문에 또 나와도 본문 보존이 우선이다(2026-08-24 지시).
