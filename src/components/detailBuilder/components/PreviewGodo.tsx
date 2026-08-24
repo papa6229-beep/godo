@@ -297,42 +297,48 @@ const PreviewGodo = forwardRef<HTMLDivElement, PreviewGodoProps>(({ data, onOpti
   //   원본 상세페이지의 섹션 개수·순서·항목 순서를 그대로 반복 렌더한다.
   //   Point 01·02·SIZE 고정 슬롯에 압축하지 않는다 → 사이즈·전원 섹션도 원본 위치에 그대로 나온다.
   //   동적 섹션이 없으면(수동 편집·구조 배치만) 아래 기존 고정 렌더가 그대로 동작한다(무회귀).
+  //   2026-08-24: `sec.preserved` = 원본 보존 본문. 그때는 제목·번호·구분선·항목 간격·이미지 테두리를
+  //     **하나도 만들지 않고** 원본 자료만 위→아래로 이어 붙인다(원본에 없던 선을 새로 그리지 않는다).
   const bodySections = hasDynamicBody(data) ? data.godoBodySections : null;
   const renderBodySection = (sec, i, all) => {
     const sid = `preview-body-${i + 1}`;
+    const preserved = sec.preserved === true;
     // 사이즈 섹션: 무게 한 줄은 가운데 알약(pill)으로, 도해 이미지는 사각 테두리 없이(원본 내용은 그대로).
-    const sizeSection = isSizeSection(sec);
+    const sizeSection = !preserved && isSizeSection(sec);
     // 마지막 섹션에서 "마지막 설명문 뒤에 제품 컷만 2장 이상" 연속되면 그 앞에 구분선 1개.
     const isLastSection = i === (all ? all.length : 0) - 1;
     // 판독 장부가 표시한 tail 시작을 우선 쓰고, 표시가 없으면 종전 규칙으로 판단한다.
-    const runStart = typeof sec.tailStart === 'number' ? sec.tailStart : trailingMediaRunStart(sec, isLastSection);
+    const runStart = preserved
+      ? -1
+      : (typeof sec.tailStart === 'number' ? sec.tailStart : trailingMediaRunStart(sec, isLastSection));
     return (
       <React.Fragment key={sec.id || sid}>
-        {i > 0 && (
+        {i > 0 && !preserved && (
           <div className="px-[50px]"><Hairline color="#111827" thickness={1} /></div>
         )}
         <section id={sid} className="px-[50px] relative group"
           style={{ paddingTop: gapVal(`${sid}-sec`, 'section'), paddingBottom: gapVal(`${sid}-sec`, 'section') }}>
           <SectionGap id={`${sid}-sec`} />
-          <Dot color={accent} size={22} />
+          {!preserved && <Dot color={accent} size={22} />}
           {/* 주 번호는 원본 번호가 아니라 본문 배열 순서로 고정한다(번호가 없는 원본도 항상 나온다) */}
-          <h2 className={`${SECTION_HEADING} mt-4`}>{bodyPointLabel(i)}</h2>
-          {(sec.title || '').trim() && (
+          {!preserved && <h2 className={`${SECTION_HEADING} mt-4`}>{bodyPointLabel(i)}</h2>}
+          {!preserved && (sec.title || '').trim() && (
             <p className="flex items-center gap-2 text-2xl font-black text-gray-900 mt-3 break-keep">
               {sec.title} <Dot color={accent} size={12} />
             </p>
           )}
-          <GapBar kind="heading" id={`${sid}-head`} />
+          {!preserved && <GapBar kind="heading" id={`${sid}-head`} />}
           <div className="flex flex-col">
             {(sec.items || []).map((item, k) => {
               const prev = k > 0 ? sec.items[k - 1] : null;
               // 설명 ↔ 바로 아래 자기 이미지는 가깝게(12px 고정), 그 밖의 항목 사이는 드래그 가능한 블록 간격.
               const tightPair = prev && prev.kind === 'text' && item.kind === 'media';
               const weightPill = sizeSection && item.kind === 'text' && isWeightLine(item.text);
-              const noBorder = sizeSection && item.kind === 'media';   // 사이즈 도해·무게 그래픽은 무테
+              // 원본 보존 본문은 밴드가 원본 한 장의 연속 조각이라 테두리를 그리면 없던 구분선이 생긴다 → 무테.
+              const noBorder = preserved || (sizeSection && item.kind === 'media');
               return (
                 <React.Fragment key={k}>
-                  {k === runStart
+                  {preserved ? null : k === runStart
                     // 제품 이미지 나열부 시작: 위 여백 + 구분선 1개(새 제목·번호는 만들지 않는다)
                     ? (
                       <div style={{ paddingTop: gapVal(`${sid}-run`, 'section') }}>

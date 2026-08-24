@@ -1,4 +1,9 @@
-// 기본형 변환기 집중검사 — 밴드 장부 계약 + 3사례(핑거위글 · 글랜스 · 프리티) 회귀.
+// 기본형 변환기 집중검사 — 본문 원본 보존 출력 + 밴드 장부 계약(보존 자산) + 3사례 회귀.
+//
+// ⚠️ 2026-08-24 본문 보존 패치 이후의 역할 구분:
+//   · [9] 본문 원본 보존 = **현재 제품이 실제로 쓰는 본문 출력 경로**(assembleBodyPreserved).
+//   · [2]~[5] 장부·섹션 조립 = 리디자인 단계 참고 자산으로 **보존만 하는 모듈**의 계약 검사다.
+//     이 검사들이 통과해도 본문 화면 출력이 그렇게 나온다는 뜻이 아니다(제품 경로는 [9]·[10] 이 정본).
 //
 // 검사 방식: src/components/detailBuilder/services/basicBodyAssembly.ts 와 mainMallExcelParser.ts 를
 //   tsc 로 컴파일해 **실제 함수를 호출**한다. 문자열 존재 검사만으로 통과시키지 않는다(헌법 §10 · CLAUDE.md §5).
@@ -38,12 +43,12 @@ const compile = (relFile, dir) => execFileSync(
   { stdio: 'pipe', cwd: tmpdir() },  // 저장소 tsconfig.json 자동 로드 방지(TS5112)
 );
 
-console.log('[1/8] 컴파일');
+console.log('[1/10] 컴파일');
 // constants.ts → types.ts → services/basicBodyAssembly.ts 가 한 프로그램으로 함께 컴파일된다.
 compile('src/components/detailBuilder/constants.ts', outDir);
 const mod = await import(pathToFileURL(path.join(outDir, 'services/basicBodyAssembly.js')).href);
 const {
-  selectBasicSlots, normalizeBandLedger, assembleBodyFromLedger, buildBasicSummaryInfo,
+  selectBasicSlots, normalizeBandLedger, assembleBodyFromLedger, assembleBodyPreserved, buildBasicSummaryInfo,
   hasDynamicBody, BODY_DUP_HAMMING, isSizeSection, isWeightLine, trailingMediaRunStart, bodyPointLabel,
 } = mod;
 const parserDir = mkdtempSync(path.join(tmpdir(), 'godo-parser-'));
@@ -52,6 +57,7 @@ const PARSER = await import(pathToFileURL(path.join(parserDir, 'mainMallExcelPar
 
 ok('조립 모듈이 장부 계약 진입점을 내보낸다',
   [normalizeBandLedger, assembleBodyFromLedger, selectBasicSlots, buildBasicSummaryInfo].every((f) => typeof f === 'function'));
+ok('본문 원본 보존 진입점을 내보낸다', typeof assembleBodyPreserved === 'function');
 ok('렌더 규칙 판정 4종도 순수 함수로 내보낸다',
   [isSizeSection, isWeightLine, trailingMediaRunStart, bodyPointLabel].every((f) => typeof f === 'function') && BODY_DUP_HAMMING === 10);
 
@@ -86,7 +92,7 @@ const runLedger = (aiBands, bands, slotReq) => {
 // ══════════════════════════════════════════════════════════════════════════
 // [2] 핑거위글 — 실측 33밴드 (요약 5 + 홍보 GIF 1 + 본문 27)
 // ══════════════════════════════════════════════════════════════════════════
-console.log('[2/8] 핑거위글 무회귀');
+console.log('[2/10] 핑거위글 무회귀');
 const FW = [
   band(0, 'TEXT', { smallCC: 30, largestCC: 0.01 }),                          // 상품명 한/영
   band(1, 'PHOTO', { color: 0.59, largestCC: 0.695, height: 1153 }),          // 분홍 배경 메인 + 요약정보 표
@@ -192,7 +198,7 @@ ok('FW-20. 본문 GIF 는 원본 자산 유지(정지 변환 없음)', (() => {
 // ══════════════════════════════════════════════════════════════════════════
 // [3] 글랜스 — 실측 24밴드 (요약 4 + 홍보 GIF 1 + 본문 19) · 원본 섹션 번호 없음
 // ══════════════════════════════════════════════════════════════════════════
-console.log('[3/8] 글랜스 무회귀');
+console.log('[3/10] 글랜스 무회귀');
 const GL = [
   band(0, 'TEXT', { smallCC: 26, largestCC: 0.01, height: 112 }),             // 상품명
   band(1, 'PHOTO', { color: 0.44, largestCC: 0.62, height: 1236 }),           // 요약 배경 메인 + 요약표
@@ -256,7 +262,7 @@ ok('GL-9. tail 나열부는 마지막 섹션에서 한 번만 구분',
 // ══════════════════════════════════════════════════════════════════════════
 // [4] 프리티 러브 브루스 — 실측 21밴드(단일 이미지) · 패키지 박스 없음 · Point 가 이미지에 박힘
 // ══════════════════════════════════════════════════════════════════════════
-console.log('[4/8] 프리티 러브 브루스');
+console.log('[4/10] 프리티 러브 브루스');
 const PR = [
   band(0, 'TEXT', { smallCC: 22, largestCC: 0.01, height: 90 }),               // 상품명 한/영
   band(1, 'MIXED', { color: 0.35, smallCC: 48, largestCC: 0.28, height: 1662 }), // 요약정보 표 + 보라 배경 제품컷
@@ -329,7 +335,7 @@ ok('PR-14. 이미지 개수 불변(본문 미디어 = 장부의 body/tail 미디
 // ══════════════════════════════════════════════════════════════════════════
 // [5] 장부 계약 자체 — 누락·중복·순서·홍보 GIF·글자 밴드 강제
 // ══════════════════════════════════════════════════════════════════════════
-console.log('[5/8] 밴드 장부 계약');
+console.log('[5/10] 밴드 장부 계약');
 {
   const partial = normalizeBandLedger([e(2, 'body', 'media', 'product_cut'), e(0, 'body', 'text', 'other', { text: 'a' })], PR.slice(0, 4));
   ok('LD-1. 빠진 밴드를 인덱스와 함께 알린다', partial.notes.some((n) => n.includes('빠진 밴드') && n.includes('1') && n.includes('3')), partial.notes.join(' / '));
@@ -348,7 +354,7 @@ console.log('[5/8] 밴드 장부 계약');
   ok('LD-7. AI 가 순서를 뒤집어 보내도 원본 순서로 조립', reorder.sections[0].items.map((i) => i.kind).join(',') === 'text,media');
 }
 
-console.log('[6/8] 스펙·요약 계약');
+console.log('[6/10] 스펙·요약 계약');
 const summary = buildBasicSummaryInfo({ type: '바이브레이터', material: '실리콘 · ABS', weight: '97g', power: 'USB 충전식', maker: 'X' }, { brandName: 'SECWELL' });
 ok('SM-1. 치수는 상세페이지 참조 고정', summary.size === '상세페이지 참조');
 ok('SM-2. 전원·무게·재질은 원본 값', summary.power === 'USB 충전식' && summary.weight === '97g' && summary.material === '실리콘 · ABS');
@@ -359,7 +365,7 @@ ok('SM-5. 동적 본문 유무 판정', hasDynamicBody({ godoBodySections: fw.bo
 // ══════════════════════════════════════════════════════════════════════════
 // [7] 상품명 파서 — 3사례 + 기존 보존
 // ══════════════════════════════════════════════════════════════════════════
-console.log('[7/8] 상품명 파서(구조 분리)');
+console.log('[7/10] 상품명 파서(구조 분리)');
 const P = (raw) => PARSER.parseProductName(raw);
 {
   const fwName = P('[10단 티클링+진동] 핑거 위글 전립선 마사져 (Finger Wiggle Prostate Massager) - SECWELL(SW1064-2) (SWL)(TJ)');
@@ -382,9 +388,96 @@ const P = (raw) => PARSER.parseProductName(raw);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// [8] 결선 · 계약 대조(소스)
+// [9] 본문 원본 보존 출력 — 제품이 실제로 쓰는 본문 경로 (2026-08-24 패치)
+//   종료조건: 요약정보 하단 본문은 원본 순서·원본 자료 그대로. 바나나몰 홍보 GIF만 제외.
 // ══════════════════════════════════════════════════════════════════════════
-console.log('[8/8] 결선 · 계약 대조');
+console.log('[9/10] 본문 원본 보존 출력');
+{
+  const srcsInOrder = (bands) => bands.filter((b) => !b.promo).map((b) => b.src);
+  const bodyItems = (res) => res.sections.flatMap((sec) => sec.items);
+
+  // BP-1~4. 3사례: 본문 자료 수·순서가 원본 입력(밴드 배열)과 일치한다.
+  for (const [name, bands, promoCount] of [['핑거위글', FW, 1], ['글랜스', GL, 1], ['프리티', PR, 0]]) {
+    const res = assembleBodyPreserved(bands);
+    const items = bodyItems(res);
+    ok(`BP-1(${name}) 본문 자료 수 = 밴드 ${bands.length} − 홍보 GIF ${promoCount}`,
+      items.length === bands.length - promoCount, `실제 ${items.length}`);
+    ok(`BP-2(${name}) 본문 순서가 원본 입력 순서와 같다`,
+      items.map((i) => i.src).join('|') === srcsInOrder(bands).join('|'));
+    ok(`BP-3(${name}) 빈 섹션·빈 Point 없음 · 섹션 1개 · 제목/번호 생성 0건`,
+      res.sections.length === 1 && res.sections[0].preserved === true
+      && res.sections[0].title === '' && res.sections[0].number === ''
+      && res.sections[0].tailStart === undefined && res.sections[0].items.length > 0);
+    ok(`BP-4(${name}) 텍스트 재입력 0건 — 모든 항목이 원본 이미지`,
+      items.every((i) => i.kind === 'media' && !i.reviewNote && i.composite === false));
+  }
+
+  // BP-5. 홍보 GIF만 제외되고 일반 본문 GIF 는 원본 자산 그대로 남는다.
+  {
+    const withGif = FW.concat([band(33, 'PHOTO', { isGif: true, src: 'https://cdn/usage_demo.gif' })]);
+    const items = bodyItems(assembleBodyPreserved(withGif));
+    const gifs = items.filter((i) => i.mediaType === 'gif');
+    ok('BP-5. 일반 본문 GIF 는 원본 URL·gif 로 남고 홍보 GIF 만 빠진다',
+      gifs.length === 1 && gifs[0].src === 'https://cdn/usage_demo.gif'
+      && !items.some((i) => i.src === 'https://cdn/1667813619_1.gif'),
+      `gif ${gifs.length}건`);
+  }
+
+  // BP-6. 상단 슬롯(메인·KEY FEATURE·패키지)으로 뽑힌 밴드도 본문에서 사라지지 않는다.
+  {
+    const norm = normalizeBandLedger(FW_LEDGER, FW);
+    const slots = selectBasicSlots({ mainIndex: 27, featureIndex: 13, packageIndex: 3, ledger: norm.ledger }, FW);
+    const items = bodyItems(assembleBodyPreserved(FW));
+    const srcs = items.map((i) => i.src);
+    const picked = [slots.mainIndex, slots.featureIndex, slots.packageIndex].filter((x) => x >= 0);
+    ok('BP-6. 상단 슬롯 선정 밴드도 본문에 그대로 있다(reserved 무영향)',
+      picked.length === 3 && picked.every((x) => srcs.includes(FW[x].src)) && slots.reserved.size > 0,
+      `slots ${picked.join(',')} · reserved ${[...slots.reserved].join(',')}`);
+    ok('BP-6b. 요약 원본으로 표시된 밴드(0~4)도 본문에 남는다',
+      [0, 1, 2, 3, 4].every((x) => srcs.includes(FW[x].src)));
+    ok('BP-6c. 요약 패키지와 같은 컷(32)도 중복 판정으로 지우지 않는다', srcs.includes(FW[32].src));
+  }
+
+  // BP-7. AI 장부의 role·kind·sectionStart 가 어떤 값이어도 본문 출력이 같다.
+  {
+    const baseline = JSON.stringify(assembleBodyPreserved(FW).sections);
+    const variants = {
+      '전부 exclude': FW.map((_, i) => e(i, 'exclude', 'text', 'other')),
+      '전부 summary': FW.map((_, i) => e(i, 'summary', 'media', 'package_box')),
+      '전부 sectionStart': FW.map((_, i) => e(i, 'body', 'composite', 'diagram', { sectionStart: true, sectionTitle: `S${i}`, text: `t${i}` })),
+      '장부 비어 있음': [],
+      '뒤집힌 순서': FW.map((_, i) => e(FW.length - 1 - i, 'tail', 'media', 'usage')),
+    };
+    let same = 0;
+    for (const [label, ledgerIn] of Object.entries(variants)) {
+      const norm = normalizeBandLedger(ledgerIn, FW);
+      const slots = selectBasicSlots({ mainIndex: 27, featureIndex: 13, packageIndex: 3, ledger: norm.ledger }, FW);
+      // 제품 경로와 같은 호출: 본문은 장부·슬롯을 인자로 받지 않는다.
+      const got = JSON.stringify(assembleBodyPreserved(FW).sections);
+      if (got === baseline && slots) same += 1;
+      else ok(`BP-7(${label}) 본문 불변`, false, '장부 변형이 본문을 바꿨다');
+    }
+    ok('BP-7. 장부 role·kind·sectionStart 5가지 변형에도 본문 출력 동일', same === Object.keys(variants).length);
+    ok('BP-7b. 보존 함수는 장부·슬롯을 인자로 받지 않는다(구조적 차단)', assembleBodyPreserved.length === 1);
+  }
+
+  // BP-8. 전부 홍보 GIF면 빈 섹션을 만들지 않는다(빈 Point 방지).
+  {
+    const onlyPromo = [band(0, 'PHOTO', { promo: true, isGif: true, src: 'https://cdn/p.gif' })];
+    const res = assembleBodyPreserved(onlyPromo);
+    ok('BP-8. 남은 자료가 없으면 섹션 0개 + 손검수 안내', res.sections.length === 0 && res.notes.some((n) => n.includes('손검수')));
+  }
+
+  // BP-9~10. 사용자 안내 · 렌더 진입 판정.
+  ok('BP-9. 홍보 GIF 제외 건수를 notes 로 알린다',
+    assembleBodyPreserved(FW).notes.some((n) => n.includes('홍보 GIF') && n.includes('1건')));
+  ok('BP-10. 동적 본문 판정이 보존 섹션에서도 참', hasDynamicBody({ godoBodySections: assembleBodyPreserved(PR).sections }) === true);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// [10] 결선 · 계약 대조(소스)
+// ══════════════════════════════════════════════════════════════════════════
+console.log('[10/10] 결선 · 계약 대조');
 const read = (p) => readFileSync(path.join(repo, p), 'utf8');
 const convertSrc = read('src/components/detailBuilder/services/godoBasicConvert.ts');
 const readerSrc = read('src/components/detailBuilder/services/basicVisionReader.ts');
@@ -405,8 +498,14 @@ ok('WR-6. 단계별 시간 계측이 그대로다',
 ok('WR-7. 이미지 해상도·토큰 예산 불변(760px · maxTokens 4000)', /maxPx = 760/.test(readerSrc) && /maxTokens: 4000/.test(readerSrc));
 ok('WR-8. 리더가 밴드 장부를 요청한다(자유 섹션 조립 계약 제거)',
   /밴드 장부/.test(readerSrc) && /"bands"/.test(readerSrc) && !/AiBodySection/.test(readerSrc));
-ok('WR-9. 변환기가 장부 정규화 → 코드 조립 순서로 쓴다',
-  /normalizeBandLedger\(/.test(convertSrc) && /assembleBodyFromLedger\(/.test(convertSrc));
+ok('WR-9. 변환기 본문은 원본 보존 경로만 쓴다(장부 섹션 조립은 본문에서 끊겼다)',
+  /assembleBodyPreserved\(bandRefs\)/.test(convertSrc)
+  && !/assembleBodyFromLedger\s*\(/.test(convertSrc)          // 호출 0건
+  && !/^\s*selectBasicSlots.*assembleBodyFromLedger/m.test(convertSrc));  // import 0건
+ok('WR-9b. 장부·상단 슬롯 검증은 그대로 남아 있다(요약·슬롯 전용)',
+  /normalizeBandLedger\(/.test(convertSrc) && /selectBasicSlots\(/.test(convertSrc));
+ok('WR-9c. 장부 섹션 조립 코드는 삭제하지 않고 보존한다',
+  /export const assembleBodyFromLedger/.test(assemblySrc) && /export const normalizeBandLedger/.test(assemblySrc));
 ok('WR-10. 상품명 정본은 엑셀 값이 먼저', /productNameKr: input\.productNameKr \|\| r\.productNameKr/.test(convertSrc));
 ok('WR-11. 렌더러가 배열 순서 Point 번호·사이즈 규칙·tail 구분을 순수 함수로 받는다',
   /bodyPointLabel\(i\)/.test(previewSrc) && /isSizeSection/.test(previewSrc) && /sec\.tailStart/.test(previewSrc));
@@ -418,6 +517,14 @@ ok('WR-14. 상단 슬롯 픽셀 임계값 불변',
   /MAX_COLOR: 0\.20/.test(assemblySrc) && /MAX_SMALL_CC: 10/.test(assemblySrc)
   && /MIN_LARGEST_CC: 0\.12/.test(assemblySrc) && /MAX_FILL_RATIO: 0\.62/.test(assemblySrc));
 ok('WR-15. 파서는 상품별 약자 목록이 아니라 구조 규칙을 쓴다', !/NPR\|TJ\|SWL\|SNN\|LVH\|NTS/.test(parserSrc));
+ok('WR-18. 렌더러는 보존 본문에 Point 제목·섹션 제목·구분선을 만들지 않는다',
+  /const preserved = sec\.preserved === true/.test(previewSrc)
+  && /\{!preserved && <h2 /.test(previewSrc)
+  && /\{i > 0 && !preserved && \(/.test(previewSrc)
+  && /const runStart = preserved[\s\S]{0,20}\? -1/.test(previewSrc));
+ok('WR-19. 보존 본문 이미지는 무테로 이어 붙인다(없던 구분선 생성 금지)',
+  /const noBorder = preserved \|\| \(sizeSection && item\.kind === 'media'\)/.test(previewSrc)
+  && /\{preserved \? null : k === runStart/.test(previewSrc));
 const consts = await import(pathToFileURL(path.join(outDir, 'constants.js')).href);
 ok('WR-16. 섬네일 프리셋 4종·규격 불변',
   consts.THUMBNAIL_PRESETS.length === 4

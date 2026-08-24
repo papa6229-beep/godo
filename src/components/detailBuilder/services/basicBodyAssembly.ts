@@ -80,6 +80,11 @@ export interface BasicBodySection {
   items: BasicBodyItem[];  // 원본 위→아래 순서
   /** 이 섹션 안에서 "설명 없는 제품컷 나열부(tail)"가 시작되는 항목 위치. 없으면 undefined. */
   tailStart?: number;
+  /**
+   * 원본 보존 본문인가(2026-08-24 패치). true 면 화면은 이 섹션에
+   * Point 제목·섹션 제목·구분선·항목 간격·이미지 테두리를 **만들지 않고** 원본 자료만 순서대로 잇는다.
+   */
+  preserved?: boolean;
 }
 
 /** dHash 해밍 ≤ 이 값이면 같은 컷(실측: 동일 0~3 vs 다른 27+). */
@@ -363,6 +368,52 @@ export const assembleBodyFromLedger = (
   if (dropped) notes.push(`본문에서 ${dropped}건 제외(요약 원본·홍보 GIF·중복·빈 설명).`);
 
   return { sections, notes, decisions };
+};
+
+// ── 본문 원본 보존 출력 (2026-08-24 패치 · 이 경로가 본문 정본이다) ──────────
+/**
+ * 본문 = 원본 밴드를 **원래 순서 그대로**. AI 장부(role·kind·sectionStart)를 보지 않는다.
+ *
+ * 왜 바꿨나: 장부 기반 조립은 AI 판단에 따라 원본 자료가 본문에서 사라지거나
+ *   (요약 원본·중복·빈 설명 판정) 빈 Point 섹션이 생겼다 — 프리티·글랜스 실사용에서 관측된 결함.
+ *   → 본문은 이제 아무 것도 판단하지 않는다. 제외는 **로컬이 이미 확정한 바나나몰 홍보 GIF** 하나뿐이다.
+ *
+ * 규율: 자르기·마스킹·OCR·텍스트 재입력·제목/번호/구분선 생성 **0건**. 밴드 1장 = 항목 1개.
+ *   상단 슬롯(메인·KEY FEATURE·패키지)으로 뽑힌 밴드도 본문에서 빼지 않는다 — **본문 보존이 우선**이다.
+ *   `assembleBodyFromLedger`·`normalizeBandLedger` 는 지우지 않고 남긴다(리디자인 단계 참고 자산).
+ */
+export const assembleBodyPreserved = (bands: BasicBandRef[]): BasicBodyResult => {
+  const decisions: BodyDecision[] = [];
+  const notes: string[] = [];
+  const items: BasicBodyItem[] = [];
+  let promoDropped = 0;
+
+  bands.forEach((b, i) => {
+    if (b.promo) {                      // 파란 테두리 + 바나나몰 도메인 홍보 GIF (기존 판별 그대로)
+      promoDropped += 1;
+      decisions.push({ section: 'body', requested: i, result: 'dropped', reason: 'bananamall_promo_gif' });
+      return;
+    }
+    items.push({
+      kind: 'media',
+      src: b.src,                       // GIF 는 원본 URL, 그 외는 분할 밴드 자산 — 바꾸지 않는다
+      mediaType: b.isGif ? 'gif' : 'image',
+      composite: false,                 // 복합 여부는 AI 판단이었다 — 보존 경로에서는 쓰지 않는다
+    });
+    decisions.push({ section: 'body', requested: i, result: 'kept', reason: 'preserved' });
+  });
+
+  if (promoDropped) notes.push(`바나나몰 홍보 GIF ${promoDropped}건만 본문에서 제외했습니다.`);
+  if (!items.length) {
+    notes.push('본문에 남은 원본 자료가 없습니다 — 손검수 필요.');
+    return { sections: [], notes, decisions };   // 빈 섹션을 만들지 않는다
+  }
+  notes.push(`본문 원본 보존 ${items.length}건 — 원본 순서 그대로(제목·번호·구분선 생성 0건).`);
+  return {
+    sections: [{ id: 'godo-body-preserved', number: '', title: '', items, preserved: true }],
+    notes,
+    decisions,
+  };
 };
 
 export interface BasicSummaryFields {

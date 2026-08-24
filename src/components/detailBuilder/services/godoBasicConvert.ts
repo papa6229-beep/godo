@@ -1,9 +1,13 @@
 // 기본형(통이미지 baked) → 고도몰 섹션형 ProductData 조립 (2026-07-13 Claude 브레인판).
 //   흐름: 통이미지 여백분할(밴드) → Claude 비전 1콜(읽기+슬롯배정+본문 섹션 지도) → Partial<ProductData> 조립.
 //   결과를 loadTemporary({...prev,...data})로 주입하면 좌측 입력부+PreviewGodo까지 편집가능 상태.
-//   ⚠️ 사진 보고 글 생성 금지(basicVisionReader 규칙). 상단 요약=고정 그릇, 본문=원본 섹션 그대로(가변).
-//   2026-08-22 1차 패치: 본문을 Point 01·02·SIZE 고정 슬롯에 욱여넣지 않고
-//     원본 섹션 배열(godoBodySections)로 옮긴다. 판정·조립 규칙은 basicBodyAssembly(순수)가 정본.
+//   ⚠️ 사진 보고 글 생성 금지(basicVisionReader 규칙). 상단 요약=고정 그릇, 본문=원본 자료 그대로.
+//   2026-08-22 1차 패치: 본문을 Point 01·02·SIZE 고정 슬롯에 욱여넣지 않고 원본 배열(godoBodySections)로 옮겼다.
+//   2026-08-24 본문 보존 패치(구조 패치): 본문은 **AI 판단을 전혀 쓰지 않는다.**
+//     장부(normalizeBandLedger)와 섹션 조립(assembleBodyFromLedger)의 role·kind·sectionStart 결과가
+//     본문의 포함·제외·순서·섹션 수를 정하던 것을 끊고, 원본 밴드를 순서대로 그대로 싣는다
+//     (제외는 바나나몰 홍보 GIF 하나뿐). AI 읽기는 **상단 요약·슬롯 선정용으로만** 남는다.
+//     조립 코드는 삭제하지 않고 리디자인 단계 참고 자산으로 보존한다.
 import type { ProductData } from '../types';
 import { splitImageByWhitespace, extractProductImages } from './flowImageSplitter';
 import { toProxyUrl } from './exportImagePrep';
@@ -11,7 +15,7 @@ import { readBasicLayout } from './basicVisionReader';
 import { tagBasicBands, type BasicBandType, type TaggedBand } from './basicBandTagger';
 import { normalizePackageImage, isBananamallPromoGif, normalizeHeroMainImage } from './basicAssetNormalize';
 import {
-  selectBasicSlots, normalizeBandLedger, assembleBodyFromLedger, buildBasicSummaryInfo, type BasicBandRef,
+  selectBasicSlots, normalizeBandLedger, assembleBodyPreserved, buildBasicSummaryInfo, type BasicBandRef,
 } from './basicBodyAssembly';
 
 export interface BasicConvertInput {
@@ -269,8 +273,9 @@ export const convertBasicWithAI = async (
   const featureIndexV = slots.featureIndex;
   const packageIndexV = slots.packageIndex;
 
-  // 본문: 장부를 원본 인덱스 순서로 훑어 코드가 섹션을 조립한다(AI 가 재배열·병합할 수 없다).
-  const bodyOut = assembleBodyFromLedger(ledgerOut.ledger, bandRefs, { reserved: slots.reserved });
+  // 본문: 원본 밴드를 원래 순서 그대로 싣는다. 장부(role·kind·sectionStart)도, 상단 슬롯 결과(reserved)도
+  //   본문에 영향을 주지 않는다 — 상단에 쓰인 컷이 본문에 또 나와도 본문 보존이 우선이다(2026-08-24 지시).
+  const bodyOut = assembleBodyPreserved(bandRefs);
   notes.push(...bodyOut.notes);
 
   if (DEV) {
@@ -281,7 +286,7 @@ export const convertBasicWithAI = async (
     // eslint-disable-next-line no-console
     console.groupEnd();
     // eslint-disable-next-line no-console
-    console.groupCollapsed(`[기본형 본문] 섹션 ${bodyOut.sections.length}개 · 항목 ${bodyOut.sections.reduce((n, sec) => n + sec.items.length, 0)}개`);
+    console.groupCollapsed(`[기본형 본문·원본보존] 항목 ${bodyOut.sections.reduce((n, sec) => n + sec.items.length, 0)}개 / 밴드 ${bandRefs.length}장`);
     // eslint-disable-next-line no-console
     console.table(bodyOut.decisions);
     // eslint-disable-next-line no-console
@@ -335,7 +340,7 @@ export const convertBasicWithAI = async (
     packageImage,
     isPackageImageEnabled: !!packageImage,   // 제약6: 패키지 없으면 명시적 비활성(직전 상품 값 잔류 방지)
 
-    // 본문 정본 — 원본 섹션 배열. PreviewGodo가 이 순서대로 반복 렌더한다.
+    // 본문 정본 — 원본 자료를 원래 순서 그대로 담은 보존 배열. PreviewGodo가 제목·구분선 없이 이어 붙인다.
     godoBodySections: bodyOut.sections,
 
     // 고정 Point 01·02·SIZE 슬롯은 이 경로에서 더 쓰지 않는다(본문이 원본 순서를 그대로 담는다).
@@ -353,7 +358,7 @@ export const convertBasicWithAI = async (
     else notes.push('패키지 자동배치 계산 실패 — 기본 위치 사용(필요시 수동 조정).');
   }
   if (r.keyFeatures.length !== 3) notes.push(`keyFeatures ${r.keyFeatures.length}개(3 아님) — 메인특징 수동 보완 필요.`);
-  notes.push(`본문 ${bodyOut.sections.length}개 섹션 인식 — ${bodyOut.sections.map((s) => `${s.number || '·'} ${s.title || ''}(${s.items.length})`).join(' / ') || '없음'}`);
+  notes.push(`본문 원본 보존 — 밴드 ${bandRefs.length}장 중 ${bodyOut.sections.reduce((n, s) => n + s.items.length, 0)}건을 원래 순서 그대로 출력(제외는 바나나몰 홍보 GIF만).`);
 
   // ── 기준선 계측 마감: 패키지 자동배치 계산 + 총합. (validation/package_normalization은 위에서 별도 마킹) ──
   mark('package_layout_ms');
