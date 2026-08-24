@@ -370,7 +370,54 @@ export const assembleBodyFromLedger = (
   return { sections, notes, decisions };
 };
 
-// ── 본문 원본 보존 출력 (2026-08-24 패치 · 이 경로가 본문 정본이다) ──────────
+// ── 본문 정본 : 원본 상세이미지 파일 그대로 (2026-08-24 2차 패치) ──────
+/** 본문에 그대로 실을 원본 상세이미지 파일 1개. */
+export interface BasicSourceImage {
+  src: string;      // 화면에 그대로 넣는 주소(same-origin 프록시) — 바꿔 실지 않는다
+  isGif: boolean;
+  promo: boolean;   // 바나나몰 홍보 GIF(파란 테두리·도메인) — 유일한 제외 대상
+}
+
+/**
+ * 본문 = 원본 상세이미지 **파일을 원래 순서 그대로** 한 장씩.
+ *
+ * 왜 바꿨나(2026-08-24 2차): 밴드 단위 보존(assembleBodyPreserved)는 원본 한 장을
+ *   여백 기준으로 잘게 썰어 실었다 — 원본에 없던 이음선이 생길 수 있고,
+ *   얇은 조각(minSegPx 20 미만)은 분할 단계에서 아예 사라졌다. → 본문은 이제 자르지 않는다.
+ *
+ * 규율: 분할·태거·밴드 장부·AI 본문 판단을 전혀 보지 않는다(인자로 받지도 않는다).
+ *   자르기·마스킹·OCR·텍스트 재입력·제목·번호·구분선 생성 **0건**. 파일 1장 = 항목 1개.
+ */
+export const assembleBodyFromSourceImages = (sources: BasicSourceImage[]): BasicBodyResult => {
+  const decisions: BodyDecision[] = [];
+  const notes: string[] = [];
+  const items: BasicBodyItem[] = [];
+  let promoDropped = 0;
+
+  sources.forEach((f, i) => {
+    if (f.promo) {                    // 기존 isBananamallPromoGif 판정 결과 그대로
+      promoDropped += 1;
+      decisions.push({ section: 'body', requested: i, result: 'dropped', reason: 'bananamall_promo_gif' });
+      return;
+    }
+    items.push({ kind: 'media', src: f.src, mediaType: f.isGif ? 'gif' : 'image', composite: false });
+    decisions.push({ section: 'body', requested: i, result: 'kept', reason: 'source_file_preserved' });
+  });
+
+  if (promoDropped) notes.push(`바나나몰 홍보 GIF ${promoDropped}건만 본문에서 제외했습니다.`);
+  if (!items.length) {
+    notes.push('본문에 남은 원본 이미지가 없습니다 — 손검수 필요.');
+    return { sections: [], notes, decisions };   // 빈 섹션을 만들지 않는다
+  }
+  notes.push(`본문 원본 파일 ${items.length}장을 자르지 않고 원래 순서 그대로 출력합니다.`);
+  return {
+    sections: [{ id: 'godo-body-source', number: '', title: '', items, preserved: true }],
+    notes,
+    decisions,
+  };
+};
+
+// ── (보존 자산) 밴드 단위 본문 보존 — **더 이상 제품 본문 경로가 아니다** ─────
 /**
  * 본문 = 원본 밴드를 **원래 순서 그대로**. AI 장부(role·kind·sectionStart)를 보지 않는다.
  *
