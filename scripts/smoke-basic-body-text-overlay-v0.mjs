@@ -547,7 +547,7 @@ const unchanged = (rel) => {
   ok('진단 컴포넌트는 ProductData 를 바꾸지 않는다(onChange 호출·전달 0건)',
     !/onChange\s*[=(]/.test(DIAG));
   ok('진단 컴포넌트는 실험 결과만 prop 으로 받는다(data·setData 없음)',
-    !/data\s*:/.test(DIAG.split('const BasicBodyOverlayDiagnostic')[1] || ''));
+    !/\bdata\b\s*:/.test(DIAG.split('const BasicBodyOverlayDiagnostic')[1] || ''));
 
   const EDITOR = read('src/components/detailBuilder/components/Editor.tsx');
   ok('Editor 가 진단 컴포넌트를 마운트한다',
