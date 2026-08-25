@@ -870,9 +870,19 @@ ok('WR-9d. 본문 경계는 순수 계획 → 적용 → 한 번 자르기 순�
 ok('WR-9e. 자르기는 경계 파일 하나뿐이고 실패하면 원본 전량으로 되돌린다',
   /const cutAt = bounded\.sources\.findIndex\(\(s\) => s\.cropFromY > 0\)/.test(convertSrc)
   && /bodySources = sources; notes\.push\(BODY_BOUNDARY_FALLBACK_NOTE\)/.test(convertSrc));
-ok('WR-9f. 밴드 출처(파일·y)는 분할기 반환값을 그대로 쓴다(좌표 추측 규칙 0건)',
-  /origins\.push\(\{ sourceIndex, y: s\.y, isGif: srcIsGif, promo \}\)/.test(convertSrc)
-  && !/estimate|guess|추정 y|approxY/.test(convertSrc));
+// 2026-08-25: 격리 실험이 출처 장부에 **진단 전용** width·height 를 덧붙였다(본문 출력·경계 계산은 그대로).
+//   그래서 줄 전체 문자열이 아니라 **핵심 계약**을 그대로 잠근다 — y 는 분할기 반환값(s.y) 그대로,
+//   파일 번호·GIF·홍보 플래그도 그대로, 좌표 추측 규칙은 여전히 0건이어야 한다(약화 아님).
+{
+  const push = (convertSrc.match(/origins\.push\(\{[^}]*\}\)/g) || []);
+  const seg = push.find((m) => /y: s\.y/.test(m)) || '';
+  ok('WR-9f. 밴드 출처(파일·y)는 분할기 반환값을 그대로 쓴다(좌표 추측 규칙 0건)',
+    push.length === 2                                   // GIF 통짜 경로 + 여백분할 경로, 그대로 2곳
+    && /sourceIndex/.test(seg) && /y: s\.y/.test(seg)     // y 는 분할기 반환값 그대로(계산·보정 없음)
+    && /isGif: srcIsGif/.test(seg) && /promo/.test(seg)
+    && !/y:\s*[^,}]*[+\-*/][^,}]*[,}]/.test(seg)         // origins 의 y 에 산술 보정을 넣지 않는다
+    && !/estimate|guess|추정 y|approxY/.test(convertSrc));
+}
 ok('WR-9g. 조립 모듈의 경계 계획은 순수하다(DOM·네트워크 0건)',
   /export const planBodyBoundary/.test(assemblySrc) && /export const applyBodyBoundary/.test(assemblySrc));
 ok('WR-9h. 리더가 bodyStartIndex 를 함께 요청·해석한다(추가 호출 없이 같은 1콜)',

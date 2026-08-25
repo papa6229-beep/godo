@@ -7,6 +7,7 @@ import { hasProviderKey } from '../../../services/aiKeyVault';
 import type { ChatContentPart } from '../../../types/aiProvider';
 import type { BasicBandType } from './basicBandTagger';
 import type { AiBandEntry } from './basicBodyAssembly';
+import { extractBodyTextRegions, type BasicBodyTextRegion } from './basicBodyTextOverlay';
 
 // 변환기 브레인 = Claude(클라우드) 고정. 생성기 문구용 로컬 Gemma(design 두뇌)와 분리 —
 // design 두뇌에 묶으면 로컬 LM Studio로 가서 대용량 이미지에 HTTP 400. 변환기는 항상 Claude.
@@ -28,6 +29,11 @@ export interface BasicVisionResult {
   mainIsSoloProductCut: boolean;    // 메인이 "흰 배경 + 제품 단독" 컷인가(false = 손검수 안내)
   bands: AiBandEntry[];             // 밴드 장부 — 유효 밴드마다 정확히 한 줄(섹션은 코드가 조립한다)
   notes: string[];
+  // ── 격리 실험(2026-08-25) 진단 전용 · 선택 필드 ──────────────────────────────
+  //   본문 밴드 위 "안전하게 지울 수 있는 그림 글자" 후보 장부. 없거나 잘못돼도
+  //   위의 기존 결과 생성은 전혀 영향을 받지 않는다(검증은 basicBodyTextOverlay 가 한다).
+  //   ⚠️ 이 값은 기존 출력·저장·다운로드 어디에도 들어가지 않는다.
+  bodyTextRegions?: BasicBodyTextRegion[];
 }
 
 export interface BasicReadContext {
@@ -137,12 +143,28 @@ const SYSTEM = [
   '- sectionTitle: 그 섹션의 원본 제목이 있으면 적는다(없으면 ""). 제목 문구를 text 로 중복해서 넣지 말 것.',
   '- text: kind 가 "text" 일 때만 쓴다(라이트 리라이트한 문장).',
   '',
+  '[본문 글자 영역 — bodyTextRegions] (진단용 · 못 고르면 빈 배열 [])',
+  '- 본문 밴드에 **그림으로 박혀 있는 글자** 중 다음 두 가지만 골라 한 줄씩 적는다. 다른 판단은 하지 말 것.',
+  '  · "replace" = 흰색(또는 거의 흰색)인 빈 배경 위에 홀로 놓인 제목·설명 문장.',
+  '    그 글자를 흰 사각형으로 가려도 제품·사람·도해·선·화살표가 하나도 지워지지 않는 경우만 해당한다.',
+  '  · "keep_raster" = 제품·사람·도해·선·화살표에 닿거나 겹친 글자, 치수선 숫자, 도해 내부 라벨처럼',
+  '    그림의 의미를 이루는 표식. 배경이 흰색이어도 그림 의미의 일부면 keep_raster 다.',
+  '  · 둘 중 어느 쪽인지 확신이 없으면 keep_raster 로 적는다(원본을 지우지 않는 쪽이 안전하다).',
+  '- rect 는 **그 밴드 이미지 기준 0..1 비율**이다: {"x":왼쪽,"y":위,"width":너비,"height":높이}.',
+  '  글자 덩어리를 딱 감싸는 사각형 하나로 적고, 0..1 밖으로 나가게 적지 말 것.',
+  '- text 는 그 영역에 실제로 박혀 있는 문구를 읽은 그대로(줄바꿈은 \\n). 새 문장을 창작하지 말 것.',
+  '- role: "heading"(제목) · "body"(설명 문장) · "label"(짧은 표식) 중 하나.',
+  '- reviewNote: 손검수가 필요한 이유가 있으면 한 문장, 없으면 "".',
+  '- ⚠️ 여기서 **섹션을 만들거나 이미지와 설명을 짝맞춤하지 말 것.** 번호·순서·구성도 정하지 말 것.',
+  '  글자 영역 목록 하나만 적는다. 확실한 것이 없으면 빈 배열이 정답이다.',
+  '',
   '[출력] 아래 JSON "하나만" 출력(코드펜스/설명/머리말 금지):',
   '{"productNameKr":"..\n..","productNameEn":"..","summary":{"feature":"","type":"","material":"","weight":"","power":"","maker":""},',
   '"keyFeatures":[{"title":"","desc":""},{"title":"","desc":""},{"title":"","desc":""}],',
   '"bodyStartIndex":6,"mainIndex":0,"featureIndex":0,"packageIndex":-1,"mainIsSoloProductCut":true,',
   '"bands":[{"index":0,"role":"summary","kind":"text","asset":"other","sectionStart":false,"sectionTitle":"","text":"","reviewNote":""},',
   '{"index":1,"role":"body","kind":"composite","asset":"product_cut","sectionStart":true,"sectionTitle":"제품특징","text":"","reviewNote":"…"}],',
+  '"bodyTextRegions":[{"bandIndex":7,"rect":{"x":0.08,"y":0.12,"width":0.84,"height":0.10},"text":"부드러운 실리콘 소재","role":"heading","action":"replace","reviewNote":""}],',
   '"notes":[]}',
 ].join('\n');
 
@@ -191,6 +213,9 @@ const parseResult = (raw: string): BasicVisionResult => {
     mainIsSoloProductCut: obj.mainIsSoloProductCut !== false,
     bands,
     notes: Array.isArray(obj.notes) ? obj.notes.map(str).filter(Boolean) : [],
+    // 격리 실험 진단 장부 — 여기서 판정하지 않는다(없거나 목록이 아니면 undefined).
+    //   유효성은 validateBodyTextRegions 한 곳에서만 본다.
+    bodyTextRegions: extractBodyTextRegions(obj),
   };
 };
 

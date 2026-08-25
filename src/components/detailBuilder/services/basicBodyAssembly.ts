@@ -386,6 +386,12 @@ export interface BasicBandOrigin {
   y: number;             // 그 원본 파일 안에서 시작한 y(px)
   isGif: boolean;        // 원본 파일이 GIF 인가
   promo: boolean;        // 바나나몰 홍보 GIF 인가
+  // ── 아래 두 값은 격리 실험(2026-08-25) 진단 전용으로 추가됐다 ────────────────
+  //   AI 가 준 밴드 기준 0..1 좌표를 원본 파일 픽셀로 되돌리는 데만 쓴다.
+  //   본문 출력(assembleBodyFromSourceImages)·경계 계산(planBodyBoundary)은 이 값을 **보지 않는다**.
+  //   크기를 모르면 0 을 적는다 — 진단은 추측하지 않고 그 영역을 거부한다.
+  width: number;         // 그 밴드 이미지의 픽셀 폭(= 원본 파일 폭)
+  height: number;        // 그 밴드 이미지의 픽셀 높이
 }
 
 /** 본문 시작 경계 계획. `applied=false` 면 아무 것도 자르지 않고 원본 전체를 보존한다. */

@@ -4,6 +4,8 @@ import type { ProductData, OptionItem } from '../types';
 import { COLOR_PRESETS } from '../constants';
 import { parseMainMallArrayBuffer } from '../services/mainMallExcelParser';
 import { buildBasicStructure, convertBasicWithAI } from '../services/godoBasicConvert';
+// 격리 실험(2026-08-25) 진단 패널 — 기본 접힘. ProductData·저장·다운로드와 연결되지 않는다.
+import BasicBodyOverlayDiagnostic from './BasicBodyOverlayDiagnostic';
 
 // =============================================================================
 // ✅ 컴포넌트들을 Editor 함수 밖으로 꺼냈습니다 (입력 끊김 해결의 핵심!)
@@ -137,6 +139,8 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
   const [note, setNote] = React.useState<{ ok: boolean; text: string } | null>(null);
   const [notes, setNotes] = React.useState<string[]>([]);
   const [pending, setPending] = React.useState<any>(null); // ①이 만든 BasicConvertInput → ②에서 사용
+  // 격리 실험 진단 결과(선택). 이 값은 오직 아래 접이식 패널만 읽는다 — data 에 합치지 않는다.
+  const [overlay, setOverlay] = React.useState<any>(null);
 
   // 공용 AI 변환 실행 — 로컬 input을 직접 받아 정확히 1회 Claude 호출(React state를 다시 읽지 않음 = stale 방지).
   const runAIWith = async (input: any, jobId: string) => {
@@ -145,8 +149,9 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
       // eslint-disable-next-line no-console
       if (import.meta.env.DEV) console.log(`[기본형 자동변환] job=${jobId} Claude call=1`);
       const res = await convertBasicWithAI(input, (pr) => setPhase(pr.phase));
-      onChange(prev => ({ ...prev, ...res.data }));
+      onChange(prev => ({ ...prev, ...res.data }));   // 진단(overlayExperiment)은 여기 들어가지 않는다
       setNotes(res.notes || []);
+      setOverlay(res.overlayExperiment || null);
       setNote({ ok: true, text: `✓ 변환 완료 · 밴드 ${res.bandCount}장 → 문구·스펙 채움` });
       // eslint-disable-next-line no-console
       if (import.meta.env.DEV) console.log(`[기본형 자동변환] job=${jobId} completed`);
@@ -162,7 +167,7 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
     const f = e.target.files?.[0]; e.target.value = '';   // 같은 파일 재선택 가능하도록 즉시 초기화
     if (!f || busy) return;                                // 실행 중이면 무시(중복 조작 방지)
     const jobId = `basic-${Date.now()}`;
-    setBusy('structure'); setNote(null); setNotes([]); setPending(null); setPhase('엑셀 파싱');
+    setBusy('structure'); setNote(null); setNotes([]); setPending(null); setOverlay(null); setPhase('엑셀 파싱');
     let input: any = null;
     try {
       const _tExcel = performance.now();
@@ -196,7 +201,7 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
   // 수동 재시도(🤖 AI 다시 읽기): 보관된 input으로 다시 AI. 사용자가 명시적으로 누를 때만.
   const runAI = async () => {
     if (!pending || busy) return;
-    setNote(null);
+    setNote(null); setOverlay(null);
     await runAIWith(pending, `basic-retry-${Date.now()}`);
   };
 
@@ -218,6 +223,8 @@ const BasicConvertPanel = React.memo(({ data, onChange }: { data: ProductData; o
       <p className="text-[11px] text-slate-400 leading-relaxed"><b className="text-violet-300">엑셀 파일만 선택</b>하면 파싱 → 구조 배치 → <b className="text-fuchsia-300">Claude AI 읽기</b>까지 자동 실행됩니다(추가 클릭 불필요). 실패 시 <b>🤖 AI 다시 읽기</b>로 재시도.</p>
       {note && <p className={`text-[11px] font-bold ${note.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{note.text}</p>}
       {notes.length > 0 && <ul className="text-[11px] text-amber-300/90 list-disc pl-4 space-y-0.5">{notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
+      {/* 격리 실험 진단 — 결과가 있을 때만, 기본 접힘. 오른쪽 실제 출력과는 무관하다. */}
+      {overlay && <BasicBodyOverlayDiagnostic experiment={overlay} />}
     </div>
   );
 });

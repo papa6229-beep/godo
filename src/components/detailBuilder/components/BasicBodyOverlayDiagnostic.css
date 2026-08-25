@@ -1,0 +1,94 @@
+/* 기본형 본문 라이브 텍스트 오버레이 — 격리 진단 미리보기 전용 스타일 (2026-08-25 실험).
+   ⚠️ 이 파일의 선택자는 전부 `.obd-` 접두사다. 기존 상세페이지 출력(PreviewGodo)·섬네일·
+      단순형 스타일과 겹치지 않게 하기 위한 것이다 — 접두사 없는 전역 선택자를 여기 추가하지 말 것. */
+
+.obd-root {
+  margin-top: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 8px;
+  background: rgba(30, 27, 75, 0.35);
+  overflow: hidden;
+}
+
+.obd-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #DDD6FE;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.obd-summary::-webkit-details-marker { display: none; }
+.obd-summary::before { content: '▸'; font-size: 10px; }
+.obd-root[open] .obd-summary::before { content: '▾'; }
+
+.obd-signal {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.obd-green { background: rgba(34, 197, 94, 0.22); color: #86EFAC; }
+.obd-yellow { background: rgba(234, 179, 8, 0.22); color: #FDE68A; }
+.obd-red { background: rgba(239, 68, 68, 0.22); color: #FCA5A5; }
+
+.obd-body { padding: 0 10px 10px; }
+
+.obd-help {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #C7D2FE;
+  margin: 0 0 6px;
+}
+.obd-warn { color: #FDE68A; }
+
+.obd-board { margin: 10px 0 14px; }
+.obd-board-head {
+  font-size: 10px;
+  font-weight: 700;
+  color: #A5B4FC;
+  margin-bottom: 4px;
+}
+
+/* 원본 이미지와 오버레이가 **같은 좌표계**를 쓰도록 stage 를 기준 컨테이너로 삼는다. */
+.obd-stage {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.obd-origin { display: block; width: 100%; height: auto; }
+
+.obd-patch { position: absolute; }
+/* 마스크는 흰색 단색만 쓴다(생성형 인페인팅·배경색 추정 없음 — 설계서 1차 규칙). */
+.obd-mask {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.55) inset;   /* 진단용 경계 표시 */
+}
+.obd-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 2%;
+  white-space: pre-wrap;
+  overflow: hidden;
+  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+}
+
+.obd-list { margin: 8px 0; }
+.obd-list-title { font-size: 10px; font-weight: 800; color: #A5B4FC; margin-bottom: 3px; }
+.obd-list ul { margin: 0; padding-left: 14px; list-style: disc; }
+.obd-list li { font-size: 10px; line-height: 1.6; color: #E0E7FF; }
+.obd-reason { color: #94A3B8; }

@@ -26,6 +26,11 @@ import {
   planBodyBoundary, applyBodyBoundary, BODY_BOUNDARY_FALLBACK_NOTE,
   type BasicBandRef, type BasicSourceImage, type BasicBandOrigin,
 } from './basicBodyAssembly';
+// ── 격리 실험(2026-08-25) — 진단 전용. 아래 값은 ProductData·저장·다운로드에 들어가지 않는다. ──
+import {
+  planOverlayRegions, finalizeOverlayExperiment, sampleRegionRing, judgeWhiteRing,
+  type BasicBodyOverlayExperiment, type OverlayBodyImage, type WhiteRingVerdict,
+} from './basicBodyTextOverlay';
 
 export interface BasicConvertInput {
   productNameKr: string;
@@ -39,6 +44,11 @@ export interface BasicConvertResult {
   data: Partial<ProductData>;
   notes: string[];
   bandCount: number;
+  /**
+   * 격리 실험(2026-08-25) 진단 결과 — **선택 필드**.
+   * 화면의 접이식 진단 패널만 읽는다. `data`(ProductData)·HTML/이미지 저장 경로에는 들어가지 않는다.
+   */
+  overlayExperiment?: BasicBodyOverlayExperiment;
 }
 export interface BasicProgress { phase: string }
 
@@ -76,6 +86,35 @@ const rasterizeFirstFrame = (src: string, maxPx = 760, quality = 0.85): Promise<
         resolve(c.toDataURL('image/jpeg', quality));
       } catch { resolve(null); }   // CORS taint 등 → 일반 분할 경로로 폴백
     };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+
+/**
+ * 원본 상세이미지 파일 한 장의 자연 크기(px)를 잰다. 실패하면 null.
+ *   격리 실험(2026-08-25) 진단 전용 — 밴드 기준 0..1 좌표를 원본 픽셀로 되돌리는 데만 쓴다.
+ *   본문 출력·경계 계산은 이 값을 보지 않는다. 파일당 1회(이미 받아 온 이미지라 캐시에서 온다).
+ */
+const measureSourceSize = (src: string): Promise<{ width: number; height: number } | null> =>
+  new Promise((resolve) => {
+    if (typeof document === 'undefined' || !src) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+      resolve(w && h ? { width: w, height: h } : null);
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+
+/** 진단 전용: 이미지 엘리먼트 1개 로드(실패하면 null → 그 영역은 원본 보존). */
+const loadImageElement = (src: string): Promise<HTMLImageElement | null> =>
+  new Promise((resolve) => {
+    if (typeof document === 'undefined' || !src) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
     img.src = src;
   });
@@ -239,16 +278,22 @@ export const convertBasicWithAI = async (
   // 밴드 출처 장부 — "이 밴드는 몇 번째 원본 파일의 y 몇 px 에서 시작했나". 좌표는 분할기가 준 값 그대로다.
   //   본문 시작 경계(bodyStartIndex)를 원본 파일 한 번 자르기로 되돌리는 데만 쓴다.
   const origins: BasicBandOrigin[] = [];
+  // 진단 전용: 원본 파일별 픽셀 크기(격리 실험의 좌표 투영·미리보기 배율에만 쓴다).
+  const sourceSizes: ({ width: number; height: number } | null)[] = [];
   for (const [sourceIndex, url] of input.detailImageUrls.entries()) {
     const proxied = toProxyUrl(url);
     const srcIsGif = IS_GIF_URL.test(url);
     let promo = false;
     try { promo = (await isBananamallPromoGif(url, proxied)).isPromo; } catch { promo = false; }
+    // 진단 전용: 이 원본 파일의 픽셀 크기(격리 실험의 좌표 투영에만 쓴다). 못 재면 0 → 진단이 거부한다.
+    const size = await measureSourceSize(proxied);
+    sourceSizes[sourceIndex] = size;
+    const srcW = size?.width ?? 0;
     if (!promo && srcIsGif) {
       const still = await rasterizeFirstFrame(proxied);
       if (still) {
         bands.push(still); bandSrc.push(url); bandIsGif.push(true); promoFlags.push(false);
-        origins.push({ sourceIndex, y: 0, isGif: true, promo: false });
+        origins.push({ sourceIndex, y: 0, isGif: true, promo: false, width: srcW, height: size?.height ?? 0 });
         notes.push('본문 GIF 원본 보존(정지 이미지로 바꾸지 않음).');
         continue;
       }
@@ -260,7 +305,8 @@ export const convertBasicWithAI = async (
       const segs = await splitImageByWhitespace(proxied, { minSegPx: BASIC_MIN_SEG_PX });
       for (const s of segs) {
         bands.push(s.dataUrl); bandSrc.push(s.dataUrl); bandIsGif.push(false); promoFlags.push(promo);
-        origins.push({ sourceIndex, y: s.y, isGif: srcIsGif, promo });
+        // width 는 원본 파일 폭 그대로다(여백분할은 가로로 자르지 않는다). 못 쟀으면 0.
+        origins.push({ sourceIndex, y: s.y, isGif: srcIsGif, promo, width: srcW, height: s.height });
       }
       if (promo) notes.push('바나나몰 홍보 GIF → 판정 근거에서도 제외.');
     } catch {
@@ -348,11 +394,17 @@ export const convertBasicWithAI = async (
   const bounded = applyBodyBoundary(sources, plan);
   notes.push(...bounded.notes);
   let bodySources: BasicSourceImage[] = bounded.sources;
+  // 진단 전용 기록 — 본문에 실제로 실린 첫 원본 파일과 그 파일에 적용된 크롭(격리 실험의 좌표 투영용).
+  let bodyFirstSourceIndex = plan.applied ? plan.sourceIndex : 0;
+  let bodyCropY = plan.applied ? plan.cropY : 0;
   const cutAt = bounded.sources.findIndex((s) => s.cropFromY > 0);
   if (cutAt >= 0) {
     const cut = await cropSourceFromY(bounded.sources[cutAt].src, bounded.sources[cutAt].cropFromY);
     if (cut) bodySources = bounded.sources.map((s, i) => (i === cutAt ? { ...s, src: cut } : s));
-    else { bodySources = sources; notes.push(BODY_BOUNDARY_FALLBACK_NOTE); }   // 자르지 못하면 전량 보존
+    else {
+      bodySources = sources; notes.push(BODY_BOUNDARY_FALLBACK_NOTE);   // 자르지 못하면 전량 보존
+      bodyFirstSourceIndex = 0; bodyCropY = 0;
+    }
   }
 
   notes.push(`[진단] AI 지목 main=${r.mainIndex} feature=${r.featureIndex} package=${r.packageIndex}`
@@ -375,6 +427,67 @@ export const convertBasicWithAI = async (
   //   밴드·태거·장부·AI 의 본문 판단(섹션 수·제목·순서)은 전혀 보지 않는다.
   const bodyOut = assembleBodyFromSourceImages(bodySources);
   notes.push(...bodyOut.notes);
+
+  // ── 격리 실험(2026-08-25) : 본문 라이브 텍스트 오버레이 **가능성 진단** ──────────────
+  //   위에서 만든 본문(bodyOut)은 이 아래에서 조금도 바뀌지 않는다. 여기서 만드는 값은
+  //   화면의 접이식 진단 패널만 읽는다 — ProductData·HTML 저장·이미지 저장에 넣지 않는다.
+  //   AI 추가 호출 0회(같은 1콜 응답의 선택 필드만 쓴다) · 자동 재시도 0회.
+  onProgress?.({ phase: '본문 글자 오버레이 진단(실험)' });
+  let overlayExperiment: BasicBodyOverlayExperiment | undefined;
+  try {
+    // 본문에 실제로 실린 파일 목록(홍보 GIF 제외 — assembleBodyFromSourceImages 와 같은 순서).
+    const overlayImages: OverlayBodyImage[] = [];
+    const bodyIndexBySource = new Map<number, number>();
+    bodySources.forEach((f, i) => {
+      const sourceIndex = bodyFirstSourceIndex + i;
+      if (f.promo) return;
+      const size = sourceSizes[sourceIndex] || null;
+      const cropped = sourceIndex === bodyFirstSourceIndex && bodyCropY > 0;
+      bodyIndexBySource.set(sourceIndex, overlayImages.length);
+      overlayImages.push({
+        bodySourceIndex: overlayImages.length,
+        sourceIndex,
+        src: f.src,
+        width: size?.width ?? 0,
+        height: size ? Math.max(0, size.height - (cropped ? bodyCropY : 0)) : 0,
+      });
+    });
+
+    const overlayPlan = planOverlayRegions({
+      regions: r.bodyTextRegions,
+      bandCount: bands.length,
+      origins,
+      cropY: (si) => (si === bodyFirstSourceIndex ? bodyCropY : 0),
+      bodySourceIndexOf: (si) => (bodyIndexBySource.has(si) ? (bodyIndexBySource.get(si) as number) : -1),
+    });
+
+    if (overlayPlan.detected > 0 || overlayPlan.rejected.length > 0) {
+      // 픽셀 확인은 본문 파일 1장당 1회 로드로 묶는다(세로 통이미지를 여러 번 읽지 않는다).
+      const verdicts: Record<string, WhiteRingVerdict | null> = {};
+      const byImage = new Map<number, typeof overlayPlan.candidates>();
+      for (const c of overlayPlan.candidates) {
+        const list = byImage.get(c.bodySourceIndex) || [];
+        list.push(c);
+        byImage.set(c.bodySourceIndex, list);
+      }
+      for (const [bodySourceIndex, list] of byImage) {
+        const image = overlayImages[bodySourceIndex];
+        const el = image ? await loadImageElement(image.src) : null;
+        for (const c of list) {
+          verdicts[c.region.id] = el && image
+            ? judgeWhiteRing(sampleRegionRing(el, c.projected, image.width || el.naturalWidth, image.height || el.naturalHeight))
+            : null;
+        }
+      }
+      overlayExperiment = finalizeOverlayExperiment(overlayPlan, verdicts, overlayImages);
+      notes.push(`[실험] ${overlayExperiment.notes[0]} (신호 ${overlayExperiment.signal.toUpperCase()})`);
+    } else {
+      notes.push('[실험] 본문에서 옮길 만한 그림 글자를 찾지 못했습니다(진단 없음).');
+    }
+  } catch {
+    // 진단 실패는 변환 실패가 아니다 — 기존 결과는 그대로 간다.
+    notes.push('[실험] 본문 글자 오버레이 진단을 만들지 못했습니다(기존 변환 결과에는 영향 없음).');
+  }
 
   if (DEV) {
     // eslint-disable-next-line no-console
@@ -476,5 +589,6 @@ export const convertBasicWithAI = async (
   }
   notes.push(`⏱ 총 ${timings.total_conversion_ms}ms (Claude ${timings.claude_request_ms ?? '-'}ms · 분할 ${timings.whitespace_split_ms ?? '-'}ms · 태깅 ${timings.band_tagging_ms ?? '-'}ms · 검증 ${timings.response_validation_ms ?? '-'}ms · 패키지 ${timings.package_normalization_ms ?? '-'}ms)`);
 
-  return { data, notes, bandCount: bands.length };
+  // 진단은 **결과 최상위에만** 붙는다. 위의 `data`(ProductData)에는 들어가지 않는다.
+  return { data, notes, bandCount: bands.length, ...(overlayExperiment ? { overlayExperiment } : {}) };
 };
