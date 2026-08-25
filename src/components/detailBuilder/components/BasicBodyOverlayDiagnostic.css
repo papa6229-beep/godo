@@ -56,17 +56,21 @@
   margin-bottom: 4px;
 }
 
-/* 원본 이미지와 오버레이가 **같은 좌표계**를 쓰도록 stage 를 기준 컨테이너로 삼는다. */
-.obd-stage {
-  position: relative;
+/* 스크롤은 **바깥 래퍼에만** 건다. 안쪽 캔버스는 원본 비율 그대로의 높이를 갖는다
+   (예전처럼 캔버스 자체에 max-height 를 걸면 % 로 잡은 마스크 세로 좌표가 눌려 원본과 어긋난다). */
+.obd-scroll {
   background: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 4px;
-  overflow: hidden;
   max-height: 520px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
-.obd-origin { display: block; width: 100%; height: auto; }
+
+/* 원본 이미지와 오버레이가 **같은 좌표계**를 쓰도록 stage 를 기준 컨테이너로 삼는다.
+   높이는 컴포넌트가 원본 비율로 계산해 인라인으로 준다 — 여기서 제한하지 않는다. */
+.obd-stage { position: relative; }
+.obd-origin { display: block; width: 100%; height: 100%; }
 
 .obd-patch { position: absolute; }
 /* 마스크는 흰색 단색만 쓴다(생성형 인페인팅·배경색 추정 없음 — 설계서 1차 규칙). */

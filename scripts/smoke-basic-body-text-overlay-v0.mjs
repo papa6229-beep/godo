@@ -549,6 +549,31 @@ const unchanged = (rel) => {
   ok('진단 컴포넌트는 실험 결과만 prop 으로 받는다(data·setData 없음)',
     !/\bdata\b\s*:/.test(DIAG.split('const BasicBodyOverlayDiagnostic')[1] || ''));
 
+  // ── 진단 미리보기 표시 결함 2건 교정 (2026-08-25) ────────────────────────────
+  //   판정 임계값·AI 규칙·호출 수·기존 출력은 건드리지 않는다. 보이는 좌표와 글자 크기만 고친다.
+  ok('세로 좌표 기준이 되는 내부 캔버스에 실제 표시 높이가 계산된다',
+    /obd-stage/.test(DIAG) && /height:\s*displayHeight|displayHeight/.test(DIAG)
+    && /PREVIEW_WIDTH\s*\*\s*\(?\s*image\.height\s*\/\s*image\.width/.test(DIAG),
+    '표시 높이 계산 없음');
+  ok('스크롤은 바깥 래퍼에만 있고 캔버스에는 없다(마스크 세로 좌표가 밀리지 않는다)',
+    /\.obd-scroll[\s\S]{0,240}max-height:\s*520px/.test(DIAG_CSS)
+    && /\.obd-scroll[\s\S]{0,240}overflow-y:\s*auto/.test(DIAG_CSS)
+    && !/\.obd-stage\s*\{[^}]*(max-height|overflow)/.test(DIAG_CSS),
+    'obd-stage 에 스크롤/최대높이가 남아 있음');
+  ok('마스크·글자는 캔버스(obd-stage) 안에 놓인다',
+    (DIAG.split('obd-scroll')[1] || '').indexOf('obd-stage') >= 0
+    && /obd-stage[\s\S]{0,400}obd-patch/.test(DIAG));
+  ok('진단 글자 크기는 px 고정이다(부모 글꼴 비례 % 금지)',
+    /fontSize:\s*'\d+(\.\d+)?px'/.test(DIAG) && !/fontSize:\s*'[\d.]+%'/.test(DIAG),
+    (DIAG.match(/fontSize:\s*'[^']*'/g) || []).join(' · '));
+  ok('세 역할 모두 px 고정 크기를 가진다',
+    (DIAG.match(/fontSize:\s*'\d+(\.\d+)?px'/g) || []).length === 3,
+    String((DIAG.match(/fontSize:\s*'\d+(\.\d+)?px'/g) || []).length));
+  ok('오토핏·글자 크기 자동 계산을 만들지 않았다(이번 범위 밖)',
+    !/autofit|autoFit|fitText|measureText|scrollWidth|getComputedStyle/.test(DIAG));
+  ok('성능 영향 없음이라는 사실과 다른 주석이 남아 있지 않다',
+    !/성능에 영향이 없다|성능 영향 없/.test(DIAG));
+
   const EDITOR = read('src/components/detailBuilder/components/Editor.tsx');
   ok('Editor 가 진단 컴포넌트를 마운트한다',
     /import BasicBodyOverlayDiagnostic/.test(EDITOR) && /<BasicBodyOverlayDiagnostic/.test(EDITOR));

@@ -8,7 +8,8 @@
 // 하지 않는 일 (지키지 않으면 이 실험의 의미가 없다)
 //   · ProductData 를 바꾸지 않는다(onChange 없음). 저장·다운로드를 부르지 않는다.
 //   · 실제 본문 출력(PreviewGodo)과 아무 관계가 없다 — 좌측 편집 패널 안에서만 산다.
-//   · 기본은 접힘이다. 펼치지 않으면 화면과 성능에 영향이 없다.
+//   · 기본은 접힘이다. **다만 '펼치지 않으면 성능 영향이 없다'는 말은 사실이 아니다** —
+//     기존 출력에는 연결되어 있지 않지만, 진단 계산과 Claude 응답 확장에 따른 소폭 영향은 있다.
 import React from 'react';
 import type {
   BasicBodyOverlayExperiment, BodyOverlayDecision, OverlayBodyImage,
@@ -17,12 +18,21 @@ import './BasicBodyOverlayDiagnostic.css';
 
 /** 미리보기 폭(px). 원본 픽셀 → 이 폭으로 비례 축소해 마스크·글자를 같은 배율로 얹는다. */
 const PREVIEW_WIDTH = 360;
+/** 미리보기 바깥 래퍼의 최대 높이(px). 스크롤은 **여기에만** 건다. */
+const PREVIEW_MAX_HEIGHT = 520;
 
-/** 세 가지 고정 스타일만 쓴다(상품별 스타일 생성 금지 — 이번 실험의 범위 밖). */
+/**
+ * 세 가지 고정 스타일만 쓴다(상품별 스타일 생성 금지 — 이번 실험의 범위 밖).
+ *
+ * 크기는 **px 고정**이다. 예전에는 `%` 였는데, CSS 의 font-size `%` 는 컨테이너 높이가 아니라
+ * **부모 글꼴 크기** 기준이라, 10~11px 짜리 부모 글꼴의 3% 는 사실상 보이지 않는 크기가 됐다.
+ * 진단의 목적이 문구를 읽는 것이므로 읽히는 px 로 고정한다.
+ * (원본 글자 크기에 맞추는 오토핏은 이번 실험의 범위 밖 — 만들지 않는다.)
+ */
 const TEXT_STYLE: Record<BodyOverlayDecision['role'], React.CSSProperties> = {
-  heading: { fontSize: '4.2%', fontWeight: 800, color: '#111827', letterSpacing: '-0.01em' },
-  body: { fontSize: '3.0%', fontWeight: 500, color: '#374151', lineHeight: 1.45 },
-  label: { fontSize: '2.6%', fontWeight: 700, color: '#6B7280', letterSpacing: '0.02em' },
+  heading: { fontSize: '14px', lineHeight: 1.25, fontWeight: 800, color: '#111827', letterSpacing: '-0.01em' },
+  body: { fontSize: '12px', lineHeight: 1.35, fontWeight: 500, color: '#374151' },
+  label: { fontSize: '11px', lineHeight: 1.25, fontWeight: 700, color: '#6B7280', letterSpacing: '0.02em' },
 };
 
 const SIGNAL_TEXT: Record<BasicBodyOverlayExperiment['signal'], { label: string; cls: string; help: string }> = {
@@ -37,29 +47,36 @@ const pct = (value: number, total: number): string => `${total > 0 ? (value / to
 const ImageBoard = React.memo(({ image, decisions }: { image: OverlayBodyImage; decisions: BodyOverlayDecision[] }) => {
   const replaced = decisions.filter((d) => d.outcome === 'replaced' && d.rect);
   const usable = image.width > 0 && image.height > 0;
+  // 세로 좌표의 기준은 **이미지가 실제로 표시되는 높이**여야 한다.
+  //   예전에는 스크롤 상자(max-height 520px)가 그대로 기준 상자여서, 그 안에서 top/height 를 % 로 잡으면
+  //   1만 px 짜리 통이미지의 마스크가 520px 안으로 눌려 원본 글자와 어긋났다.
+  //   → 원본 비율 그대로의 캔버스를 만들고, 스크롤은 그 **바깥 래퍼**에만 건다.
+  const displayHeight = usable ? Math.round(PREVIEW_WIDTH * (image.height / image.width)) : undefined;
   return (
     <div className="obd-board">
       <div className="obd-board-head">
         원본 파일 {image.sourceIndex + 1} · {usable ? `${image.width}×${image.height}px` : '크기 미상'}
         {' · '}교체 미리보기 {replaced.length}건
       </div>
-      <div className="obd-stage" style={{ width: PREVIEW_WIDTH }}>
-        <img className="obd-origin" src={image.src} alt={`본문 원본 ${image.sourceIndex + 1}`} />
-        {usable && replaced.map((d) => (
-          <div
-            key={d.id}
-            className="obd-patch"
-            style={{
-              left: pct(d.rect!.x, image.width),
-              top: pct(d.rect!.y, image.height),
-              width: pct(d.rect!.width, image.width),
-              height: pct(d.rect!.height, image.height),
-            }}
-          >
-            <span className="obd-mask" />
-            <span className="obd-text" style={TEXT_STYLE[d.role]}>{d.text}</span>
-          </div>
-        ))}
+      <div className="obd-scroll" style={{ width: PREVIEW_WIDTH, maxHeight: PREVIEW_MAX_HEIGHT }}>
+        <div className="obd-stage" style={{ width: PREVIEW_WIDTH, height: displayHeight }}>
+          <img className="obd-origin" src={image.src} alt={`본문 원본 ${image.sourceIndex + 1}`} />
+          {usable && replaced.map((d) => (
+            <div
+              key={d.id}
+              className="obd-patch"
+              style={{
+                left: pct(d.rect!.x, image.width),
+                top: pct(d.rect!.y, image.height),
+                width: pct(d.rect!.width, image.width),
+                height: pct(d.rect!.height, image.height),
+              }}
+            >
+              <span className="obd-mask" />
+              <span className="obd-text" style={TEXT_STYLE[d.role]}>{d.text}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
